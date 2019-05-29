@@ -22,10 +22,10 @@ pub struct Gnd {
     pub shadowmap_image: Vec<u8>,
     pub tiles: Vec<Tile>,
     pub surfaces: Vec<Surface>,
-    pub mesh: Vec<[MeshVertex; 6]>,
+    pub mesh: Vec<MeshVertex>,
     pub mesh_vert_count: usize,
     pub water_vert_count: usize,
-    pub water_mesh: Vec<[WaterVertex; 6]>,
+    pub water_mesh: Vec<WaterVertex>,
     pub shadow_map: Vec<[WaterVertex; 6]>,
 }
 
@@ -100,8 +100,8 @@ impl Gnd {
         let l_width = 2f32.powi((l_count_w * 8.0).log2().ceil() as i32);
         let l_height = 2f32.powi((l_count_h * 8.0).log2().ceil() as i32);
 
-        let mut mesh = Vec::<[MeshVertex; 6]>::with_capacity((width * height * 3) as usize);
-        let mut water = Vec::<[WaterVertex; 6]>::with_capacity((width * height * 3 / 2) as usize);
+        let mut mesh = Vec::<MeshVertex>::with_capacity((width * height * 3 * 6) as usize);
+        let mut water = Vec::<WaterVertex>::with_capacity((width * height * 3 / 2 * 6) as usize);
         for y in 0..height {
             for x in 0..width {
                 let cell_a = &surfaces[(x + y * width) as usize];
@@ -117,50 +117,49 @@ impl Gnd {
                                                                l_count_h,
                                                                l_width,
                                                                l_height);
-                    mesh.push([
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
-                            normal: [n[0][0], n[0][1], n[0][1]],
-                            texcoord: [tile.u1, tile.v1],
-                            lightcoord: [u1, v1],
-                            tilecoord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
-                            normal: [n[1][0], n[1][1], n[1][1]],
-                            texcoord: [tile.u2, tile.v2],
-                            lightcoord: [u2, v1],
-                            tilecoord: [(x + 1.5) / width as f32, (y + 0.5) / height as f32],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [n[2][0], n[2][1], n[2][1]],
-                            texcoord: [tile.u4, tile.v4],
-                            lightcoord: [u2, v2],
-                            tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [n[2][0], n[2][1], n[2][1]],
-                            texcoord: [tile.u4, tile.v4],
-                            lightcoord: [u2, v2],
-                            tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
-                        },
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
-                            normal: [n[3][0], n[3][1], n[3][1]],
-                            texcoord: [tile.u3, tile.v3],
-                            lightcoord: [u1, v2],
-                            tilecoord: [(x + 0.5) / width as f32, (y + 1.5) / height as f32],
-                        },
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
-                            normal: [n[0][0], n[0][1], n[0][1]],
-                            texcoord: [tile.u1, tile.v1],
-                            lightcoord: [u1, v1],
-                            tilecoord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
-                        },
-                    ]);
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
+                        normal: [n[0][0], n[0][1], n[0][1]],
+                        texcoord: [tile.u1, tile.v1],
+                        lightcoord: [u1, v1],
+                        tilecoord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
+                        normal: [n[1][0], n[1][1], n[1][1]],
+                        texcoord: [tile.u2, tile.v2],
+                        lightcoord: [u2, v1],
+                        tilecoord: [(x + 1.5) / width as f32, (y + 0.5) / height as f32],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [n[2][0], n[2][1], n[2][1]],
+                        texcoord: [tile.u4, tile.v4],
+                        lightcoord: [u2, v2],
+                        tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [n[2][0], n[2][1], n[2][1]],
+                        texcoord: [tile.u4, tile.v4],
+                        lightcoord: [u2, v2],
+                        tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
+                        normal: [n[3][0], n[3][1], n[3][1]],
+                        texcoord: [tile.u3, tile.v3],
+                        lightcoord: [u1, v2],
+                        tilecoord: [(x + 0.5) / width as f32, (y + 1.5) / height as f32],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
+                        normal: [n[0][0], n[0][1], n[0][1]],
+                        texcoord: [tile.u1, tile.v1],
+                        lightcoord: [u1, v1],
+                        tilecoord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
+                    });
+
 
                     fn one_if_zero(i: f32) -> f32 {
                         if i == 0.0 { 1.0 } else { i }
@@ -170,44 +169,42 @@ impl Gnd {
                         h_a[1] > water_level - water_height ||
                         h_a[2] > water_level - water_height ||
                         h_a[3] > water_level - water_height {
-                        water.push([
-                            WaterVertex {
-                                pos: [(x + 0.0) * 2.0, water_level, (y) * 2.0],
-                                texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
-                            },
-                            WaterVertex {
-                                pos: [(x + 1.0) * 2.0, water_level, y * 2.0],
-                                texcoord: [
-                                    one_if_zero(((x + 1.0) % 5.0 / 5.0)),
-                                    y % 5.0 / 5.0,
-                                ],
-                            },
-                            WaterVertex {
-                                pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
-                                texcoord: [
-                                    one_if_zero((x + 1.0) % 5.0 / 5.0),
-                                    one_if_zero((y + 1.0) % 5.0 / 5.0),
-                                ],
-                            },
-                            WaterVertex {
-                                pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
-                                texcoord: [
-                                    one_if_zero((x + 1.0) % 5.0 / 5.0),
-                                    one_if_zero((y + 1.0) % 5.0 / 5.0),
-                                ],
-                            },
-                            WaterVertex {
-                                pos: [(x + 0.0) * 2.0, water_level, (y + 1.0) * 2.0],
-                                texcoord: [
-                                    x % 5.0 / 5.0,
-                                    one_if_zero((y + 1.0) % 5.0 / 5.0),
-                                ],
-                            },
-                            WaterVertex {
-                                pos: [(x + 0.0) * 2.0, water_level, y * 2.0],
-                                texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
-                            }
-                        ]);
+                        water.push(WaterVertex {
+                            pos: [(x + 0.0) * 2.0, water_level, (y) * 2.0],
+                            texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
+                        });
+                        water.push(WaterVertex {
+                            pos: [(x + 1.0) * 2.0, water_level, y * 2.0],
+                            texcoord: [
+                                one_if_zero(((x + 1.0) % 5.0 / 5.0)),
+                                y % 5.0 / 5.0,
+                            ],
+                        });
+                        water.push(WaterVertex {
+                            pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            texcoord: [
+                                one_if_zero((x + 1.0) % 5.0 / 5.0),
+                                one_if_zero((y + 1.0) % 5.0 / 5.0),
+                            ],
+                        });
+                        water.push(WaterVertex {
+                            pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            texcoord: [
+                                one_if_zero((x + 1.0) % 5.0 / 5.0),
+                                one_if_zero((y + 1.0) % 5.0 / 5.0),
+                            ],
+                        });
+                        water.push(WaterVertex {
+                            pos: [(x + 0.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            texcoord: [
+                                x % 5.0 / 5.0,
+                                one_if_zero((y + 1.0) % 5.0 / 5.0),
+                            ],
+                        });
+                        water.push(WaterVertex {
+                            pos: [(x + 0.0) * 2.0, water_level, y * 2.0],
+                            texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
+                        });
                     }
                 }
 
@@ -221,50 +218,48 @@ impl Gnd {
                                                                l_count_h,
                                                                l_width,
                                                                l_height);
-                    mesh.push([
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u3, tile.v3],
-                            lightcoord: [u1, v2],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u2, tile.v2],
-                            lightcoord: [u2, v1],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_b[1], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u4, tile.v4],
-                            lightcoord: [u2, v2],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u3, tile.v3],
-                            lightcoord: [u1, v2],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u2, tile.v2],
-                            lightcoord: [u2, v1],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
-                            normal: [0.0, 0.0, 1.0],
-                            texcoord: [tile.u1, tile.v1],
-                            lightcoord: [u1, v1],
-                            tilecoord: [0.0, 0.0],
-                        }
-                    ]);
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u3, tile.v3],
+                        lightcoord: [u1, v2],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u2, tile.v2],
+                        lightcoord: [u2, v1],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_b[1], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u4, tile.v4],
+                        lightcoord: [u2, v2],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u3, tile.v3],
+                        lightcoord: [u1, v2],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u2, tile.v2],
+                        lightcoord: [u2, v1],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
+                        normal: [0.0, 0.0, 1.0],
+                        texcoord: [tile.u1, tile.v1],
+                        lightcoord: [u1, v1],
+                        tilecoord: [0.0, 0.0],
+                    });
                 }
                 // Check tile right
                 if (cell_a.tile_right > -1) && (x + 1.0 < width as f32) {
@@ -277,58 +272,53 @@ impl Gnd {
                                                                l_count_h,
                                                                l_width,
                                                                l_height);
-                    mesh.push([
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u2, tile.v2],
-                            lightcoord: [u2, v1],
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u1, tile.v1],
-                            lightcoord: [u1, v1], // (l.u1, l.v1)
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u4, tile.v4],
-                            lightcoord: [u2, v2], // (l.u1, l.v1)
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u4, tile.v4],
-                            lightcoord: [u2, v2], // (l.u1, l.v1)
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_b[2], (y + 1.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u3, tile.v3],
-                            lightcoord: [u1, v2], // (l.u1, l.v1)
-                            tilecoord: [0.0, 0.0],
-                        },
-                        MeshVertex {
-                            pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
-                            normal: [1.0, 0.0, 0.0],
-                            texcoord: [tile.u1, tile.v1],
-                            lightcoord: [u1, v1], // (l.u1, l.v1)
-                            tilecoord: [0.0, 0.0],
-                        }
-                    ]);
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u2, tile.v2],
+                        lightcoord: [u2, v1],
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u1, tile.v1],
+                        lightcoord: [u1, v1], // (l.u1, l.v1)
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u4, tile.v4],
+                        lightcoord: [u2, v2], // (l.u1, l.v1)
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u4, tile.v4],
+                        lightcoord: [u2, v2], // (l.u1, l.v1)
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_b[2], (y + 1.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u3, tile.v3],
+                        lightcoord: [u1, v2], // (l.u1, l.v1)
+                        tilecoord: [0.0, 0.0],
+                    });
+                    mesh.push(MeshVertex {
+                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        normal: [1.0, 0.0, 0.0],
+                        texcoord: [tile.u1, tile.v1],
+                        lightcoord: [u1, v1], // (l.u1, l.v1)
+                        tilecoord: [0.0, 0.0],
+                    });
                 }
             }
         }
 
         mesh.shrink_to_fit();
-        unsafe {
-            println!("{:?}", std::mem::transmute::<_, &[f32]>(&mesh[0..100]));
-        }
         water.shrink_to_fit();
 
         let mesh_vert_count = mesh.len() / 12;
@@ -605,36 +595,36 @@ impl Gnd {
         let count = buf.next_u32();
         let len = buf.next_u32();
 
-        let mut texture_index_map: BTreeMap<String, usize> = BTreeMap::new();
+        let mut texture_names: Vec<String> = Vec::new();
         let mut texture_indices: Vec<usize> = Vec::new();
         for i in 0..count {
             let name = buf.string(len);
-            let current_texture_count = texture_index_map.len();
-            let index = texture_index_map.entry(name.clone()).or_insert(current_texture_count);
-            texture_indices.push(*index);
+            let texture_index = texture_names
+                .iter()
+                .position(|t| *t == name)
+                .unwrap_or_else(|| {
+                    texture_names.push(name);
+                    texture_names.len() - 1
+                });
+            texture_indices.push(texture_index);
         }
-
-
-        let texture_names: Vec<String> = texture_index_map
-            .into_iter()
-            .map(|e| e.0)
-            .collect();
 
         (texture_names, texture_indices)
     }
 
     pub fn create_gl_texture_atlas(texture_names: &Vec<String>) -> GlTexture {
+        println!("{:?}", texture_names);
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names.iter().map(|texture_name| {
-                use sdl2::image::LoadSurface;
-                let path = format!("d:\\Games\\TalonRO\\grf\\data\\texture\\{}", texture_name);
-                sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
-                    println!("Missing: {}", path);
-                    let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
-                    let rect = missing_texture.rect();
-                    missing_texture.fill_rect(rect, Color::RGB(255, 0, 255));
-                    missing_texture
-                })
+            use sdl2::image::LoadSurface;
+            let path = format!("d:\\Games\\TalonRO\\grf\\data\\texture\\{}", texture_name);
+            sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
+                println!("Missing: {}", path);
+                let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
+                let rect = missing_texture.rect();
+                missing_texture.fill_rect(rect, Color::RGB(255, 0, 255));
+                missing_texture
             })
+        })
             .collect();
         let surface_atlas = Gnd::create_texture_atlas(&texture_surfaces);
 
@@ -673,7 +663,7 @@ mod tests {
     use std::io::Read;
 
     #[test]
-    fn it_adds_two() {
+    fn test_mesh_loading() {
         let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", "new_zone01")));
         let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")));
         let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", "new_zone01")),
@@ -685,11 +675,17 @@ mod tests {
             line.trim().parse::<f32>().unwrap()
         }).collect();
 
-        let mesh_floats: Vec<f32> = unsafe {
+        let mesh_float_arrays: Vec<[f32; 12]> = unsafe {
             std::mem::transmute(ground.mesh)
         };
+
+        let mesh_floats: Vec<&f32> = mesh_float_arrays
+            .iter()
+            .flat_map(|array| array.iter())
+            .collect();
+        assert_eq!(floats.len(), mesh_floats.len());
         floats.iter().zip(mesh_floats).enumerate().for_each(|(index, (a, b))| {
-            assert!(*a - b < 0.000001, "{}.: {} != {}, ({} - {} = {})", index, a, b, a, b, *a - b);
+            assert!(a - b < 0.000001, "{}.: {} != {}, ({} - {} = {})", index, a, b, a, b, *a - b);
         })
     }
 }

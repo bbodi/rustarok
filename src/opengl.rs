@@ -71,6 +71,7 @@ impl VertexArray {
         unsafe {
             gl::GenBuffers(1, &mut vbo);
         }
+        println!("size of data in bytes: {}", (vertices.len() * std::mem::size_of::<T>()));
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(

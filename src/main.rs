@@ -76,7 +76,7 @@ fn main() {
     shader_program.gl_use();
 
 
-    let (mut ground, mut vao) = load_map("prontera");
+    let (mut ground, mut vao, mut texture_atlas) = load_map("prontera");
     let xyz = VertexArray::new(&vec![
         -0.5f32, 0.0, -0.5, // x
         0.0, 0.0, -0.5, // center
@@ -123,12 +123,10 @@ fn main() {
         } else { None }
     }).filter_map(|x| x).collect::<Vec<String>>();
 
-    let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
-
     'running: loop {
         let view = Matrix4::look_at_rh(&camera_pos, &(camera_pos + camera_front), &camera_up);
 
-        let camera_speed = 1f32;
+        let camera_speed = 2f32;
 
         let model = Matrix4::<f32>::identity();
         // 45 degree
@@ -136,7 +134,6 @@ fn main() {
 
         shader_program.set_mat4("projection", &proj);
         shader_program.set_mat4("view", &view);
-
         shader_program.set_mat4("model", &model);
 
         use sdl2::event::Event;
@@ -189,20 +186,15 @@ fn main() {
                     last_mouse_y = y;
                 }
                 Event::KeyDown { keycode, .. } => {
-                    match keycode {
-                        Some(Keycode::W) => {
-                            camera_pos += camera_speed * camera_front;
-                        }
-                        Some(Keycode::A) => {
-                            camera_pos -= camera_front.cross(&camera_up).normalize() * camera_speed;
-                        }
-                        Some(Keycode::S) => {
-                            camera_pos -= camera_speed * camera_front;
-                        }
-                        Some(Keycode::D) => {
-                            camera_pos += camera_front.cross(&camera_up).normalize() * camera_speed;
-                        }
-                        _ => {}
+                    if let Some(Keycode::W) = keycode {
+                        camera_pos += camera_speed * camera_front;
+                    } else if let Some(Keycode::S) = keycode {
+                        camera_pos -= camera_speed * camera_front;
+                    }
+                    if let Some(Keycode::A) = keycode {
+                        camera_pos -= camera_front.cross(&camera_up).normalize() * camera_speed;
+                    } else if let Some(Keycode::D) = keycode {
+                        camera_pos += camera_front.cross(&camera_up).normalize() * camera_speed;
                     }
                 }
                 _ => {}
@@ -212,10 +204,9 @@ fn main() {
         let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
 
         extern crate sublime_fuzzy;
-        ui.window(im_str!("Maps"))
+        ui.window(im_str!("Maps: {},{},{}", camera_pos.x, camera_pos.y, camera_pos.z))
             .size((300.0, 500.0), ImGuiCond::FirstUseEver)
             .build(|| {
-
                 let map_name_filter_clone = map_name_filter.clone();
                 let mut filtered_map_names = all_map_names.iter()
                     .filter(|map_name| {
@@ -226,17 +217,19 @@ fn main() {
                     .enter_returns_true(true)
                     .build() {
                     if let Some(map_name) = filtered_map_names.next() {
-                        let (g, v) = load_map(map_name);
+                        let (g, v, a) = load_map(map_name);
                         ground = g;
                         vao = v;
+                        texture_atlas = a;
                     }
                 }
                 filtered_map_names
                     .for_each(|map_name| {
                         if ui.small_button(&ImString::new(map_name.as_str())) {
-                            let (g, v) = load_map(map_name);
+                            let (g, v, a) = load_map(map_name);
                             ground = g;
                             vao = v;
+                            texture_atlas = a;
                         }
                     });
             });
@@ -245,14 +238,13 @@ fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-
-//        ground.texture_atlas.bind();
+        texture_atlas.bind();
         unsafe {
             vao.bind();
             gl::DrawArrays(
                 gl::TRIANGLES, // mode
                 0, // starting index in the enabled arrays
-                (ground.mesh.len() * 6) as i32, // number of indices to be rendered
+                (ground.mesh.len() * 6 * 3) as i32, // number of indices to be rendered
             );
         }
 
@@ -268,23 +260,28 @@ fn main() {
         renderer.render(ui);
 
         window.gl_swap_window();
-        std::thread::sleep(Duration::from_millis(50))
+        std::thread::sleep(Duration::from_millis(30))
     }
 }
 
-fn load_map(map_name: &str) -> (Gnd, VertexArray) {
+fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture) {
     let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
     let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
     let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
-                           world.water.level,
-                           world.water.wave_height);
+                               world.water.level,
+                               world.water.wave_height);
 
-    let mesh: &Vec<MeshVertex> = unsafe { std::mem::transmute(&ground.mesh) };
-    (ground, VertexArray::new(mesh, &[VertexAttribDefinition {
-        number_of_components: 3,
-        offset_of_first_element: 0,
-    }, VertexAttribDefinition { // texcoords
-        number_of_components: 2,
-        offset_of_first_element: 6,
-    }]))
+
+    let mut texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
+    dbg!(ground.mesh.len());
+    let vertex_array = VertexArray::new(&ground.mesh, &[
+        VertexAttribDefinition {
+            number_of_components: 3,
+            offset_of_first_element: 0,
+        }, VertexAttribDefinition { // texcoords
+            number_of_components: 2,
+            offset_of_first_element: 6,
+        }
+    ]);
+    (ground, vertex_array, texture_atlas)
 }
