@@ -21,7 +21,7 @@ use crate::gat::Gat;
 use std::ffi::{CString, CStr};
 
 use imgui::{ImGuiCond, ImString, ImStr};
-use nalgebra::{Vector3, Matrix4, Point3};
+use nalgebra::{Vector3, Matrix4, Point3, Matrix};
 use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::Duration;
 
@@ -56,6 +56,11 @@ fn main() {
         gl::Viewport(0, 0, 900, 700); // set viewport
         gl::ClearColor(0.3, 0.3, 0.5, 1.0);
         gl::Enable(gl::DEPTH_TEST);
+        gl::DepthFunc(gl::LEQUAL);
+//
+        gl::Enable(gl::BLEND);
+        // ezzel nem látszóüdik semmi
+//        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
     }
 
 
@@ -76,18 +81,18 @@ fn main() {
     shader_program.gl_use();
 
 
-    let (mut ground, mut vao, mut texture_atlas) = load_map("prontera");
-    let xyz = VertexArray::new(&vec![
-        -0.5f32, 0.0, -0.5, // x
-        0.0, 0.0, -0.5, // center
-        0.0, 0.0, -1.0, // depth
-        0.0, 0.0, -0.5, // center
-        0.0, 0.5, -0.5,   // y
-        0.0, 0.0, -0.5, // center
-    ], &[VertexAttribDefinition {
-        number_of_components: 3,
-        offset_of_first_element: 0,
-    }]);
+    let (mut ground, mut vao, mut texture_atlas) = load_map("new_zone01");
+//    let xyz = VertexArray::new(&vec![
+//        -0.5f32, 0.0, -0.5, // x
+//        0.0, 0.0, -0.5, // center
+//        0.0, 0.0, -1.0, // depth
+//        0.0, 0.0, -0.5, // center
+//        0.0, 0.5, -0.5,   // y
+//        0.0, 0.0, -0.5, // center
+//    ], &[VertexAttribDefinition {
+//        number_of_components: 3,
+//        offset_of_first_element: 0,
+//    }]);
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -123,14 +128,13 @@ fn main() {
         } else { None }
     }).filter_map(|x| x).collect::<Vec<String>>();
 
+    let proj = Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32);
+
     'running: loop {
         let view = Matrix4::look_at_rh(&camera_pos, &(camera_pos + camera_front), &camera_up);
-
         let camera_speed = 2f32;
 
         let model = Matrix4::<f32>::identity();
-        // 45 degree
-        let proj = Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32);
 
         shader_program.set_mat4("projection", &proj);
         shader_program.set_mat4("view", &view);
@@ -244,18 +248,19 @@ fn main() {
             gl::DrawArrays(
                 gl::TRIANGLES, // mode
                 0, // starting index in the enabled arrays
-                (ground.mesh.len() * 6 * 3) as i32, // number of indices to be rendered
+                (ground.mesh.len()) as i32, // number of indices to be rendered
+//            ground.mesh_vert_count as i32
             );
         }
 
-        unsafe {
-            xyz.bind();
-            gl::DrawArrays(
-                gl::LINES, // mode
-                0, // starting index in the enabled arrays
-                6, // number of indices to be rendered
-            );
-        }
+//        unsafe {
+//            xyz.bind();
+//            gl::DrawArrays(
+//                gl::LINES, // mode
+//                0, // starting index in the enabled arrays
+//                6, // number of indices to be rendered
+//            );
+//        }
 
         renderer.render(ui);
 
@@ -268,8 +273,8 @@ fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture) {
     let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
     let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
     let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
-                               world.water.level,
-                               world.water.wave_height);
+                           world.water.level,
+                           world.water.wave_height);
 
 
     let mut texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);

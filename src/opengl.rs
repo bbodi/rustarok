@@ -30,12 +30,12 @@ impl GlTexture {
 
             gl::TexImage2D(
                 gl::TEXTURE_2D,
-                0,
-                mode as i32,
+                0, // level
+                gl::RGBA as i32, // internalformat
                 surface.width() as i32,
                 surface.height() as i32,
-                0,
-                mode as u32,
+                0, // border
+                mode as u32, // format
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
             );
@@ -80,7 +80,6 @@ impl VertexArray {
                 vertices.as_ptr() as *const gl::types::GLvoid, // pointer to data
                 gl::STATIC_DRAW, // usage
             );
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0); // unbind the buffer
         }
         let mut vao: gl::types::GLuint = 0;
         unsafe {
@@ -184,7 +183,12 @@ impl Program {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::UniformMatrix4fv(location, 1, gl::FALSE, matrix.as_slice().as_ptr() as *const f32);
+            gl::UniformMatrix4fv(
+                location,
+                1, // count
+                gl::FALSE, // transpose
+                matrix.as_slice().as_ptr() as *const f32,
+            );
         }
     }
 
