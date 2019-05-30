@@ -1,4 +1,4 @@
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Vector3, Matrix3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
@@ -42,13 +42,39 @@ impl GlTexture {
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0, // Pyramid level (for mip-mapping) - 0 is the top level
-                gl::RGB as i32, // Internal colour format to convert to
+                gl::RGBA as i32, // Internal colour format to convert to
                 surface.width() as i32,
                 surface.height() as i32,
                 0, // border
                 mode as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+            gl::GenerateMipmap(gl::TEXTURE_2D);
+        }
+        GlTexture {
+            id: texture_id,
+        }
+    }
+
+    pub fn from_data(data: &Vec<u8>, width: i32, height: i32) -> GlTexture {
+        let mut texture_id: gl::types::GLuint = 0;
+        unsafe {
+            gl::GenTextures(1, &mut texture_id);
+            gl::BindTexture(gl::TEXTURE_2D, texture_id);
+            let mode = gl::RGBA;
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0, // Pyramid level (for mip-mapping) - 0 is the top level
+                mode as i32, // Internal colour format to convert to
+                width,
+                height,
+                0, // border
+                mode, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                gl::UNSIGNED_BYTE,
+                data.as_ptr() as *const gl::types::GLvoid,
             );
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
@@ -163,15 +189,15 @@ impl Shader {
             unsafe {
                 gl::GetShaderiv(id, gl::INFO_LOG_LENGTH, &mut len);
             }
-            // allocate buffer of correct size
-            let mut buffer: Vec<u8> = Vec::with_capacity(len as usize + 1);
-            // fill it with len spaces
-            buffer.extend([b' '].iter().cycle().take(len as usize));
-            // convert buffer to CString
-            let error = create_whitespace_cstring_with_len(len as usize);
-            return Err(error.to_string_lossy().into_owned());
+            let mut buffer = Vec::<u8>::with_capacity(len as usize);
+            unsafe {
+                gl::GetShaderInfoLog(id, len, std::ptr::null_mut(), buffer.as_mut_ptr() as *mut i8);
+                buffer.set_len(len as usize);
+                Err(String::from_utf8_unchecked(buffer))
+            }
+        } else {
+            Ok(Shader { id })
         }
-        Ok(Shader { id })
     }
 
     pub fn id(&self) -> gl::types::GLuint {
@@ -203,11 +229,45 @@ impl Program {
         }
     }
 
+
+    pub fn set_mat3(&self, name: &str, matrix: &Matrix3<f32>) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::UniformMatrix3fv(
+                location,
+                1, // count
+                gl::FALSE, // transpose
+                matrix.as_slice().as_ptr() as *const f32,
+            );
+        }
+    }
+
+    pub fn set_vec3(&self, name: &str, vector: &[f32]) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform3fv(
+                location,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
+        }
+    }
+
     pub fn set_int(&self, name: &str, value: i32) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform1i(location, value);
+        }
+    }
+
+    pub fn set_f32(&self, name: &str, value: f32) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform1f(location, value);
         }
     }
 
@@ -267,10 +327,10 @@ impl Drop for Program {
 }
 
 fn create_whitespace_cstring_with_len(len: usize) -> CString {
-    // allocate buffer of correct size
+// allocate buffer of correct size
     let mut buffer: Vec<u8> = Vec::with_capacity(len + 1);
-    // fill it with len spaces
+// fill it with len spaces
     buffer.extend([b' '].iter().cycle().take(len));
-    // convert buffer to CString
+// convert buffer to CString
     unsafe { CString::from_vec_unchecked(buffer) }
 }
