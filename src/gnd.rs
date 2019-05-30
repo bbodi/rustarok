@@ -1,13 +1,13 @@
 use std::collections::btree_map::BTreeMap;
 use std::collections::HashMap;
 
-use nalgebra::{Vector2, Vector3, Rotation2, Rotation3};
+use nalgebra::{Rotation3, Vector2, Vector3};
 use nalgebra_glm::triangle_normal;
+use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::rect::Rect;
 
 use crate::common::BinaryReader;
 use crate::opengl::GlTexture;
-use sdl2::pixels::{PixelFormatEnum, Color};
-use sdl2::rect::Rect;
 
 pub struct Gnd {
     pub version: f32,
@@ -23,7 +23,6 @@ pub struct Gnd {
     pub tiles: Vec<Tile>,
     pub surfaces: Vec<Surface>,
     pub mesh: Vec<MeshVertex>,
-    pub mesh_vert_count: usize,
     pub water_vert_count: usize,
     pub water_mesh: Vec<WaterVertex>,
     pub shadow_map: Vec<[WaterVertex; 6]>,
@@ -57,7 +56,6 @@ pub struct Surface {
 }
 
 #[repr(packed)]
-#[derive(Debug)]
 pub struct MeshVertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
@@ -102,6 +100,20 @@ impl Gnd {
 
         let mut mesh = Vec::<MeshVertex>::with_capacity((width * height * 3 * 6) as usize);
         let mut water = Vec::<WaterVertex>::with_capacity((width * height * 3 / 2 * 6) as usize);
+
+        let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
+        let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+        let mut rotate_around_x_axis = |mut pos: [f32; 3]| {
+            v.x = pos[0];
+            v.y = pos[1];
+            v.z = pos[2];
+            v = rot * v;
+            pos[0] = v.x;
+            pos[1] = v.y;
+            pos[2] = v.z;
+            pos
+        };
+
         for y in 0..height {
             for x in 0..width {
                 let cell_a = &surfaces[(x + y * width) as usize];
@@ -118,42 +130,42 @@ impl Gnd {
                                                                l_width,
                                                                l_height);
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0]),
                         normal: [n[0][0], n[0][1], n[0][1]],
                         texcoord: [tile.u1, tile.v1],
                         lightcoord: [u1, v1],
                         tilecoord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0]),
                         normal: [n[1][0], n[1][1], n[1][1]],
                         texcoord: [tile.u2, tile.v2],
                         lightcoord: [u2, v1],
                         tilecoord: [(x + 1.5) / width as f32, (y + 0.5) / height as f32],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [n[2][0], n[2][1], n[2][1]],
                         texcoord: [tile.u4, tile.v4],
                         lightcoord: [u2, v2],
                         tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [n[2][0], n[2][1], n[2][1]],
                         texcoord: [tile.u4, tile.v4],
                         lightcoord: [u2, v2],
                         tilecoord: [(x + 1.5) / width as f32, (y + 1.5) / height as f32],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0]),
                         normal: [n[3][0], n[3][1], n[3][1]],
                         texcoord: [tile.u3, tile.v3],
                         lightcoord: [u1, v2],
                         tilecoord: [(x + 0.5) / width as f32, (y + 1.5) / height as f32],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0]),
                         normal: [n[0][0], n[0][1], n[0][1]],
                         texcoord: [tile.u1, tile.v1],
                         lightcoord: [u1, v1],
@@ -170,39 +182,39 @@ impl Gnd {
                         h_a[2] > water_level - water_height ||
                         h_a[3] > water_level - water_height {
                         water.push(WaterVertex {
-                            pos: [(x + 0.0) * 2.0, water_level, (y) * 2.0],
+                            pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, (y) * 2.0]),
                             texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
                         });
                         water.push(WaterVertex {
-                            pos: [(x + 1.0) * 2.0, water_level, y * 2.0],
+                            pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, y * 2.0]),
                             texcoord: [
                                 one_if_zero(((x + 1.0) % 5.0 / 5.0)),
                                 y % 5.0 / 5.0,
                             ],
                         });
                         water.push(WaterVertex {
-                            pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0]),
                             texcoord: [
                                 one_if_zero((x + 1.0) % 5.0 / 5.0),
                                 one_if_zero((y + 1.0) % 5.0 / 5.0),
                             ],
                         });
                         water.push(WaterVertex {
-                            pos: [(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0]),
                             texcoord: [
                                 one_if_zero((x + 1.0) % 5.0 / 5.0),
                                 one_if_zero((y + 1.0) % 5.0 / 5.0),
                             ],
                         });
                         water.push(WaterVertex {
-                            pos: [(x + 0.0) * 2.0, water_level, (y + 1.0) * 2.0],
+                            pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, (y + 1.0) * 2.0]),
                             texcoord: [
                                 x % 5.0 / 5.0,
                                 one_if_zero((y + 1.0) % 5.0 / 5.0),
                             ],
                         });
                         water.push(WaterVertex {
-                            pos: [(x + 0.0) * 2.0, water_level, y * 2.0],
+                            pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, y * 2.0]),
                             texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
                         });
                     }
@@ -219,42 +231,42 @@ impl Gnd {
                                                                l_width,
                                                                l_height);
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u3, tile.v3],
                         lightcoord: [u1, v2],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u2, tile.v2],
                         lightcoord: [u2, v1],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_b[1], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_b[1], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u4, tile.v4],
                         lightcoord: [u2, v2],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u3, tile.v3],
                         lightcoord: [u1, v2],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u2, tile.v2],
                         lightcoord: [u2, v1],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_a[2], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
                         texcoord: [tile.u1, tile.v1],
                         lightcoord: [u1, v1],
@@ -273,42 +285,42 @@ impl Gnd {
                                                                l_width,
                                                                l_height);
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u2, tile.v2],
                         lightcoord: [u2, v1],
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u1, tile.v1],
                         lightcoord: [u1, v1], // (l.u1, l.v1)
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u4, tile.v4],
                         lightcoord: [u2, v2], // (l.u1, l.v1)
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_b[0], (y + 0.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u4, tile.v4],
                         lightcoord: [u2, v2], // (l.u1, l.v1)
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_b[2], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_b[2], (y + 1.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u3, tile.v3],
                         lightcoord: [u1, v2], // (l.u1, l.v1)
                         tilecoord: [0.0, 0.0],
                     });
                     mesh.push(MeshVertex {
-                        pos: [(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0],
+                        pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[3], (y + 1.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
                         texcoord: [tile.u1, tile.v1],
                         lightcoord: [u1, v1], // (l.u1, l.v1)
@@ -319,17 +331,8 @@ impl Gnd {
         }
 
         mesh.shrink_to_fit();
-        mesh.iter_mut().for_each(|m| {
-            let mut v = Vector3::<f32>::new(m.pos[0], m.pos[1], m.pos[2]);
-            let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
-            v = rot * v;
-            m.pos[0] = v.x;
-            m.pos[1] = v.y;
-            m.pos[2] = v.z;
-        });
         water.shrink_to_fit();
 
-        let mesh_vert_count = mesh.len() / 12;
         let water_vert_count = water.len() / 5;
         let lightmap_image = Gnd::create_lightmap_image(&lightmaps);
         let tiles_color_image = Gnd::create_tiles_color_image(
@@ -357,7 +360,6 @@ impl Gnd {
             tiles,
             surfaces,
             mesh,
-            mesh_vert_count,
             water_vert_count,
             water_mesh: water,
             tiles_color_image,
@@ -552,33 +554,33 @@ impl Gnd {
 
         for y in 0..height {
             for x in 0..width {
-                let mut n = &mut normals[(y * width + x) as usize];
+                let n = &mut normals[(y * width + x) as usize];
                 // Up Left
                 n[0] = n[0] + tmp[((x + 0) + (y + 0) * width) as usize];
                 n[0] = n[0] + or(&tmp, x - 1, y + 0, width);
-                n[0] = n[0] + or(&tmp, (x - 1), (y - 1), width);
-                n[0] = n[0] + or(&tmp, (x + 0), (y - 1), width);
+                n[0] = n[0] + or(&tmp, x - 1, y - 1, width);
+                n[0] = n[0] + or(&tmp, x + 0, y - 1, width);
                 n[0].normalize_mut();
 
                 // Up Right
                 n[1] = n[1] + tmp[((x + 0) + (y + 0) * width) as usize];
-                n[1] = n[1] + or(&tmp, (x + 1), (y + 0), width);
-                n[1] = n[1] + or(&tmp, (x + 1), (y - 1), width);
-                n[1] = n[1] + or(&tmp, (x + 0), (y - 1), width);
+                n[1] = n[1] + or(&tmp, x + 1, (y + 0), width);
+                n[1] = n[1] + or(&tmp, x + 1, y - 1, width);
+                n[1] = n[1] + or(&tmp, x + 0, y - 1, width);
                 n[1].normalize_mut();
 
                 // Bottom Right
                 n[2] = n[2] + tmp[((x + 0) + (y + 0) * width) as usize];
-                n[2] = n[2] + or(&tmp, (x + 1), (y + 0), width);
-                n[2] = n[2] + or(&tmp, (x + 1), (y + 1), width);
-                n[2] = n[2] + or(&tmp, (x + 0), (y + 1), width);
+                n[2] = n[2] + or(&tmp, x + 1, (y + 0), width);
+                n[2] = n[2] + or(&tmp, x + 1, y + 1, width);
+                n[2] = n[2] + or(&tmp, x + 0, y + 1, width);
                 n[2].normalize_mut();
 
                 // Bottom Left
                 n[3] = n[3] + tmp[((x + 0) + (y + 0) * width) as usize];
-                n[3] = n[3] + or(&tmp, (x - 1), (y + 0), width);
-                n[3] = n[3] + or(&tmp, (x - 1), (y + 1), width);
-                n[3] = n[3] + or(&tmp, (x + 0), (y + 1), width);
+                n[3] = n[3] + or(&tmp, x - 1, y + 0, width);
+                n[3] = n[3] + or(&tmp, x - 1, y + 1, width);
+                n[3] = n[3] + or(&tmp, x + 0, y + 1, width);
                 n[3].normalize_mut();
             }
         }
@@ -605,7 +607,7 @@ impl Gnd {
 
         let mut texture_names: Vec<String> = Vec::new();
         let mut texture_indices: Vec<usize> = Vec::new();
-        for i in 0..count {
+        for _ in 0..count {
             let name = buf.string(len);
             let texture_index = texture_names
                 .iter()
@@ -664,12 +666,13 @@ impl Gnd {
 
 #[cfg(test)]
 mod tests {
-    use crate::rsw::Rsw;
-    use crate::gat::Gat;
-    use crate::common::BinaryReader;
-    use crate::gnd::Gnd;
     use std::fs::File;
     use std::io::Read;
+
+    use crate::common::BinaryReader;
+    use crate::gat::Gat;
+    use crate::gnd::Gnd;
+    use crate::rsw::Rsw;
 
     #[test]
     fn test_mesh_loading() {
@@ -692,10 +695,6 @@ mod tests {
             .iter()
             .flat_map(|array| array.iter())
             .collect();
-        println!("mesh_floats.len(): {}", (mesh_floats.len()));
-        dbg!(mesh_floats[12 * 40000]);
-        dbg!(mesh_floats[12 * 40000 + 1]);
-        dbg!(mesh_floats[12 * 40000 + 2]);
         assert_eq!(floats.len(), mesh_floats.len());
         floats.iter().zip(mesh_floats).enumerate().for_each(|(index, (a, b))| {
             assert!(a - b < 0.000001, "{}.: {} != {}, ({} - {} = {})", index, a, b, a, b, *a - b);

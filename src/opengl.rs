@@ -25,17 +25,27 @@ impl GlTexture {
             gl::GenTextures(1, &mut texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             let mode = if surface.pixel_format_enum().byte_size_per_pixel() == 4 {
-                gl::RGBA
-            } else { gl::RGB };
+                if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
+                    gl::RGBA
+                } else {
+                    gl::BGRA
+                }
+            } else {
+                if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
+                    gl::RGB
+                } else {
+                    gl::BGR
+                }
+            };
 
             gl::TexImage2D(
                 gl::TEXTURE_2D,
-                0, // level
-                gl::RGBA as i32, // internalformat
+                0, // Pyramid level (for mip-mapping) - 0 is the top level
+                gl::RGB as i32, // Internal colour format to convert to
                 surface.width() as i32,
                 surface.height() as i32,
                 0, // border
-                mode as u32, // format
+                mode as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
             );
