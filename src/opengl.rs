@@ -8,8 +8,9 @@ pub struct GlTexture {
 }
 
 impl GlTexture {
-    pub fn bind(&self) {
+    pub fn bind(&self, texture_index: gl::types::GLuint) {
         unsafe {
+            gl::ActiveTexture(texture_index);
             gl::BindTexture(gl::TEXTURE_2D, self.id);
         }
     }
@@ -199,6 +200,14 @@ impl Program {
                 gl::FALSE, // transpose
                 matrix.as_slice().as_ptr() as *const f32,
             );
+        }
+    }
+
+    pub fn set_int(&self, name: &str, value: i32) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform1i(location, value);
         }
     }
 

@@ -81,7 +81,7 @@ fn main() {
     shader_program.gl_use();
 
 
-    let (mut ground, mut vao, mut texture_atlas) = load_map("new_zone01");
+    let (mut ground, mut vao, mut texture_atlas, mut tile_color_texture) = load_map("new_zone01");
 //    let xyz = VertexArray::new(&vec![
 //        -0.5f32, 0.0, -0.5, // x
 //        0.0, 0.0, -0.5, // center
@@ -221,19 +221,21 @@ fn main() {
                     .enter_returns_true(true)
                     .build() {
                     if let Some(map_name) = filtered_map_names.next() {
-                        let (g, v, a) = load_map(map_name);
+                        let (g, v, a, tct) = load_map(map_name);
                         ground = g;
                         vao = v;
                         texture_atlas = a;
+                        tile_color_texture = tct
                     }
                 }
                 filtered_map_names
                     .for_each(|map_name| {
                         if ui.small_button(&ImString::new(map_name.as_str())) {
-                            let (g, v, a) = load_map(map_name);
+                            let (g, v, a, tct) = load_map(map_name);
                             ground = g;
                             vao = v;
                             texture_atlas = a;
+                            tile_color_texture = tct;
                         }
                     });
             });
@@ -242,14 +244,18 @@ fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        texture_atlas.bind();
+        texture_atlas.bind(gl::TEXTURE0);
+        shader_program.set_int("gnd_texture_atlas", 0);
+
+        tile_color_texture.bind(gl::TEXTURE1);
+        shader_program.set_int("tile_color_texture", 1);
+
         unsafe {
             vao.bind();
             gl::DrawArrays(
                 gl::TRIANGLES, // mode
                 0, // starting index in the enabled arrays
                 (ground.mesh.len()) as i32, // number of indices to be rendered
-//            ground.mesh_vert_count as i32
             );
         }
 
@@ -269,15 +275,19 @@ fn main() {
     }
 }
 
-fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture) {
+fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture, GlTexture) {
     let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
     let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
-    let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
+    let mut ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
                            world.water.level,
                            world.water.wave_height);
 
 
     let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
+    let tile_color_texture = Gnd::create_tile_color_texture(
+        &mut ground.tiles_color_image,
+        ground.width, ground.height,
+    );
     dbg!(ground.mesh.len());
     let vertex_array = VertexArray::new(&ground.mesh, &[
         VertexAttribDefinition {
@@ -286,7 +296,10 @@ fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture) {
         }, VertexAttribDefinition { // texcoords
             number_of_components: 2,
             offset_of_first_element: 6,
+        }, VertexAttribDefinition { // tile color coordinate
+            number_of_components: 2,
+            offset_of_first_element: 10,
         }
     ]);
-    (ground, vertex_array, texture_atlas)
+    (ground, vertex_array, texture_atlas, tile_color_texture)
 }
