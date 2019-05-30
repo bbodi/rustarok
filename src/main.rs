@@ -103,7 +103,7 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let mut my_str = ImString::new("shitaka");
+    let my_str = ImString::new("shitaka");
 
     let mut camera_pos = Point3::<f32>::new(0.0, 0.0, 3.0);
     let mut camera_front = Vector3::<f32>::new(0.0, 0.0, -1.0);
@@ -277,7 +277,7 @@ fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture) {
                            world.water.wave_height);
 
 
-    let mut texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
+    let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
     dbg!(ground.mesh.len());
     let vertex_array = VertexArray::new(&ground.mesh, &[
         VertexAttribDefinition {
