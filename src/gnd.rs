@@ -370,6 +370,13 @@ impl Gnd {
         }
     }
 
+    pub fn create_lightmap_texture(lightmap: &Vec<u8>, count: u32) -> GlTexture {
+        let width = ((count as f32).sqrt().round() as u32 * 8).next_power_of_two();
+        let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
+
+        GlTexture::from_data(&lightmap, width as i32, height as i32)
+    }
+
     pub fn create_tile_color_texture(tiles_color_buffer: &mut Vec<u8>, width: u32, height: u32) -> GlTexture {
         let mut tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,

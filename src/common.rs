@@ -7,9 +7,6 @@ use encoding;
 use encoding::types::Encoding;
 use encoding::{DecoderTrap, EncoderTrap};
 
-#[derive(Copy, Clone, Debug)]
-pub struct Vec3(pub f32, pub f32, pub f32);
-
 pub struct BinaryReader {
     buf: Vec<u8>,
     index: usize,

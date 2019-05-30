@@ -24,6 +24,7 @@ use imgui::{ImGuiCond, ImString, ImStr};
 use nalgebra::{Vector3, Matrix4, Point3, Matrix};
 use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::Duration;
+use nalgebra_glm::U3;
 
 // guild_vs4.rsw
 
@@ -81,18 +82,7 @@ fn main() {
     shader_program.gl_use();
 
 
-    let (mut ground, mut vao, mut texture_atlas, mut tile_color_texture) = load_map("new_zone01");
-//    let xyz = VertexArray::new(&vec![
-//        -0.5f32, 0.0, -0.5, // x
-//        0.0, 0.0, -0.5, // center
-//        0.0, 0.0, -1.0, // depth
-//        0.0, 0.0, -0.5, // center
-//        0.0, 0.5, -0.5,   // y
-//        0.0, 0.0, -0.5, // center
-//    ], &[VertexAttribDefinition {
-//        number_of_components: 3,
-//        offset_of_first_element: 0,
-//    }]);
+    let mut map_render_data = load_map("new_zone01");
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -130,15 +120,33 @@ fn main() {
 
     let proj = Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32);
 
+    let mut use_tile_colors = true;
+    let mut use_lightmaps = true;
+    let mut lightWheight = [0f32; 3];
+
     'running: loop {
         let view = Matrix4::look_at_rh(&camera_pos, &(camera_pos + camera_front), &camera_up);
         let camera_speed = 2f32;
 
         let model = Matrix4::<f32>::identity();
+        let model_view = view * model;
+        let normal_matrix = {
+            // toInverseMat3
+            let inverted = model_view.try_inverse().unwrap();
+            let m3x3 = inverted.fixed_slice::<U3, U3>(0, 0);
+            m3x3.transpose()
+        };
 
         shader_program.set_mat4("projection", &proj);
-        shader_program.set_mat4("view", &view);
-        shader_program.set_mat4("model", &model);
+        shader_program.set_mat4("model_view", &model_view);
+        shader_program.set_mat3("normal_matrix", &normal_matrix);
+
+        shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+        shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+        shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+        shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+
+        shader_program.set_vec3("in_lightWheight", &lightWheight);
 
         use sdl2::event::Event;
         use sdl2::keyboard::Keycode;
@@ -208,65 +216,71 @@ fn main() {
         let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
 
         extern crate sublime_fuzzy;
+        let map_name_filter_clone = map_name_filter.clone();
+        let mut filtered_map_names: Vec<&String> = all_map_names.iter()
+            .filter(|map_name| {
+                let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
+                matc.is_some()
+            }).collect();
         ui.window(im_str!("Maps: {},{},{}", camera_pos.x, camera_pos.y, camera_pos.z))
-            .size((300.0, 500.0), ImGuiCond::FirstUseEver)
+            .position((0.0, 200.0), ImGuiCond::FirstUseEver)
+            .size((300.0, (100.0 + filtered_map_names.len() as f32 * 16.0).min(500.0)), ImGuiCond::Always)
             .build(|| {
-                let map_name_filter_clone = map_name_filter.clone();
-                let mut filtered_map_names = all_map_names.iter()
-                    .filter(|map_name| {
-                        let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
-                        matc.is_some()
-                    });
                 if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
                     .enter_returns_true(true)
                     .build() {
-                    if let Some(map_name) = filtered_map_names.next() {
-                        let (g, v, a, tct) = load_map(map_name);
-                        ground = g;
-                        vao = v;
-                        texture_atlas = a;
-                        tile_color_texture = tct
+                    if let Some(map_name) = filtered_map_names.get(0) {
+                        map_render_data = load_map(map_name);
                     }
                 }
-                filtered_map_names
-                    .for_each(|map_name| {
-                        if ui.small_button(&ImString::new(map_name.as_str())) {
-                            let (g, v, a, tct) = load_map(map_name);
-                            ground = g;
-                            vao = v;
-                            texture_atlas = a;
-                            tile_color_texture = tct;
-                        }
-                    });
+                for map_name in filtered_map_names.iter() {
+                    if ui.small_button(&ImString::new(map_name.as_str())) {
+                        map_render_data = load_map(map_name);
+                    }
+                }
+            });
+
+        ui.window(im_str!("Graphic opsions"))
+            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
+            .size((300.0, 200.0), ImGuiCond::FirstUseEver)
+            .build(|| {
+                ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
+                ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps);
+                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
+                    .min(-1.0).max(1.0).speed(0.05).build();
+                ui.drag_float3(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
+                    .min(0.0).max(1.0).speed(0.05).build();
+                ui.drag_float3(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
+                    .min(0.0).max(1.0).speed(0.05).build();
+
+                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
+                    .min(0.0).max(1.0).speed(0.05).build();
             });
 
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        texture_atlas.bind(gl::TEXTURE0);
+        map_render_data.texture_atlas.bind(gl::TEXTURE0);
         shader_program.set_int("gnd_texture_atlas", 0);
 
-        tile_color_texture.bind(gl::TEXTURE1);
+        map_render_data.tile_color_texture.bind(gl::TEXTURE1);
         shader_program.set_int("tile_color_texture", 1);
 
+        map_render_data.lightmap_texture.bind(gl::TEXTURE2);
+        shader_program.set_int("lightmap_texture", 2);
+
+        shader_program.set_int("use_tile_color", if use_tile_colors { 1 } else { 0 });
+        shader_program.set_int("use_lightmap", if use_lightmaps { 1 } else { 0 });
+
         unsafe {
-            vao.bind();
+            map_render_data.vao.bind();
             gl::DrawArrays(
                 gl::TRIANGLES, // mode
                 0, // starting index in the enabled arrays
-                (ground.mesh.len()) as i32, // number of indices to be rendered
+                (map_render_data.gnd.mesh.len()) as i32, // number of indices to be rendered
             );
         }
-
-//        unsafe {
-//            xyz.bind();
-//            gl::DrawArrays(
-//                gl::LINES, // mode
-//                0, // starting index in the enabled arrays
-//                6, // number of indices to be rendered
-//            );
-//        }
 
         renderer.render(ui);
 
@@ -275,31 +289,57 @@ fn main() {
     }
 }
 
-fn load_map(map_name: &str) -> (Gnd, VertexArray, GlTexture, GlTexture) {
+struct MapRenderData {
+    gnd: Gnd,
+    rsw: Rsw,
+    vao: VertexArray,
+    texture_atlas: GlTexture,
+    tile_color_texture: GlTexture,
+    lightmap_texture: GlTexture,
+}
+
+fn load_map(map_name: &str) -> MapRenderData {
     let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
     let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
     let mut ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
-                           world.water.level,
-                           world.water.wave_height);
-
+                               world.water.level,
+                               world.water.wave_height);
 
     let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
     let tile_color_texture = Gnd::create_tile_color_texture(
         &mut ground.tiles_color_image,
         ground.width, ground.height,
     );
+    let lightmap_texture = Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
     dbg!(ground.mesh.len());
     let vertex_array = VertexArray::new(&ground.mesh, &[
         VertexAttribDefinition {
             number_of_components: 3,
             offset_of_first_element: 0,
+        }, VertexAttribDefinition { // normals
+            number_of_components: 3,
+            offset_of_first_element: 3,
         }, VertexAttribDefinition { // texcoords
             number_of_components: 2,
             offset_of_first_element: 6,
+        }, VertexAttribDefinition { // lightmap_coord
+            number_of_components: 2,
+            offset_of_first_element: 8,
         }, VertexAttribDefinition { // tile color coordinate
             number_of_components: 2,
             offset_of_first_element: 10,
         }
     ]);
-    (ground, vertex_array, texture_atlas, tile_color_texture)
+    dbg!(world.light.diffuse);
+    dbg!(world.light.ambient);
+    dbg!(world.light.direction);
+    dbg!(world.light.opacity);
+    MapRenderData {
+        gnd: ground,
+        rsw: world,
+        vao: vertex_array,
+        texture_atlas,
+        tile_color_texture,
+        lightmap_texture,
+    }
 }

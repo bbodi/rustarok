@@ -1,5 +1,6 @@
 use std::borrow::ToOwned;
-use crate::common::{Vec3, BinaryReader};
+use crate::common::{BinaryReader};
+use nalgebra::{Vector, Vector3};
 
 #[derive(Debug)]
 pub struct GroundData {
@@ -30,12 +31,12 @@ pub struct WaterData {
 
 #[derive(Debug)]
 pub struct LightData {
-    longitude: i32,
-    latitude: i32,
-    diffuse: Vec3,
-    ambient: Vec3,
-    opacity: f32,
-    direction: Vec3,
+    pub longitude: i32,
+    pub latitude: i32,
+    pub diffuse: [f32; 3],
+    pub ambient: [f32; 3],
+    pub opacity: f32,
+    pub direction: [f32; 3],
 }
 
 #[derive(Debug)]
@@ -58,15 +59,15 @@ pub struct MapModel {
     block_type: i32,
     filename: String,
     nodename: String,
-    pos: Vec3,
-    rot: Vec3,
-    scale: Vec3,
+    pos: Vector3<f32>,
+    rot: Vector3<f32>,
+    scale: Vector3<f32>,
 }
 
 #[derive(Debug)]
 pub struct MapLight {
     name: String,
-    pos: Vec3,
+    pos: Vector3<f32>,
     color: [i32; 3],
     range: f32,
 }
@@ -74,7 +75,7 @@ pub struct MapLight {
 #[derive(Debug)]
 pub struct MapEffect {
     name: String,
-    pos: Vec3,
+    pos: Vector3<f32>,
     id: i32,
     delay: f32,
     param: [f32; 4],
@@ -84,7 +85,7 @@ pub struct MapEffect {
 pub struct MapSound {
     name: String,
     file: String,
-    pos: Vec3,
+    pos: Vector3<f32>,
     vol: f32,
     width: i32,
     height: i32,
@@ -135,23 +136,35 @@ impl Rsw {
             }
         };
 
+        fn calc_dir(longitude: i32, latitude: i32) -> [f32; 3] {
+            let longitude = (longitude as f32).to_radians();
+            let latitude = (latitude as f32).to_radians();
+            [
+                -longitude.cos() * latitude.sin(),
+                -latitude.cos(),
+                -longitude.sin() * latitude.sin(),
+            ]
+        }
+
         let light = if version >= 1.5 {
+            let longitude = buf.next_i32();
+            let latitude = buf.next_i32();
             LightData {
-                longitude: buf.next_i32(),
-                latitude: buf.next_i32(),
-                diffuse: Vec3(buf.next_f32(), buf.next_f32(), buf.next_f32()),
-                ambient: Vec3(buf.next_f32(), buf.next_f32(), buf.next_f32()),
+                longitude,
+                latitude,
+                diffuse: [buf.next_f32(), buf.next_f32(), buf.next_f32()],
+                ambient: [buf.next_f32(), buf.next_f32(), buf.next_f32()],
                 opacity: if version >= 1.7 { buf.next_f32() } else { 1.0 },
-                direction: Vec3(0f32, 0f32, 0f32),
+                direction: calc_dir(longitude, latitude),
             }
         } else {
             LightData {
                 longitude: 45,
                 latitude: 45,
-                diffuse: Vec3(1.0, 1.0, 1.0),
-                ambient: Vec3(0.3, 0.3, 0.3),
+                diffuse: [1.0, 1.0, 1.0],
+                ambient: [0.3, 0.3, 0.3],
                 opacity: 1.0,
-                direction: Vec3(0f32, 0f32, 0f32),
+                direction: calc_dir(45, 45),
             }
         };
 
@@ -193,21 +206,21 @@ impl Rsw {
                         block_type: if version >= 1.3 { buf.next_i32() } else { 0 },
                         filename: buf.string(80),
                         nodename: buf.string(80),
-                        pos: Vec3(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
-                        rot: Vec3(buf.next_f32(), buf.next_f32(), buf.next_f32()),
-                        scale: Vec3(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                        pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                        rot: Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32()),
+                        scale: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
                     })
                 }
                 2 => lights.push(MapLight {
                     name: buf.string(80),
-                    pos: Vec3(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
                     color: [buf.next_i32(), buf.next_i32(), buf.next_i32()],
                     range: buf.next_f32(),
                 }),
                 3 => sounds.push(MapSound {
                     name: buf.string(80),
                     file: buf.string(80),
-                    pos: Vec3(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
                     vol: buf.next_f32(),
                     width: buf.next_i32(),
                     height: buf.next_i32(),
@@ -216,7 +229,7 @@ impl Rsw {
                 }),
                 4 => effects.push(MapEffect {
                     name: buf.string(80),
-                    pos: Vec3(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
                     id: buf.next_i32(),
                     delay: buf.next_f32() * 10.0,
                     param: [buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32()],
