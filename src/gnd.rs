@@ -1,7 +1,7 @@
 use std::collections::btree_map::BTreeMap;
 use std::collections::HashMap;
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector3, Rotation2, Rotation3};
 use nalgebra_glm::triangle_normal;
 
 use crate::common::BinaryReader;
@@ -319,6 +319,14 @@ impl Gnd {
         }
 
         mesh.shrink_to_fit();
+        mesh.iter_mut().for_each(|m| {
+            let mut v = Vector3::<f32>::new(m.pos[0], m.pos[1], m.pos[2]);
+            let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+            v = rot * v;
+            m.pos[0] = v.x;
+            m.pos[1] = v.y;
+            m.pos[2] = v.z;
+        });
         water.shrink_to_fit();
 
         let mesh_vert_count = mesh.len() / 12;
@@ -683,6 +691,10 @@ mod tests {
             .iter()
             .flat_map(|array| array.iter())
             .collect();
+        println!("mesh_floats.len(): {}", (mesh_floats.len()));
+        dbg!(mesh_floats[12 * 40000]);
+        dbg!(mesh_floats[12 * 40000 + 1]);
+        dbg!(mesh_floats[12 * 40000 + 2]);
         assert_eq!(floats.len(), mesh_floats.len());
         floats.iter().zip(mesh_floats).enumerate().for_each(|(index, (a, b))| {
             assert!(a - b < 0.000001, "{}.: {} != {}, ({} - {} = {})", index, a, b, a, b, *a - b);
