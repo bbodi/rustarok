@@ -628,12 +628,10 @@ impl Gnd {
             sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
                 println!("Missing: {}", path);
                 let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
-                let rect = missing_texture.rect();
-                missing_texture.fill_rect(rect, Color::RGB(255, 0, 255));
+                missing_texture.fill_rect(None, Color::RGB(255, 0, 255));
                 missing_texture
             })
-        })
-            .collect();
+        }).collect();
         let surface_atlas = Gnd::create_texture_atlas(&texture_surfaces);
 
         surface_atlas.save_bmp("shitaka.bmp");
@@ -648,11 +646,14 @@ impl Gnd {
         for (i, texture_surface) in texture_surfaces.iter().enumerate() {
             let x = (i as i32 % _width) * 258;
             let y = ((i as i32 / _width) as f32).floor() as i32 * 258;
-            texture_surface.blit_scaled(texture_surface.rect(),
+            let optimized = texture_surface.convert(&surface_atlas.pixel_format()).unwrap();
+            optimized.blit_scaled(None,
                                         &mut surface_atlas,
                                         Rect::new(x, y, 258, 258),
             );
-            texture_surface.blit_scaled(texture_surface.rect(),
+            let width = optimized.width();
+            let height = optimized.height();
+            optimized.blit_scaled(None,
                                         &mut surface_atlas,
                                         Rect::new(x + 1, y + 1, 256, 256),
             );
