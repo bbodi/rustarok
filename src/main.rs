@@ -20,7 +20,7 @@ use crate::gnd::{Gnd, MeshVertex};
 use crate::gat::Gat;
 use std::ffi::{CString, CStr};
 
-use imgui::{ImGuiCond, ImString, ImStr};
+use imgui::{ImGuiCond, ImString, ImStr, ColorFormat, ColorPickerMode, ImTexture};
 use nalgebra::{Vector3, Matrix4, Point3, Matrix};
 use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::Duration;
@@ -122,7 +122,12 @@ fn main() {
 
     let mut use_tile_colors = true;
     let mut use_lightmaps = true;
-    let mut lightWheight = [0f32; 3];
+    let mut use_lighting = true;
+    let mut light_wheight = [0f32; 3];
+
+    dbg!(map_render_data.texture_atlas.id());
+    dbg!(map_render_data.tile_color_texture.id());
+    dbg!(map_render_data.lightmap_texture.id());
 
     'running: loop {
         let view = Matrix4::look_at_rh(&camera_pos, &(camera_pos + camera_front), &camera_up);
@@ -146,7 +151,7 @@ fn main() {
         shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
         shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-        shader_program.set_vec3("in_lightWheight", &lightWheight);
+        shader_program.set_vec3("in_lightWheight", &light_wheight);
 
         use sdl2::event::Event;
         use sdl2::keyboard::Keycode;
@@ -245,16 +250,59 @@ fn main() {
             .size((300.0, 200.0), ImGuiCond::FirstUseEver)
             .build(|| {
                 ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
-                ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps);
+                if ui.checkbox(im_str!("Use use_lighting"), &mut use_lighting) {
+                    use_lightmaps = use_lighting && use_lightmaps;
+                }
+                if ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps) {
+                    use_lighting = use_lighting || use_lightmaps;
+                }
+
+
+
                 ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
                     .min(-1.0).max(1.0).speed(0.05).build();
-                ui.drag_float3(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
-                    .min(0.0).max(1.0).speed(0.05).build();
-                ui.drag_float3(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
-                    .min(0.0).max(1.0).speed(0.05).build();
-
+                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
+                    .inputs(false)
+                    .format(ColorFormat::Float)
+                    .build();
+                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
+                    .inputs(false)
+                    .format(ColorFormat::Float)
+                    .build();
                 ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
                     .min(0.0).max(1.0).speed(0.05).build();
+
+                ui.image(ImTexture::from(map_render_data.texture_atlas.id() as usize), [200.0, 200.0]).build();
+                let w = map_render_data.lightmap_texture.width as f32;
+                let h = map_render_data.lightmap_texture.height as f32;
+                let (posx, posy) = ui.get_cursor_screen_pos();
+                ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize), [w, h]).build();
+                if (ui.is_item_hovered()) {
+                    ui.tooltip(|| {
+
+                        let focus_sz = 32.0f32;
+                        let (mx, my) = ui.imgui().mouse_pos();
+                        let mut focus_x = mx - posx - focus_sz * 0.5f32;
+                        if focus_x < 0.0f32 {
+                            focus_x = 0.0f32;
+                        } else if focus_x > w - focus_sz {
+                            focus_x = w - focus_sz
+                        }
+                        let mut focus_y = my - posy - focus_sz * 0.5f32;
+                        if focus_y < 0.0f32 { focus_y = 0.0f32; }
+                        else if focus_y > h - focus_sz { focus_y = h - focus_sz; }
+                        ui.text(format!("Min: {}, {}", focus_x, focus_y));
+                        ui.text(format!("Max: {}, {}", focus_x + focus_sz, focus_y + focus_sz));
+                        let uv0: [f32; 2] = [(focus_x) / w, (focus_y) / h];
+                        let uv1: [f32; 2] = [(focus_x + focus_sz) / w, (focus_y + focus_sz) / h];
+                        ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize),
+                                 [128.0, 128.0],
+                        )
+                            .uv0(uv0)
+                            .uv1(uv1)
+                            .build();
+                    });
+                }
             });
 
         unsafe {
@@ -272,6 +320,7 @@ fn main() {
 
         shader_program.set_int("use_tile_color", if use_tile_colors { 1 } else { 0 });
         shader_program.set_int("use_lightmap", if use_lightmaps { 1 } else { 0 });
+        shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
 
         unsafe {
             map_render_data.vao.bind();
