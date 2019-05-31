@@ -5,9 +5,16 @@ use std::path::Path;
 
 pub struct GlTexture {
     id: gl::types::GLuint,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl GlTexture {
+
+    pub fn id(&self) -> gl::types::GLuint {
+        self.id
+    }
+
     pub fn bind(&self, texture_index: gl::types::GLuint) {
         unsafe {
             gl::ActiveTexture(texture_index);
@@ -56,6 +63,8 @@ impl GlTexture {
         }
         GlTexture {
             id: texture_id,
+            width: surface.width() as i32,
+            height: surface.height() as i32,
         }
     }
 
@@ -82,6 +91,8 @@ impl GlTexture {
         }
         GlTexture {
             id: texture_id,
+            width,
+            height,
         }
     }
 }
