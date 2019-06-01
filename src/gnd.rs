@@ -1,8 +1,7 @@
 use std::collections::btree_map::BTreeMap;
 use std::collections::HashMap;
 
-use nalgebra::{Rotation3, Vector2, Vector3};
-use nalgebra_glm::triangle_normal;
+use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
 
@@ -378,7 +377,7 @@ impl Gnd {
     }
 
     pub fn create_tile_color_texture(tiles_color_buffer: &mut Vec<u8>, width: u32, height: u32) -> GlTexture {
-        let mut tile_color_surface = sdl2::surface::Surface::from_data(
+        let tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,
             width, height,
             4*width,
@@ -561,6 +560,9 @@ impl Gnd {
             [Vector3::zeros(), Vector3::zeros(), Vector3::zeros(), Vector3::zeros()];
             (width * height) as usize
         ];
+        pub fn triangle_normal(p1: &Vector3<f32>, p2: &Vector3<f32>, p3: &Vector3<f32>) -> Vector3<f32> {
+            (p2 - p1).cross(&(p3 - p1)).normalize()
+        }
         for y in 0..height {
             for x in 0..width {
                 let cell = &surfaces[(y * width + x) as usize];

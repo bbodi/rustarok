@@ -1,6 +1,9 @@
 use std::borrow::ToOwned;
-use crate::common::{BinaryReader};
-use nalgebra::{Vector, Vector3};
+use crate::common::BinaryReader;
+use nalgebra::{Vector, Vector3, Matrix4};
+use std::collections::{HashMap, HashSet};
+use crate::rsm::Rsm;
+use crate::ModelName;
 
 #[derive(Debug)]
 pub struct GroundData {
@@ -57,8 +60,8 @@ pub struct MapModel {
     anim_type: i32,
     anim_speed: f32,
     block_type: i32,
-    filename: String,
-    nodename: String,
+    filename: ModelName,
+    node_name: String,
     pos: Vector3<f32>,
     rot: Vector3<f32>,
     scale: Vector3<f32>,
@@ -94,6 +97,14 @@ pub struct MapSound {
 }
 
 impl Rsw {
+    pub fn load_models(models: &Vec<MapModel>, ground_width: u32, ground_height: u32) -> HashMap<ModelName, Rsm> {
+        let model_names: HashSet<_> = models.iter().map(|m| m.filename.clone()).collect();
+        return model_names.iter().map(|filename| {
+            let rsm = Rsm::load(&mut BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\model\\{}", filename.0)));
+            (filename.clone(), rsm)
+        }).collect();
+    }
+
     pub fn load(mut buf: BinaryReader) -> Rsw {
         let header = buf.string(4);
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
@@ -204,8 +215,8 @@ impl Rsw {
                         anim_type: if version >= 1.3 { buf.next_i32() } else { 0 },
                         anim_speed: if version >= 1.3 { buf.next_f32() } else { 0.0 },
                         block_type: if version >= 1.3 { buf.next_i32() } else { 0 },
-                        filename: buf.string(80),
-                        nodename: buf.string(80),
+                        filename: ModelName(buf.string(80)),
+                        node_name: buf.string(80),
                         pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
                         rot: Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32()),
                         scale: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),

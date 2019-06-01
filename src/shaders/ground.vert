@@ -18,8 +18,7 @@ out vec2 vLightmapCoord;
 out vec2 vTileColorCoord;
 out float vLightWeighting;
 
-void main()
-{
+void main() {
     gl_Position = projection * model_view * vec4(Position, 1.0);
 
     tex_coord = aTexCoord;
