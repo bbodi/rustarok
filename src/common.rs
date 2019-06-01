@@ -12,8 +12,21 @@ pub struct BinaryReader {
     index: usize,
 }
 
+pub fn init_vec<T, F>(size: u32, def: T, mut init_func: F) -> Vec<T>
+    where T: Clone,
+          F: FnMut(&mut T) -> ()
+{
+    let mut vec: Vec<T> = vec![def; size as usize];
+    for i in 0..size as usize {
+        init_func(&mut vec[i]);
+    }
+    vec
+}
 
 impl BinaryReader {
+
+
+
     pub fn tell(&self) -> usize { self.index }
 
     pub fn new<P: AsRef<Path>>(path: P) -> BinaryReader {

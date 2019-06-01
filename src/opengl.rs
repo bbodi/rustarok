@@ -2,35 +2,74 @@ use nalgebra::{Matrix4, Vector3, Matrix3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
+use sdl2::pixels::PixelFormatEnum;
+use std::rc::Rc;
+use std::os::raw::c_void;
+use std::hash::{Hash, Hasher};
+use std::fmt::Display;
 
+#[derive(Hash, Eq, PartialEq)]
+struct GlTextureContext(gl::types::GLuint);
+
+impl Drop for GlTextureContext {
+    fn drop(&mut self) {
+        println!("Free Texture {}", self.0);
+        unsafe {
+            gl::DeleteTextures(1, &self.0 as *const gl::types::GLuint)
+        }
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct GlTexture {
-    id: gl::types::GLuint,
+    context: Rc<GlTextureContext>,
     pub width: i32,
     pub height: i32,
 }
 
-impl GlTexture {
+//impl Hash for GlTexture {
+//    fn hash<H: Hasher>(&self, state: &mut H) {
+//        self.context.0.hash(state);
+//    }
+//}
+//
+//impl Eq for GlTexture {
+//    fn hash<H: Hasher>(&self, state: &mut H) {
+//        self.context.0.hash(state);
+//    }
+//}
 
+impl GlTexture {
     pub fn id(&self) -> gl::types::GLuint {
-        self.id
+        self.context.0
     }
 
     pub fn bind(&self, texture_index: gl::types::GLuint) {
         unsafe {
             gl::ActiveTexture(texture_index);
-            gl::BindTexture(gl::TEXTURE_2D, self.id);
+            gl::BindTexture(gl::TEXTURE_2D, self.context.0);
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> GlTexture {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> GlTexture
+        where P: Display
+    {
         use sdl2::image::LoadSurface;
-        GlTexture::from_surface(sdl2::surface::Surface::from_file(path).unwrap())
+        let surface = sdl2::surface::Surface::from_file(&path).unwrap();
+        let mut optimized_surf = sdl2::surface::Surface::new(
+            surface.width(),
+            surface.height(),
+            PixelFormatEnum::RGBA8888).unwrap();
+        surface.blit(None, &mut optimized_surf, None);
+        println!("Texture from file --> {}", &path);
+        GlTexture::from_surface(optimized_surf)
     }
 
     pub fn from_surface(surface: Surface) -> GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
+            println!("Texture from_surface {}", texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             let mode = if surface.pixel_format_enum().byte_size_per_pixel() == 4 {
                 if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
@@ -45,7 +84,6 @@ impl GlTexture {
                     gl::BGR
                 }
             };
-
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0, // Pyramid level (for mip-mapping) - 0 is the top level
@@ -62,7 +100,7 @@ impl GlTexture {
             gl::GenerateMipmap(gl::TEXTURE_2D);
         }
         GlTexture {
-            id: texture_id,
+            context: Rc::new(GlTextureContext(texture_id)),
             width: surface.width() as i32,
             height: surface.height() as i32,
         }
@@ -72,6 +110,7 @@ impl GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
+            println!("Texture from_data {}", texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             let mode = gl::RGBA;
             gl::TexImage2D(
@@ -90,7 +129,7 @@ impl GlTexture {
             gl::GenerateMipmap(gl::TEXTURE_2D);
         }
         GlTexture {
-            id: texture_id,
+            context: Rc::new(GlTextureContext(texture_id)),
             width,
             height,
         }
@@ -114,12 +153,11 @@ impl VertexArray {
         }
     }
 
-    pub fn new<T>(vertices: &Vec<T>, definitions: &[VertexAttribDefinition]) -> VertexArray {
+    pub fn new<T>(vertices: &[T], definitions: &[VertexAttribDefinition]) -> VertexArray {
         let mut vbo: gl::types::GLuint = 0;
         unsafe {
             gl::GenBuffers(1, &mut vbo);
         }
-        println!("size of data in bytes: {}", (vertices.len() * std::mem::size_of::<T>()));
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
@@ -174,6 +212,7 @@ pub struct Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
+        println!("Free Shader {}", self.id);
         unsafe {
             gl::DeleteShader(self.id);
         }
@@ -331,6 +370,7 @@ impl Program {
 
 impl Drop for Program {
     fn drop(&mut self) {
+        println!("Free Program {}", self.id);
         unsafe {
             gl::DeleteProgram(self.id);
         }
