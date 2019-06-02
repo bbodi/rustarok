@@ -41,4 +41,5 @@ void main() {
     } else {
         Color = texture;
     }
+    Color = vec4(Color.rgb, 1.0);
 }

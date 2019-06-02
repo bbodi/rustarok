@@ -2,11 +2,12 @@ use nalgebra::{Matrix4, Vector3, Matrix3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
-use sdl2::pixels::PixelFormatEnum;
+use sdl2::pixels::{PixelFormatEnum, Color};
 use std::rc::Rc;
 use std::os::raw::c_void;
 use std::hash::{Hash, Hasher};
 use std::fmt::Display;
+use sdl2::render::BlendMode;
 
 #[derive(Hash, Eq, PartialEq)]
 struct GlTextureContext(gl::types::GLuint);
@@ -55,17 +56,18 @@ impl GlTexture {
         where P: Display
     {
         use sdl2::image::LoadSurface;
-        let surface = sdl2::surface::Surface::from_file(&path).unwrap();
+        let mut surface = sdl2::surface::Surface::from_file(&path).unwrap();
         let mut optimized_surf = sdl2::surface::Surface::new(
             surface.width(),
             surface.height(),
-            PixelFormatEnum::RGBA8888).unwrap();
+            PixelFormatEnum::RGBA32).unwrap();
+        surface.set_color_key(true, Color::RGB(255, 0, 255));
         surface.blit(None, &mut optimized_surf, None);
         println!("Texture from file --> {}", &path);
         GlTexture::from_surface(optimized_surf)
     }
 
-    pub fn from_surface(surface: Surface) -> GlTexture {
+    pub fn from_surface(mut surface: Surface) -> GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
