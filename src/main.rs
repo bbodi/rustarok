@@ -62,8 +62,7 @@ fn main() {
         gl::DepthFunc(gl::LEQUAL);
 //
         gl::Enable(gl::BLEND);
-        // ezzel nem látszóüdik semmi
-//        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
     }
 
     let ground_shader_program = Program::from_shaders(
