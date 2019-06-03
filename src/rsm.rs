@@ -6,9 +6,10 @@ use ncollide3d::bounding_volume::bounding_volume::HasBoundingVolume;
 use crate::opengl::{GlTexture, VertexArray, VertexAttribDefinition};
 use sdl2::pixels::{PixelFormatEnum, Color};
 use std::collections::HashMap;
-use crate::RenderableRsmNode;
+use crate::{SameTextureNodeFaces, DataForRenderingSingleNode};
 
 
+#[derive(Debug)]
 pub struct Rsm {
     pub anim_len: i32,
     pub shade_type: i32,
@@ -19,6 +20,7 @@ pub struct Rsm {
     pub main_node_index: usize,
     pub pos_key_frames: Vec<PosKeyFrame>,
     pub volume_boxes: Vec<VolumeBox>,
+    pub bounding_box: BoundingBox,
 }
 
 #[derive(Debug)]
@@ -28,6 +30,28 @@ pub struct RsmNodeVertex {
     pub texcoord: [f32; 2],
 }
 
+#[derive(Debug)]
+pub struct BoundingBox {
+    pub min: Vector3<f32>,
+    pub max: Vector3<f32>,
+    pub offset: Vector3<f32>,
+    pub range: Vector3<f32>,
+    pub center: Vector3<f32>,
+}
+
+impl BoundingBox {
+    fn new() -> BoundingBox {
+        BoundingBox {
+            min: Vector3::new(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
+            max: Vector3::new(std::f32::NEG_INFINITY, std::f32::NEG_INFINITY, std::f32::NEG_INFINITY),
+            offset: Vector3::new(0.0, 0.0, 0.0),
+            range: Vector3::new(0.0, 0.0, 0.0),
+            center: Vector3::new(0.0, 0.0, 0.0),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct RsmNode {
     pub name: String,
     pub parent_name: String,
@@ -40,7 +64,7 @@ pub struct RsmNode {
     pub rotaxis: Vector3<f32>,
     pub scale: Vector3<f32>,
     pub vertices: Vec<Point3<f32>>,
-    pub trimesh: TriMesh<f32>,
+    pub bounding_box: BoundingBox,
     pub mesh: Vec<RsmNodeVertex>,
     pub texture_vertices: Vec<f32>,
     pub faces: Vec<NodeFace>,
@@ -48,7 +72,7 @@ pub struct RsmNode {
     pub rot_key_frames: Vec<RotKeyFrame>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct NodeFace {
     pub vertex_index: [u16; 3],
     pub texture_vertex_index: [u16; 3],
@@ -58,7 +82,7 @@ pub struct NodeFace {
     pub smooth_group: i32,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct PosKeyFrame {
     frame: i32,
     px: f32,
@@ -66,7 +90,7 @@ pub struct PosKeyFrame {
     pz: f32,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct VolumeBox {
     size: [f32; 3],
     pos: [f32; 3],
@@ -74,7 +98,7 @@ pub struct VolumeBox {
     flag: i32,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct RotKeyFrame {
     frame: i32,
     q: [f32; 4],
@@ -94,7 +118,7 @@ impl RsmNode {
             buf.next_f32(), buf.next_f32(), buf.next_f32(),
             buf.next_f32(), buf.next_f32(), buf.next_f32(),
             buf.next_f32(), buf.next_f32(), buf.next_f32(),
-        );
+        ).transpose();
         let offset = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
         let pos = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
         let rotangle = buf.next_f32();
@@ -167,8 +191,8 @@ impl RsmNode {
             pos_key_frames,
             rot_key_frames,
             matrix: Matrix4::identity(),
-            trimesh: TriMesh::from(ProceduralTriMesh::new(vec![], None, None, None)), // dummy,
             mesh: Vec::new(), // dummy
+            bounding_box: BoundingBox::new(),
         }
     }
 }
@@ -178,7 +202,7 @@ impl Rsm {
     pub fn load(buf: &mut BinaryReader) -> Rsm {
         let header = buf.string(4);
         if header != "GRSM" {
-            panic!("Invalig RSM header: {}", header);
+            panic!("Invalid RSM header: {}", header);
         }
 
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
@@ -233,7 +257,25 @@ impl Rsm {
         });
 
         let is_only = nodes.len() == 1;
-        Rsm::transform_children_recursively(main_node_index, &mut nodes, is_only);
+        Rsm::calc_matrix_and_bounding_box_recursively(
+            main_node_index,
+            &mut nodes,
+            is_only,
+            &Matrix4::identity(),
+            true,
+            false,
+        );
+
+        let mut bbox = BoundingBox::new();
+        for i in 0..3 {
+            for node in &nodes {
+                bbox.min[i] = node.bounding_box.min[i].min(bbox.min[i]);
+                bbox.max[i] = node.bounding_box.max[i].max(bbox.max[i]);
+            }
+            bbox.offset[i] = (bbox.max[i] + bbox.min[i]) / 2.0;
+            bbox.range[i] = (bbox.max[i] - bbox.min[i]) / 2.0;
+            bbox.center[i] = bbox.min[i] + bbox.range[i];
+        }
 
         Rsm {
             anim_len,
@@ -245,11 +287,17 @@ impl Rsm {
             main_node_index,
             pos_key_frames,
             volume_boxes,
+            bounding_box: bbox,
         }
     }
 
-    pub fn generate_meshes_by_texture_id(nodes: &Vec<RsmNode>, textures: &Vec<GlTexture>) -> Vec<Vec<RenderableRsmNode>> {
-        let mut shit: Vec<Vec<RenderableRsmNode>> = Vec::new();
+    pub fn generate_meshes_by_texture_id(
+        model_bbox: &BoundingBox,
+        is_only: bool,
+        nodes: &Vec<RsmNode>,
+        textures: &Vec<GlTexture>,
+    ) -> Vec<DataForRenderingSingleNode> {
+        let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
         for node in nodes {
             let faces_by_texture_id = {
                 let mut faces_by_texture_id: HashMap<u16, Vec<&NodeFace>> = HashMap::new();
@@ -260,13 +308,13 @@ impl Rsm {
                 }
                 faces_by_texture_id
             };
-            let vertices_per_texture_per_node: Vec<RenderableRsmNode> = faces_by_texture_id
+            let vertices_per_texture_per_node: DataForRenderingSingleNode = faces_by_texture_id
                 .iter()
                 .map(|(&texture_index, faces)| {
                     // a node összes olyan face-e, akinek texture_index a texturája
-                    let mesh = Rsm::generate_trimesh(node, faces.as_slice());
+                    let mesh = Rsm::generate_trimesh(model_bbox, node, faces.as_slice(), is_only);
                     let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
-                    let renderable = RenderableRsmNode {
+                    let renderable = SameTextureNodeFaces {
                         vao: VertexArray::new(&mesh, &[
                             VertexAttribDefinition {
                                 number_of_components: 3,
@@ -282,9 +330,9 @@ impl Rsm {
                     };
                     renderable
                 }).collect();
-            shit.push(vertices_per_texture_per_node);
+            full_model_rendering_data.push(vertices_per_texture_per_node);
         }
-        return shit;
+        return full_model_rendering_data;
     }
 
     pub fn load_textures(texture_names: &Vec<String>) -> Vec<GlTexture> {
@@ -294,79 +342,109 @@ impl Rsm {
         }).collect()
     }
 
-    fn transform_children_recursively(parent_node_index: usize, nodes: &mut Vec<RsmNode>, is_only: bool) {
+    fn calc_matrix_and_bounding_box_recursively(parent_node_index: usize,
+                                                nodes: &mut Vec<RsmNode>,
+                                                is_only: bool,
+                                                parent_matrix: &Matrix4<f32>,
+                                                is_main_node: bool,
+                                                has_parent: bool,
+    ) {
+        let parent_node_name_of_parent = nodes[parent_node_index].parent_name.clone();
         {
             let mut parent_node = &mut nodes[parent_node_index];
-            Rsm::transform_vertices(parent_node, Matrix4::identity(), is_only);
+            parent_node.matrix = Rsm::calc_matrix(&parent_node, parent_matrix);
+            parent_node.bounding_box = Rsm::calc_bounding_box(parent_node, is_only);
         }
 
         let parent_node_name = nodes[parent_node_index].name.clone();
-        let parent_node_name_of_parent = nodes[parent_node_index].parent_name.clone();
+        let node_matrix = nodes[parent_node_index].matrix;
         let children_indices = nodes.iter_mut().enumerate().filter(|(i, n)| {
             parent_node_name == n.parent_name && parent_node_name != parent_node_name_of_parent
         }).map(|(i, n)| { i }).collect::<Vec<usize>>();
         for i in children_indices {
-            Rsm::transform_children_recursively(i, nodes, is_only);
+            Rsm::calc_matrix_and_bounding_box_recursively(
+                i,
+                nodes,
+                is_only,
+                &node_matrix,
+                false,
+                true);
         }
     }
 
-    fn transform_vertices(node: &mut RsmNode, parent_matrix: Matrix4<f32>, is_only: bool) {
-        node.matrix = {
-            let mut node_matrix = parent_matrix;
+    fn calc_matrix(node: &RsmNode, parent_matrix: &Matrix4<f32>) -> Matrix4<f32> {
+        let mut node_matrix = parent_matrix.clone();
 
-            node_matrix.append_translation_mut(&node.pos);
-            // Dynamic or static model
-            if node.rot_key_frames.is_empty() {
-                let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(node.rotaxis), node.rotangle).to_homogeneous();
-                node_matrix = node_matrix * rotation;
-            } else {
-                let quat = Quaternion::from(Vector4::from(node.rot_key_frames[0].q));
-                let rotation = UnitQuaternion::from_quaternion(quat);
-                node_matrix = rotation.to_homogeneous() * node_matrix;
-//            mat4.rotateQuat( this.matrix, this.matrix, this.rotKeyframes[0].q );
-            }
+        node_matrix.prepend_translation_mut(&node.pos);
 
-            node_matrix.prepend_nonuniform_scaling_mut(&node.scale);
-            node_matrix
-        };
+        // Dynamic or static model
+        if node.rot_key_frames.is_empty() {
+            let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(node.rotaxis), node.rotangle).to_homogeneous();
+            node_matrix = node_matrix * rotation;
+        } else {
+            let quat = Quaternion::from(Vector4::from(node.rot_key_frames[0].q));
+            let rotation = UnitQuaternion::from_quaternion(quat);
+            node_matrix = node_matrix * rotation.to_homogeneous();
+        }
+        node_matrix.prepend_nonuniform_scaling_mut(&node.scale);
+        node_matrix
+    }
 
-        let mut node_local_matrix = node.matrix;
+    fn calc_bounding_box(node: &RsmNode, is_only: bool) -> BoundingBox {
+        let mut node_local_matrix = node.matrix.clone();
 
         if !is_only {
-            node_local_matrix.append_translation_mut(&node.offset);
+            node_local_matrix.prepend_translation_mut(&-node.offset);
         }
-        node_local_matrix *= node.mat3.to_homogeneous();
+        node_local_matrix = node_local_matrix * node.mat3.to_homogeneous();
 
-        for vert in node.vertices.iter_mut() {
-            *vert = node_local_matrix.transform_point(&vert);
+        let mut bbox = BoundingBox::new();
+
+        for vert in node.vertices.iter() {
+            let v = node_local_matrix.transform_point(&vert);
+            for i in 0..3 {
+                bbox.min[i] = v[i].min(bbox.min[i]);
+                bbox.max[i] = v[i].max(bbox.max[i]);
+            }
         }
+        for i in 0..3 {
+            bbox.offset[i] = (bbox.max[i] + bbox.min[i]) / 2.0;
+            bbox.range[i] = (bbox.max[i] - bbox.min[i]) / 2.0;
+            bbox.center[i] = bbox.min[i] + bbox.range[i];
+        }
+        return bbox;
     }
 
-    fn generate_trimesh(node: &RsmNode, faces: &[&NodeFace]) -> Vec<RsmNodeVertex> {
+    fn generate_trimesh(model_bbox: &BoundingBox,
+                        node: &RsmNode,
+                        faces: &[&NodeFace],
+                        is_only: bool) -> Vec<RsmNodeVertex> {
         let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
         let verts = &node.vertices;
         let tverts = &node.texture_vertices;
+
+        let mut matrix = Matrix4::<f32>::identity();
+        matrix.prepend_translation_mut(&Vector3::<f32>::new(
+            -model_bbox.center[0],
+            -model_bbox.max[1],
+            -model_bbox.center[2],
+        ));
+        matrix = matrix * node.matrix;
+        if !is_only {
+            matrix.prepend_translation_mut(&node.offset);
+        }
+        matrix *= node.mat3.to_homogeneous();
+
         for face in faces {
             for i in 0..3 {
-                let v = verts[face.vertex_index[i] as usize];
+                let v = matrix.transform_point(&verts[face.vertex_index[i] as usize]);
                 let tid = face.texture_vertex_index[i] as usize * 6;
                 mesh.push(RsmNodeVertex {
-                    pos: [v.x, v.y, v.z],
+                    pos: [v[0], v[1], v[2]],
                     texcoord: [tverts[tid + 4], tverts[tid + 5]],
                 });
             }
         }
-
-//        let mut trimesh = ProceduralTriMesh::new(
-//            std::mem::replace(&mut node.vertices, vec![]),
-//            None,
-//            None,
-//            Some(IndexBuffer::Unified(indices)),
-//        );
-//        trimesh.recompute_normals();
-//        trimesh.replicate_vertices();
-//        let trimesh = ncollide3d::shape::TriMesh::from(trimesh);
-//        node.trimesh = trimesh;
         return mesh;
     }
 }

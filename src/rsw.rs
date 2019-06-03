@@ -48,23 +48,23 @@ pub struct Rsw {
     pub water: WaterData,
     pub file: FileData,
     pub light: LightData,
-    pub models: Vec<MapModel>,
+    pub models: Vec<ModelInstance>,
     pub lights: Vec<MapLight>,
     pub sounds: Vec<MapSound>,
     pub effects: Vec<MapEffect>,
 }
 
 #[derive(Debug)]
-pub struct MapModel {
-    name: String,
-    anim_type: i32,
-    anim_speed: f32,
-    block_type: i32,
-    filename: ModelName,
-    node_name: String,
-    pos: Vector3<f32>,
-    rot: Vector3<f32>,
-    scale: Vector3<f32>,
+pub struct ModelInstance {
+    pub name: String,
+    pub anim_type: i32,
+    pub anim_speed: f32,
+    pub block_type: i32,
+    pub filename: ModelName,
+    pub node_name: String,
+    pub pos: Vector3<f32>,
+    pub rot: Vector3<f32>,
+    pub scale: Vector3<f32>,
 }
 
 #[derive(Debug)]
@@ -97,9 +97,9 @@ pub struct MapSound {
 }
 
 impl Rsw {
-    pub fn load_models(models: &Vec<MapModel>, ground_width: u32, ground_height: u32) -> HashMap<ModelName, Rsm> {
-        let model_names: HashSet<_> = models.iter().map(|m| m.filename.clone()).collect();
+    pub fn load_models(model_names: HashSet<ModelName>) -> HashMap<ModelName, Rsm> {
         return model_names.iter().map(|filename| {
+            dbg!(&filename);
             let rsm = Rsm::load(&mut BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\model\\{}", filename.0)));
             (filename.clone(), rsm)
         }).collect();
@@ -202,7 +202,7 @@ impl Rsw {
         println!("water: {:?}", water);
         println!("light: {:?}", light);
         println!("Count: {}", count);
-        let mut models: Vec<MapModel> = Vec::with_capacity(count as usize);
+        let mut models: Vec<ModelInstance> = Vec::with_capacity(count as usize);
         let mut lights: Vec<MapLight> = Vec::with_capacity(count as usize);
         let mut sounds: Vec<MapSound> = Vec::with_capacity(count as usize);
         let mut effects: Vec<MapEffect> = Vec::with_capacity(count as usize);
@@ -210,7 +210,7 @@ impl Rsw {
             let typ = buf.next_i32();
             match typ {
                 1 => {
-                    models.push(MapModel {
+                    models.push(ModelInstance {
                         name: if version >= 1.3 { buf.string(40) } else { "".to_owned() },
                         anim_type: if version >= 1.3 { buf.next_i32() } else { 0 },
                         anim_speed: if version >= 1.3 { buf.next_f32() } else { 0.0 },

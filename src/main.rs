@@ -20,7 +20,7 @@ use crate::gat::Gat;
 use std::ffi::{CString, CStr};
 
 use imgui::{ImGuiCond, ImString, ImStr, ColorFormat, ColorPickerMode, ImTexture};
-use nalgebra::{Vector3, Matrix4, Point3, Matrix, Matrix1x2, Matrix3};
+use nalgebra::{Vector3, Matrix4, Point3, Matrix, Matrix1x2, Matrix3, Unit, Rotation3};
 use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
@@ -45,8 +45,8 @@ fn main() {
     gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
     gl_attr.set_context_version(4, 5);
     let window = video_subsystem
-        .window("Game", 900, 700)
-        .opengl() // add opengl flag
+        .window("Rustarok", 900, 700)
+        .opengl()
         .allow_highdpi()
         .resizable()
         .build()
@@ -60,7 +60,6 @@ fn main() {
         gl::ClearColor(0.3, 0.3, 0.5, 1.0);
         gl::Enable(gl::DEPTH_TEST);
         gl::DepthFunc(gl::LEQUAL);
-//
         gl::Enable(gl::BLEND);
         gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
     }
@@ -92,7 +91,7 @@ fn main() {
     ).unwrap();
 
 
-    let mut map_render_data = load_map("new_zone01");
+    let mut map_render_data = load_map("prontera");
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -356,21 +355,25 @@ fn main() {
 
         model_shader_program.gl_use();
         model_shader_program.set_mat4("projection", &proj);
-        model_shader_program.set_mat4("model_view", &model_view);
+        model_shader_program.set_mat4("view", &view);
         model_shader_program.set_mat3("normal_matrix", &normal_matrix);
-
-
         model_shader_program.set_int("model_texture", 0);
 
         unsafe {
-            for node in &map_render_data.node_render_data {
-                node.texture.bind(gl::TEXTURE0);
-                node.vao.bind();
-                gl::DrawArrays(
-                    gl::TRIANGLES, // mode
-                    0, // starting index in the enabled arrays
-                    node.vertex_count as i32, // number of indices to be rendered
-                );
+            for (model_name, matrix) in &map_render_data.model_instances {
+                model_shader_program.set_mat4("model", &matrix);
+                let model_render_data = &map_render_data.models[&model_name];
+                for node_render_data in model_render_data {
+                    for face_render_data in node_render_data {
+                        face_render_data.texture.bind(gl::TEXTURE0);
+                        face_render_data.vao.bind();
+                        gl::DrawArrays(
+                            gl::TRIANGLES, // mode
+                            0, // starting index in the enabled arrays
+                            face_render_data.vertex_count as i32, // number of indices to be rendered
+                        );
+                    }
+                }
             }
         }
 
@@ -388,15 +391,16 @@ pub struct MapRenderData {
     pub gnd: Gnd,
     pub rsw: Rsw,
     pub ground_vertex_array_obj: VertexArray,
-    pub node_render_data: Vec<RenderableRsmNode>,
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
-    pub models: HashMap<ModelName, Rsm>,
+    pub models: HashMap<ModelName, Vec<DataForRenderingSingleNode>>,
+    pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
 }
 
-// ez nem az instance, ez lesz a közös data
-pub struct RenderableRsmNode {
+pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
+
+pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
     pub vertex_count: usize,
     pub texture: GlTexture,
@@ -408,13 +412,43 @@ fn load_map(map_name: &str) -> MapRenderData {
     let mut ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
                                world.water.level,
                                world.water.wave_height);
-    let models = Rsw::load_models(&world.models, ground.width, ground.height);
+    let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
+    let models = Rsw::load_models(model_names);
+    let model_render_datas: HashMap<ModelName, Vec<DataForRenderingSingleNode>> = models.iter().map(|(name, rsm)| {
+        let textures = Rsm::load_textures(&rsm.texture_names);
+        let data_for_rendering_full_model: Vec<DataForRenderingSingleNode> = Rsm::generate_meshes_by_texture_id(
+            &rsm.bounding_box,
+            rsm.nodes.len() == 1,
+            &rsm.nodes,
+            &textures,
+        );
+        (name.clone(), data_for_rendering_full_model)
+    }).collect();
 
-    let node_render_data: Vec<RenderableRsmNode> = models.values().flat_map(|model| {
-        let textures = Rsm::load_textures(&model.texture_names);
-        let wtf: Vec<Vec<RenderableRsmNode>> = Rsm::generate_meshes_by_texture_id(&model.nodes, &textures);
-        wtf
-    }).flatten().collect();
+    let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
+        let mut instance_matrix = Matrix4::<f32>::identity();
+        instance_matrix.prepend_translation_mut(&(model_instance.pos + Vector3::new(ground.width as f32, 0f32, ground.height as f32)));
+
+        // rot_z
+        let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::z()), model_instance.rot.z.to_radians()).to_homogeneous();
+        instance_matrix = instance_matrix * rotation;
+        // rot x
+        let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), model_instance.rot.x.to_radians()).to_homogeneous();
+        instance_matrix = instance_matrix * rotation;
+        // rot y
+        let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::y()), model_instance.rot.y.to_radians()).to_homogeneous();
+        instance_matrix = instance_matrix * rotation;
+
+        instance_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
+
+        //
+//         rot x
+        let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), 180f32.to_radians()).to_homogeneous();
+        instance_matrix = rotation * instance_matrix;
+
+
+        (model_instance.filename.clone(), instance_matrix)
+    }).collect();
 
     let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
     let tile_color_texture = Gnd::create_tile_color_texture(
@@ -445,10 +479,10 @@ fn load_map(map_name: &str) -> MapRenderData {
         gnd: ground,
         rsw: world,
         ground_vertex_array_obj: vertex_array,
-        node_render_data,
-        models,
+        models: model_render_datas,
         texture_atlas,
         tile_color_texture,
         lightmap_texture,
+        model_instances
     }
 }
