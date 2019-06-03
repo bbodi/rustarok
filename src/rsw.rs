@@ -253,6 +253,7 @@ impl Rsw {
         effects.shrink_to_fit();
         sounds.shrink_to_fit();
 
+        println!("lights: {:?}", lights);
         return Rsw {
             ground,
             water,

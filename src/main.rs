@@ -359,11 +359,19 @@ fn main() {
         model_shader_program.set_mat3("normal_matrix", &normal_matrix);
         model_shader_program.set_int("model_texture", 0);
 
+        model_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+        model_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+        model_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+        model_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+
+        model_shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
+
         unsafe {
             for (model_name, matrix) in &map_render_data.model_instances {
                 model_shader_program.set_mat4("model", &matrix);
                 let model_render_data = &map_render_data.models[&model_name];
-                for node_render_data in model_render_data {
+                model_shader_program.set_f32("alpha", model_render_data.alpha);
+                for node_render_data in &model_render_data.model {
                     for face_render_data in node_render_data {
                         face_render_data.texture.bind(gl::TEXTURE0);
                         face_render_data.vao.bind();
@@ -394,11 +402,16 @@ pub struct MapRenderData {
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
-    pub models: HashMap<ModelName, Vec<DataForRenderingSingleNode>>,
+    pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
 }
 
 pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
+
+pub struct ModelRenderData {
+    pub alpha: f32,
+    pub model: Vec<DataForRenderingSingleNode>,
+}
 
 pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
@@ -414,15 +427,19 @@ fn load_map(map_name: &str) -> MapRenderData {
                                world.water.wave_height);
     let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
     let models = Rsw::load_models(model_names);
-    let model_render_datas: HashMap<ModelName, Vec<DataForRenderingSingleNode>> = models.iter().map(|(name, rsm)| {
+    let model_render_datas: HashMap<ModelName, ModelRenderData> = models.iter().map(|(name, rsm)| {
         let textures = Rsm::load_textures(&rsm.texture_names);
         let data_for_rendering_full_model: Vec<DataForRenderingSingleNode> = Rsm::generate_meshes_by_texture_id(
             &rsm.bounding_box,
+            rsm.shade_type,
             rsm.nodes.len() == 1,
             &rsm.nodes,
             &textures,
         );
-        (name.clone(), data_for_rendering_full_model)
+        (name.clone(), ModelRenderData {
+            alpha: rsm.alpha,
+            model: data_for_rendering_full_model,
+        })
     }).collect();
 
     let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
@@ -441,11 +458,8 @@ fn load_map(map_name: &str) -> MapRenderData {
 
         instance_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
 
-        //
-//         rot x
         let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), 180f32.to_radians()).to_homogeneous();
         instance_matrix = rotation * instance_matrix;
-
 
         (model_instance.filename.clone(), instance_matrix)
     }).collect();

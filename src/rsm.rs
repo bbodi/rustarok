@@ -26,7 +26,7 @@ pub struct Rsm {
 #[derive(Debug)]
 pub struct RsmNodeVertex {
     pub pos: [f32; 3],
-    //    pub normal: [f32; 3],
+    pub normal: [f32; 3],
     pub texcoord: [f32; 2],
 }
 
@@ -293,6 +293,7 @@ impl Rsm {
 
     pub fn generate_meshes_by_texture_id(
         model_bbox: &BoundingBox,
+        shade_type: i32,
         is_only: bool,
         nodes: &Vec<RsmNode>,
         textures: &Vec<GlTexture>,
@@ -312,7 +313,12 @@ impl Rsm {
                 .iter()
                 .map(|(&texture_index, faces)| {
                     // a node összes olyan face-e, akinek texture_index a texturája
-                    let mesh = Rsm::generate_trimesh(model_bbox, node, faces.as_slice(), is_only);
+                    let mesh = Rsm::generate_trimesh(
+                        model_bbox,
+                        node,
+                        faces.as_slice(),
+                        shade_type,
+                        is_only);
                     let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
                     let renderable = SameTextureNodeFaces {
                         vao: VertexArray::new(&mesh, &[
@@ -320,9 +326,13 @@ impl Rsm {
                                 number_of_components: 3,
                                 offset_of_first_element: 0,
                             },
+                            VertexAttribDefinition { // normal
+                                number_of_components: 3,
+                                offset_of_first_element: 3,
+                            },
                             VertexAttribDefinition { // uv
                                 number_of_components: 2,
-                                offset_of_first_element: 3,
+                                offset_of_first_element: 6,
                             }
                         ]),
                         vertex_count: mesh.len(),
@@ -418,8 +428,8 @@ impl Rsm {
     fn generate_trimesh(model_bbox: &BoundingBox,
                         node: &RsmNode,
                         faces: &[&NodeFace],
+                        shade_type: i32,
                         is_only: bool) -> Vec<RsmNodeVertex> {
-        let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
         let verts = &node.vertices;
         let tverts = &node.texture_vertices;
 
@@ -435,16 +445,109 @@ impl Rsm {
         }
         matrix *= node.mat3.to_homogeneous();
 
-        for face in faces {
+        let mesh = match shade_type {
+            1/*FLAT*/ => {
+                let (normals, _group_used) = Rsm::calc_flat_normals(node);
+                Rsm::generate_mesh_flat(&matrix, faces, &verts, &tverts, normals)
+            }
+            2/*SMOOTH*/ => {
+                let (normals, group_used) = Rsm::calc_flat_normals(node);
+                let normal_groups = Rsm::calc_smooth_normals(node, normals, group_used);
+                Rsm::generate_mesh_smooth(&matrix, faces, &verts, &tverts, normal_groups)
+            }
+            _/*NONE*/ => {
+                let normals = node.faces.iter().map(|face| {
+                    Vector3::new(-1.0f32, -1.0f32, -1.0f32)
+                }).collect();
+                Rsm::generate_mesh_flat(&matrix, faces, &verts, &tverts, normals)
+            }
+        };
+        return mesh;
+    }
+
+    fn generate_mesh_flat(matrix: &Matrix4<f32>,
+                          faces: &[&NodeFace],
+                          verts: &Vec<Point3<f32>>,
+                          tverts: &Vec<f32>,
+                          normals: Vec<Vector3<f32>>) -> Vec<RsmNodeVertex> {
+        let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
+        for (face, normal) in faces.iter().zip(normals) {
             for i in 0..3 {
                 let v = matrix.transform_point(&verts[face.vertex_index[i] as usize]);
                 let tid = face.texture_vertex_index[i] as usize * 6;
                 mesh.push(RsmNodeVertex {
                     pos: [v[0], v[1], v[2]],
+                    normal: [normal[0], normal[1], normal[2]],
                     texcoord: [tverts[tid + 4], tverts[tid + 5]],
                 });
             }
         }
         return mesh;
+    }
+
+    fn generate_mesh_smooth(matrix: &Matrix4<f32>,
+                            faces: &[&NodeFace],
+                            verts: &Vec<Point3<f32>>,
+                            tverts: &Vec<f32>,
+                            normal_groups: [Vec<Vector3<f32>>; 32],
+    ) -> Vec<RsmNodeVertex> {
+        let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
+        for face in faces {
+            let normals = &normal_groups[face.smooth_group as usize];
+            for i in 0..3 {
+                let v = matrix.transform_point(&verts[face.vertex_index[i] as usize]);
+                let normal = &normals[face.vertex_index[i] as usize];
+                let tid = face.texture_vertex_index[i] as usize * 6;
+                mesh.push(RsmNodeVertex {
+                    pos: [v[0], v[1], v[2]],
+                    normal: [normal[0], normal[1], normal[2]],
+                    texcoord: [tverts[tid + 4], tverts[tid + 5]],
+                });
+            }
+        }
+        return mesh;
+    }
+
+    fn calc_flat_normals(node: &RsmNode) -> (Vec<Vector3<f32>>, [bool; 32]) {
+        pub fn triangle_normal(p1: &Vector3<f32>, p2: &Vector3<f32>, p3: &Vector3<f32>) -> Vector3<f32> {
+            (p2 - p1).cross(&(p3 - p1)).normalize()
+        }
+        let mut group_used = [false; 32];
+        let normals = node.faces.iter().map(|face| {
+            group_used[face.smooth_group as usize] = true;
+            triangle_normal(
+                &node.vertices[face.vertex_index[0] as usize].coords,
+                &node.vertices[face.vertex_index[1] as usize].coords,
+                &node.vertices[face.vertex_index[2] as usize].coords,
+            )
+        }).collect();
+        return (normals, group_used);
+    }
+
+    fn calc_smooth_normals(node: &RsmNode,
+                           normals: Vec<Vector3<f32>>,
+                           group_used: [bool; 32]) -> [Vec<Vector3<f32>>; 32] {
+        let mut group: [Vec<Vector3<f32>>; 32] = Default::default();
+        for group_index in 0..32 {
+            if !group_used[group_index] {
+                continue;
+            }
+            group[group_index].reserve(node.vertices.len());
+            for vertex_index in 0..node.vertices.len() {
+                let mut grouped_normal = Vector3::new(0.0f32, 0.0f32, 0.0f32);
+                for (face_index, face) in node.faces.iter().enumerate() {
+                    if face.smooth_group as usize == group_index && (
+                        face.vertex_index[0] == vertex_index as u16 ||
+                            face.vertex_index[1] == vertex_index as u16 ||
+                            face.vertex_index[2] == vertex_index as u16
+                    ) {
+                        grouped_normal += normals[face_index];
+                    }
+                }
+                group[group_index].push(grouped_normal.normalize());
+            }
+        }
+
+        return group;
     }
 }
