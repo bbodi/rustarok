@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, RsmNodeVertex};
 use sdl2::keyboard::Keycode;
+use crate::act::ActionFile;
 
 // guild_vs4.rsw
 
@@ -35,6 +36,7 @@ mod gat;
 mod rsw;
 mod gnd;
 mod rsm;
+mod act;
 
 
 fn main() {
@@ -92,6 +94,10 @@ fn main() {
 
 
     let mut map_render_data = load_map("prontera");
+
+    let mut body_action = ActionFile::load(
+        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.act"))
+    );
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
