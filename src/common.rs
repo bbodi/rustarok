@@ -25,8 +25,6 @@ pub fn init_vec<T, F>(size: u32, def: T, mut init_func: F) -> Vec<T>
 
 impl BinaryReader {
 
-
-
     pub fn tell(&self) -> usize { self.index }
 
     pub fn new<P: AsRef<Path>>(path: P) -> BinaryReader {
@@ -99,6 +97,10 @@ impl BinaryReader {
         let decoded = encoding::all::WINDOWS_1252.decode(&bytes, DecoderTrap::Strict).unwrap();
 //        return String::from_utf8(encoding::all::UTF_8.encode(&decoded, EncoderTrap::Strict).unwrap()).unwrap();
         decoded
+    }
+
+    pub fn skip(&mut self, size: u32) {
+        self.index += size as usize;
     }
 
     pub fn next(&mut self, size: u32) -> Vec<u8> {
