@@ -24,8 +24,9 @@ pub fn init_vec<T, F>(size: u32, def: T, mut init_func: F) -> Vec<T>
 }
 
 impl BinaryReader {
-
     pub fn tell(&self) -> usize { self.index }
+
+    pub fn len(&self) -> usize { self.buf.len() }
 
     pub fn new<P: AsRef<Path>>(path: P) -> BinaryReader {
         let mut buf = BinaryReader {
