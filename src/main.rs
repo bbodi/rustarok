@@ -27,6 +27,8 @@ use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, RsmNodeVertex};
 use sdl2::keyboard::Keycode;
 use crate::act::ActionFile;
+use crate::spr::{SpriteFile, RenderableFrame};
+use rand::Rng;
 
 // guild_vs4.rsw
 
@@ -37,6 +39,7 @@ mod rsw;
 mod gnd;
 mod rsm;
 mod act;
+mod spr;
 
 
 fn main() {
@@ -92,12 +95,33 @@ fn main() {
         ]
     ).unwrap();
 
+    let sprite_shader_program = Program::from_shaders(
+        &[
+            Shader::from_source(
+                include_str!("shaders/sprite.vert"),
+                gl::VERTEX_SHADER,
+            ).unwrap(),
+            Shader::from_source(
+                include_str!("shaders/sprite.frag"),
+                gl::FRAGMENT_SHADER,
+            ).unwrap()
+        ]
+    ).unwrap();
+
 
     let mut map_render_data = load_map("prontera");
 
     let mut body_action = ActionFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.act"))
     );
+
+    let mut body_sprite = SpriteFile::load(
+        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.spr"))
+    );
+    let sprite_frames: Vec<RenderableFrame> = body_sprite.frames
+        .into_iter()
+        .map(|frame| RenderableFrame::from(frame))
+        .collect();
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -391,6 +415,26 @@ fn main() {
             }
         }
 
+        sprite_shader_program.gl_use();
+        sprite_shader_program.set_mat4("projection", &proj);
+        sprite_shader_program.set_mat4("view", &view);
+        sprite_shader_program.set_int("model_texture", 0);
+        sprite_shader_program.set_f32("alpha", 1.0);
+        sprite_frames[0].texture.bind(gl::TEXTURE0);
+        for entity in &map_render_data.entities {
+            let mut matrix = Matrix4::<f32>::identity();
+            matrix.prepend_translation_mut(&entity.pos);
+            sprite_shader_program.set_mat4("model", &matrix);
+            map_render_data.sprite_vertex_array.bind();
+            unsafe {
+                gl::DrawArrays(
+                    gl::TRIANGLE_STRIP, // mode
+                    0, // starting index in the enabled arrays
+                    4, // number of indices to be rendered
+                );
+            }
+        }
+
         renderer.render(ui);
 
         window.gl_swap_window();
@@ -405,11 +449,18 @@ pub struct MapRenderData {
     pub gnd: Gnd,
     pub rsw: Rsw,
     pub ground_vertex_array_obj: VertexArray,
+    pub sprite_vertex_array: VertexArray,
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
     pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
+    pub entities: Vec<EntityRenderData>,
+}
+
+pub struct EntityRenderData {
+    pub pos: Vector3<f32>,
+//    pub texture: GlTexture,
 }
 
 pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
@@ -477,6 +528,23 @@ fn load_map(map_name: &str) -> MapRenderData {
     );
     let lightmap_texture = Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
     dbg!(ground.mesh.len());
+
+    let s: Vec<[f32; 4]> = vec![
+        [-0.5, 0.5, 0.0, 0.0],
+        [0.5, 0.5, 1.0, 0.0],
+        [-0.5, -0.5, 0.0, 1.0],
+        [0.5, -0.5, 1.0, 1.0]
+    ];
+    let sprite_vertex_array = VertexArray::new(&s, &[
+        VertexAttribDefinition {
+            number_of_components: 2,
+            offset_of_first_element: 0,
+        }, VertexAttribDefinition { // uv
+            number_of_components: 2,
+            offset_of_first_element: 2,
+        }
+    ]);
+
     let vertex_array = VertexArray::new(&ground.mesh, &[
         VertexAttribDefinition {
             number_of_components: 3,
@@ -495,6 +563,12 @@ fn load_map(map_name: &str) -> MapRenderData {
             offset_of_first_element: 10,
         }
     ]);
+    let mut rng = rand::thread_rng();
+    let entities = (0..10_000).map(|_i| {
+        EntityRenderData {
+            pos: Vector3::<f32>::new(2.0*ground.width as f32 * (rng.gen::<f32>()), 8.0, -(2.0*ground.height as f32 * (rng.gen::<f32>()))),
+        }
+    }).collect();
     MapRenderData {
         gnd: ground,
         rsw: world,
@@ -503,6 +577,8 @@ fn load_map(map_name: &str) -> MapRenderData {
         texture_atlas,
         tile_color_texture,
         lightmap_texture,
-        model_instances
+        model_instances,
+        sprite_vertex_array,
+        entities,
     }
 }

@@ -14,7 +14,6 @@ struct GlTextureContext(gl::types::GLuint);
 
 impl Drop for GlTextureContext {
     fn drop(&mut self) {
-        println!("Free Texture {}", self.0);
         unsafe {
             gl::DeleteTextures(1, &self.0 as *const gl::types::GLuint)
         }
@@ -200,7 +199,6 @@ impl VertexArray {
 
 impl Drop for VertexArray {
     fn drop(&mut self) {
-        println!("Free VertexArray {}", self.buffer_id);
         unsafe {
             gl::DeleteBuffers(1, &self.buffer_id);
             gl::DeleteVertexArrays(1, &self.vertex_array_id);
@@ -214,7 +212,6 @@ pub struct Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
-        println!("Free Shader {}", self.id);
         unsafe {
             gl::DeleteShader(self.id);
         }
@@ -372,7 +369,6 @@ impl Program {
 
 impl Drop for Program {
     fn drop(&mut self) {
-        println!("Free Program {}", self.id);
         unsafe {
             gl::DeleteProgram(self.id);
         }

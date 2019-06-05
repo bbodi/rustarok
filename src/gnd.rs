@@ -92,10 +92,10 @@ impl Gnd {
                                          &surfaces,
                                          &tiles);
 
-        let l_count_w = (lightmaps.count as f32).sqrt().round();
-        let l_count_h = (lightmaps.count as f32).sqrt().ceil();
-        let l_width = 2f32.powi((l_count_w * 8.0).log2().ceil() as i32);
-        let l_height = 2f32.powi((l_count_h * 8.0).log2().ceil() as i32);
+        let l_count_w = (lightmaps.count as f32).sqrt().round() as usize;
+        let l_count_h = (lightmaps.count as f32).sqrt().ceil() as usize;
+        let l_width = (l_count_w * 8).next_power_of_two();
+        let l_height = (l_count_h * 8).next_power_of_two();
 
         let mut mesh = Vec::<MeshVertex>::with_capacity((width * height * 3 * 6) as usize);
         let mut water = Vec::<WaterVertex>::with_capacity((width * height * 3 / 2 * 6) as usize);
@@ -380,7 +380,7 @@ impl Gnd {
         let tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,
             width, height,
-            4*width,
+            4 * width,
             PixelFormatEnum::RGBA8888,
         ).unwrap();
 
@@ -406,15 +406,15 @@ impl Gnd {
     }
 
     fn lightmap_atlas(i: u16,
-                      l_count_w: f32,
-                      l_count_h: f32,
-                      l_width: f32,
-                      l_height: f32) -> (f32, f32, f32, f32) /*u1, u2, v1, v2*/ {
+                      l_count_w: usize,
+                      l_count_h: usize,
+                      l_width: usize,
+                      l_height: usize) -> (f32, f32, f32, f32) /*u1, u2, v1, v2*/ {
         (
-            (((i % l_count_w as u16) as f32 + 0.125) / l_count_w) * ((l_count_w * 8.0) / l_width),
-            (((i % l_count_w as u16) as f32 + 0.875) / l_count_w) * ((l_count_w * 8.0) / l_width),
-            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.125) / l_count_h) * ((l_count_h * 8.0) / l_height),
-            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.875) / l_count_h) * ((l_count_h * 8.0) / l_height)
+            (((i % l_count_w as u16) as f32 + 0.125) / l_count_w as f32) * ((l_count_w as f32 * 8.0) / l_width as f32),
+            (((i % l_count_w as u16) as f32 + 0.875) / l_count_w as f32) * ((l_count_w as f32 * 8.0) / l_width as f32),
+            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.125) / l_count_h as f32) * ((l_count_h as f32 * 8.0) / l_height as f32),
+            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.875) / l_count_h as f32) * ((l_count_h as f32 * 8.0) / l_height as f32)
         )
     }
 
@@ -434,8 +434,8 @@ impl Gnd {
         // Texture atlas stuff
         let atlas_cols: f32 = (texture_count as f32).sqrt().round();
         let atlas_rows: f32 = (texture_count as f32).sqrt().ceil();
-        let atlas_width: f32 = 2f32.powf((atlas_cols * 258f32).log2().ceil());
-        let atlas_height: f32 = 2f32.powf((atlas_rows * 258f32).log2().ceil());
+        let atlas_width: f32 = (atlas_cols as usize * 258).next_power_of_two() as f32;
+        let atlas_height: f32 = (atlas_rows as usize * 258).next_power_of_two() as f32;
         let atlas_factor_u: f32 = (atlas_cols * 258f32) / atlas_width;
         let atlas_factor_v: f32 = (atlas_rows * 258f32) / atlas_height;
         let atlas_px_u: f32 = 1f32 / 258f32;
@@ -474,8 +474,8 @@ impl Gnd {
     fn create_lightmap_image(lightmap: &LightmapData) -> Vec<u8> {
         let width = (lightmap.count as f32).sqrt().round() as usize;
         let height = (lightmap.count as f32).sqrt().ceil() as usize;
-        let _width = 2f32.powi((width as f32 * 8f32).log2().ceil() as i32) as usize;
-        let _height = 2f32.powi((height as f32 * 8f32).log2().ceil() as i32) as usize;
+        let _width = (width * 8).next_power_of_two();
+        let _height = (height * 8).next_power_of_two();
         let mut out = vec![0; (_width * _height * 4) as usize];
 
         for i in 0..(lightmap.count as usize) {
