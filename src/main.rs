@@ -31,6 +31,7 @@ use crate::act::ActionFile;
 use crate::spr::SpriteFile;
 use rand::Rng;
 use websocket::stream::sync::TcpStream;
+use websocket::OwnedMessage;
 
 // guild_vs4.rsw
 
@@ -99,6 +100,22 @@ struct Client {
     camera: Camera,
     websocket: websocket::sync::Client<TcpStream>,
     offscreen: Vec<u8>,
+    inputs: Vec<ClientInput>,
+    remove: bool,
+    mouse_down: bool,
+    last_mouse_x: u16,
+    last_mouse_y: u16,
+    yaw: f32,
+    pitch: f32,
+}
+
+
+enum ClientInput {
+    MouseMove(u16, u16),
+    MouseDown,
+    MouseUp,
+    KeyDown,
+    KeyUp,
 }
 
 fn main() {
@@ -255,6 +272,13 @@ fn main() {
                     camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
                     websocket: browser_client,
                     offscreen: vec![0; 900 * 700 * 4],
+                    inputs: vec![],
+                    remove: false,
+                    mouse_down: false,
+                    last_mouse_x: 400,
+                    last_mouse_y: 300,
+                    yaw: -90.0,
+                    pitch: 0.0,
                 };
                 println!("Client connected");
                 browser_clients.push(client);
@@ -263,6 +287,87 @@ fn main() {
                 // Nobody tried to connect, move on.
             }
         };
+
+        for browser_client in browser_clients.iter_mut() {
+            if let Ok(msg) = browser_client.websocket.recv_message() {
+                match msg {
+                    OwnedMessage::Binary(buf) => {
+                        let mut upper_byte: u8 = 0;
+                        let mut iter = buf.iter();
+                        while let Some(header) = iter.next() {
+                            let event = match header {
+                                1 => {
+                                    let upper_byte = iter.next().unwrap();
+                                    let lower_byte = iter.next().unwrap();
+                                    let mouse_x: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+
+                                    let upper_byte = iter.next().unwrap();
+                                    let lower_byte = iter.next().unwrap();
+                                    let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+                                    println!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
+                                    Some(ClientInput::MouseMove(mouse_x, mouse_y))
+                                }
+                                2 => {
+                                    println!("Message arrived: MouseDown");
+                                    Some(ClientInput::MouseDown)
+                                }
+                                3 => {
+                                    println!("Message arrived: MouseUp");
+                                    Some(ClientInput::MouseUp)
+                                }
+                                _ => {
+                                    println!("Unknown header: {}", header);
+                                    browser_client.remove = true;
+                                    None
+                                }
+                            };
+                            if let Some(event) = event {
+                                browser_client.inputs.push(event);
+                            }
+                        }
+                    }
+                    _ => {
+                        println!("Msg: ");
+                        browser_client.remove = true;
+                    }
+                }
+            }
+        }
+
+        browser_clients.retain(|c| !c.remove);
+
+        // update clients
+        for browser_client in browser_clients.iter_mut() {
+            for event in browser_client.inputs.drain(..) {
+                match event {
+                    ClientInput::MouseMove(x, y) => {
+                        if browser_client.mouse_down {
+                            let x_offset = x as i32 - browser_client.last_mouse_x as i32;
+                            let y_offset = browser_client.last_mouse_y as i32 - y as i32;
+                            browser_client.yaw += x_offset as f32;
+                            browser_client.pitch += y_offset as f32;
+                            if browser_client.pitch > 89.0 {
+                                browser_client.pitch = 89.0;
+                            }
+                            if browser_client.pitch < -89.0 {
+                                browser_client.pitch = -89.0;
+                            }
+                            browser_client.camera.rotate(browser_client.pitch, browser_client.yaw);
+                        }
+                        browser_client.last_mouse_x = x;
+                        browser_client.last_mouse_y = y;
+                    }
+                    ClientInput::MouseDown => {
+                        browser_client.mouse_down = true;
+                    }
+                    ClientInput::MouseUp => {
+                        browser_client.mouse_down = false;
+                    }
+                    ClientInput::KeyDown => {}
+                    ClientInput::KeyUp => {}
+                }
+            }
+        }
 
         ///////////
         use sdl2::event::Event;
@@ -429,11 +534,11 @@ fn main() {
         browser_client_positions.push(camera.pos);
         for browser_client in browser_clients.iter_mut() {
             // look toward the desktop client
-            browser_client.camera.look_at(camera.pos);
+            //browser_client.camera.look_at(camera.pos);
             // move closer if it is far away
-            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
-                browser_client.camera.move_forward(camera_speed);
-            }
+//            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
+//                browser_client.camera.move_forward(camera_speed);
+//            }
             render_client(&browser_client.camera,
                           &ground_shader_program,
                           &model_shader_program,
