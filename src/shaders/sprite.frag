@@ -10,8 +10,11 @@ uniform float alpha;
 
 void main() {
     vec4 texture = texture2D(model_texture, tex_coord);
+    if (texture.a == 0.0) {
+        discard;
+    }
     Color = texture;
 //    Color = vec4(1, 0, 0, 1);
-//    Color.a *= alpha;
+    Color.a *= alpha;
 
 }

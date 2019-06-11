@@ -1,24 +1,28 @@
 use crate::common::BinaryReader;
 
+#[derive(Debug)]
 pub struct ActionFile {
     pub actions: Vec<Action>,
     pub sounds: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct Action {
-    pub animations: Vec<Animation>,
-    pub delay: f32,
+    pub frames: Vec<ActionFrame>,
+    pub delay: u32,
 }
 
-pub struct Animation {
+#[derive(Debug)]
+pub struct ActionFrame {
     pub layers: Vec<Layer>,
     pub sound: i32,
     pub positions: Vec<[i32; 2]>,
 }
 
+#[derive(Debug)]
 pub struct Layer {
     pub pos: [i32; 2],
-    pub index: i32,
+    pub sprite_frame_index: i32,
     pub is_mirror: i32,
     pub scale: [f32; 2],
     pub color: [f32; 4],
@@ -43,8 +47,8 @@ impl ActionFile {
 
         let mut actions: Vec<Action> = (0..action_acount).map(|i| {
             Action {
-                animations: ActionFile::read_animations(&mut buf, version),
-                delay: 150f32,
+                frames: ActionFile::read_animations(&mut buf, version),
+                delay: 150,
             }
         }).collect();
         let sounds = if version >= 2.1 {
@@ -54,17 +58,17 @@ impl ActionFile {
         } else { vec![] };
         if version >= 2.2 {
             actions.iter_mut().for_each(|a| {
-                a.delay = buf.next_f32() * 25f32;
+                a.delay = (buf.next_f32() * 25f32) as u32;
             });
         }
         return ActionFile { actions, sounds };
     }
 
-    fn read_animations(buf: &mut BinaryReader, version: f32) -> Vec<Animation> {
+    fn read_animations(buf: &mut BinaryReader, version: f32) -> Vec<ActionFrame> {
         let animation_count = buf.next_u32() as usize;
         (0..animation_count).map(|_i| {
             let _unknown = buf.skip(32);
-            Animation {
+            ActionFrame {
                 layers: ActionFile::read_layers(buf, version),
                 sound: if version >= 2.0 { buf.next_i32() } else { -1 },
                 positions: if version >= 2.3 {
@@ -83,7 +87,7 @@ impl ActionFile {
         let layer_count = buf.next_u32() as usize;
         (0..layer_count).map(|_i| {
             let pos = [buf.next_i32(), buf.next_i32()];
-            let index = buf.next_i32();
+            let sprite_frame_index = buf.next_i32();
             let is_mirror = buf.next_i32();
             let color = if version >= 2.0 {
                 [
@@ -107,7 +111,7 @@ impl ActionFile {
 
             Layer {
                 pos,
-                index,
+                sprite_frame_index,
                 is_mirror,
                 scale,
                 color,

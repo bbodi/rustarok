@@ -1,0 +1,50 @@
+<html>
+<head>
+    <style>
+        .rotated {
+            /*transform: rotate(180deg); /* Equal to rotateZ(45deg) */
+            -webkit-transform: scaleY(-1);
+            transform: scaleY(-1);
+        }
+    </style>
+</head>
+
+<body>
+<canvas id="main_canvas" class="rotated" width="900" height="700"></canvas>
+</body>
+<script type="text/javascript">
+        var canvas = document.getElementById('main_canvas');
+        var ctx = canvas.getContext('2d');
+
+         let socket = new WebSocket("ws://127.0.0.1:6969");
+         socket.binaryType = "arraybuffer";
+
+        socket.onopen = function(e) {
+          socket.send("My name is John");
+        };
+
+        socket.onmessage = function(event) {
+            var blob = event.data;
+            var imageData = new ImageData(new Uint8ClampedArray(blob), 900, 700);
+            ctx.putImageData(imageData, 0, 0);
+            ctx.translate(0, 700);
+            //ctx.scale(1, -1);
+        };
+
+        socket.onclose = function(event) {
+          if (event.wasClean) {
+            alert(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+          } else {
+            // e.g. server process killed or network down
+            // event.code is usually 1006 in this case
+            alert('[close] Connection died');
+          }
+        };
+
+        socket.onerror = function(error) {
+          alert(`[error] ${error.message}`);
+        };
+
+
+</script>
+</html>

@@ -18,7 +18,9 @@ uniform float alpha;
 
 void main() {
     vec4 texture = texture2D(model_texture, tex_coord);
-
+    if (texture.a == 0.0) {
+        discard;
+    }
     if (use_lighting) {
         vec3 Ambient    = light_ambient * light_opacity;
         vec3 Diffuse    = light_diffuse * vLightWeighting;
