@@ -6,6 +6,7 @@ extern crate encoding;
 extern crate imgui;
 extern crate imgui_sdl2;
 extern crate imgui_opengl_renderer;
+extern crate websocket;
 
 use std::io;
 use std::io::prelude::*;
@@ -22,13 +23,14 @@ use std::ffi::{CString, CStr};
 use imgui::{ImGuiCond, ImString, ImStr, ColorFormat, ColorPickerMode, ImTexture};
 use nalgebra::{Vector3, Matrix4, Point3, Matrix, Matrix1x2, Matrix3, Unit, Rotation3};
 use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlTexture};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, RsmNodeVertex};
 use sdl2::keyboard::Keycode;
 use crate::act::ActionFile;
-use crate::spr::{SpriteFile, RenderableFrame};
+use crate::spr::SpriteFile;
 use rand::Rng;
+use websocket::stream::sync::TcpStream;
 
 // guild_vs4.rsw
 
@@ -41,6 +43,63 @@ mod rsm;
 mod act;
 mod spr;
 
+struct Camera {
+    pub pos: Point3<f32>,
+    pub front: Vector3<f32>,
+    pub up: Vector3<f32>,
+    pub right: Vector3<f32>,
+}
+
+impl Camera {
+    pub fn new(pos: Point3<f32>) -> Camera {
+        let front = Vector3::<f32>::new(0.0, 0.0, -1.0);
+        let up = Vector3::<f32>::y();
+        Camera {
+            pos,
+            front,
+            up,
+            right: front.cross(&up).normalize(),
+        }
+    }
+
+    pub fn pos(&self) -> Point3<f32> {
+        self.pos
+    }
+
+    pub fn rotate(&mut self, pitch: f32, yaw: f32) {
+        self.front = Vector3::<f32>::new(
+            pitch.to_radians().cos() * yaw.to_radians().cos(),
+            pitch.to_radians().sin(),
+            pitch.to_radians().cos() * yaw.to_radians().sin(),
+        ).normalize();
+        self.right = self.front.cross(&Vector3::y()).normalize();
+        self.up = self.right.cross(&self.front).normalize();
+    }
+
+    pub fn move_forward(&mut self, speed: f32) {
+        self.pos += speed * self.front;
+    }
+
+    pub fn move_side(&mut self, speed: f32) {
+        self.pos += self.front.cross(&self.up).normalize() * speed;
+    }
+
+    pub fn create_view_matrix(&self) -> Matrix4<f32> {
+        Matrix4::look_at_rh(&self.pos, &(self.pos + self.front), &self.up)
+    }
+
+    pub fn look_at(&mut self, p: Point3<f32>) {
+        self.front = (p - self.pos).normalize();
+        self.right = self.front.cross(&Vector3::y()).normalize();
+        self.up = self.right.cross(&self.front).normalize();
+    }
+}
+
+struct Client {
+    camera: Camera,
+    websocket: websocket::sync::Client<TcpStream>,
+    offscreen: Vec<u8>,
+}
 
 fn main() {
     let sdl_context = sdl2::init().unwrap();
@@ -111,16 +170,26 @@ fn main() {
 
     let mut map_render_data = load_map("prontera");
 
-    let mut body_action = ActionFile::load(
-        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.act"))
-    );
 
-    let mut body_sprite = SpriteFile::load(
+    let mut head_sprite = SpriteFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.spr"))
     );
-    let sprite_frames: Vec<RenderableFrame> = body_sprite.frames
+    let sprite_frames: Vec<spr::RenderableFrame> = head_sprite.frames
         .into_iter()
-        .map(|frame| RenderableFrame::from(frame))
+        .map(|frame| spr::RenderableFrame::from(frame))
+        .collect();
+    let mut gunslinger_body_sprite = SpriteFile::load(
+        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².spr"))
+    );
+    let mut body_action = ActionFile::load(
+        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².act"))
+    );
+    dbg!(body_action.actions.len());
+    dbg!(body_action.actions[8].frames.len());
+    dbg!(&body_action.actions[8].frames);
+    let sprite_frames: Vec<spr::RenderableFrame> = gunslinger_body_sprite.frames
+        .into_iter()
+        .map(|frame| spr::RenderableFrame::from(frame))
         .collect();
 
     let mut imgui = imgui::ImGui::init();
@@ -134,11 +203,7 @@ fn main() {
 
     let my_str = ImString::new("shitaka");
 
-    let mut camera_pos = Point3::<f32>::new(0.0, 0.0, 3.0);
-    let mut camera_front = Vector3::<f32>::new(0.0, 0.0, -1.0);
-    let world_up = Vector3::<f32>::new(0.0, 1.0, 0.0);
-    let mut camera_up = world_up;
-    let mut camera_right = camera_front.cross(&camera_up).normalize();
+    let mut camera = Camera::new(Point3::new(0.0, 0.0, 3.0));
 
     let mut last_mouse_x = 400;
     let mut last_mouse_y = 300;
@@ -157,7 +222,7 @@ fn main() {
         } else { None }
     }).filter_map(|x| x).collect::<Vec<String>>();
 
-    let proj = Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32);
+    let projection_matrix = Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32);
 
     let mut use_tile_colors = true;
     let mut use_lightmaps = true;
@@ -171,7 +236,34 @@ fn main() {
     let mut keys: HashSet<Keycode> = HashSet::new();
     let mut camera_speed = 2f32;
 
+    let mut tick: u64 = 0;
+    let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
+    let mut fps_counter: u64 = 0;
+    let mut fps: u64 = 0;
+
+
+    let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
+    websocket_server.set_nonblocking(true);
+    let mut browser_clients: Vec<Client> = vec![];
+
     'running: loop {
+        let result = match websocket_server.accept() {
+            Ok(wsupgrade) => {
+                let browser_client = wsupgrade.accept().unwrap();
+                browser_client.set_nonblocking(true);
+                let client = Client {
+                    camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
+                    websocket: browser_client,
+                    offscreen: vec![0; 900 * 700 * 4],
+                };
+                println!("Client connected");
+                browser_clients.push(client);
+            }
+            _ => {
+                // Nobody tried to connect, move on.
+            }
+        };
+
         ///////////
         use sdl2::event::Event;
         use sdl2::keyboard::Keycode;
@@ -210,14 +302,7 @@ fn main() {
                         if pitch < -89.0 {
                             pitch = -89.0;
                         }
-                        camera_front = Vector3::<f32>::new(
-                            pitch.to_radians().cos() * yaw.to_radians().cos(),
-                            pitch.to_radians().sin(),
-                            pitch.to_radians().cos() * yaw.to_radians().sin(),
-                        ).normalize();
-
-                        camera_right = camera_front.cross(&world_up).normalize();
-                        camera_up = camera_right.cross(&camera_front).normalize();
+                        camera.rotate(pitch, yaw);
                     }
                     last_mouse_x = x;
                     last_mouse_y = y;
@@ -238,207 +323,327 @@ fn main() {
 
         camera_speed = if keys.contains(&Keycode::LShift) { 6.0 } else { 2.0 };
         if keys.contains(&Keycode::W) {
-            camera_pos += camera_speed * camera_front;
+            camera.move_forward(camera_speed);
         } else if keys.contains(&Keycode::S) {
-            camera_pos -= camera_speed * camera_front;
+            camera.move_forward(-camera_speed);
         }
         if keys.contains(&Keycode::A) {
-            camera_pos -= camera_front.cross(&camera_up).normalize() * camera_speed;
+            camera.move_side(-camera_speed);
         } else if keys.contains(&Keycode::D) {
-            camera_pos += camera_front.cross(&camera_up).normalize() * camera_speed;
-        }
-
-        let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
-
-        extern crate sublime_fuzzy;
-        let map_name_filter_clone = map_name_filter.clone();
-        let filtered_map_names: Vec<&String> = all_map_names.iter()
-            .filter(|map_name| {
-                let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
-                matc.is_some()
-            }).collect();
-        ui.window(im_str!("Maps: {},{},{}", camera_pos.x, camera_pos.y, camera_pos.z))
-            .position((0.0, 200.0), ImGuiCond::FirstUseEver)
-            .size((300.0, (100.0 + filtered_map_names.len() as f32 * 16.0).min(500.0)), ImGuiCond::Always)
-            .build(|| {
-                if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
-                    .enter_returns_true(true)
-                    .build() {
-                    if let Some(map_name) = filtered_map_names.get(0) {
-                        map_render_data = load_map(map_name);
-                    }
-                }
-                for map_name in filtered_map_names.iter() {
-                    if ui.small_button(&ImString::new(map_name.as_str())) {
-                        map_render_data = load_map(map_name);
-                    }
-                }
-            });
-
-        ui.window(im_str!("Graphic opsions"))
-            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
-            .size((300.0, 200.0), ImGuiCond::FirstUseEver)
-            .build(|| {
-                ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
-                if ui.checkbox(im_str!("Use use_lighting"), &mut use_lighting) {
-                    use_lightmaps = use_lighting && use_lightmaps;
-                }
-                if ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps) {
-                    use_lighting = use_lighting || use_lightmaps;
-                }
-
-
-                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
-                    .min(-1.0).max(1.0).speed(0.05).build();
-                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
-                    .inputs(false)
-                    .format(ColorFormat::Float)
-                    .build();
-                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
-                    .inputs(false)
-                    .format(ColorFormat::Float)
-                    .build();
-                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
-                    .min(0.0).max(1.0).speed(0.05).build();
-
-                ui.image(ImTexture::from(map_render_data.texture_atlas.id() as usize), [200.0, 200.0]).build();
-                let w = map_render_data.lightmap_texture.width as f32;
-                let h = map_render_data.lightmap_texture.height as f32;
-                let (posx, posy) = ui.get_cursor_screen_pos();
-                ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize), [w, h]).build();
-                if (ui.is_item_hovered()) {
-                    ui.tooltip(|| {
-                        let focus_sz = 32.0f32;
-                        let (mx, my) = ui.imgui().mouse_pos();
-                        let mut focus_x = mx - posx - focus_sz * 0.5f32;
-                        if focus_x < 0.0f32 {
-                            focus_x = 0.0f32;
-                        } else if focus_x > w - focus_sz {
-                            focus_x = w - focus_sz
-                        }
-                        let mut focus_y = my - posy - focus_sz * 0.5f32;
-                        if focus_y < 0.0f32 { focus_y = 0.0f32; } else if focus_y > h - focus_sz { focus_y = h - focus_sz; }
-                        ui.text(format!("Min: {}, {}", focus_x, focus_y));
-                        ui.text(format!("Max: {}, {}", focus_x + focus_sz, focus_y + focus_sz));
-                        let uv0: [f32; 2] = [(focus_x) / w, (focus_y) / h];
-                        let uv1: [f32; 2] = [(focus_x + focus_sz) / w, (focus_y + focus_sz) / h];
-                        ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize),
-                                 [128.0, 128.0],
-                        )
-                            .uv0(uv0)
-                            .uv1(uv1)
-                            .build();
-                    });
-                }
-            });
-
-        unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+            camera.move_side(camera_speed);
         }
 
 
-        let view = Matrix4::look_at_rh(&camera_pos, &(camera_pos + camera_front), &camera_up);
+        // Imgui logic
+//        let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
+//
+//        extern crate sublime_fuzzy;
+//        let map_name_filter_clone = map_name_filter.clone();
+//        let filtered_map_names: Vec<&String> = all_map_names.iter()
+//            .filter(|map_name| {
+//                let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
+//                matc.is_some()
+//            }).collect();
+//        ui.window(im_str!("Maps: {},{},{}", camera.pos().x, camera.pos().y, camera.pos().z))
+//            .position((0.0, 200.0), ImGuiCond::FirstUseEver)
+//            .size((300.0, (100.0 + filtered_map_names.len() as f32 * 16.0).min(500.0)), ImGuiCond::Always)
+//            .build(|| {
+//                if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
+//                    .enter_returns_true(true)
+//                    .build() {
+//                    if let Some(map_name) = filtered_map_names.get(0) {
+//                        map_render_data = load_map(map_name);
+//                    }
+//                }
+//                for map_name in filtered_map_names.iter() {
+//                    if ui.small_button(&ImString::new(map_name.as_str())) {
+//                        map_render_data = load_map(map_name);
+//                    }
+//                }
+//            });
+//
+//        ui.window(im_str!("Graphic opsions"))
+//            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
+//            .size((300.0, 200.0), ImGuiCond::FirstUseEver)
+//            .build(|| {
+//                ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
+//                if ui.checkbox(im_str!("Use use_lighting"), &mut use_lighting) {
+//                    use_lightmaps = use_lighting && use_lightmaps;
+//                }
+//                if ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps) {
+//                    use_lighting = use_lighting || use_lightmaps;
+//                }
+//
+//
+//                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
+//                    .min(-1.0).max(1.0).speed(0.05).build();
+//                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
+//                    .inputs(false)
+//                    .format(ColorFormat::Float)
+//                    .build();
+//                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
+//                    .inputs(false)
+//                    .format(ColorFormat::Float)
+//                    .build();
+//                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
+//                    .min(0.0).max(1.0).speed(0.05).build();
+//
+//                ui.text(im_str!("FPS: {}", fps));
+//
+//                ui.image(ImTexture::from(map_render_data.texture_atlas.id() as usize), [200.0, 200.0]).build();
+//                let w = map_render_data.lightmap_texture.width as f32;
+//                let h = map_render_data.lightmap_texture.height as f32;
+//                let (posx, posy) = ui.get_cursor_screen_pos();
+//                ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize), [w, h]).build();
+//                if (ui.is_item_hovered()) {
+//                    ui.tooltip(|| {
+//                        let focus_sz = 32.0f32;
+//                        let (mx, my) = ui.imgui().mouse_pos();
+//                        let mut focus_x = mx - posx - focus_sz * 0.5f32;
+//                        if focus_x < 0.0f32 {
+//                            focus_x = 0.0f32;
+//                        } else if focus_x > w - focus_sz {
+//                            focus_x = w - focus_sz
+//                        }
+//                        let mut focus_y = my - posy - focus_sz * 0.5f32;
+//                        if focus_y < 0.0f32 { focus_y = 0.0f32; } else if focus_y > h - focus_sz { focus_y = h - focus_sz; }
+//                        ui.text(format!("Min: {}, {}", focus_x, focus_y));
+//                        ui.text(format!("Max: {}, {}", focus_x + focus_sz, focus_y + focus_sz));
+//                        let uv0: [f32; 2] = [(focus_x) / w, (focus_y) / h];
+//                        let uv1: [f32; 2] = [(focus_x + focus_sz) / w, (focus_y + focus_sz) / h];
+//                        ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize),
+//                                 [128.0, 128.0],
+//                        )
+//                            .uv0(uv0)
+//                            .uv1(uv1)
+//                            .build();
+//                    });
+//                }
+//            });
 
-        let model = Matrix4::<f32>::identity();
-        let model_view = view * model;
-        let normal_matrix = {
-            // toInverseMat3
-            let inverted = model_view.try_inverse().unwrap();
-            let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
-            m3x3.transpose()
-        };
+        // render Imgui
+        // renderer.render(ui);
 
-        ground_shader_program.gl_use();
-        ground_shader_program.set_mat4("projection", &proj);
-        ground_shader_program.set_mat4("model_view", &model_view);
-        ground_shader_program.set_mat3("normal_matrix", &normal_matrix);
-
-        ground_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-        ground_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-        ground_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-        ground_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-
-        ground_shader_program.set_vec3("in_lightWheight", &light_wheight);
-
-        map_render_data.texture_atlas.bind(gl::TEXTURE0);
-        ground_shader_program.set_int("gnd_texture_atlas", 0);
-
-        map_render_data.tile_color_texture.bind(gl::TEXTURE1);
-        ground_shader_program.set_int("tile_color_texture", 1);
-
-        map_render_data.lightmap_texture.bind(gl::TEXTURE2);
-        ground_shader_program.set_int("lightmap_texture", 2);
-
-        ground_shader_program.set_int("use_tile_color", if use_tile_colors { 1 } else { 0 });
-        ground_shader_program.set_int("use_lightmap", if use_lightmaps { 1 } else { 0 });
-        ground_shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
-
-
-        unsafe {
-            map_render_data.ground_vertex_array_obj.bind();
-            gl::DrawArrays(
-                gl::TRIANGLES, // mode
-                0, // starting index in the enabled arrays
-                (map_render_data.gnd.mesh.len()) as i32, // number of indices to be rendered
-            );
-        }
-
-        model_shader_program.gl_use();
-        model_shader_program.set_mat4("projection", &proj);
-        model_shader_program.set_mat4("view", &view);
-        model_shader_program.set_mat3("normal_matrix", &normal_matrix);
-        model_shader_program.set_int("model_texture", 0);
-
-        model_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-        model_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-        model_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-        model_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-
-        model_shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
-
-        unsafe {
-            for (model_name, matrix) in &map_render_data.model_instances {
-                model_shader_program.set_mat4("model", &matrix);
-                let model_render_data = &map_render_data.models[&model_name];
-                model_shader_program.set_f32("alpha", model_render_data.alpha);
-                for node_render_data in &model_render_data.model {
-                    for face_render_data in node_render_data {
-                        face_render_data.texture.bind(gl::TEXTURE0);
-                        face_render_data.vao.bind();
-                        gl::DrawArrays(
-                            gl::TRIANGLES, // mode
-                            0, // starting index in the enabled arrays
-                            face_render_data.vertex_count as i32, // number of indices to be rendered
-                        );
-                    }
-                }
+        // render browser clients:
+        let mut browser_client_positions: Vec<Point3<f32>> = browser_clients.iter().map(|b| b.camera.pos).collect();
+        browser_client_positions.push(camera.pos);
+        for browser_client in browser_clients.iter_mut() {
+            // look toward the desktop client
+            browser_client.camera.look_at(camera.pos);
+            // move closer if it is far away
+            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
+                browser_client.camera.move_forward(camera_speed);
             }
-        }
-
-        sprite_shader_program.gl_use();
-        sprite_shader_program.set_mat4("projection", &proj);
-        sprite_shader_program.set_mat4("view", &view);
-        sprite_shader_program.set_int("model_texture", 0);
-        sprite_shader_program.set_f32("alpha", 1.0);
-        sprite_frames[0].texture.bind(gl::TEXTURE0);
-        for entity in &map_render_data.entities {
-            let mut matrix = Matrix4::<f32>::identity();
-            matrix.prepend_translation_mut(&entity.pos);
-            sprite_shader_program.set_mat4("model", &matrix);
-            map_render_data.sprite_vertex_array.bind();
+            render_client(&browser_client.camera,
+                          &ground_shader_program,
+                          &model_shader_program,
+                          &sprite_shader_program,
+                          &projection_matrix,
+                          &map_render_data,
+                          &light_wheight,
+                          use_tile_colors,
+                          use_lightmaps,
+                          use_lighting,
+                          &body_action,
+                          tick,
+                          &sprite_frames,
+                          &browser_client_positions);
+            // now the back buffer contains the rendered image for this client
             unsafe {
-                gl::DrawArrays(
-                    gl::TRIANGLE_STRIP, // mode
-                    0, // starting index in the enabled arrays
-                    4, // number of indices to be rendered
-                );
+                gl::ReadBuffer(gl::BACK);
+                gl::ReadPixels(0, 0, 900, 700, gl::RGBA, gl::UNSIGNED_BYTE, browser_client.offscreen.as_mut_ptr() as *mut gl::types::GLvoid);
             }
+            let message = websocket::Message::binary(browser_client.offscreen.as_slice());
+            browser_client.websocket.send_message(&message);
         }
 
-        renderer.render(ui);
+        render_client(&camera,
+                      &ground_shader_program,
+                      &model_shader_program,
+                      &sprite_shader_program,
+                      &projection_matrix,
+                      &map_render_data,
+                      &light_wheight,
+                      use_tile_colors,
+                      use_lightmaps,
+                      use_lighting,
+                      &body_action,
+                      tick,
+                      &sprite_frames,
+                      &browser_client_positions);
 
         window.gl_swap_window();
-        std::thread::sleep(Duration::from_millis(30))
+        if std::time::SystemTime::now() >= next_second {
+            fps = fps_counter;
+            fps_counter = 0;
+            next_second = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
+        }
+        fps_counter += 1;
+        tick += 1;
+    }
+}
+
+fn render_client(camera: &Camera,
+                 ground_shader_program: &Program,
+                 model_shader_program: &Program,
+                 sprite_shader_program: &Program,
+                 projection_matrix: &Matrix4<f32>,
+                 map_render_data: &MapRenderData,
+                 light_wheight: &[f32; 3],
+                 use_tile_colors: bool,
+                 use_lightmaps: bool,
+                 use_lighting: bool,
+                 body_action: &ActionFile,
+                 tick: u64,
+                 sprite_frames: &Vec<spr::RenderableFrame>,
+                 browser_clients: &Vec<Point3<f32>>) {
+    unsafe {
+        gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+    }
+
+    let view = camera.create_view_matrix();
+
+    let model = Matrix4::<f32>::identity();
+    let model_view = view * model;
+    let normal_matrix = {
+        // toInverseMat3
+        let inverted = model_view.try_inverse().unwrap();
+        let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
+        m3x3.transpose()
+    };
+
+    ground_shader_program.gl_use();
+    ground_shader_program.set_mat4("projection", &projection_matrix);
+    ground_shader_program.set_mat4("model_view", &model_view);
+    ground_shader_program.set_mat3("normal_matrix", &normal_matrix);
+
+    ground_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+    ground_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+    ground_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+    ground_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+
+    ground_shader_program.set_vec3("in_lightWheight", light_wheight);
+
+    map_render_data.texture_atlas.bind(gl::TEXTURE0);
+    ground_shader_program.set_int("gnd_texture_atlas", 0);
+
+    map_render_data.tile_color_texture.bind(gl::TEXTURE1);
+    ground_shader_program.set_int("tile_color_texture", 1);
+
+    map_render_data.lightmap_texture.bind(gl::TEXTURE2);
+    ground_shader_program.set_int("lightmap_texture", 2);
+
+    ground_shader_program.set_int("use_tile_color", if use_tile_colors { 1 } else { 0 });
+    ground_shader_program.set_int("use_lightmap", if use_lightmaps { 1 } else { 0 });
+    ground_shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
+
+
+    unsafe {
+        map_render_data.ground_vertex_array_obj.bind();
+        gl::DrawArrays(
+            gl::TRIANGLES, // mode
+            0, // starting index in the enabled arrays
+            (map_render_data.gnd.mesh.len()) as i32, // number of indices to be rendered
+        );
+    }
+
+    model_shader_program.gl_use();
+    model_shader_program.set_mat4("projection", &projection_matrix);
+    model_shader_program.set_mat4("view", &view);
+    model_shader_program.set_mat3("normal_matrix", &normal_matrix);
+    model_shader_program.set_int("model_texture", 0);
+
+    model_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+    model_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+    model_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+    model_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+
+    model_shader_program.set_int("use_lighting", if use_lighting { 1 } else { 0 });
+
+    unsafe {
+        for (model_name, matrix) in &map_render_data.model_instances {
+            model_shader_program.set_mat4("model", &matrix);
+            let model_render_data = &map_render_data.models[&model_name];
+            model_shader_program.set_f32("alpha", model_render_data.alpha);
+            for node_render_data in &model_render_data.model {
+                for face_render_data in node_render_data {
+                    face_render_data.texture.bind(gl::TEXTURE0);
+                    face_render_data.vao.bind();
+                    gl::DrawArrays(
+                        gl::TRIANGLES, // mode
+                        0, // starting index in the enabled arrays
+                        face_render_data.vertex_count as i32, // number of indices to be rendered
+                    );
+                }
+            }
+        }
+    }
+
+    sprite_shader_program.gl_use();
+    sprite_shader_program.set_mat4("projection", &projection_matrix);
+    sprite_shader_program.set_mat4("view", &view);
+    sprite_shader_program.set_int("model_texture", 0);
+    sprite_shader_program.set_f32("alpha", 1.0);
+
+    map_render_data.sprite_vertex_array.bind();
+
+    /// draw layer
+    let delay = body_action.actions[8].delay;
+    let frame_count = body_action.actions[8].frames.len();
+    let frame_index = ((tick / (delay / 3) as u64) % frame_count as u64) as usize;
+    let layer = &body_action.actions[8].frames[frame_index].layers[0];
+    let sprite_frame = &sprite_frames[layer.sprite_frame_index as usize];
+
+    let width = sprite_frame.texture.width as f32 * layer.scale[0];
+    let height = sprite_frame.texture.height as f32 * layer.scale[1];
+    sprite_frame.texture.bind(gl::TEXTURE0);
+
+
+    // size for cameras
+    sprite_shader_program.set_vec3("size", &[
+        width as f32 / 175.0 * 20.0,
+        height as f32 / 175.0 * 20.0,
+        0.0
+    ]);
+    sprite_shader_program.set_f32("alpha", 1.0);
+
+    // draw browser clients
+    for browser_client in browser_clients.iter() {
+        let mut matrix = Matrix4::<f32>::identity();
+        matrix.prepend_translation_mut(&browser_client.coords);
+
+        sprite_shader_program.set_mat4("model", &matrix);
+
+        unsafe {
+            gl::DrawArrays(
+                gl::TRIANGLE_STRIP, // mode
+                0, // starting index in the enabled arrays
+                4, // number of indices to be rendered
+            );
+        }
+    }
+
+    sprite_shader_program.set_f32("alpha", 0.5);
+    // size for sprites
+    sprite_shader_program.set_vec3("size", &[
+        width as f32 / 175.0 * 5.0,
+        height as f32 / 175.0 * 5.0,
+        0.0
+    ]);
+
+    for entity in map_render_data.entities.iter() {
+        let mut matrix = Matrix4::<f32>::identity();
+        matrix.prepend_translation_mut(&entity.pos);
+
+        sprite_shader_program.set_mat4("model", &matrix);
+
+        unsafe {
+            gl::DrawArrays(
+                gl::TRIANGLE_STRIP, // mode
+                0, // starting index in the enabled arrays
+                4, // number of indices to be rendered
+            );
+        }
     }
 }
 
@@ -564,9 +769,9 @@ fn load_map(map_name: &str) -> MapRenderData {
         }
     ]);
     let mut rng = rand::thread_rng();
-    let entities = (0..10_000).map(|_i| {
+    let entities = (0..1_000).map(|_i| {
         EntityRenderData {
-            pos: Vector3::<f32>::new(2.0*ground.width as f32 * (rng.gen::<f32>()), 8.0, -(2.0*ground.height as f32 * (rng.gen::<f32>()))),
+            pos: Vector3::<f32>::new(2.0 * ground.width as f32 * (rng.gen::<f32>()), 8.0, -(2.0 * ground.height as f32 * (rng.gen::<f32>()))),
         }
     }).collect();
     MapRenderData {
