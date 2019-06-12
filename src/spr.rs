@@ -36,9 +36,6 @@ impl SpriteFile {
 
         let indexed_frame_count = buf.next_u16() as usize;
         let rgba_frame_count = if version > 1.1 { buf.next_u16() } else { 0 };
-        dbg!(version);
-        dbg!(indexed_frame_count);
-        dbg!(rgba_frame_count);
         let indexed_frames = if version < 2.1 {
             SpriteFile::read_indexed_frames(&mut buf, indexed_frame_count)
         } else {
@@ -68,8 +65,6 @@ impl SpriteFile {
         (0..indexed_frame_count).map(|_i| {
             let width = buf.next_u16();
             let height = buf.next_u16();
-            dbg!(width);
-            dbg!(height);
             Frame {
                 typ: SpriteType::PAL,
                 width: width as usize,

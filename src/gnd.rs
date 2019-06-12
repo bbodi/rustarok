@@ -79,14 +79,11 @@ impl Gnd {
         let width = buf.next_u32();
         let height = buf.next_u32();
         let zoom = buf.next_f32();
-        println!("width: {}, height: {}, zoom: {}", width, height, zoom);
 
         let (texture_names, texture_indices) = Gnd::load_textures(&mut buf);
         let lightmaps = Gnd::load_lightmaps(&mut buf);
         let tiles = Gnd::load_tiles(&mut buf, texture_names.len(), &texture_indices);
-        println!("tiles: {}", tiles.len());
         let surfaces = Gnd::load_surfaces(&mut buf, width, height);
-        println!("surfaces: {}", surfaces.len());
         let normals = Gnd::smooth_normal(width as usize,
                                          height as usize,
                                          &surfaces,
@@ -662,12 +659,11 @@ impl Gnd {
     }
 
     pub fn create_gl_texture_atlas(texture_names: &Vec<String>) -> GlTexture {
-        println!("{:?}", texture_names);
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names.iter().map(|texture_name| {
             use sdl2::image::LoadSurface;
             let path = format!("d:\\Games\\TalonRO\\grf\\data\\texture\\{}", texture_name);
             sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
-                println!("Missing: {}", path);
+                warn!("Missing: {}", path);
                 let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
                 missing_texture.fill_rect(None, Color::RGB(255, 0, 255));
                 missing_texture

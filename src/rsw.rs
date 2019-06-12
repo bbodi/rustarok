@@ -99,7 +99,6 @@ pub struct MapSound {
 impl Rsw {
     pub fn load_models(model_names: HashSet<ModelName>) -> HashMap<ModelName, Rsm> {
         return model_names.iter().map(|filename| {
-            dbg!(&filename);
             let rsm = Rsm::load(&mut BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\model\\{}", filename.0)));
             (filename.clone(), rsm)
         }).collect();
@@ -196,12 +195,6 @@ impl Rsw {
         };
 
         let count = buf.next_i32();
-        println!("version: {:?}", version);
-        println!("index: {:?}", buf.tell());
-        println!("ground: {:?}", ground);
-        println!("water: {:?}", water);
-        println!("light: {:?}", light);
-        println!("Count: {}", count);
         let mut models: Vec<ModelInstance> = Vec::with_capacity(count as usize);
         let mut lights: Vec<MapLight> = Vec::with_capacity(count as usize);
         let mut sounds: Vec<MapSound> = Vec::with_capacity(count as usize);
@@ -253,7 +246,6 @@ impl Rsw {
         effects.shrink_to_fit();
         sounds.shrink_to_fit();
 
-        println!("lights: {:?}", lights);
         return Rsw {
             ground,
             water,

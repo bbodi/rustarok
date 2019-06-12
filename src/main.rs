@@ -7,6 +7,8 @@ extern crate imgui;
 extern crate imgui_sdl2;
 extern crate imgui_opengl_renderer;
 extern crate websocket;
+#[macro_use]
+extern crate log;
 
 use std::io;
 use std::io::prelude::*;
@@ -26,12 +28,14 @@ use crate::opengl::{Shader, Program, VertexArray, VertexAttribDefinition, GlText
 use std::time::{Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, RsmNodeVertex};
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, Scancode};
 use crate::act::ActionFile;
 use crate::spr::SpriteFile;
 use rand::Rng;
 use websocket::stream::sync::TcpStream;
 use websocket::OwnedMessage;
+use log::LevelFilter;
+use sdl2::event::Event::{KeyDown, TextInput, MouseMotion, MouseButtonDown, MouseButtonUp, KeyUp};
 
 // guild_vs4.rsw
 
@@ -98,34 +102,30 @@ impl Camera {
 
 struct Client {
     camera: Camera,
-    websocket: websocket::sync::Client<TcpStream>,
+    websocket: Option<websocket::sync::Client<TcpStream>>,
     offscreen: Vec<u8>,
-    inputs: Vec<ClientInput>,
+    inputs: Vec<sdl2::event::Event>,
     remove: bool,
     mouse_down: bool,
     last_mouse_x: u16,
     last_mouse_y: u16,
     yaw: f32,
     pitch: f32,
+    ping: u16,
+    keys: HashSet<Scancode>,
 }
 
-
-enum ClientInput {
-    MouseMove(u16, u16),
-    MouseDown,
-    MouseUp,
-    KeyDown,
-    KeyUp,
-}
 
 fn main() {
+    simple_logging::log_to_stderr(LevelFilter::Trace);
+
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let gl_attr = video_subsystem.gl_attr();
 
     gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
     gl_attr.set_context_version(4, 5);
-    let window = video_subsystem
+    let mut window = video_subsystem
         .window("Rustarok", 900, 700)
         .opengl()
         .allow_highdpi()
@@ -220,14 +220,6 @@ fn main() {
 
     let my_str = ImString::new("shitaka");
 
-    let mut camera = Camera::new(Point3::new(0.0, 0.0, 3.0));
-
-    let mut last_mouse_x = 400;
-    let mut last_mouse_y = 300;
-    let mut mouse_down = false;
-    let mut yaw = -90f32;
-    let mut pitch = 0f32;
-
     let mut map_name_filter = ImString::new("prontera");
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
@@ -246,11 +238,6 @@ fn main() {
     let mut use_lighting = true;
     let mut light_wheight = [0f32; 3];
 
-    dbg!(map_render_data.texture_atlas.id());
-    dbg!(map_render_data.tile_color_texture.id());
-    dbg!(map_render_data.lightmap_texture.id());
-
-    let mut keys: HashSet<Keycode> = HashSet::new();
     let mut camera_speed = 2f32;
 
     let mut tick: u64 = 0;
@@ -261,7 +248,24 @@ fn main() {
 
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true);
-    let mut browser_clients: Vec<Client> = vec![];
+    let mut clients: Vec<Client> = vec![];
+
+    clients.push( // desktop client
+                  Client {
+                      camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
+                      websocket: None,
+                      offscreen: vec![0; 900 * 700 * 4],
+                      inputs: vec![],
+                      remove: false,
+                      mouse_down: false,
+                      last_mouse_x: 400,
+                      last_mouse_y: 300,
+                      yaw: -90.0,
+                      pitch: 0.0,
+                      ping: 0,
+                      keys: HashSet::new(),
+                  }
+    );
 
     'running: loop {
         let result = match websocket_server.accept() {
@@ -270,7 +274,7 @@ fn main() {
                 browser_client.set_nonblocking(true);
                 let client = Client {
                     camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
-                    websocket: browser_client,
+                    websocket: Some(browser_client),
                     offscreen: vec![0; 900 * 700 * 4],
                     inputs: vec![],
                     remove: false,
@@ -279,112 +283,157 @@ fn main() {
                     last_mouse_y: 300,
                     yaw: -90.0,
                     pitch: 0.0,
+                    ping: 0,
+                    keys: HashSet::new(),
                 };
-                println!("Client connected");
-                browser_clients.push(client);
+                info!("Client connected");
+                clients.push(client);
             }
             _ => {
                 // Nobody tried to connect, move on.
             }
         };
 
-        for browser_client in browser_clients.iter_mut() {
-            if let Ok(msg) = browser_client.websocket.recv_message() {
-                match msg {
-                    OwnedMessage::Binary(buf) => {
-                        let mut upper_byte: u8 = 0;
-                        let mut iter = buf.iter();
-                        while let Some(header) = iter.next() {
-                            let event = match header {
-                                1 => {
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_x: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+        for client in clients.iter_mut() {
+            if let Some(ws) = &mut client.websocket {
+                if let Ok(msg) = ws.recv_message() {
+                    match msg {
+                        OwnedMessage::Pong(buf) => {
+                            let ping_time = u128::from_le_bytes([
+                                buf[0], buf[1], buf[2], buf[3],
+                                buf[4], buf[5], buf[6], buf[7],
+                                buf[8], buf[9], buf[10], buf[11],
+                                buf[12], buf[13], buf[14], buf[15],
+                            ]);
+                            let now_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+                            client.ping = (now_ms - ping_time) as u16;
+                        }
+                        OwnedMessage::Binary(buf) => {
+                            let mut upper_byte: u8 = 0;
+                            let mut iter = buf.iter();
+                            while let Some(header) = iter.next() {
+                                match header {
+                                    1 => {
+                                        let upper_byte = iter.next().unwrap();
+                                        let lower_byte = iter.next().unwrap();
+                                        let mouse_x: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
 
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
-                                    println!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
-                                    Some(ClientInput::MouseMove(mouse_x, mouse_y))
-                                }
-                                2 => {
-                                    println!("Message arrived: MouseDown");
-                                    Some(ClientInput::MouseDown)
-                                }
-                                3 => {
-                                    println!("Message arrived: MouseUp");
-                                    Some(ClientInput::MouseUp)
-                                }
-                                _ => {
-                                    println!("Unknown header: {}", header);
-                                    browser_client.remove = true;
-                                    None
-                                }
-                            };
-                            if let Some(event) = event {
-                                browser_client.inputs.push(event);
+                                        let upper_byte = iter.next().unwrap();
+                                        let lower_byte = iter.next().unwrap();
+                                        let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+                                        trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
+                                        let shit2 = (0 as u32,
+                                                     0 as i32,
+                                                     0 as i32);
+                                        let shit = unsafe { std::mem::transmute(shit2) };
+                                        client.inputs.push(
+                                            Event::MouseMotion {
+                                                timestamp: 0,
+                                                window_id: 0,
+                                                which: 0,
+                                                mousestate: shit,
+                                                x: mouse_x as i32,
+                                                y: mouse_y as i32,
+                                                xrel: 0,
+                                                yrel: 0,
+                                            }
+                                        );
+                                    }
+                                    2 => {
+                                        trace!("Message arrived: MouseDown");
+                                        client.inputs.push(
+                                            MouseButtonDown {
+                                                timestamp: 0,
+                                                window_id: 0,
+                                                which: 0,
+                                                mouse_btn: sdl2::mouse::MouseButton::Left,
+                                                clicks: 0,
+                                                x: 0,
+                                                y: 0,
+                                            }
+                                        );
+                                    }
+                                    3 => {
+                                        trace!("Message arrived: MouseUp");
+                                        client.inputs.push(
+                                            MouseButtonUp {
+                                                timestamp: 0,
+                                                window_id: 0,
+                                                which: 0,
+                                                mouse_btn: sdl2::mouse::MouseButton::Left,
+                                                clicks: 0,
+                                                x: 0,
+                                                y: 0,
+                                            });
+                                    }
+                                    4 => {
+                                        let scancode = *iter.next().unwrap();
+                                        let upper_byte = *iter.next().unwrap();
+                                        let lower_byte = *iter.next().unwrap();
+                                        let input_char: u16 = ((upper_byte as u16) << 8) | lower_byte as u16;
+                                        trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
+                                        client.inputs.push(
+                                            KeyDown {
+                                                timestamp: 0,
+                                                window_id: 0,
+                                                keycode: None,
+                                                scancode: Scancode::from_i32(scancode as i32),
+                                                keymod: sdl2::keyboard::Mod::NOMOD,
+                                                repeat: false,
+                                            });
+                                        if let Some(ch) = std::char::from_u32(input_char as u32) {
+                                            client.inputs.push(
+                                                TextInput {
+                                                    timestamp: 0,
+                                                    window_id: 0,
+                                                    text: ch.to_string(),
+                                                }
+                                            );
+                                        }
+                                    }
+                                    5 => {
+                                        let scancode = *iter.next().unwrap();
+                                        trace!("Message arrived: KeyUp({})", scancode);
+                                        client.inputs.push(
+                                            KeyUp {
+                                                timestamp: 0,
+                                                window_id: 0,
+                                                keycode: None,
+                                                scancode: Scancode::from_i32(scancode as i32),
+                                                keymod: sdl2::keyboard::Mod::NOMOD,
+                                                repeat: false,
+                                            });
+                                    }
+                                    _ => {
+                                        warn!("Unknown header: {}", header);
+                                        client.remove = true;
+                                    }
+                                };
                             }
                         }
-                    }
-                    _ => {
-                        println!("Msg: ");
-                        browser_client.remove = true;
+                        _ => {
+                            warn!("Unknown msg: {:?}", msg);
+                            client.remove = true;
+                        }
                     }
                 }
             }
         }
 
-        browser_clients.retain(|c| !c.remove);
 
-        // update clients
-        for browser_client in browser_clients.iter_mut() {
-            for event in browser_client.inputs.drain(..) {
-                match event {
-                    ClientInput::MouseMove(x, y) => {
-                        if browser_client.mouse_down {
-                            let x_offset = x as i32 - browser_client.last_mouse_x as i32;
-                            let y_offset = browser_client.last_mouse_y as i32 - y as i32;
-                            browser_client.yaw += x_offset as f32;
-                            browser_client.pitch += y_offset as f32;
-                            if browser_client.pitch > 89.0 {
-                                browser_client.pitch = 89.0;
-                            }
-                            if browser_client.pitch < -89.0 {
-                                browser_client.pitch = -89.0;
-                            }
-                            browser_client.camera.rotate(browser_client.pitch, browser_client.yaw);
-                        }
-                        browser_client.last_mouse_x = x;
-                        browser_client.last_mouse_y = y;
-                    }
-                    ClientInput::MouseDown => {
-                        browser_client.mouse_down = true;
-                    }
-                    ClientInput::MouseUp => {
-                        browser_client.mouse_down = false;
-                    }
-                    ClientInput::KeyDown => {}
-                    ClientInput::KeyUp => {}
-                }
-            }
-        }
+        clients.retain(|c| !c.remove);
 
         ///////////
         use sdl2::event::Event;
         use sdl2::keyboard::Keycode;
-        for event in event_pump.poll_iter() {
-            imgui_sdl2.handle_event(&mut imgui, &event);
-            if imgui_sdl2.ignore_event(&event) { continue; }
 
+        fn handle_sdl_event(event: &Event, client: &mut Client, camera_speed: &mut f32) {
             match event {
-                Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    break 'running;
-                }
                 Event::MouseButtonDown { .. } => {
-                    mouse_down = true;
+                    client.mouse_down = true;
                 }
                 Event::MouseButtonUp { .. } => {
-                    mouse_down = false;
+                    client.mouse_down = false;
                 }
                 Event::MouseMotion {
                     timestamp,
@@ -396,52 +445,107 @@ fn main() {
                     xrel,
                     yrel
                 } => {
-                    if mouse_down {
-                        let x_offset = x - last_mouse_x;
-                        let y_offset = last_mouse_y - y; // reversed since y-coordinates go from bottom to top
-                        yaw += x_offset as f32;
-                        pitch += y_offset as f32;
-                        if pitch > 89.0 {
-                            pitch = 89.0;
+                    if client.mouse_down {
+                        let x_offset = *x - client.last_mouse_x as i32;
+                        let y_offset = client.last_mouse_y as i32 - *y; // reversed since y-coordinates go from bottom to top
+                        client.yaw += x_offset as f32;
+                        client.pitch += y_offset as f32;
+                        if client.pitch > 89.0 {
+                            client.pitch = 89.0;
                         }
-                        if pitch < -89.0 {
-                            pitch = -89.0;
+                        if client.pitch < -89.0 {
+                            client.pitch = -89.0;
                         }
-                        camera.rotate(pitch, yaw);
+                        client.camera.rotate(client.pitch, client.yaw);
                     }
-                    last_mouse_x = x;
-                    last_mouse_y = y;
+                    client.last_mouse_x = *x as u16;
+                    client.last_mouse_y = *y as u16;
                 }
-                Event::KeyDown { keycode, .. } => {
-                    if keycode.is_some() {
-                        keys.insert(keycode.unwrap());
+                Event::KeyDown { scancode, .. } => {
+                    if scancode.is_some() {
+                        client.keys.insert(scancode.unwrap());
                     }
                 }
-                Event::KeyUp { keycode, .. } => {
-                    if keycode.is_some() {
-                        keys.remove(&keycode.unwrap());
+                Event::KeyUp { scancode, .. } => {
+                    if scancode.is_some() {
+                        client.keys.remove(&scancode.unwrap());
                     }
                 }
                 _ => {}
             }
+
+            *camera_speed = if client.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+            if client.keys.contains(&Scancode::W) {
+                client.camera.move_forward(*camera_speed);
+            } else if client.keys.contains(&Scancode::S) {
+                client.camera.move_forward(-*camera_speed);
+            }
+            if client.keys.contains(&Scancode::A) {
+                client.camera.move_side(-*camera_speed);
+            } else if client.keys.contains(&Scancode::D) {
+                client.camera.move_side(*camera_speed);
+            }
         }
 
-        camera_speed = if keys.contains(&Keycode::LShift) { 6.0 } else { 2.0 };
-        if keys.contains(&Keycode::W) {
-            camera.move_forward(camera_speed);
-        } else if keys.contains(&Keycode::S) {
-            camera.move_forward(-camera_speed);
-        }
-        if keys.contains(&Keycode::A) {
-            camera.move_side(-camera_speed);
-        } else if keys.contains(&Keycode::D) {
-            camera.move_side(camera_speed);
+        for event in event_pump.poll_iter() {
+            debug!("SDL event: {:?}", event);
+            imgui_sdl2.handle_event(&mut imgui, &event);
+
+            clients[0].inputs.push(event);
         }
 
+        // update clients
+        for (index, client) in clients.iter_mut().enumerate() {
+            let client_events: Vec<_> = client.inputs.drain(..).collect();
+            for event in client_events {
+                match event {
+                    Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                        if index == 0 {
+                            break 'running;
+                        }
+                    }
+                    _ => handle_sdl_event(&event, client, &mut camera_speed)
+                }
+            }
+        }
+
+        // render browser clients:
+        let mut browser_client_positions: Vec<Point3<f32>> = clients.iter().map(|b| b.camera.pos).collect();
+        for client in clients.iter_mut().rev() {
+            // look toward the desktop client
+            //browser_client.camera.look_at(camera.pos);
+            // move closer if it is far away
+//            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
+//                browser_client.camera.move_forward(camera_speed);
+//            }
+            render_client(&client.camera,
+                          &ground_shader_program,
+                          &model_shader_program,
+                          &sprite_shader_program,
+                          &projection_matrix,
+                          &map_render_data,
+                          &light_wheight,
+                          use_tile_colors,
+                          use_lightmaps,
+                          use_lighting,
+                          &body_action,
+                          tick,
+                          &sprite_frames,
+                          &browser_client_positions);
+            // now the back buffer contains the rendered image for this client
+            if let Some(ws) = &mut client.websocket {
+                unsafe {
+                    gl::ReadBuffer(gl::BACK);
+                    gl::ReadPixels(0, 0, 900, 700, gl::RGBA, gl::UNSIGNED_BYTE, client.offscreen.as_mut_ptr() as *mut gl::types::GLvoid);
+                }
+                let message = websocket::Message::binary(client.offscreen.as_slice());
+                ws.send_message(&message);
+            }
+        }
 
         // Imgui logic
-//        let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
-//
+        let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
+
 //        extern crate sublime_fuzzy;
 //        let map_name_filter_clone = map_name_filter.clone();
 //        let filtered_map_names: Vec<&String> = all_map_names.iter()
@@ -466,122 +570,59 @@ fn main() {
 //                    }
 //                }
 //            });
-//
-//        ui.window(im_str!("Graphic opsions"))
-//            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
-//            .size((300.0, 200.0), ImGuiCond::FirstUseEver)
-//            .build(|| {
-//                ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
-//                if ui.checkbox(im_str!("Use use_lighting"), &mut use_lighting) {
-//                    use_lightmaps = use_lighting && use_lightmaps;
-//                }
-//                if ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps) {
-//                    use_lighting = use_lighting || use_lightmaps;
-//                }
-//
-//
-//                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
-//                    .min(-1.0).max(1.0).speed(0.05).build();
-//                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
-//                    .inputs(false)
-//                    .format(ColorFormat::Float)
-//                    .build();
-//                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
-//                    .inputs(false)
-//                    .format(ColorFormat::Float)
-//                    .build();
-//                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
-//                    .min(0.0).max(1.0).speed(0.05).build();
-//
-//                ui.text(im_str!("FPS: {}", fps));
-//
-//                ui.image(ImTexture::from(map_render_data.texture_atlas.id() as usize), [200.0, 200.0]).build();
-//                let w = map_render_data.lightmap_texture.width as f32;
-//                let h = map_render_data.lightmap_texture.height as f32;
-//                let (posx, posy) = ui.get_cursor_screen_pos();
-//                ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize), [w, h]).build();
-//                if (ui.is_item_hovered()) {
-//                    ui.tooltip(|| {
-//                        let focus_sz = 32.0f32;
-//                        let (mx, my) = ui.imgui().mouse_pos();
-//                        let mut focus_x = mx - posx - focus_sz * 0.5f32;
-//                        if focus_x < 0.0f32 {
-//                            focus_x = 0.0f32;
-//                        } else if focus_x > w - focus_sz {
-//                            focus_x = w - focus_sz
-//                        }
-//                        let mut focus_y = my - posy - focus_sz * 0.5f32;
-//                        if focus_y < 0.0f32 { focus_y = 0.0f32; } else if focus_y > h - focus_sz { focus_y = h - focus_sz; }
-//                        ui.text(format!("Min: {}, {}", focus_x, focus_y));
-//                        ui.text(format!("Max: {}, {}", focus_x + focus_sz, focus_y + focus_sz));
-//                        let uv0: [f32; 2] = [(focus_x) / w, (focus_y) / h];
-//                        let uv1: [f32; 2] = [(focus_x + focus_sz) / w, (focus_y + focus_sz) / h];
-//                        ui.image(ImTexture::from(map_render_data.lightmap_texture.id() as usize),
-//                                 [128.0, 128.0],
-//                        )
-//                            .uv0(uv0)
-//                            .uv1(uv1)
-//                            .build();
-//                    });
-//                }
-//            });
+
+        ui.window(im_str!("Graphic opsions"))
+            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
+            .size((300.0, 600.0), ImGuiCond::FirstUseEver)
+            .build(|| {
+                ui.checkbox(im_str!("Use tile_colors"), &mut use_tile_colors);
+                if ui.checkbox(im_str!("Use use_lighting"), &mut use_lighting) {
+                    use_lightmaps = use_lighting && use_lightmaps;
+                }
+                if ui.checkbox(im_str!("Use lightmaps"), &mut use_lightmaps) {
+                    use_lighting = use_lighting || use_lightmaps;
+                }
+
+
+                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
+                    .min(-1.0).max(1.0).speed(0.05).build();
+                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
+                    .inputs(false)
+                    .format(ColorFormat::Float)
+                    .build();
+                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
+                    .inputs(false)
+                    .format(ColorFormat::Float)
+                    .build();
+                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
+                    .min(0.0).max(1.0).speed(0.05).build();
+
+                ui.text(im_str!("FPS: {}", fps));
+
+                for browser_client in clients.iter() {
+                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
+                }
+            });
 
         // render Imgui
-        // renderer.render(ui);
-
-        // render browser clients:
-        let mut browser_client_positions: Vec<Point3<f32>> = browser_clients.iter().map(|b| b.camera.pos).collect();
-        browser_client_positions.push(camera.pos);
-        for browser_client in browser_clients.iter_mut() {
-            // look toward the desktop client
-            //browser_client.camera.look_at(camera.pos);
-            // move closer if it is far away
-//            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
-//                browser_client.camera.move_forward(camera_speed);
-//            }
-            render_client(&browser_client.camera,
-                          &ground_shader_program,
-                          &model_shader_program,
-                          &sprite_shader_program,
-                          &projection_matrix,
-                          &map_render_data,
-                          &light_wheight,
-                          use_tile_colors,
-                          use_lightmaps,
-                          use_lighting,
-                          &body_action,
-                          tick,
-                          &sprite_frames,
-                          &browser_client_positions);
-            // now the back buffer contains the rendered image for this client
-            unsafe {
-                gl::ReadBuffer(gl::BACK);
-                gl::ReadPixels(0, 0, 900, 700, gl::RGBA, gl::UNSIGNED_BYTE, browser_client.offscreen.as_mut_ptr() as *mut gl::types::GLvoid);
-            }
-            let message = websocket::Message::binary(browser_client.offscreen.as_slice());
-            browser_client.websocket.send_message(&message);
-        }
-
-        render_client(&camera,
-                      &ground_shader_program,
-                      &model_shader_program,
-                      &sprite_shader_program,
-                      &projection_matrix,
-                      &map_render_data,
-                      &light_wheight,
-                      use_tile_colors,
-                      use_lightmaps,
-                      use_lighting,
-                      &body_action,
-                      tick,
-                      &sprite_frames,
-                      &browser_client_positions);
+        renderer.render(ui);
 
         window.gl_swap_window();
         if std::time::SystemTime::now() >= next_second {
             fps = fps_counter;
             fps_counter = 0;
             next_second = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
+            window.set_title(&format!("Rustarok {} FPS", fps));
+
+            // send a ping packet every second
+            let now_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+            let data = now_ms.to_le_bytes();
+            for browser_client in clients.iter_mut() {
+                let message = websocket::Message::ping(&data[..]);
+                if let Some(ws) = &mut browser_client.websocket {
+                    ws.send_message(&message);
+                }
+            }
         }
         fps_counter += 1;
         tick += 1;
@@ -611,7 +652,7 @@ fn render_client(camera: &Camera,
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
     let normal_matrix = {
-        // toInverseMat3
+// toInverseMat3
         let inverted = model_view.try_inverse().unwrap();
         let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
         m3x3.transpose()
@@ -704,7 +745,7 @@ fn render_client(camera: &Camera,
     sprite_frame.texture.bind(gl::TEXTURE0);
 
 
-    // size for cameras
+// size for cameras
     sprite_shader_program.set_vec3("size", &[
         width as f32 / 175.0 * 20.0,
         height as f32 / 175.0 * 20.0,
@@ -712,7 +753,7 @@ fn render_client(camera: &Camera,
     ]);
     sprite_shader_program.set_f32("alpha", 1.0);
 
-    // draw browser clients
+// draw browser clients
     for browser_client in browser_clients.iter() {
         let mut matrix = Matrix4::<f32>::identity();
         matrix.prepend_translation_mut(&browser_client.coords);
@@ -729,7 +770,7 @@ fn render_client(camera: &Camera,
     }
 
     sprite_shader_program.set_f32("alpha", 0.5);
-    // size for sprites
+// size for sprites
     sprite_shader_program.set_vec3("size", &[
         width as f32 / 175.0 * 5.0,
         height as f32 / 175.0 * 5.0,
@@ -813,13 +854,13 @@ fn load_map(map_name: &str) -> MapRenderData {
         let mut instance_matrix = Matrix4::<f32>::identity();
         instance_matrix.prepend_translation_mut(&(model_instance.pos + Vector3::new(ground.width as f32, 0f32, ground.height as f32)));
 
-        // rot_z
+// rot_z
         let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::z()), model_instance.rot.z.to_radians()).to_homogeneous();
         instance_matrix = instance_matrix * rotation;
-        // rot x
+// rot x
         let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), model_instance.rot.x.to_radians()).to_homogeneous();
         instance_matrix = instance_matrix * rotation;
-        // rot y
+// rot y
         let rotation = Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::y()), model_instance.rot.y.to_radians()).to_homogeneous();
         instance_matrix = instance_matrix * rotation;
 
@@ -837,7 +878,6 @@ fn load_map(map_name: &str) -> MapRenderData {
         ground.width, ground.height,
     );
     let lightmap_texture = Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
-    dbg!(ground.mesh.len());
 
     let s: Vec<[f32; 4]> = vec![
         [-0.5, 0.5, 0.0, 0.0],
