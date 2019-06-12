@@ -36,9 +36,6 @@ impl Gat {
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         let width = buf.next_u32();
         let height = buf.next_u32();
-        println!("version: {}", version);
-        println!("version: {}", width);
-        println!("version: {}", height);
         let mut cells: Box<[f32]> = vec![0f32; (width * height * 5) as usize].into_boxed_slice();
         for i in 0.. (width * height) as usize {
             cells[i * 5 + 0] = buf.next_f32() * 0.2;

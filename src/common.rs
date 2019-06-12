@@ -37,6 +37,13 @@ impl BinaryReader {
         return buf;
     }
 
+    pub fn from_vec(vec: Vec<u8>) -> BinaryReader {
+        BinaryReader {
+            buf: vec,
+            index: 0,
+        }
+    }
+
     pub fn next_u8(&mut self) -> u8 {
         self.index += 1;
         self.buf[self.index - 1]
