@@ -8,6 +8,7 @@ use std::os::raw::c_void;
 use std::hash::{Hash, Hasher};
 use std::fmt::Display;
 use sdl2::render::BlendMode;
+use std::sync::Arc;
 
 #[derive(Hash, Eq, PartialEq)]
 struct GlTextureContext(gl::types::GLuint);
@@ -22,7 +23,7 @@ impl Drop for GlTextureContext {
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub struct GlTexture {
-    context: Rc<GlTextureContext>,
+    context: Arc<GlTextureContext>,
     pub width: i32,
     pub height: i32,
 }
@@ -101,7 +102,7 @@ impl GlTexture {
             gl::GenerateMipmap(gl::TEXTURE_2D);
         }
         GlTexture {
-            context: Rc::new(GlTextureContext(texture_id)),
+            context: Arc::new(GlTextureContext(texture_id)),
             width: surface.width() as i32,
             height: surface.height() as i32,
         }
@@ -130,7 +131,7 @@ impl GlTexture {
             gl::GenerateMipmap(gl::TEXTURE_2D);
         }
         GlTexture {
-            context: Rc::new(GlTextureContext(texture_id)),
+            context: Arc::new(GlTextureContext(texture_id)),
             width,
             height,
         }
@@ -254,11 +255,11 @@ impl Shader {
     }
 }
 
-pub struct Program {
+pub struct ShaderProgram {
     id: gl::types::GLuint,
 }
 
-impl Program {
+impl ShaderProgram {
     pub fn gl_use(&self) {
         unsafe {
             gl::UseProgram(self.id);
@@ -320,7 +321,7 @@ impl Program {
         }
     }
 
-    pub fn from_shaders(shaders: &[Shader]) -> Result<Program, String> {
+    pub fn from_shaders(shaders: &[Shader]) -> Result<ShaderProgram, String> {
         let program_id = unsafe { gl::CreateProgram() };
 
         for shader in shaders {
@@ -335,17 +336,17 @@ impl Program {
         }
 
         if success == 0 {
-            return Program::get_program_err(program_id);
+            return ShaderProgram::get_program_err(program_id);
         }
 
         for shader in shaders {
             unsafe { gl::DetachShader(program_id, shader.id()); }
         }
 
-        Ok(Program { id: program_id })
+        Ok(ShaderProgram { id: program_id })
     }
 
-    fn get_program_err(program_id: gl::types::GLuint) -> Result<Program, String> {
+    fn get_program_err(program_id: gl::types::GLuint) -> Result<ShaderProgram, String> {
         let mut len: gl::types::GLint = 0;
         unsafe {
             gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut len);
@@ -367,7 +368,7 @@ impl Program {
     }
 }
 
-impl Drop for Program {
+impl Drop for ShaderProgram {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteProgram(self.id);

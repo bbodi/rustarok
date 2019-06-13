@@ -18,6 +18,8 @@ sublime_fuzzy = "0.6.0"
 websocket = "0.22.4"
 log = "0.4.6"
 simple-logging = "2.0.2"
+specs = "0.14.3"
+specs-derive = "0.4.0"
 
 [dependencies.sdl2]
 version = "0.32.1"
