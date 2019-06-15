@@ -12,18 +12,18 @@ extern crate specs;
 #[macro_use]
 extern crate specs_derive;
 
-use std::io::{ErrorKind};
+use std::io::ErrorKind;
 use crate::common::BinaryReader;
-use crate::rsw::{Rsw};
-use crate::gnd::{Gnd};
+use crate::rsw::Rsw;
+use crate::gnd::Gnd;
 use crate::gat::Gat;
 
-use imgui::{ImString};
+use imgui::ImString;
 use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3};
 use crate::opengl::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::{Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
-use crate::rsm::{Rsm};
+use crate::rsm::Rsm;
 use sdl2::keyboard::{Keycode, Scancode};
 use crate::act::ActionFile;
 use crate::spr::SpriteFile;
@@ -35,6 +35,7 @@ use std::sync::Mutex;
 use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
+use std::path::Path;
 
 // guild_vs4.rsw
 
@@ -47,12 +48,32 @@ mod rsm;
 mod act;
 mod spr;
 
+enum ActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Sitting = 16,
+    PickingItem = 24,
+    StandBy = 32,
+    Attacking1 = 40,
+    ReceivingDamage = 48,
+    Freeze1 = 56,
+    Dead = 65,
+    Freeze2 = 72,
+    Attacking2 = 80,
+    Attacking3 = 88,
+    CastingSpell = 96,
+}
+
 pub struct Camera {
     pub pos: Point3<f32>,
     pub front: Vector3<f32>,
     pub up: Vector3<f32>,
     pub right: Vector3<f32>,
 }
+
+// the values that should be added to the sprite direction based on the camera
+// direction (the index is the camera direction, which is floor(angle/45)
+const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
 impl Camera {
     pub fn new(pos: Point3<f32>) -> Camera {
@@ -109,6 +130,7 @@ struct CameraComponent {
     pitch: f32,
 }
 
+
 impl CameraComponent {
     fn new() -> CameraComponent {
         CameraComponent {
@@ -116,7 +138,7 @@ impl CameraComponent {
             mouse_down: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
-            yaw: -90.0,
+            yaw: 270.0,
             pitch: 0.0,
         }
     }
@@ -130,20 +152,89 @@ struct BrowserClient {
 }
 
 #[derive(Component)]
-struct Position(Vector3<f32>);
+pub struct PositionComponent(Vector3<f32>);
 
 #[derive(Component, Default)]
-struct InputProducer {
+pub struct InputProducerComponent {
     inputs: Vec<sdl2::event::Event>,
     keys: HashSet<Scancode>,
 }
+
+pub struct SpriteResource {
+    action: ActionFile,
+    frames: Vec<spr::RenderableFrame>,
+}
+
+impl SpriteResource {
+    pub fn new(path: &str) -> SpriteResource {
+        info!("Loading {}", path);
+        let frames: Vec<spr::RenderableFrame> = SpriteFile::load(
+            BinaryReader::new(format!("{}.spr", path))
+        ).frames
+            .into_iter()
+            .map(|frame| spr::RenderableFrame::from(frame))
+            .collect();
+        let action = ActionFile::load(
+            BinaryReader::new(format!("{}.act", path))
+        );
+        SpriteResource {
+            action,
+            frames,
+        }
+    }
+}
+
+#[derive(Component)]
+struct DummyAiComponent {
+    target_pos: Point3<f32>,
+    state: i32, // 0 standing, 1 walking
+}
+
+struct DummyAiSystem;
+
+impl<'a> specs::System<'a> for DummyAiSystem {
+    type SystemData = (
+        specs::Entities<'a>,
+        specs::WriteStorage<'a, PositionComponent>,
+        specs::WriteStorage<'a, DummyAiComponent>,
+        specs::WriteStorage<'a, AnimatedSpriteComponent>,
+    );
+
+    fn run(&mut self, (
+        entities,
+        mut position_storage,
+        mut ai_storage,
+        mut animated_sprite_storage,
+    ): Self::SystemData) {
+        let mut rng = rand::thread_rng();
+        for (entity, pos, ai) in (&entities, &mut position_storage, &mut ai_storage).join() {
+            if nalgebra::distance(&nalgebra::Point::from(pos.0), &ai.target_pos) < 10.0 {
+                ai.target_pos = Point3::<f32>::new(2.0 * 200.0 * (rng.gen::<f32>()), 0.5, -(2.0 * 200.0 * (rng.gen::<f32>())));
+                if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
+                    let dir_vec = (ai.target_pos - pos.0);
+                    // "- 90.0"
+                    // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,
+                    // this calculation gives a different result which is shifter 90 degrees clockwise,
+                    // so it is 90 at [1;0].
+                    let dd = dir_vec.x.atan2(dir_vec.z).to_degrees() - 90.0;
+                    let dd = if dd < 0.0 { dd + 360.0 } else if dd > 360.0 { dd - 360.0 } else { dd };
+                    let dir_index = (dd / 45.0 + 0.5) as usize % 8;
+                    anim_sprite.direction = DIRECTION_TABLE[dir_index];
+                }
+            } else {
+                pos.0 += (ai.target_pos - nalgebra::Point::from(pos.0)).normalize() * 0.1;
+            }
+        }
+    }
+}
+
 
 struct BrowserInputProducerSystem;
 
 impl<'a> specs::System<'a> for BrowserInputProducerSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, InputProducer>,
+        specs::WriteStorage<'a, InputProducerComponent>,
         specs::WriteStorage<'a, BrowserClient>,
     );
 
@@ -288,7 +379,7 @@ struct InputConsumerSystem;
 
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
-        specs::WriteStorage<'a, InputProducer>,
+        specs::WriteStorage<'a, InputProducerComponent>,
         specs::WriteStorage<'a, CameraComponent>,
     );
 
@@ -327,6 +418,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             if client.pitch < -89.0 {
                                 client.pitch = -89.0;
                             }
+                            if client.yaw > 360.0 {
+                                client.yaw -= 360.0;
+                            } else if client.yaw < 0.0 {
+                                client.yaw += 360.0;
+                            }
                             client.camera.rotate(client.pitch, client.yaw);
                         }
                         client.last_mouse_x = x as u16;
@@ -363,40 +459,38 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 
 struct RenderBrowserClientsSystem;
 
+#[derive(Component)]
+struct DirectionComponent(f32);
+
+#[derive(Component)]
+struct AnimatedSpriteComponent {
+    file_index: usize,
+    action_index: usize,
+    animation_start: Tick,
+    direction: usize,
+}
+
 impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
     type SystemData = (
         specs::ReadStorage<'a, CameraComponent>,
         specs::WriteStorage<'a, BrowserClient>,
-        specs::ReadExpect<'a, MapRenderData>,
-        specs::ReadExpect<'a, Shaders>,
-        specs::ReadExpect<'a, ActionFile>,
-        specs::ReadExpect<'a, Vec<spr::RenderableFrame>>,
-        specs::ReadExpect<'a, RenderMatrices>,
-        specs::ReadExpect<'a, Tick>,
+        specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(&mut self, (
         camera_storage,
         mut browser_client_storage,
-        map_render_data,
-        shaders,
-        body_action,
-        sprite_frames,
-        matrices,
-        tick,
+        system_vars,
     ): Self::SystemData) {
         for (camera, browser) in (&camera_storage, &mut browser_client_storage).join() {
+            let view = camera.camera.create_view_matrix();
             render_client(
-                &camera.camera,
-                &shaders.ground_shader_program,
-                &shaders.model_shader_program,
-                &shaders.sprite_shader_program,
-                &matrices.projection,
-                &map_render_data,
-                &body_action,
-                *tick,
-                &sprite_frames,
-                &vec![],
+                &view,
+                &system_vars.shaders.ground_shader_program,
+                &system_vars.shaders.model_shader_program,
+                &system_vars.shaders.sprite_shader_program,
+                &system_vars.matrices.projection,
+                &system_vars.map_render_data,
             ); // browser_client_positions
             // now the back buffer contains the rendered image for this client
             unsafe {
@@ -409,41 +503,96 @@ impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
 
 struct RenderDesktopClientSystem;
 
+struct SystemVariables {
+    shaders: Shaders,
+    sprite_resources: Vec<SpriteResource>,
+    tick: Tick,
+    matrices: RenderMatrices,
+    map_render_data: MapRenderData,
+}
+
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
         specs::ReadStorage<'a, CameraComponent>,
         specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadExpect<'a, MapRenderData>,
-        specs::ReadExpect<'a, Shaders>,
-        specs::ReadExpect<'a, ActionFile>,
-        specs::ReadExpect<'a, Vec<spr::RenderableFrame>>,
-        specs::ReadExpect<'a, RenderMatrices>,
-        specs::ReadExpect<'a, Tick>,
+        specs::ReadStorage<'a, PositionComponent>,
+        specs::ReadStorage<'a, DirectionComponent>,
+        specs::ReadStorage<'a, AnimatedSpriteComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(&mut self, (
         camera_storage,
         browser_client_storage,
-        map_render_data,
-        shaders,
-        body_action,
-        sprite_frames,
-        matrices,
-        tick,
+        position_storage,
+        dir_storage,
+        animated_sprite_storage,
+        system_vars,
     ): Self::SystemData) {
         for (camera, _not_browser) in (&camera_storage, !&browser_client_storage).join() {
+            let view = camera.camera.create_view_matrix();
             render_client(
-                &camera.camera,
-                &shaders.ground_shader_program,
-                &shaders.model_shader_program,
-                &shaders.sprite_shader_program,
-                &matrices.projection,
-                &map_render_data,
-                &body_action,
-                *tick,
-                &sprite_frames,
-                &vec![],
+                &view,
+                &system_vars.shaders.ground_shader_program,
+                &system_vars.shaders.model_shader_program,
+                &system_vars.shaders.sprite_shader_program,
+                &system_vars.matrices.projection,
+                &system_vars.map_render_data,
             );
+            system_vars.shaders.sprite_shader_program.gl_use();
+            system_vars.shaders.sprite_shader_program.set_mat4("projection", &system_vars.matrices.projection);
+            system_vars.shaders.sprite_shader_program.set_mat4("view", &view);
+            system_vars.shaders.sprite_shader_program.set_int("model_texture", 0);
+            system_vars.shaders.sprite_shader_program.set_f32("alpha", 1.0);
+
+            system_vars.map_render_data.sprite_vertex_array.bind();
+
+
+            for (entity_pos, dir, animated_sprite) in (&position_storage,
+                                                &dir_storage,
+                                                &animated_sprite_storage).join() {
+                // draw layer
+                let tick = system_vars.tick;
+                let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
+                let cam_dir = (((camera.yaw / 45.0) + 0.5) as usize) % 8;
+                let idx = animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8;
+                let resource = &system_vars.sprite_resources[animated_sprite.file_index];
+                let delay = resource.action.actions[idx].delay;
+                let frame_count = resource.action.actions[idx].frames.len();
+                let frame_index = ((animation_elapsed_tick / (delay / 20) as u64) % frame_count as u64) as usize;
+                for layer in &resource.action.actions[idx].frames[frame_index].layers {
+                    if layer.sprite_frame_index < 0 {
+                        continue;
+                    }
+                    let sprite_frame = &resource.frames[layer.sprite_frame_index as usize];
+
+                    let width = sprite_frame.texture.width as f32 * layer.scale[0];
+                    let height = sprite_frame.texture.height as f32 * layer.scale[1];
+                    sprite_frame.texture.bind(gl::TEXTURE0);
+
+                    let mut matrix = Matrix4::<f32>::identity();
+                    matrix.prepend_translation_mut(&entity_pos.0);
+
+                    system_vars.shaders.sprite_shader_program.set_mat4("model", &matrix);
+                    // size for cameras
+                    let width = width as f32 / 175.0 * 5.0;
+                    let width = if layer.is_mirror { -width } else { width };
+                    system_vars.shaders.sprite_shader_program.set_vec3("size", &[
+                        width,
+                        height as f32 / 175.0 * 5.0,
+                        0.0
+                    ]);
+                    system_vars.shaders.sprite_shader_program.set_f32("alpha", 1.0);
+
+                    unsafe {
+                        gl::DrawArrays(
+                            gl::TRIANGLE_STRIP, // mode
+                            0, // starting index in the enabled arrays
+                            4, // number of indices to be rendered
+                        );
+                    }
+                }
+            }
         }
     }
 }
@@ -461,8 +610,9 @@ impl<'a> specs::System<'a> for RenderStreamingSystem {
         for browser in (&browser_client_storage).join() {
             let message = websocket::Message::binary(browser.offscreen.as_slice());
 //                sent_bytes_per_second_counter += client.offscreen.len();
-            // TODO_error handling
-            browser.websocket.lock().unwrap().send_message(&message).unwrap();
+            // it is ok if it fails, the client might have disconnected but
+            // ecs_world.maintain has not executed yet to remove it from the world
+            let _result = browser.websocket.lock().unwrap().send_message(&message);
         }
     }
 }
@@ -485,22 +635,25 @@ fn main() {
     simple_logging::log_to_stderr(LevelFilter::Debug);
 
     let mut ecs_world = specs::World::new();
-    ecs_world.register::<Position>();
+    ecs_world.register::<PositionComponent>();
     ecs_world.register::<CameraComponent>();
     ecs_world.register::<BrowserClient>();
-    ecs_world.register::<InputProducer>();
-    ecs_world.add_resource(Tick(0));
+    ecs_world.register::<InputProducerComponent>();
+    ecs_world.register::<AnimatedSpriteComponent>();
+    ecs_world.register::<DirectionComponent>();
+    ecs_world.register::<DummyAiComponent>();
 
     let desktop_client_entity = ecs_world
         .create_entity()
         .with(CameraComponent::new())
-        .with(InputProducer::default())
+        .with(InputProducerComponent::default())
         .build();
 
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
         .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
+        .with(DummyAiSystem, "ai", &[])
         .with_thread_local(RenderBrowserClientsSystem)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem)
@@ -572,34 +725,57 @@ fn main() {
             ]
         ).unwrap(),
     };
-    ecs_world.add_resource(shaders);
 
     let map_render_data = load_map("prontera");
-    ecs_world.add_resource(map_render_data);
+    let mut rng = rand::thread_rng();
 
-    let head_sprite = SpriteFile::load(
+
+    let sprite_frames: Vec<spr::RenderableFrame> = SpriteFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.spr"))
-    );
-    let sprite_frames: Vec<spr::RenderableFrame> = head_sprite.frames
-        .into_iter()
-        .map(|frame| spr::RenderableFrame::from(frame))
-        .collect();
-    let gunslinger_body_sprite = SpriteFile::load(
-        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².spr"))
-    );
-    let body_action = ActionFile::load(
-        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².act"))
-    );
-    dbg!(body_action.actions.len());
-    dbg!(body_action.actions[8].frames.len());
-    dbg!(&body_action.actions[8].frames);
-    let sprite_frames: Vec<spr::RenderableFrame> = gunslinger_body_sprite.frames
+    ).frames
         .into_iter()
         .map(|frame| spr::RenderableFrame::from(frame))
         .collect();
 
-    ecs_world.add_resource(body_action);
-    ecs_world.add_resource(sprite_frames);
+    fn grf(str: &str) -> String{
+        format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
+    }
+    // data\.act
+//    let sprite_resources = vec![
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³²")), // Male Gunslinger
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\±¸ÆäÄÚÅ©·ç¼¼ÀÌ´õ_³²")), // Male Peco Crusader
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\±Â»Ç_H_³²")), // Male Knight
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\¹«ÈÑ¹ÙÁÖ_³²")), // Female bard
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\¾Î¼¼½Å_³²")), // Male assassin
+//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\Å©·Ç¼¼ÀÌ´Õ_H_¿©")), // Female crusader
+//    ];
+
+    let sprite_resources = std::fs::read_dir(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²")).unwrap().map(|entry| {
+        let dir_entry = entry.unwrap();
+        if dir_entry.file_name().into_string().unwrap().ends_with("act") {
+            let mut sstr = dir_entry.file_name().into_string().unwrap();
+            let len = sstr.len();
+            sstr.truncate(len - 4); // remove extension
+            Some(sstr)
+        } else { None }
+    }).filter_map(|x| x.map(|it| SpriteResource::new(&(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &it))))
+        .collect::<Vec<SpriteResource>>();
+
+    (0..3_000).for_each(|_i| {
+        let pos = Point3::<f32>::new(2.0 * map_render_data.gnd.width as f32 * (rng.gen::<f32>()), 0.5, -(2.0 * map_render_data.gnd.height as f32 * (rng.gen::<f32>())));
+        ecs_world
+            .create_entity()
+            .with(PositionComponent(pos.coords))
+            .with(DirectionComponent(0.0))
+            .with(DummyAiComponent { target_pos: pos, state: 0 })
+            .with(AnimatedSpriteComponent {
+                file_index: rng.gen::<usize>() % sprite_resources.len(),
+                action_index: 8,
+                animation_start: Tick(0),
+                direction: 0,
+            })
+            .build();
+    });
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -626,9 +802,15 @@ fn main() {
     let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32),
     };
-    ecs_world.add_resource(render_matrices);
 
-    let mut tick = Tick(0);
+    ecs_world.add_resource(SystemVariables {
+        shaders,
+        sprite_resources,
+        tick: Tick(0),
+        matrices: render_matrices,
+        map_render_data,
+    });
+
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
@@ -648,7 +830,7 @@ fn main() {
                 ecs_world
                     .create_entity()
                     .with(CameraComponent::new())
-                    .with(InputProducer::default())
+                    .with(InputProducerComponent::default())
                     .with(BrowserClient {
                         websocket: Mutex::new(browser_client),
                         offscreen: vec![0; 900 * 700 * 4],
@@ -662,7 +844,7 @@ fn main() {
         };
 
         {
-            let mut storage = ecs_world.write_storage::<InputProducer>();
+            let mut storage = ecs_world.write_storage::<InputProducerComponent>();
             let inputs = storage.get_mut(desktop_client_entity).unwrap();
             for event in event_pump.poll_iter() {
                 trace!("SDL event: {:?}", event);
@@ -773,25 +955,19 @@ fn main() {
             }
         }
         fps_counter += 1;
-        tick.0 += 1;
+        ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
     }
 }
 
-fn render_client(camera: &Camera,
+fn render_client(view: &Matrix4<f32>,
                  ground_shader_program: &ShaderProgram,
                  model_shader_program: &ShaderProgram,
                  sprite_shader_program: &ShaderProgram,
                  projection_matrix: &Matrix4<f32>,
-                 map_render_data: &MapRenderData,
-                 body_action: &ActionFile,
-                 tick: Tick,
-                 sprite_frames: &Vec<spr::RenderableFrame>,
-                 browser_clients: &Vec<Point3<f32>>) {
+                 map_render_data: &MapRenderData) {
     unsafe {
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
     }
-
-    let view = camera.create_view_matrix();
 
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
@@ -868,73 +1044,6 @@ fn render_client(camera: &Camera,
             }
         }
     }
-
-    sprite_shader_program.gl_use();
-    sprite_shader_program.set_mat4("projection", &projection_matrix);
-    sprite_shader_program.set_mat4("view", &view);
-    sprite_shader_program.set_int("model_texture", 0);
-    sprite_shader_program.set_f32("alpha", 1.0);
-
-    map_render_data.sprite_vertex_array.bind();
-
-    // draw layer
-    let delay = body_action.actions[8].delay;
-    let frame_count = body_action.actions[8].frames.len();
-    let frame_index = ((tick.0 / (delay / 3) as u64) % frame_count as u64) as usize;
-    let layer = &body_action.actions[8].frames[frame_index].layers[0];
-    let sprite_frame = &sprite_frames[layer.sprite_frame_index as usize];
-
-    let width = sprite_frame.texture.width as f32 * layer.scale[0];
-    let height = sprite_frame.texture.height as f32 * layer.scale[1];
-    sprite_frame.texture.bind(gl::TEXTURE0);
-
-
-// size for cameras
-    sprite_shader_program.set_vec3("size", &[
-        width as f32 / 175.0 * 20.0,
-        height as f32 / 175.0 * 20.0,
-        0.0
-    ]);
-    sprite_shader_program.set_f32("alpha", 1.0);
-
-// draw browser clients
-    for browser_client in browser_clients.iter() {
-        let mut matrix = Matrix4::<f32>::identity();
-        matrix.prepend_translation_mut(&browser_client.coords);
-
-        sprite_shader_program.set_mat4("model", &matrix);
-
-        unsafe {
-            gl::DrawArrays(
-                gl::TRIANGLE_STRIP, // mode
-                0, // starting index in the enabled arrays
-                4, // number of indices to be rendered
-            );
-        }
-    }
-
-    sprite_shader_program.set_f32("alpha", 0.5);
-// size for sprites
-    sprite_shader_program.set_vec3("size", &[
-        width as f32 / 175.0 * 5.0,
-        height as f32 / 175.0 * 5.0,
-        0.0
-    ]);
-
-    for entity in map_render_data.entities.iter() {
-        let mut matrix = Matrix4::<f32>::identity();
-        matrix.prepend_translation_mut(&entity.pos);
-
-        sprite_shader_program.set_mat4("model", &matrix);
-
-        unsafe {
-            gl::DrawArrays(
-                gl::TRIANGLE_STRIP, // mode
-                0, // starting index in the enabled arrays
-                4, // number of indices to be rendered
-            );
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -954,7 +1063,6 @@ pub struct MapRenderData {
     pub lightmap_texture: GlTexture,
     pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
-    pub entities: Vec<EntityRenderData>,
 }
 
 pub struct EntityRenderData {
@@ -1028,10 +1136,10 @@ fn load_map(map_name: &str) -> MapRenderData {
     let lightmap_texture = Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
 
     let s: Vec<[f32; 4]> = vec![
-        [-0.5, 0.5, 0.0, 0.0],
-        [0.5, 0.5, 1.0, 0.0],
-        [-0.5, -0.5, 0.0, 1.0],
-        [0.5, -0.5, 1.0, 1.0]
+        [-0.5, 1.0, 0.0, 0.0],
+        [0.5, 1.0, 1.0, 0.0],
+        [-0.5, 0.0, 0.0, 1.0],
+        [0.5, 0.0, 1.0, 1.0]
     ];
     let sprite_vertex_array = VertexArray::new(&s, &[
         VertexAttribDefinition {
@@ -1061,12 +1169,6 @@ fn load_map(map_name: &str) -> MapRenderData {
             offset_of_first_element: 10,
         }
     ]);
-    let mut rng = rand::thread_rng();
-    let entities = (0..1_000).map(|_i| {
-        EntityRenderData {
-            pos: Vector3::<f32>::new(2.0 * ground.width as f32 * (rng.gen::<f32>()), 8.0, -(2.0 * ground.height as f32 * (rng.gen::<f32>()))),
-        }
-    }).collect();
     MapRenderData {
         gnd: ground,
         rsw: world,
@@ -1077,7 +1179,6 @@ fn load_map(map_name: &str) -> MapRenderData {
         lightmap_texture,
         model_instances,
         sprite_vertex_array,
-        entities,
         use_tile_colors: true,
         use_lightmaps: true,
         use_lighting: true,

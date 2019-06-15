@@ -22,8 +22,8 @@ pub struct ActionFrame {
 #[derive(Debug)]
 pub struct Layer {
     pub pos: [i32; 2],
-    pub sprite_frame_index: i32,
-    pub is_mirror: i32,
+    pub sprite_frame_index: i32, // can be -1!!
+    pub is_mirror: bool,
     pub scale: [f32; 2],
     pub color: [f32; 4],
     pub angle: i32,
@@ -40,7 +40,8 @@ impl ActionFile {
             panic!("Invalig Action header: {}", header);
         }
 
-        let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
+        let version = buf.next_u8() as f32 / 10.0 + buf.next_u8() as f32;
+        dbg!(version);
 
         let action_acount = buf.next_u16() as usize;
         buf.skip(10);
@@ -88,7 +89,7 @@ impl ActionFile {
         (0..layer_count).map(|_i| {
             let pos = [buf.next_i32(), buf.next_i32()];
             let sprite_frame_index = buf.next_i32();
-            let is_mirror = buf.next_i32();
+            let is_mirror = buf.next_i32() != 0;
             let color = if version >= 2.0 {
                 [
                     buf.next_u8() as f32 / 255.0,
