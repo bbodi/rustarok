@@ -1,6 +1,6 @@
 use std::borrow::ToOwned;
 use crate::common::BinaryReader;
-use nalgebra::{Vector, Vector3, Matrix4};
+use nalgebra::{Vector3};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::Rsm;
 use crate::ModelName;
@@ -199,7 +199,7 @@ impl Rsw {
         let mut lights: Vec<MapLight> = Vec::with_capacity(count as usize);
         let mut sounds: Vec<MapSound> = Vec::with_capacity(count as usize);
         let mut effects: Vec<MapEffect> = Vec::with_capacity(count as usize);
-        for i in 0..count {
+        for _i in 0..count {
             let typ = buf.next_i32();
             match typ {
                 1 => {

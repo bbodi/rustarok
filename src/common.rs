@@ -1,11 +1,10 @@
 use std::fs::File;
-use std::string::FromUtf8Error;
 use std::path::Path;
 use std::io::Read;
 
 use encoding;
 use encoding::types::Encoding;
-use encoding::{DecoderTrap, EncoderTrap};
+use encoding::{DecoderTrap};
 
 pub struct BinaryReader {
     buf: Vec<u8>,

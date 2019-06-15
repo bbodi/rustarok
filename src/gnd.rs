@@ -1,7 +1,4 @@
-use std::collections::btree_map::BTreeMap;
-use std::collections::HashMap;
-
-use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Rotation3, Vector3};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
 
@@ -86,8 +83,7 @@ impl Gnd {
         let surfaces = Gnd::load_surfaces(&mut buf, width, height);
         let normals = Gnd::smooth_normal(width as usize,
                                          height as usize,
-                                         &surfaces,
-                                         &tiles);
+                                         &surfaces);
 
         let l_count_w = (lightmaps.count as f32).sqrt().round() as usize;
         let l_count_h = (lightmaps.count as f32).sqrt().ceil() as usize;
@@ -184,7 +180,7 @@ impl Gnd {
                         water.push(WaterVertex {
                             pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, y * 2.0]),
                             texcoord: [
-                                one_if_zero(((x + 1.0) % 5.0 / 5.0)),
+                                one_if_zero((x + 1.0) % 5.0 / 5.0),
                                 y % 5.0 / 5.0,
                             ],
                         });
@@ -393,11 +389,7 @@ impl Gnd {
             None,
             &mut scaled_tiles_color_surface,
             Rect::new(0, 0, scaled_w, scaled_h),
-        );
-
-        ;
-        tile_color_surface.save_bmp("tile_color_surface.bmp");
-        scaled_tiles_color_surface.save_bmp("tile_color_surface_s.bmp");
+        ).unwrap();
 
         GlTexture::from_surface(scaled_tiles_color_surface)
     }
@@ -416,7 +408,7 @@ impl Gnd {
     }
 
     fn load_surfaces(buf: &mut BinaryReader, width: u32, height: u32) -> Vec<Surface> {
-        (0..width * height).map(|i| {
+        (0..width * height).map(|_i| {
             Surface {
                 height: [buf.next_f32() / 5f32, buf.next_f32() / 5f32, buf.next_f32() / 5f32, buf.next_f32() / 5f32],
                 tile_up: buf.next_i32() as isize,
@@ -438,7 +430,7 @@ impl Gnd {
         let atlas_px_u: f32 = 1f32 / 258f32;
         let atlas_px_v: f32 = 1f32 / 258f32;
 
-        (0..count).map(|i| {
+        (0..count).map(|_i| {
             let u1 = buf.next_f32();
             let u2 = buf.next_f32();
             let u3 = buf.next_f32();
@@ -549,8 +541,7 @@ impl Gnd {
 
     fn smooth_normal(width: usize,
                      height: usize,
-                     surfaces: &Vec<Surface>,
-                     tiles: &Vec<Tile>) -> Vec<[Vector3<f32>; 4]> {
+                     surfaces: &Vec<Surface>) -> Vec<[Vector3<f32>; 4]> {
         // Calculate normal for each cells
         let mut tmp: Vec<Vector3<f32>> = vec![Vector3::zeros(); width * height];
         let mut normals: Vec<[Vector3<f32>; 4]> = vec![
@@ -600,14 +591,14 @@ impl Gnd {
 
                 // Up Right
                 n[1] = n[1] + tmp[((x + 0) + (y + 0) * width) as usize];
-                n[1] = n[1] + or(&tmp, x + 1, (y + 0), width);
+                n[1] = n[1] + or(&tmp, x + 1, y + 0, width);
                 n[1] = n[1] + or(&tmp, x + 1, y - 1, width);
                 n[1] = n[1] + or(&tmp, x + 0, y - 1, width);
                 n[1].normalize_mut();
 
                 // Bottom Right
                 n[2] = n[2] + tmp[((x + 0) + (y + 0) * width) as usize];
-                n[2] = n[2] + or(&tmp, x + 1, (y + 0), width);
+                n[2] = n[2] + or(&tmp, x + 1, y + 0, width);
                 n[2] = n[2] + or(&tmp, x + 1, y + 1, width);
                 n[2] = n[2] + or(&tmp, x + 0, y + 1, width);
                 n[2].normalize_mut();
@@ -665,13 +656,11 @@ impl Gnd {
             sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
                 warn!("Missing: {}", path);
                 let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
-                missing_texture.fill_rect(None, Color::RGB(255, 0, 255));
+                missing_texture.fill_rect(None, Color::RGB(255, 0, 255)).unwrap();
                 missing_texture
             })
         }).collect();
         let surface_atlas = Gnd::create_texture_atlas(&texture_surfaces);
-
-        surface_atlas.save_bmp("shitaka.bmp");
         GlTexture::from_surface(surface_atlas)
     }
 
@@ -687,13 +676,11 @@ impl Gnd {
             optimized.blit_scaled(None,
                                   &mut surface_atlas,
                                   Rect::new(x, y, 258, 258),
-            );
-            let width = optimized.width();
-            let height = optimized.height();
+            ).unwrap();
             optimized.blit_scaled(None,
                                   &mut surface_atlas,
                                   Rect::new(x + 1, y + 1, 256, 256),
-            );
+            ).unwrap();
         }
         surface_atlas
     }
@@ -712,11 +699,11 @@ mod tests {
     #[test]
     fn test_mesh_loading() {
         let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", "new_zone01")));
-        let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")));
+        let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")));
         let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", "new_zone01")),
                                world.water.level,
                                world.water.wave_height);
-        for tiles in ground.tiles {}
+
         let mut content = String::with_capacity(8 * 1024 * 1024);
         File::open("tests/mesh.bin").unwrap().read_to_string(&mut content).unwrap();
         let expected_floats: Vec<f32> = content.split(",").map(|line| {

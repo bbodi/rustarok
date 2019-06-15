@@ -2,7 +2,6 @@ extern crate sdl2;
 extern crate gl;
 extern crate nalgebra;
 extern crate encoding;
-#[macro_use]
 extern crate imgui;
 extern crate imgui_sdl2;
 extern crate imgui_opengl_renderer;
@@ -13,24 +12,18 @@ extern crate specs;
 #[macro_use]
 extern crate specs_derive;
 
-use std::io;
-use std::io::prelude::*;
-use std::fs::File;
-use std::string::FromUtf8Error;
-use std::path::Path;
-use std::io::{Cursor, ErrorKind};
+use std::io::{ErrorKind};
 use crate::common::BinaryReader;
-use crate::rsw::{Rsw, GroundData};
-use crate::gnd::{Gnd, MeshVertex};
+use crate::rsw::{Rsw};
+use crate::gnd::{Gnd};
 use crate::gat::Gat;
-use std::ffi::{CString, CStr};
 
-use imgui::{ImGuiCond, ImString, ImStr, ColorFormat, ColorPickerMode, ImTexture};
-use nalgebra::{Vector3, Matrix4, Point3, Matrix, Matrix1x2, Matrix3, Unit, Rotation3};
+use imgui::{ImString};
+use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3};
 use crate::opengl::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture};
 use std::time::{Duration, SystemTime};
 use std::collections::{HashMap, HashSet};
-use crate::rsm::{Rsm, RsmNodeVertex};
+use crate::rsm::{Rsm};
 use sdl2::keyboard::{Keycode, Scancode};
 use crate::act::ActionFile;
 use crate::spr::SpriteFile;
@@ -38,7 +31,6 @@ use rand::Rng;
 use websocket::stream::sync::TcpStream;
 use websocket::{OwnedMessage, WebSocketError};
 use log::LevelFilter;
-use sdl2::event::Event::{KeyDown, TextInput, MouseMotion, MouseButtonDown, MouseButtonUp, KeyUp};
 use std::sync::Mutex;
 use specs::Builder;
 use specs::Join;
@@ -55,7 +47,6 @@ mod rsm;
 mod act;
 mod spr;
 
-#[derive(Component)]
 pub struct Camera {
     pub pos: Point3<f32>,
     pub front: Vector3<f32>,
@@ -109,6 +100,29 @@ impl Camera {
 }
 
 #[derive(Component)]
+struct CameraComponent {
+    camera: Camera,
+    mouse_down: bool,
+    last_mouse_x: u16,
+    last_mouse_y: u16,
+    yaw: f32,
+    pitch: f32,
+}
+
+impl CameraComponent {
+    fn new() -> CameraComponent {
+        CameraComponent {
+            camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
+            mouse_down: false,
+            last_mouse_x: 400,
+            last_mouse_y: 300,
+            yaw: -90.0,
+            pitch: 0.0,
+        }
+    }
+}
+
+#[derive(Component)]
 struct BrowserClient {
     websocket: Mutex<websocket::sync::Client<TcpStream>>,
     offscreen: Vec<u8>,
@@ -118,9 +132,10 @@ struct BrowserClient {
 #[derive(Component)]
 struct Position(Vector3<f32>);
 
-#[derive(Component)]
+#[derive(Component, Default)]
 struct InputProducer {
-    inputs: Vec<sdl2::event::Event>
+    inputs: Vec<sdl2::event::Event>,
+    keys: HashSet<Scancode>,
 }
 
 struct BrowserInputProducerSystem;
@@ -152,7 +167,6 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                         client.ping = (now_ms - ping_time) as u16;
                     }
                     OwnedMessage::Binary(buf) => {
-                        let mut upper_byte: u8 = 0;
                         let mut iter = buf.iter();
                         while let Some(header) = iter.next() {
                             match header {
@@ -249,21 +263,21 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 _ => {
                                     warn!("Unknown header: {}", header);
-                                    entities.delete(entity);
+                                    entities.delete(entity).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
                         warn!("Unknown msg: {:?}", msg);
-                        entities.delete(entity);
+                        entities.delete(entity).unwrap();
                     }
                 }
             } else if let Err(WebSocketError::IoError(e)) = sh {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
                     info!("Client has disconnected");
-                    entities.delete(entity);
+                    entities.delete(entity).unwrap();
                 }
             }
         }
@@ -274,81 +288,74 @@ struct InputConsumerSystem;
 
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
-        specs::Entities<'a>,
         specs::WriteStorage<'a, InputProducer>,
-        specs::WriteStorage<'a, Camera>,
+        specs::WriteStorage<'a, CameraComponent>,
     );
 
     fn run(&mut self, (
-        entities,
         mut input_storage,
         mut camera_storage,
     ): Self::SystemData) {
-        for (entity, camera, input_producer) in (&entities, &mut camera_storage, &mut input_storage).join() {
+        for (client, input_producer) in (&mut camera_storage, &mut input_storage).join() {
             let events: Vec<_> = input_producer.inputs.drain(..).collect();
-            let mut key = Scancode::L;
             for event in events {
                 match event {
                     sdl2::event::Event::MouseButtonDown { .. } => {
-//                        client.mouse_down = true;
+                        client.mouse_down = true;
                     }
                     sdl2::event::Event::MouseButtonUp { .. } => {
-//                        client.mouse_down = false;
+                        client.mouse_down = false;
                     }
                     sdl2::event::Event::MouseMotion {
-                        timestamp,
-                        window_id,
-                        which,
-                        mousestate,
+                        timestamp: _,
+                        window_id: _,
+                        which: _,
+                        mousestate: _,
                         x,
                         y,
-                        xrel,
-                        yrel
+                        xrel: _,
+                        yrel: _
                     } => {
-//                        if client.mouse_down {
-//                            let x_offset = *x - client.last_mouse_x as i32;
-//                            let y_offset = client.last_mouse_y as i32 - *y; // reversed since y-coordinates go from bottom to top
-//                            client.yaw += x_offset as f32;
-//                            client.pitch += y_offset as f32;
-//                            if client.pitch > 89.0 {
-//                                client.pitch = 89.0;
-//                            }
-//                            if client.pitch < -89.0 {
-//                                client.pitch = -89.0;
-//                            }
-//                            client.camera.rotate(client.pitch, client.yaw);
-//                        }
-//                        client.last_mouse_x = *x as u16;
-//                        client.last_mouse_y = *y as u16;
+                        if client.mouse_down {
+                            let x_offset = x - client.last_mouse_x as i32;
+                            let y_offset = client.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
+                            client.yaw += x_offset as f32;
+                            client.pitch += y_offset as f32;
+                            if client.pitch > 89.0 {
+                                client.pitch = 89.0;
+                            }
+                            if client.pitch < -89.0 {
+                                client.pitch = -89.0;
+                            }
+                            client.camera.rotate(client.pitch, client.yaw);
+                        }
+                        client.last_mouse_x = x as u16;
+                        client.last_mouse_y = y as u16;
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if scancode.is_some() {
-//                            client.keys.insert(scancode.unwrap());
-//                            client.keys.insert(scancode.unwrap());
-                            key = scancode.unwrap();
+                            input_producer.keys.insert(scancode.unwrap());
                         }
                     }
                     sdl2::event::Event::KeyUp { scancode, .. } => {
                         if scancode.is_some() {
-//                            client.keys.remove(&scancode.unwrap());
-                            key = scancode.unwrap();
+                            input_producer.keys.remove(&scancode.unwrap());
                         }
                     }
                     _ => {}
                 }
 
-                //*camera_speed = if client.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
-                if key == Scancode::W {
-//                if client.keys.contains(&Scancode::W) {
-                    camera.move_forward(2.0);
-                }/* else if client.keys.contains(&Scancode::S) {
-                    client.camera.move_forward(-*camera_speed);
+                let camera_speed = if input_producer.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+                if input_producer.keys.contains(&Scancode::W) {
+                    client.camera.move_forward(camera_speed);
+                } else if input_producer.keys.contains(&Scancode::S) {
+                    client.camera.move_forward(-camera_speed);
                 }
-                if client.keys.contains(&Scancode::A) {
-                    client.camera.move_side(-*camera_speed);
-                } else if client.keys.contains(&Scancode::D) {
-                    client.camera.move_side(*camera_speed);
-                }*/
+                if input_producer.keys.contains(&Scancode::A) {
+                    client.camera.move_side(-camera_speed);
+                } else if input_producer.keys.contains(&Scancode::D) {
+                    client.camera.move_side(camera_speed);
+                }
             }
         }
     }
@@ -358,8 +365,7 @@ struct RenderBrowserClientsSystem;
 
 impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
     type SystemData = (
-        specs::ReadStorage<'a, Camera>,
-        specs::ReadStorage<'a, Position>,
+        specs::ReadStorage<'a, CameraComponent>,
         specs::WriteStorage<'a, BrowserClient>,
         specs::ReadExpect<'a, MapRenderData>,
         specs::ReadExpect<'a, Shaders>,
@@ -371,7 +377,6 @@ impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
 
     fn run(&mut self, (
         camera_storage,
-        position_storage,
         mut browser_client_storage,
         map_render_data,
         shaders,
@@ -382,7 +387,7 @@ impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
     ): Self::SystemData) {
         for (camera, browser) in (&camera_storage, &mut browser_client_storage).join() {
             render_client(
-                &camera,
+                &camera.camera,
                 &shaders.ground_shader_program,
                 &shaders.model_shader_program,
                 &shaders.sprite_shader_program,
@@ -406,8 +411,7 @@ struct RenderDesktopClientSystem;
 
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
-        specs::ReadStorage<'a, Camera>,
-        specs::ReadStorage<'a, Position>,
+        specs::ReadStorage<'a, CameraComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadExpect<'a, MapRenderData>,
         specs::ReadExpect<'a, Shaders>,
@@ -419,7 +423,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
     fn run(&mut self, (
         camera_storage,
-        position_storage,
         browser_client_storage,
         map_render_data,
         shaders,
@@ -430,7 +433,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     ): Self::SystemData) {
         for (camera, _not_browser) in (&camera_storage, !&browser_client_storage).join() {
             render_client(
-                &camera,
+                &camera.camera,
                 &shaders.ground_shader_program,
                 &shaders.model_shader_program,
                 &shaders.sprite_shader_program,
@@ -453,29 +456,15 @@ impl<'a> specs::System<'a> for RenderStreamingSystem {
     );
 
     fn run(&mut self, (
-        mut browser_client_storage,
+        browser_client_storage,
     ): Self::SystemData) {
-        for (browser) in (&browser_client_storage).join() {
+        for browser in (&browser_client_storage).join() {
             let message = websocket::Message::binary(browser.offscreen.as_slice());
 //                sent_bytes_per_second_counter += client.offscreen.len();
-            browser.websocket.lock().unwrap().send_message(&message);
+            // TODO_error handling
+            browser.websocket.lock().unwrap().send_message(&message).unwrap();
         }
     }
-}
-
-struct Client {
-    camera: Camera,
-    websocket: Option<websocket::sync::Client<TcpStream>>,
-    offscreen: Vec<u8>,
-    inputs: Vec<sdl2::event::Event>,
-    remove: bool,
-    mouse_down: bool,
-    last_mouse_x: u16,
-    last_mouse_y: u16,
-    yaw: f32,
-    pitch: f32,
-    ping: u16,
-    keys: HashSet<Scancode>,
 }
 
 struct Shaders {
@@ -497,14 +486,15 @@ fn main() {
 
     let mut ecs_world = specs::World::new();
     ecs_world.register::<Position>();
-    ecs_world.register::<Camera>();
+    ecs_world.register::<CameraComponent>();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<InputProducer>();
     ecs_world.add_resource(Tick(0));
 
-    ecs_world
+    let desktop_client_entity = ecs_world
         .create_entity()
-        .with(Camera::new(Point3::new(0.0, 0.0, 3.0)))
+        .with(CameraComponent::new())
+        .with(InputProducer::default())
         .build();
 
 
@@ -531,8 +521,9 @@ fn main() {
         .build()
         .unwrap();
 
-    let gl_context = window.gl_create_context().unwrap();
-    let gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
+    // these two variables must be in scope, so don't remove their variables
+    let _gl_context = window.gl_create_context().unwrap();
+    let _gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
 
     unsafe {
         gl::Viewport(0, 0, 900, 700); // set viewport
@@ -583,20 +574,20 @@ fn main() {
     };
     ecs_world.add_resource(shaders);
 
-    let mut map_render_data = load_map("prontera");
+    let map_render_data = load_map("prontera");
     ecs_world.add_resource(map_render_data);
 
-    let mut head_sprite = SpriteFile::load(
+    let head_sprite = SpriteFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.spr"))
     );
     let sprite_frames: Vec<spr::RenderableFrame> = head_sprite.frames
         .into_iter()
         .map(|frame| spr::RenderableFrame::from(frame))
         .collect();
-    let mut gunslinger_body_sprite = SpriteFile::load(
+    let gunslinger_body_sprite = SpriteFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².spr"))
     );
-    let mut body_action = ActionFile::load(
+    let body_action = ActionFile::load(
         BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³².act"))
     );
     dbg!(body_action.actions.len());
@@ -621,7 +612,7 @@ fn main() {
 
     let my_str = ImString::new("shitaka");
 
-    let mut map_name_filter = ImString::new("prontera");
+    let map_name_filter = ImString::new("prontera");
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
         if dir_entry.file_name().into_string().unwrap().ends_with("rsw") {
@@ -632,12 +623,10 @@ fn main() {
         } else { None }
     }).filter_map(|x| x).collect::<Vec<String>>();
 
-    let mut render_matrices = RenderMatrices {
+    let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32),
     };
     ecs_world.add_resource(render_matrices);
-
-    let mut camera_speed = 2f32;
 
     let mut tick = Tick(0);
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
@@ -648,51 +637,18 @@ fn main() {
     let mut sent_bytes_per_second: usize = 0;
     let mut sent_bytes_per_second_counter: usize = 0;
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
-    websocket_server.set_nonblocking(true);
-    let mut clients: Vec<Client> = vec![];
-
-    clients.push( // desktop client
-                  Client {
-                      camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
-                      websocket: None,
-                      offscreen: vec![0; 900 * 700 * 4],
-                      inputs: vec![],
-                      remove: false,
-                      mouse_down: false,
-                      last_mouse_x: 400,
-                      last_mouse_y: 300,
-                      yaw: -90.0,
-                      pitch: 0.0,
-                      ping: 0,
-                      keys: HashSet::new(),
-                  }
-    );
+    websocket_server.set_nonblocking(true).unwrap();
 
     'running: loop {
-        let result = match websocket_server.accept() {
+        match websocket_server.accept() {
             Ok(wsupgrade) => {
                 let browser_client = wsupgrade.accept().unwrap();
-                browser_client.set_nonblocking(true);
-//                let client = Client {
-//                    camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
-//                    websocket: Some(browser_client),
-//                    offscreen: vec![0; 900 * 700 * 4],
-//                    inputs: vec![],
-//                    remove: false,
-//                    mouse_down: false,
-//                    last_mouse_x: 400,
-//                    last_mouse_y: 300,
-//                    yaw: -90.0,
-//                    pitch: 0.0,
-//                    ping: 0,
-//                    keys: HashSet::new(),
-//                };
+                browser_client.set_nonblocking(true).unwrap();
                 info!("Client connected");
-                //clients.push(client);
                 ecs_world
                     .create_entity()
-                    .with(Camera::new(Point3::new(0.0, 0.0, 3.0)))
-                    .with(InputProducer { inputs: vec![] })
+                    .with(CameraComponent::new())
+                    .with(InputProducer::default())
                     .with(BrowserClient {
                         websocket: Mutex::new(browser_client),
                         offscreen: vec![0; 900 * 700 * 4],
@@ -701,75 +657,29 @@ fn main() {
                     .build();
             }
             _ => {
-                // Nobody tried to connect, move on.
+// Nobody tried to connect, move on.
             }
         };
 
-        for client in clients.iter_mut() {}
-
-
-        clients.retain(|c| !c.remove);
-
-        ///////////
-        use sdl2::event::Event;
-        use sdl2::keyboard::Keycode;
-
-        fn handle_sdl_event(event: &Event, client: &mut Client, camera_speed: &mut f32) {}
-
-        for event in event_pump.poll_iter() {
-            trace!("SDL event: {:?}", event);
-            imgui_sdl2.handle_event(&mut imgui, &event);
-
-            clients[0].inputs.push(event);
-        }
-
-        // update clients
-        for (index, client) in clients.iter_mut().enumerate() {
-            let client_events: Vec<_> = client.inputs.drain(..).collect();
-            for event in client_events {
+        {
+            let mut storage = ecs_world.write_storage::<InputProducer>();
+            let inputs = storage.get_mut(desktop_client_entity).unwrap();
+            for event in event_pump.poll_iter() {
+                trace!("SDL event: {:?}", event);
+                imgui_sdl2.handle_event(&mut imgui, &event);
                 match event {
-                    Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                        if index == 0 {
-                            break 'running;
-                        }
+                    sdl2::event::Event::Quit { .. } | sdl2::event::Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                        break 'running;
                     }
-                    _ => handle_sdl_event(&event, client, &mut camera_speed)
+                    _ => {
+                        inputs.inputs.push(event);
+                    }
                 }
             }
         }
 
-        // render browser clients:
-//        let mut browser_client_positions: Vec<Point3<f32>> = clients.iter().map(|b| b.camera.pos).collect();
-//        for client in clients.iter_mut().rev() {
-        // look toward the desktop client
-        //browser_client.camera.look_at(camera.pos);
-        // move closer if it is far away
-//            if nalgebra::distance(&camera.pos, &browser_client.camera.pos) > 100.0 {
-//                browser_client.camera.move_forward(camera_speed);
-//            }
-//            render_client(&client.camera,
-//                          &ground_shader_program,
-//                          &model_shader_program,
-//                          &sprite_shader_program,
-//                          &render_matrices.projection,
-//                          &map_render_data,
-//                          &body_action,
-//                          tick,
-//                          &sprite_frames,
-//                          &browser_client_positions);
-//            // now the back buffer contains the rendered image for this client
-//            if let Some(ws) = &mut client.websocket {
-//                unsafe {
-//                    gl::ReadBuffer(gl::BACK);
-//                    gl::ReadPixels(0, 0, 900, 700, gl::RGBA, gl::UNSIGNED_BYTE, client.offscreen.as_mut_ptr() as *mut gl::types::GLvoid);
-//                }
-//                let message = websocket::Message::binary(client.offscreen.as_slice());
-//                sent_bytes_per_second_counter += client.offscreen.len();
-//                ws.send_message(&message);
-//            }
-//        }
 
-        // Imgui logic
+// Imgui logic
         let ui = imgui_sdl2.frame(&window, &mut imgui, &event_pump.mouse_state());
 
 //        extern crate sublime_fuzzy;
@@ -838,7 +748,7 @@ fn main() {
 //                }
 //            });
 
-        // render Imgui
+// render Imgui
         renderer.render(ui);
 
         ecs_dispatcher.dispatch(&mut ecs_world.res);
@@ -851,16 +761,15 @@ fn main() {
             sent_bytes_per_second = sent_bytes_per_second_counter;
             sent_bytes_per_second_counter = 0;
             next_second = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
-            window.set_title(&format!("Rustarok {} FPS", fps));
+            window.set_title(&format!("Rustarok {} FPS", fps)).unwrap();
 
             // send a ping packet every second
             let now_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
             let data = now_ms.to_le_bytes();
-            for browser_client in clients.iter_mut() {
+            let browser_storage = ecs_world.write_storage::<BrowserClient>();
+            for browser_client in browser_storage.join() {
                 let message = websocket::Message::ping(&data[..]);
-                if let Some(ws) = &mut browser_client.websocket {
-                    ws.send_message(&message);
-                }
+                browser_client.websocket.lock().unwrap().send_message(&message).expect("Sending a ping message");
             }
         }
         fps_counter += 1;
@@ -968,7 +877,7 @@ fn render_client(camera: &Camera,
 
     map_render_data.sprite_vertex_array.bind();
 
-    /// draw layer
+    // draw layer
     let delay = body_action.actions[8].delay;
     let frame_count = body_action.actions[8].frames.len();
     let frame_index = ((tick.0 / (delay / 3) as u64) % frame_count as u64) as usize;
@@ -1068,7 +977,7 @@ pub struct SameTextureNodeFaces {
 
 fn load_map(map_name: &str) -> MapRenderData {
     let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
-    let altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
+    let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
     let mut ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
                                world.water.level,
                                world.water.wave_height);

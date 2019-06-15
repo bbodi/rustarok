@@ -1,13 +1,9 @@
-use nalgebra::{Matrix4, Vector3, Matrix3};
+use nalgebra::{Matrix4, Matrix3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
 use sdl2::pixels::{PixelFormatEnum, Color};
-use std::rc::Rc;
-use std::os::raw::c_void;
-use std::hash::{Hash, Hasher};
 use std::fmt::Display;
-use sdl2::render::BlendMode;
 use std::sync::Arc;
 
 #[derive(Hash, Eq, PartialEq)]
@@ -61,13 +57,13 @@ impl GlTexture {
             surface.width(),
             surface.height(),
             PixelFormatEnum::RGBA32).unwrap();
-        surface.set_color_key(true, Color::RGB(255, 0, 255));
-        surface.blit(None, &mut optimized_surf, None);
+        surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
+        surface.blit(None, &mut optimized_surf, None).unwrap();
         debug!("Texture from file --> {}", &path);
         GlTexture::from_surface(optimized_surf)
     }
 
-    pub fn from_surface(mut surface: Surface) -> GlTexture {
+    pub fn from_surface(surface: Surface) -> GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);

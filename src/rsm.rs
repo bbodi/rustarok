@@ -1,10 +1,6 @@
 use crate::common::{BinaryReader, init_vec};
-use nalgebra::{Matrix3, Vector, Vector3, Matrix4, Translation3, Rotation3, Unit, Quaternion, Vector4, UnitQuaternion, Point3};
-use ncollide3d::procedural::{TriMesh as ProceduralTriMesh, IndexBuffer};
-use ncollide3d::shape::TriMesh;
-use ncollide3d::bounding_volume::bounding_volume::HasBoundingVolume;
+use nalgebra::{Matrix3, Vector3, Matrix4, Rotation3, Unit, Quaternion, Vector4, UnitQuaternion, Point3};
 use crate::opengl::{GlTexture, VertexArray, VertexAttribDefinition};
-use sdl2::pixels::{PixelFormatEnum, Color};
 use std::collections::HashMap;
 use crate::{SameTextureNodeFaces, DataForRenderingSingleNode};
 
@@ -212,7 +208,7 @@ impl Rsm {
 
         let _ = buf.string(16); // skip, reserved
 
-        let texture_names: Vec<String> = (0..buf.next_u32()).map(|i| {
+        let texture_names: Vec<String> = (0..buf.next_u32()).map(|_i| {
             buf.string(40)
         }).collect();
 
@@ -260,9 +256,7 @@ impl Rsm {
             main_node_index,
             &mut nodes,
             is_only,
-            &Matrix4::identity(),
-            true,
-            false,
+            &Matrix4::identity()
         );
 
         let mut bbox = BoundingBox::new();
@@ -355,8 +349,6 @@ impl Rsm {
                                                 nodes: &mut Vec<RsmNode>,
                                                 is_only: bool,
                                                 parent_matrix: &Matrix4<f32>,
-                                                is_main_node: bool,
-                                                has_parent: bool,
     ) {
         let parent_node_name_of_parent = nodes[parent_node_index].parent_name.clone();
         {
@@ -367,17 +359,15 @@ impl Rsm {
 
         let parent_node_name = nodes[parent_node_index].name.clone();
         let node_matrix = nodes[parent_node_index].matrix;
-        let children_indices = nodes.iter_mut().enumerate().filter(|(i, n)| {
+        let children_indices = nodes.iter_mut().enumerate().filter(|(_i, n)| {
             parent_node_name == n.parent_name && parent_node_name != parent_node_name_of_parent
-        }).map(|(i, n)| { i }).collect::<Vec<usize>>();
+        }).map(|(i, _n)| { i }).collect::<Vec<usize>>();
         for i in children_indices {
             Rsm::calc_matrix_and_bounding_box_recursively(
                 i,
                 nodes,
                 is_only,
-                &node_matrix,
-                false,
-                true);
+                &node_matrix);
         }
     }
 
@@ -455,7 +445,7 @@ impl Rsm {
                 Rsm::generate_mesh_smooth(&matrix, faces, &verts, &tverts, normal_groups)
             }
             _/*NONE*/ => {
-                let normals = node.faces.iter().map(|face| {
+                let normals = node.faces.iter().map(|_face| {
                     Vector3::new(-1.0f32, -1.0f32, -1.0f32)
                 }).collect();
                 Rsm::generate_mesh_flat(&matrix, faces, &verts, &tverts, normals)
