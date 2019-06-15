@@ -1,6 +1,5 @@
 use crate::common::BinaryReader;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::rect::Rect;
 use crate::opengl::GlTexture;
 
 pub struct SpriteFile {
@@ -78,7 +77,7 @@ impl SpriteFile {
         let mut buf = Vec::<u8>::with_capacity((frame.width * frame.height * 4) as usize);
         for y in 0..frame.height {
             for x in 0..frame.width {
-                let idx1 = (frame.data[(y * frame.width + x)] as usize * 4);
+                let idx1 = frame.data[(y * frame.width + x)] as usize * 4;
                 buf.push(pal[idx1 + 0]);
                 buf.push(pal[idx1 + 1]);
                 buf.push(pal[idx1 + 2]);
@@ -106,7 +105,7 @@ impl SpriteFile {
                     if count == 0 {
                         data.push(count);
                     } else {
-                        for i in 1..count {
+                        for _i in 1..count {
                             data.push(c);
                         }
                     }
@@ -146,17 +145,13 @@ impl RenderableFrame {
         // Calculate new texture size and pos to center
         let gl_width = frame.width.next_power_of_two();
         let gl_height = frame.height.next_power_of_two();
-        let start_x = (((gl_width - frame.width) as f32) * 0.5).floor();
-        let start_y = (((gl_height - frame.height) as f32) * 0.5).floor();
 
         let mut opengl_surface = sdl2::surface::Surface::new(
             gl_width as u32, gl_height as u32,
             PixelFormatEnum::RGBA32,
         ).unwrap();
 
-        frame_surface.blit(None, &mut opengl_surface, None);
-        frame_surface.save_bmp("frame_surface.bmp");
-        opengl_surface.save_bmp("frame_surface_opengl_surface.bmp");
+        frame_surface.blit(None, &mut opengl_surface, None).unwrap();
 
         RenderableFrame {
             original_width: frame.width,

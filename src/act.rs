@@ -45,7 +45,7 @@ impl ActionFile {
         let action_acount = buf.next_u16() as usize;
         buf.skip(10);
 
-        let mut actions: Vec<Action> = (0..action_acount).map(|i| {
+        let mut actions: Vec<Action> = (0..action_acount).map(|_i| {
             Action {
                 frames: ActionFile::read_animations(&mut buf, version),
                 delay: 150,
