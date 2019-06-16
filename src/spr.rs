@@ -142,16 +142,19 @@ impl RenderableFrame {
             (4 * frame.width) as u32,
             PixelFormatEnum::RGBA32,
         ).unwrap();
-        // Calculate new texture size and pos to center
-        let gl_width = frame.width.next_power_of_two();
-        let gl_height = frame.height.next_power_of_two();
+        // Calculate new texture size and move the sprite into the center
+        let gl_width = frame.width;//.next_power_of_two();
+        let gl_height = frame.height;//.next_power_of_two();
+        let start_x = ((gl_width - frame.width) as f32 * 0.5).floor() as u32;
+        let start_y = ((gl_height - frame.height) as f32 * 0.5).floor() as u32;
 
         let mut opengl_surface = sdl2::surface::Surface::new(
             gl_width as u32, gl_height as u32,
             PixelFormatEnum::RGBA32,
         ).unwrap();
 
-        frame_surface.blit(None, &mut opengl_surface, None).unwrap();
+        let dst_rect = sdl2::rect::Rect::new(start_x as i32, start_y as i32, frame.width as u32, frame.height as u32);
+        frame_surface.blit(None, &mut opengl_surface, dst_rect).unwrap();
 
         RenderableFrame {
             original_width: frame.width,

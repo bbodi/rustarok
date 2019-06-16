@@ -41,7 +41,6 @@ impl ActionFile {
         }
 
         let version = buf.next_u8() as f32 / 10.0 + buf.next_u8() as f32;
-        dbg!(version);
 
         let action_acount = buf.next_u16() as usize;
         buf.skip(10);

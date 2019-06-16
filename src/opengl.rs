@@ -59,7 +59,7 @@ impl GlTexture {
             PixelFormatEnum::RGBA32).unwrap();
         surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
-        debug!("Texture from file --> {}", &path);
+        trace!("Texture from file --> {}", &path);
         GlTexture::from_surface(optimized_surf)
     }
 
@@ -67,7 +67,6 @@ impl GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
-            debug!("Texture from_surface {}", texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             let mode = if surface.pixel_format_enum().byte_size_per_pixel() == 4 {
                 if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
