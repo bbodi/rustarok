@@ -21,7 +21,7 @@ use crate::gat::Gat;
 use imgui::ImString;
 use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3};
 use crate::opengl::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, Instant};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::Rsm;
 use sdl2::keyboard::{Keycode, Scancode};
@@ -36,6 +36,7 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
+use crate::hardcoded_consts::job_name_table;
 
 // guild_vs4.rsw
 
@@ -47,6 +48,7 @@ mod gnd;
 mod rsm;
 mod act;
 mod spr;
+mod hardcoded_consts;
 
 enum ActionIndex {
     Idle = 0,
@@ -167,7 +169,7 @@ pub struct SpriteResource {
 
 impl SpriteResource {
     pub fn new(path: &str) -> SpriteResource {
-        info!("Loading {}", path);
+        trace!("Loading {}", path);
         let frames: Vec<spr::RenderableFrame> = SpriteFile::load(
             BinaryReader::new(format!("{}.spr", path))
         ).frames
@@ -549,8 +551,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
 
             for (entity_pos, dir, animated_sprite) in (&position_storage,
-                                                &dir_storage,
-                                                &animated_sprite_storage).join() {
+                                                       &dir_storage,
+                                                       &animated_sprite_storage).join() {
                 // draw layer
                 let tick = system_vars.tick;
                 let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
@@ -566,15 +568,17 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     }
                     let sprite_frame = &resource.frames[layer.sprite_frame_index as usize];
 
-                    let width = sprite_frame.texture.width as f32 * layer.scale[0];
-                    let height = sprite_frame.texture.height as f32 * layer.scale[1];
+                    let width = sprite_frame.original_width as f32 * layer.scale[0];
+                    let height = sprite_frame.original_height as f32 * layer.scale[1];
                     sprite_frame.texture.bind(gl::TEXTURE0);
 
                     let mut matrix = Matrix4::<f32>::identity();
-                    matrix.prepend_translation_mut(&entity_pos.0);
+                    let mut pos = entity_pos.0;
+                    pos.x += layer.pos[0] as f32 / 175.0 * 5.0;
+                    pos.y -= layer.pos[1] as f32 / 175.0 * 5.0;
+                    matrix.prepend_translation_mut(&pos);
 
                     system_vars.shaders.sprite_shader_program.set_mat4("model", &matrix);
-                    // size for cameras
                     let width = width as f32 / 175.0 * 5.0;
                     let width = if layer.is_mirror { -width } else { width };
                     system_vars.shaders.sprite_shader_program.set_vec3("size", &[
@@ -730,14 +734,7 @@ fn main() {
     let mut rng = rand::thread_rng();
 
 
-    let sprite_frames: Vec<spr::RenderableFrame> = SpriteFile::load(
-        BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\1_¿©.spr"))
-    ).frames
-        .into_iter()
-        .map(|frame| spr::RenderableFrame::from(frame))
-        .collect();
-
-    fn grf(str: &str) -> String{
+    fn grf(str: &str) -> String {
         format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
     }
     // data\.act
@@ -750,16 +747,36 @@ fn main() {
 //        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\Å©·Ç¼¼ÀÌ´Õ_H_¿©")), // Female crusader
 //    ];
 
-    let sprite_resources = std::fs::read_dir(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²")).unwrap().map(|entry| {
-        let dir_entry = entry.unwrap();
-        if dir_entry.file_name().into_string().unwrap().ends_with("act") {
-            let mut sstr = dir_entry.file_name().into_string().unwrap();
-            let len = sstr.len();
-            sstr.truncate(len - 4); // remove extension
-            Some(sstr)
-        } else { None }
-    }).filter_map(|x| x.map(|it| SpriteResource::new(&(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &it))))
-        .collect::<Vec<SpriteResource>>();
+    // return 'data/sprite/\xc0\xce\xb0\xa3\xc1\xb7 / \xb8\xf6\xc5\xeb/' +
+    // SexTable[sex] + '/' +
+    // (ClassTable[id] || ClassTable[0]) + '_'
+    // + SexTable[sex];
+
+    let (elapsed, sprite_resources) = measure_time(|| {
+        job_name_table().values().map(|job_name| {
+            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\")+ job_name + "_³²";
+            let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + job_name + "_¿©";
+            let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
+                Some(SpriteResource::new(&male_file_name))
+            } else {None};
+            let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
+                Some(SpriteResource::new(&female_file_name))
+            } else { None };
+            vec![male, female]
+        }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>()
+    });
+    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len(), elapsed.as_millis());
+
+//    let sprite_resources = std::fs::read_dir(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²")).unwrap().map(|entry| {
+//        let dir_entry = entry.unwrap();
+//        if dir_entry.file_name().into_string().unwrap().ends_with("act") {
+//            let mut sstr = dir_entry.file_name().into_string().unwrap();
+//            let len = sstr.len();
+//            sstr.truncate(len - 4); // remove extension
+//            Some(sstr)
+//        } else { None }
+//    }).filter_map(|x| x.map(|it| SpriteResource::new(&(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &it))))
+//        .collect::<Vec<SpriteResource>>();
 
     (0..3_000).for_each(|_i| {
         let pos = Point3::<f32>::new(2.0 * map_render_data.gnd.width as f32 * (rng.gen::<f32>()), 0.5, -(2.0 * map_render_data.gnd.height as f32 * (rng.gen::<f32>())));
@@ -1083,28 +1100,50 @@ pub struct SameTextureNodeFaces {
     pub texture: GlTexture,
 }
 
+pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
+    let start = Instant::now();
+    let r = f();
+    (start.elapsed(), r)
+}
+
 fn load_map(map_name: &str) -> MapRenderData {
-    let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)));
-    let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)));
-    let mut ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
-                               world.water.level,
-                               world.water.wave_height);
-    let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
-    let models = Rsw::load_models(model_names);
-    let model_render_datas: HashMap<ModelName, ModelRenderData> = models.iter().map(|(name, rsm)| {
-        let textures = Rsm::load_textures(&rsm.texture_names);
-        let data_for_rendering_full_model: Vec<DataForRenderingSingleNode> = Rsm::generate_meshes_by_texture_id(
-            &rsm.bounding_box,
-            rsm.shade_type,
-            rsm.nodes.len() == 1,
-            &rsm.nodes,
-            &textures,
-        );
-        (name.clone(), ModelRenderData {
-            alpha: rsm.alpha,
-            model: data_for_rendering_full_model,
-        })
-    }).collect();
+    let (elapsed, world) = measure_time(|| {
+        Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)))
+    });
+    info!("rsw loaded: {}ms", elapsed.as_millis());
+    let (elapsed, _altitude) = measure_time(|| {
+        Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)))
+    });
+    info!("gat loaded: {}ms", elapsed.as_millis());
+    let (elapsed, mut ground) = measure_time(|| {
+        Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
+                  world.water.level,
+                  world.water.wave_height)
+    });
+    info!("gnd loaded: {}ms", elapsed.as_millis());
+    let (elapsed, models) = measure_time(|| {
+        let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
+        Rsw::load_models(model_names)
+    });
+    info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
+
+    let (elapsed, model_render_datas) = measure_time(|| {
+        models.iter().map(|(name, rsm)| {
+            let textures = Rsm::load_textures(&rsm.texture_names);
+            let data_for_rendering_full_model: Vec<DataForRenderingSingleNode> = Rsm::generate_meshes_by_texture_id(
+                &rsm.bounding_box,
+                rsm.shade_type,
+                rsm.nodes.len() == 1,
+                &rsm.nodes,
+                &textures,
+            );
+            (name.clone(), ModelRenderData {
+                alpha: rsm.alpha,
+                model: data_for_rendering_full_model,
+            })
+        }).collect::<HashMap<ModelName, ModelRenderData>>()
+    });
+    info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
     let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
         let mut instance_matrix = Matrix4::<f32>::identity();
@@ -1128,7 +1167,11 @@ fn load_map(map_name: &str) -> MapRenderData {
         (model_instance.filename.clone(), instance_matrix)
     }).collect();
 
-    let texture_atlas = Gnd::create_gl_texture_atlas(&ground.texture_names);
+    let (elapsed, texture_atlas) = measure_time(|| {
+        Gnd::create_gl_texture_atlas(&ground.texture_names)
+    });
+    info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
+
     let tile_color_texture = Gnd::create_tile_color_texture(
         &mut ground.tiles_color_image,
         ground.width, ground.height,
@@ -1136,10 +1179,10 @@ fn load_map(map_name: &str) -> MapRenderData {
     let lightmap_texture = Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
 
     let s: Vec<[f32; 4]> = vec![
-        [-0.5, 1.0, 0.0, 0.0],
-        [0.5, 1.0, 1.0, 0.0],
-        [-0.5, 0.0, 0.0, 1.0],
-        [0.5, 0.0, 1.0, 1.0]
+        [-0.5, 0.5, 0.0, 0.0],
+        [0.5, 0.5, 1.0, 0.0],
+        [-0.5, -0.5, 0.0, 1.0],
+        [0.5, -0.5, 1.0, 1.0]
     ];
     let sprite_vertex_array = VertexArray::new(&s, &[
         VertexAttribDefinition {
