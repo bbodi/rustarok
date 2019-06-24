@@ -138,24 +138,93 @@ pub struct VertexAttribDefinition {
     pub offset_of_first_element: usize,
 }
 
+
+pub struct VertexArrayBind<'a> {
+    vertex_array: &'a VertexArray,
+}
+
+impl<'a> VertexArrayBind<'a> {
+    pub fn draw(&self, draw_mode: u32) {
+        unsafe {
+            if let Some(index_vbo) = self.vertex_array.index_vbo {
+                gl::DrawElements(
+                    draw_mode,      // mode
+                    self.vertex_array.vertex_count as i32,    // count
+                    gl::UNSIGNED_INT,   // type
+                    std::ptr::null(),           // element array buffer offset
+                );
+            } else {
+                gl::DrawArrays(
+                    draw_mode, // mode
+                    0, // starting index in the enabled arrays
+                    self.vertex_array.vertex_count as i32, // number of indices to be rendered
+                );
+            }
+        }
+    }
+}
+
+impl<'a> Drop for VertexArrayBind<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            for (i, _def) in self.vertex_array.vertex_attrib_pointer_defs.iter().enumerate() {
+                gl::DisableVertexAttribArray(i as u32);
+            }
+            gl::BindVertexArray(0);
+        }
+    }
+}
+
 pub struct VertexArray {
     buffer_id: gl::types::GLuint,
     vertex_array_id: gl::types::GLuint,
+    index_vbo: Option<gl::types::GLuint>,
+    vertex_count: usize,
+    stride: gl::types::GLint,
+    vertex_attrib_pointer_defs: Vec<VertexAttribDefinition>,
 }
 
 impl VertexArray {
-    pub fn bind(&self) {
+    pub fn vertex_count(&self) -> usize {
+        self.vertex_count
+    }
+
+    pub fn bind(&self) -> VertexArrayBind {
         unsafe {
             gl::BindVertexArray(self.vertex_array_id);
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer_id);
+
+            if let Some(index_vbo) = self.index_vbo {
+                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_vbo);
+            }
+
+            for (i, def) in self.vertex_attrib_pointer_defs.iter().enumerate() {
+                gl::EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
+                gl::VertexAttribPointer(
+                    i as u32, // index of the generic vertex attribute ("layout (location = 0)")
+                    def.number_of_components as i32,
+                    gl::FLOAT, // data type
+                    gl::FALSE, // normalized (int-to-float conversion)
+                    self.stride, // stride (byte offset between consecutive attributes)
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                );
+            }
+
+            VertexArrayBind {
+                vertex_array: &self,
+            }
         }
     }
 
-    pub fn new<T>(vertices: &[T], definitions: &[VertexAttribDefinition]) -> VertexArray {
+    pub fn new<T>(
+        vertices: &[T],
+        vertex_count: usize,
+        indices: Option<&[u32]>,
+        definitions: Vec<VertexAttribDefinition>,
+    ) -> VertexArray {
         let mut vbo: gl::types::GLuint = 0;
         unsafe {
             gl::GenBuffers(1, &mut vbo);
-        }
-        unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
                 gl::ARRAY_BUFFER, // target
@@ -165,10 +234,9 @@ impl VertexArray {
             );
         }
         let mut vao: gl::types::GLuint = 0;
+        let stride = (std::mem::size_of::<T>()) as gl::types::GLint;
         unsafe {
             gl::GenVertexArrays(1, &mut vao);
-        }
-        unsafe {
             gl::BindVertexArray(vao);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
 
@@ -179,16 +247,39 @@ impl VertexArray {
                     def.number_of_components as i32,
                     gl::FLOAT, // data type
                     gl::FALSE, // normalized (int-to-float conversion)
-                    (std::mem::size_of::<T>()) as gl::types::GLint, // stride (byte offset between consecutive attributes)
+                    stride, // stride (byte offset between consecutive attributes)
                     (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
                 );
             }
+        }
+        let index_vbo = indices.map(|indices| {
+            let mut index_vbo: gl::types::GLuint = 0;
+            unsafe {
+                gl::GenBuffers(1, &mut index_vbo);
+                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_vbo);
+                gl::BufferData(
+                    gl::ELEMENT_ARRAY_BUFFER, // target
+                    (indices.len() * std::mem::size_of::<u32>()) as gl::types::GLsizeiptr, // size of data in bytes
+                    indices.as_ptr() as *const gl::types::GLvoid, // pointer to data
+                    gl::STATIC_DRAW, // usage
+                );
+            }
+            index_vbo
+        });
+
+        unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
             gl::BindVertexArray(0);
         }
+
         VertexArray {
             buffer_id: vbo,
             vertex_array_id: vao,
+            index_vbo,
+            vertex_count,
+            stride,
+            vertex_attrib_pointer_defs: definitions,
         }
     }
 }
@@ -197,6 +288,9 @@ impl Drop for VertexArray {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &self.buffer_id);
+            if let Some(index_vbo) = self.index_vbo {
+                gl::DeleteBuffers(1, &index_vbo);
+            }
             gl::DeleteVertexArrays(1, &self.vertex_array_id);
         }
     }
