@@ -2,6 +2,7 @@ extern crate sdl2;
 extern crate gl;
 extern crate nalgebra;
 extern crate encoding;
+#[macro_use]
 extern crate imgui;
 extern crate imgui_sdl2;
 extern crate imgui_opengl_renderer;
@@ -37,6 +38,9 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::job_name_table;
+use ncollide3d::shape::ShapeHandle;
+use nphysics3d::object::{ColliderDesc, RigidBodyDesc};
+use ncollide3d::procedural::TriMesh;
 
 // guild_vs4.rsw
 
@@ -186,6 +190,24 @@ impl SpriteResource {
     }
 }
 
+struct PhysicsSystem;
+
+impl<'a> specs::System<'a> for PhysicsSystem {
+    type SystemData = (
+        specs::WriteExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemFrameDurations>,
+    );
+
+    fn run(&mut self, (
+        mut system_vars,
+        mut system_benchmark,
+    ): Self::SystemData) {
+        let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
+        system_vars.physics_world.step();
+    }
+}
+
+
 #[derive(Component)]
 struct DummyAiComponent {
     target_pos: Point3<f32>,
@@ -194,29 +216,62 @@ struct DummyAiComponent {
 
 struct DummyAiSystem;
 
+struct SystemStopwatch<'a> {
+    // let now_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+    started: Instant,
+    name: &'static str,
+    times: &'a mut SystemFrameDurations,
+}
+
+impl<'a> SystemStopwatch<'a> {
+    pub fn new(name: &'static str, times: &'a mut SystemFrameDurations) -> SystemStopwatch<'a> {
+        SystemStopwatch {
+            started: Instant::now(),
+            name,
+            times,
+        }
+    }
+}
+
+impl<'a> Drop for SystemStopwatch<'a> {
+    fn drop(&mut self) {
+        self.times.system_finished(self.started, self.name);
+    }
+}
+
+
 impl<'a> specs::System<'a> for DummyAiSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::WriteStorage<'a, PositionComponent>,
+        specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, DummyAiComponent>,
         specs::WriteStorage<'a, AnimatedSpriteComponent>,
+        specs::WriteExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(&mut self, (
         entities,
         mut position_storage,
+        mut physics_storage,
         mut ai_storage,
         mut animated_sprite_storage,
+        mut system_vars,
+        mut system_benchmark,
     ): Self::SystemData) {
+        let stopwatch = system_benchmark.start_measurement("DummyAiSystem");
         let mut rng = rand::thread_rng();
-        for (entity, pos, ai) in (&entities, &mut position_storage, &mut ai_storage).join() {
-            if nalgebra::distance(&nalgebra::Point::from(pos.0), &ai.target_pos) < 10.0 {
-                ai.target_pos = Point3::<f32>::new(2.0 * 200.0 * (rng.gen::<f32>()), 0.5, -(2.0 * 200.0 * (rng.gen::<f32>())));
+        for (entity, pos, ai, physics_comp) in (&entities, &mut position_storage, &mut ai_storage, &mut physics_storage).join() {
+            let mut body = system_vars.physics_world.rigid_body_mut(physics_comp.handle).unwrap();
+            let pos = body.position().translation.vector;
+            if nalgebra::distance(&nalgebra::Point::from(pos), &ai.target_pos) < 10.0 {
+                ai.target_pos = Point3::<f32>::new(0.5 * 200.0 * (rng.gen::<f32>()), 0.5, -(0.5 * 200.0 * (rng.gen::<f32>())));
                 if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
-                    let dir_vec = (ai.target_pos - pos.0);
+                    let dir_vec = ai.target_pos - pos;
                     // "- 90.0"
                     // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,
-                    // this calculation gives a different result which is shifter 90 degrees clockwise,
+                    // this calculation gives a different result which is shifted 90 degrees clockwise,
                     // so it is 90 at [1;0].
                     let dd = dir_vec.x.atan2(dir_vec.z).to_degrees() - 90.0;
                     let dd = if dd < 0.0 { dd + 360.0 } else if dd > 360.0 { dd - 360.0 } else { dd };
@@ -224,7 +279,8 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                     anim_sprite.direction = DIRECTION_TABLE[dir_index];
                 }
             } else {
-                pos.0 += (ai.target_pos - nalgebra::Point::from(pos.0)).normalize() * 0.1;
+                let mut force = (ai.target_pos - nalgebra::Point::from(pos)).normalize() * 10.0;
+                body.set_linear_velocity(force);
             }
         }
     }
@@ -486,14 +542,14 @@ impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
     ): Self::SystemData) {
         for (camera, browser) in (&camera_storage, &mut browser_client_storage).join() {
             let view = camera.camera.create_view_matrix();
-            render_client(
-                &view,
-                &system_vars.shaders.ground_shader_program,
-                &system_vars.shaders.model_shader_program,
-                &system_vars.shaders.sprite_shader_program,
-                &system_vars.matrices.projection,
-                &system_vars.map_render_data,
-            ); // browser_client_positions
+//            render_client(
+//                &view,
+//                &system_vars.shaders.ground_shader_program,
+//                &system_vars.shaders.model_shader_program,
+//                &system_vars.shaders.sprite_shader_program,
+//                &system_vars.matrices.projection,
+//                &system_vars.map_render_data,
+//            );
             // now the back buffer contains the rendered image for this client
             unsafe {
                 gl::ReadBuffer(gl::BACK);
@@ -511,6 +567,20 @@ struct SystemVariables {
     tick: Tick,
     matrices: RenderMatrices,
     map_render_data: MapRenderData,
+    physics_world: nphysics3d::world::World<f32>,
+}
+
+struct SystemFrameDurations(HashMap<&'static str, u32>);
+
+impl SystemFrameDurations {
+    pub fn system_finished(&mut self, started: Instant, name: &'static str) {
+        let duration = Instant::now().duration_since(started).as_millis() as u32;
+        self.0.insert(name, duration);
+    }
+
+    pub fn start_measurement(&mut self, name: &'static str) -> SystemStopwatch {
+        SystemStopwatch::new(name, self)
+    }
 }
 
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
@@ -518,41 +588,45 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, CameraComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PositionComponent>,
+        specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, DirectionComponent>,
         specs::ReadStorage<'a, AnimatedSpriteComponent>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(&mut self, (
         camera_storage,
         browser_client_storage,
         position_storage,
+        physics_storage,
         dir_storage,
         animated_sprite_storage,
         system_vars,
+        mut system_benchmark,
     ): Self::SystemData) {
+        let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         for (camera, _not_browser) in (&camera_storage, !&browser_client_storage).join() {
             let view = camera.camera.create_view_matrix();
             render_client(
                 &view,
-                &system_vars.shaders.ground_shader_program,
-                &system_vars.shaders.model_shader_program,
-                &system_vars.shaders.sprite_shader_program,
+                &system_vars.shaders,
                 &system_vars.matrices.projection,
                 &system_vars.map_render_data,
             );
-            system_vars.shaders.sprite_shader_program.gl_use();
-            system_vars.shaders.sprite_shader_program.set_mat4("projection", &system_vars.matrices.projection);
-            system_vars.shaders.sprite_shader_program.set_mat4("view", &view);
-            system_vars.shaders.sprite_shader_program.set_int("model_texture", 0);
-            system_vars.shaders.sprite_shader_program.set_f32("alpha", 1.0);
+            system_vars.shaders.sprite_shader.gl_use();
+            system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
+            system_vars.shaders.sprite_shader.set_mat4("view", &view);
+            system_vars.shaders.sprite_shader.set_int("model_texture", 0);
+            system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
 
-            system_vars.map_render_data.sprite_vertex_array.bind();
+            let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
 
-            for (entity_pos, dir, animated_sprite) in (&position_storage,
-                                                       &dir_storage,
-                                                       &animated_sprite_storage).join() {
+            for (_entity_pos, physics, dir, animated_sprite) in (&position_storage,
+                                                                 &physics_storage,
+                                                                 &dir_storage,
+                                                                 &animated_sprite_storage).join() {
                 // draw layer
                 let tick = system_vars.tick;
                 let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
@@ -573,33 +647,99 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     sprite_frame.texture.bind(gl::TEXTURE0);
 
                     let mut matrix = Matrix4::<f32>::identity();
-                    let mut pos = entity_pos.0;
+//                    let mut pos = entity_pos.0;
+                    let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
+                    let mut pos = body.position().translation.vector;
                     pos.x += layer.pos[0] as f32 / 175.0 * 5.0;
                     pos.y -= layer.pos[1] as f32 / 175.0 * 5.0;
                     matrix.prepend_translation_mut(&pos);
 
-                    system_vars.shaders.sprite_shader_program.set_mat4("model", &matrix);
+                    system_vars.shaders.sprite_shader.set_mat4("model", &matrix);
                     let width = width as f32 / 175.0 * 5.0;
                     let width = if layer.is_mirror { -width } else { width };
-                    system_vars.shaders.sprite_shader_program.set_vec3("size", &[
+                    system_vars.shaders.sprite_shader.set_vec3("size", &[
                         width,
                         height as f32 / 175.0 * 5.0,
                         0.0
                     ]);
-                    system_vars.shaders.sprite_shader_program.set_f32("alpha", 1.0);
+                    system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
 
-                    unsafe {
-                        gl::DrawArrays(
-                            gl::TRIANGLE_STRIP, // mode
-                            0, // starting index in the enabled arrays
-                            4, // number of indices to be rendered
-                        );
-                    }
+                    binded_sprite_vertex_array.draw(gl::TRIANGLE_STRIP);
                 }
             }
         }
     }
 }
+
+struct PhysicsDebugDrawingSystem {
+    capsule_vertex_array: VertexArray,
+}
+
+impl PhysicsDebugDrawingSystem {
+    fn new() -> PhysicsDebugDrawingSystem {
+        let mut capsule_mesh = ncollide3d::procedural::capsule(
+            &2.0f32,
+            &4.0f32,
+            100, 100);
+
+        capsule_mesh.unify_index_buffer();
+//        let capsule_mesh = ncollide3d::shape::TriMesh::from(capsule_mesh);
+        let indices: Vec<u32> = capsule_mesh.indices.unwrap_unified().into_iter().map(|idx| {
+            idx[0]
+        }).collect();
+        let capsule_vertex_array = VertexArray::new(
+            &capsule_mesh.coords,
+            indices.len(),
+            Some(indices.as_slice()),
+            vec![
+                VertexAttribDefinition {
+                    number_of_components: 3,
+                    offset_of_first_element: 0,
+                }
+            ]);
+        PhysicsDebugDrawingSystem {
+            capsule_vertex_array,
+        }
+    }
+}
+
+impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
+    type SystemData = (
+        specs::ReadStorage<'a, CameraComponent>,
+        specs::ReadStorage<'a, BrowserClient>,
+        specs::ReadStorage<'a, PhysicsComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemFrameDurations>,
+    );
+
+    fn run(&mut self, (
+        camera_storage,
+        browser_client_storage,
+        physics_storage,
+        system_vars,
+        mut system_benchmark,
+    ): Self::SystemData) {
+        let stopwatch = system_benchmark.start_measurement("PhysicsDebugDrawingSystem");
+        for (camera, _not_browser) in (&camera_storage, !&browser_client_storage).join() {
+            let view = camera.camera.create_view_matrix();
+
+            for physics in (&physics_storage).join() {
+                let mut matrix = Matrix4::<f32>::identity();
+                let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
+                let pos = body.position().translation.vector;
+                matrix.prepend_translation_mut(&pos);
+
+                system_vars.shaders.trimesh_shader.gl_use();
+                system_vars.shaders.trimesh_shader.set_mat4("projection", &system_vars.matrices.projection);
+                system_vars.shaders.trimesh_shader.set_mat4("view", &view);
+                system_vars.shaders.trimesh_shader.set_f32("alpha", 1.0);
+                system_vars.shaders.trimesh_shader.set_mat4("model", &matrix);
+                self.capsule_vertex_array.bind().draw(gl::TRIANGLES);
+            }
+        }
+    }
+}
+
 
 struct RenderStreamingSystem;
 
@@ -622,9 +762,10 @@ impl<'a> specs::System<'a> for RenderStreamingSystem {
 }
 
 struct Shaders {
-    ground_shader_program: ShaderProgram,
-    model_shader_program: ShaderProgram,
-    sprite_shader_program: ShaderProgram,
+    ground_shader: ShaderProgram,
+    model_shader: ShaderProgram,
+    sprite_shader: ShaderProgram,
+    trimesh_shader: ShaderProgram,
 }
 
 struct RenderMatrices {
@@ -634,34 +775,32 @@ struct RenderMatrices {
 #[derive(Copy, Clone)]
 struct Tick(u64);
 
+#[derive(Component, Clone)]
+struct PhysicsComponent {
+    handle: nphysics3d::object::BodyHandle
+}
+
+impl PhysicsComponent {
+    fn new(world: &mut nphysics3d::world::World<f32>,
+           pos: Vector3<f32>) -> PhysicsComponent {
+        let capsule = ShapeHandle::new(ncollide3d::shape::Capsule::new(2.0, 1.0));
+        let mut collider_desc = ColliderDesc::new(capsule)
+            .density(1.3);
+        let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
+        let handle = rb_desc
+            .set_translation(pos)
+            .build(world).handle();
+        PhysicsComponent {
+            handle
+        }
+    }
+}
+
 
 fn main() {
     simple_logging::log_to_stderr(LevelFilter::Debug);
 
-    let mut ecs_world = specs::World::new();
-    ecs_world.register::<PositionComponent>();
-    ecs_world.register::<CameraComponent>();
-    ecs_world.register::<BrowserClient>();
-    ecs_world.register::<InputProducerComponent>();
-    ecs_world.register::<AnimatedSpriteComponent>();
-    ecs_world.register::<DirectionComponent>();
-    ecs_world.register::<DummyAiComponent>();
-
-    let desktop_client_entity = ecs_world
-        .create_entity()
-        .with(CameraComponent::new())
-        .with(InputProducerComponent::default())
-        .build();
-
-
-    let mut ecs_dispatcher = specs::DispatcherBuilder::new()
-        .with(BrowserInputProducerSystem, "browser_input_processor", &[])
-        .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
-        .with(DummyAiSystem, "ai", &[])
-        .with_thread_local(RenderBrowserClientsSystem)
-        .with_thread_local(RenderStreamingSystem)
-        .with_thread_local(RenderDesktopClientSystem)
-        .build();
+    let mut physics_world = nphysics3d::world::World::new();
 
 
     let sdl_context = sdl2::init().unwrap();
@@ -692,7 +831,7 @@ fn main() {
     }
 
     let shaders = Shaders {
-        ground_shader_program: ShaderProgram::from_shaders(
+        ground_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
                     include_str!("shaders/ground.vert"),
@@ -704,7 +843,7 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
-        model_shader_program: ShaderProgram::from_shaders(
+        model_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
                     include_str!("shaders/model.vert"),
@@ -716,7 +855,7 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
-        sprite_shader_program: ShaderProgram::from_shaders(
+        sprite_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
                     include_str!("shaders/sprite.vert"),
@@ -728,9 +867,49 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
+        trimesh_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/trimesh.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/trimesh.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
     };
 
-    let map_render_data = load_map("prontera");
+    let mut ecs_world = specs::World::new();
+    ecs_world.register::<PositionComponent>();
+    ecs_world.register::<CameraComponent>();
+    ecs_world.register::<BrowserClient>();
+    ecs_world.register::<InputProducerComponent>();
+    ecs_world.register::<AnimatedSpriteComponent>();
+    ecs_world.register::<DirectionComponent>();
+    ecs_world.register::<DummyAiComponent>();
+    ecs_world.register::<PhysicsComponent>();
+
+    let desktop_client_entity = ecs_world
+        .create_entity()
+        .with(CameraComponent::new())
+        .with(InputProducerComponent::default())
+        .build();
+
+
+    let mut ecs_dispatcher = specs::DispatcherBuilder::new()
+        .with(BrowserInputProducerSystem, "browser_input_processor", &[])
+        .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
+        .with(DummyAiSystem, "ai", &[])
+        .with(PhysicsSystem, "physics", &["ai", "input_handler", "browser_input_processor"])
+        .with_thread_local(RenderBrowserClientsSystem)
+        .with_thread_local(RenderStreamingSystem)
+        .with_thread_local(RenderDesktopClientSystem)
+        .with_thread_local(PhysicsDebugDrawingSystem::new())
+        .build();
+
+    let mut map_render_data = load_map("prontera");
     let mut rng = rand::thread_rng();
 
 
@@ -753,12 +932,12 @@ fn main() {
     // + SexTable[sex];
 
     let (elapsed, sprite_resources) = measure_time(|| {
-        job_name_table().values().map(|job_name| {
-            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\")+ job_name + "_³²";
+        job_name_table().values().take(10).map(|job_name| {
+            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + job_name + "_³²";
             let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + job_name + "_¿©";
             let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
                 Some(SpriteResource::new(&male_file_name))
-            } else {None};
+            } else { None };
             let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
                 Some(SpriteResource::new(&female_file_name))
             } else { None };
@@ -778,21 +957,6 @@ fn main() {
 //    }).filter_map(|x| x.map(|it| SpriteResource::new(&(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &it))))
 //        .collect::<Vec<SpriteResource>>();
 
-    (0..3_000).for_each(|_i| {
-        let pos = Point3::<f32>::new(2.0 * map_render_data.gnd.width as f32 * (rng.gen::<f32>()), 0.5, -(2.0 * map_render_data.gnd.height as f32 * (rng.gen::<f32>())));
-        ecs_world
-            .create_entity()
-            .with(PositionComponent(pos.coords))
-            .with(DirectionComponent(0.0))
-            .with(DummyAiComponent { target_pos: pos, state: 0 })
-            .with(AnimatedSpriteComponent {
-                file_index: rng.gen::<usize>() % sprite_resources.len(),
-                action_index: 8,
-                animation_start: Tick(0),
-                direction: 0,
-            })
-            .build();
-    });
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -826,7 +990,10 @@ fn main() {
         tick: Tick(0),
         matrices: render_matrices,
         map_render_data,
+        physics_world,
     });
+
+    ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
 
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
     let mut fps_counter: u64 = 0;
@@ -838,6 +1005,7 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
+    let mut entity_count = 0;
     'running: loop {
         match websocket_server.accept() {
             Ok(wsupgrade) => {
@@ -906,52 +1074,123 @@ fn main() {
 //                }
 //            });
 
-//        ui.window(im_str!("Graphic opsions"))
-//            .position((0.0, 0.0), ImGuiCond::FirstUseEver)
-//            .size((300.0, 600.0), ImGuiCond::FirstUseEver)
-//            .build(|| {
-//                ui.checkbox(im_str!("Use tile_colors"), &mut map_render_data.use_tile_colors);
-//                if ui.checkbox(im_str!("Use use_lighting"), &mut map_render_data.use_lighting) {
-//                    map_render_data.use_lightmaps = map_render_data.use_lighting && map_render_data.use_lightmaps;
-//                }
-//                if ui.checkbox(im_str!("Use lightmaps"), &mut map_render_data.use_lightmaps) {
-//                    map_render_data.use_lighting = map_render_data.use_lighting || map_render_data.use_lightmaps;
-//                }
-//
-//
-//                ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
-//                    .min(-1.0).max(1.0).speed(0.05).build();
-//                ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
-//                    .inputs(false)
-//                    .format(ColorFormat::Float)
-//                    .build();
-//                ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
-//                    .inputs(false)
-//                    .format(ColorFormat::Float)
-//                    .build();
-//                ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
-//                    .min(0.0).max(1.0).speed(0.05).build();
-//
-//                ui.text(im_str!("FPS: {}", fps));
-//                let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
-//                    (sent_bytes_per_second / 1024 / 1024, "Mb")
-//                } else if sent_bytes_per_second > 1024 {
-//                    (sent_bytes_per_second / 1024, "Kb")
-//                } else {
-//                    (sent_bytes_per_second, "bytes")
-//                };
+        { // IMGUI
+            ui.window(im_str!("Graphic opsions"))
+                .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
+                .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
+                .build(|| {
+                    let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
+                    ui.checkbox(im_str!("Use tile_colors"), &mut map_render_data.use_tile_colors);
+                    if ui.checkbox(im_str!("Use use_lighting"), &mut map_render_data.use_lighting) {
+                        map_render_data.use_lightmaps = map_render_data.use_lighting && map_render_data.use_lightmaps;
+                    }
+                    if ui.checkbox(im_str!("Use lightmaps"), &mut map_render_data.use_lightmaps) {
+                        map_render_data.use_lighting = map_render_data.use_lighting || map_render_data.use_lightmaps;
+                    }
+                    ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
+
+                    ui.slider_int(im_str!("Entities"), &mut entity_count, 0, 300)
+                        .build();
+
+                    ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
+                        .min(-1.0).max(1.0).speed(0.05).build();
+                    ui.color_edit(im_str!("light_ambient"), &mut map_render_data.rsw.light.ambient)
+                        .inputs(false)
+                        .format(imgui::ColorFormat::Float)
+                        .build();
+                    ui.color_edit(im_str!("light_diffuse"), &mut map_render_data.rsw.light.diffuse)
+                        .inputs(false)
+                        .format(imgui::ColorFormat::Float)
+                        .build();
+                    ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
+                        .min(0.0).max(1.0).speed(0.05).build();
+
+                    ui.text(im_str!("FPS: {}", fps));
+                    let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
+                        (sent_bytes_per_second / 1024 / 1024, "Mb")
+                    } else if sent_bytes_per_second > 1024 {
+                        (sent_bytes_per_second / 1024, "Kb")
+                    } else {
+                        (sent_bytes_per_second, "bytes")
+                    };
+
+                    let mut system_frame_durations = &mut ecs_world.write_resource::<SystemFrameDurations>().0;
+                    ui.text(im_str!("Systems: "));
+                    for (sys_name, duration) in system_frame_durations.iter() {
+                        let color = if *duration < 5 {
+                            (0.0, 1.0, 0.0, 1.0)
+                        } else if *duration < 10 {
+                            (1.0, 0.8, 0.0, 1.0)
+                        } else if *duration < 15 {
+                            (1.0, 0.5, 0.0, 1.0)
+                        } else if *duration < 20 {
+                            (1.0, 0.2, 0.0, 1.0)
+                        } else {
+                            (1.0, 0.0, 0.0, 1.0)
+                        };
+                        ui.text_colored(color, im_str!("{}: {} ms", sys_name, duration));
+                    }
 //                ui.text(im_str!("Traffic: {} {}", traffic, unit));
 //
 //                for browser_client in clients.iter() {
 //                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
 //                }
-//            });
+                });
+        }
+        {
+            let current_entity_count = ecs_world.read_storage::<AnimatedSpriteComponent>().join().count() as i32;
+            if current_entity_count < entity_count {
+                for _i in 0..(entity_count - current_entity_count) {
+                    let pos = {
+                        let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
+                        Point3::<f32>::new(2.0 * map_render_data.gnd.width as f32 * (rng.gen::<f32>()), 0.5, -(2.0 * map_render_data.gnd.height as f32 * (rng.gen::<f32>())))
+                    };
+                    let physics_component = {
+                        let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().physics_world;
+                        PhysicsComponent::new(&mut physics_world, pos.coords)
+                    };
+                    let sprite_count = ecs_world.read_resource::<SystemVariables>().sprite_resources.len();
+                    ecs_world
+                        .create_entity()
+                        .with(PositionComponent(pos.coords))
+                        .with(DirectionComponent(0.0))
+                        .with(physics_component)
+                        .with(DummyAiComponent { target_pos: pos, state: 0 })
+                        .with(AnimatedSpriteComponent {
+                            file_index: rng.gen::<usize>() % sprite_count,
+                            action_index: 8,
+                            animation_start: Tick(0),
+                            direction: 0,
+                        })
+                        .build();
+                }
+            } else if current_entity_count > entity_count {
+                let entities: Vec<_> = {
+                    let to_remove = current_entity_count - entity_count;
+                    let entities_storage = ecs_world.entities();
+                    let sprite_storage = ecs_world.read_storage::<AnimatedSpriteComponent>(); // it is need only for filtering entities
+                    let physics_storage = ecs_world.read_storage::<PhysicsComponent>();
+                    (&entities_storage, &sprite_storage, &physics_storage).join()
+                        .take(to_remove as usize)
+                        .map(|(entity, _sprite_comp, phys_comp)| (entity, (*phys_comp).clone()))
+                        .collect()
+                };
+                let entity_ids: Vec<_> = entities.iter().map(|(entity, _phys_comp)| *entity).collect();
+                ecs_world.delete_entities(entity_ids.as_slice());
 
-// render Imgui
-        renderer.render(ui);
+                // remove rigid body from the physic simulation
+                let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().physics_world;
+                let body_handles: Vec<_> = entities.iter().map(|(_entity, phys_comp)| phys_comp.handle).collect();
+                physics_world.remove_bodies(body_handles.as_slice());
+            }
+        }
+
+        let tick = ecs_world.read_resource::<SystemVariables>().tick.0 as f32;
 
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
+
+        renderer.render(ui);
 
         window.gl_swap_window();
         if std::time::SystemTime::now() >= next_second {
@@ -977,9 +1216,7 @@ fn main() {
 }
 
 fn render_client(view: &Matrix4<f32>,
-                 ground_shader_program: &ShaderProgram,
-                 model_shader_program: &ShaderProgram,
-                 sprite_shader_program: &ShaderProgram,
+                 shaders: &Shaders,
                  projection_matrix: &Matrix4<f32>,
                  map_render_data: &MapRenderData) {
     unsafe {
@@ -989,74 +1226,62 @@ fn render_client(view: &Matrix4<f32>,
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
     let normal_matrix = {
-// toInverseMat3
         let inverted = model_view.try_inverse().unwrap();
         let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
         m3x3.transpose()
     };
 
-    ground_shader_program.gl_use();
-    ground_shader_program.set_mat4("projection", &projection_matrix);
-    ground_shader_program.set_mat4("model_view", &model_view);
-    ground_shader_program.set_mat3("normal_matrix", &normal_matrix);
+    shaders.ground_shader.gl_use();
+    shaders.ground_shader.set_mat4("projection", &projection_matrix);
+    shaders.ground_shader.set_mat4("model_view", &model_view);
+    shaders.ground_shader.set_mat3("normal_matrix", &normal_matrix);
 
-    ground_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    ground_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    ground_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    ground_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+    shaders.ground_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+    shaders.ground_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+    shaders.ground_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+    shaders.ground_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-    ground_shader_program.set_vec3("in_lightWheight", &map_render_data.light_wheight);
+    shaders.ground_shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
 
     map_render_data.texture_atlas.bind(gl::TEXTURE0);
-    ground_shader_program.set_int("gnd_texture_atlas", 0);
+    shaders.ground_shader.set_int("gnd_texture_atlas", 0);
 
     map_render_data.tile_color_texture.bind(gl::TEXTURE1);
-    ground_shader_program.set_int("tile_color_texture", 1);
+    shaders.ground_shader.set_int("tile_color_texture", 1);
 
     map_render_data.lightmap_texture.bind(gl::TEXTURE2);
-    ground_shader_program.set_int("lightmap_texture", 2);
+    shaders.ground_shader.set_int("lightmap_texture", 2);
 
-    ground_shader_program.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
-    ground_shader_program.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
-    ground_shader_program.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    shaders.ground_shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
+    shaders.ground_shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
+    shaders.ground_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
 
 
-    unsafe {
-        map_render_data.ground_vertex_array_obj.bind();
-        gl::DrawArrays(
-            gl::TRIANGLES, // mode
-            0, // starting index in the enabled arrays
-            (map_render_data.gnd.mesh.len()) as i32, // number of indices to be rendered
-        );
-    }
+    map_render_data.ground_vertex_array_obj.bind().draw(gl::TRIANGLES);
 
-    model_shader_program.gl_use();
-    model_shader_program.set_mat4("projection", &projection_matrix);
-    model_shader_program.set_mat4("view", &view);
-    model_shader_program.set_mat3("normal_matrix", &normal_matrix);
-    model_shader_program.set_int("model_texture", 0);
+    if map_render_data.draw_models {
+        shaders.model_shader.gl_use();
+        shaders.model_shader.set_mat4("projection", &projection_matrix);
+        shaders.model_shader.set_mat4("view", &view);
+        shaders.model_shader.set_mat3("normal_matrix", &normal_matrix);
+        shaders.model_shader.set_int("model_texture", 0);
 
-    model_shader_program.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    model_shader_program.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    model_shader_program.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    model_shader_program.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+        shaders.model_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+        shaders.model_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+        shaders.model_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+        shaders.model_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-    model_shader_program.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+        shaders.model_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
 
-    unsafe {
         for (model_name, matrix) in &map_render_data.model_instances {
-            model_shader_program.set_mat4("model", &matrix);
+            shaders.model_shader.set_mat4("model", &matrix);
             let model_render_data = &map_render_data.models[&model_name];
-            model_shader_program.set_f32("alpha", model_render_data.alpha);
+            shaders.model_shader.set_f32("alpha", model_render_data.alpha);
             for node_render_data in &model_render_data.model {
+                // TODO: optimize this
                 for face_render_data in node_render_data {
                     face_render_data.texture.bind(gl::TEXTURE0);
-                    face_render_data.vao.bind();
-                    gl::DrawArrays(
-                        gl::TRIANGLES, // mode
-                        0, // starting index in the enabled arrays
-                        face_render_data.vertex_count as i32, // number of indices to be rendered
-                    );
+                    face_render_data.vao.bind().draw(gl::TRIANGLES);
                 }
             }
         }
@@ -1080,6 +1305,7 @@ pub struct MapRenderData {
     pub lightmap_texture: GlTexture,
     pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
+    pub draw_models: bool,
 }
 
 pub struct EntityRenderData {
@@ -1096,7 +1322,6 @@ pub struct ModelRenderData {
 
 pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
-    pub vertex_count: usize,
     pub texture: GlTexture,
 }
 
@@ -1184,7 +1409,7 @@ fn load_map(map_name: &str) -> MapRenderData {
         [-0.5, -0.5, 0.0, 1.0],
         [0.5, -0.5, 1.0, 1.0]
     ];
-    let sprite_vertex_array = VertexArray::new(&s, &[
+    let sprite_vertex_array = VertexArray::new(&s, 4, None, vec![
         VertexAttribDefinition {
             number_of_components: 2,
             offset_of_first_element: 0,
@@ -1194,7 +1419,7 @@ fn load_map(map_name: &str) -> MapRenderData {
         }
     ]);
 
-    let vertex_array = VertexArray::new(&ground.mesh, &[
+    let vertex_array = VertexArray::new(&ground.mesh, ground.mesh.len(), None, vec![
         VertexAttribDefinition {
             number_of_components: 3,
             offset_of_first_element: 0,
@@ -1225,6 +1450,7 @@ fn load_map(map_name: &str) -> MapRenderData {
         use_tile_colors: true,
         use_lightmaps: true,
         use_lighting: true,
+        draw_models: true,
         light_wheight: [0f32; 3],
     }
 }

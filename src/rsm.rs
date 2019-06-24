@@ -314,7 +314,7 @@ impl Rsm {
                         is_only);
                     let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
                     let renderable = SameTextureNodeFaces {
-                        vao: VertexArray::new(&mesh, &[
+                        vao: VertexArray::new(&mesh, mesh.len(), None, vec![
                             VertexAttribDefinition {
                                 number_of_components: 3,
                                 offset_of_first_element: 0,
@@ -328,7 +328,6 @@ impl Rsm {
                                 offset_of_first_element: 6,
                             }
                         ]),
-                        vertex_count: mesh.len(),
                         texture: gl_tex,
                     };
                     renderable
