@@ -498,18 +498,17 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     }
                     _ => {}
                 }
-
-                let camera_speed = if input_producer.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
-                if input_producer.keys.contains(&Scancode::W) {
-                    client.camera.move_forward(camera_speed);
-                } else if input_producer.keys.contains(&Scancode::S) {
-                    client.camera.move_forward(-camera_speed);
-                }
-                if input_producer.keys.contains(&Scancode::A) {
-                    client.camera.move_side(-camera_speed);
-                } else if input_producer.keys.contains(&Scancode::D) {
-                    client.camera.move_side(camera_speed);
-                }
+            }
+            let camera_speed = if input_producer.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+            if input_producer.keys.contains(&Scancode::W) {
+                client.camera.move_forward(camera_speed);
+            } else if input_producer.keys.contains(&Scancode::S) {
+                client.camera.move_forward(-camera_speed);
+            }
+            if input_producer.keys.contains(&Scancode::A) {
+                client.camera.move_side(-camera_speed);
+            } else if input_producer.keys.contains(&Scancode::D) {
+                client.camera.move_side(camera_speed);
             }
         }
     }
@@ -916,20 +915,6 @@ fn main() {
     fn grf(str: &str) -> String {
         format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
     }
-    // data\.act
-//    let sprite_resources = vec![
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\°Ç³Ê_³²")), // Male Gunslinger
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\±¸ÆäÄÚÅ©·ç¼¼ÀÌ´õ_³²")), // Male Peco Crusader
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\±Â»Ç_H_³²")), // Male Knight
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\¹«ÈÑ¹ÙÁÖ_³²")), // Female bard
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\¾Î¼¼½Å_³²")), // Male assassin
-//        SpriteResource::new(&grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\Å©·Ç¼¼ÀÌ´Õ_H_¿©")), // Female crusader
-//    ];
-
-    // return 'data/sprite/\xc0\xce\xb0\xa3\xc1\xb7 / \xb8\xf6\xc5\xeb/' +
-    // SexTable[sex] + '/' +
-    // (ClassTable[id] || ClassTable[0]) + '_'
-    // + SexTable[sex];
 
     let (elapsed, sprite_resources) = measure_time(|| {
         job_name_table().values().take(10).map(|job_name| {
@@ -945,18 +930,6 @@ fn main() {
         }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>()
     });
     info!("act and spr files loaded[{}]: {}ms", sprite_resources.len(), elapsed.as_millis());
-
-//    let sprite_resources = std::fs::read_dir(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²")).unwrap().map(|entry| {
-//        let dir_entry = entry.unwrap();
-//        if dir_entry.file_name().into_string().unwrap().ends_with("act") {
-//            let mut sstr = dir_entry.file_name().into_string().unwrap();
-//            let len = sstr.len();
-//            sstr.truncate(len - 4); // remove extension
-//            Some(sstr)
-//        } else { None }
-//    }).filter_map(|x| x.map(|it| SpriteResource::new(&(grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &it))))
-//        .collect::<Vec<SpriteResource>>();
-
 
     let mut imgui = imgui::ImGui::init();
     imgui.set_ini_filename(None);
@@ -1178,7 +1151,7 @@ fn main() {
                 let entity_ids: Vec<_> = entities.iter().map(|(entity, _phys_comp)| *entity).collect();
                 ecs_world.delete_entities(entity_ids.as_slice());
 
-                // remove rigid body from the physic simulation
+                // remove rigid bodies from the physic simulation
                 let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().physics_world;
                 let body_handles: Vec<_> = entities.iter().map(|(_entity, phys_comp)| phys_comp.handle).collect();
                 physics_world.remove_bodies(body_handles.as_slice());
