@@ -1,6 +1,6 @@
 use crate::common::BinaryReader;
 use sdl2::pixels::PixelFormatEnum;
-use crate::opengl::GlTexture;
+use crate::video::GlTexture;
 
 pub struct SpriteFile {
     pub frames: Vec<Frame>,

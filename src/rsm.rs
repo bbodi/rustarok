@@ -1,6 +1,6 @@
 use crate::common::{BinaryReader, init_vec};
 use nalgebra::{Matrix3, Vector3, Matrix4, Rotation3, Unit, Quaternion, Vector4, UnitQuaternion, Point3};
-use crate::opengl::{GlTexture, VertexArray, VertexAttribDefinition};
+use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use std::collections::HashMap;
 use crate::{SameTextureNodeFaces, DataForRenderingSingleNode};
 

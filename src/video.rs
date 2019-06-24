@@ -5,6 +5,76 @@ use std::path::Path;
 use sdl2::pixels::{PixelFormatEnum, Color};
 use std::fmt::Display;
 use std::sync::Arc;
+use sdl2::{Sdl, EventPump};
+use sdl2::video::{Window, GLContext};
+use imgui::ImGui;
+use imgui_sdl2::ImguiSdl2;
+use imgui_opengl_renderer::Renderer;
+use sdl2::event::{EventPollIterator, Event};
+
+pub struct Video {
+    pub sdl_context: Sdl,
+    pub window: Window,
+    pub imgui: ImGui,
+    pub imgui_sdl2: ImguiSdl2,
+    pub renderer: Renderer,
+    pub event_pump: EventPump,
+    // these two variables must be in scope, so don't remove their variables
+    _gl_context: GLContext,
+//    _gl: *const (),
+}
+
+impl Video {
+    pub fn init() -> Video {
+        let sdl_context = sdl2::init().unwrap();
+        let video_subsystem = sdl_context.video().unwrap();
+        let gl_attr = video_subsystem.gl_attr();
+        gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
+        gl_attr.set_context_version(4, 5);
+        let mut window = video_subsystem
+            .window("Rustarok", 900, 700)
+            .opengl()
+            .allow_highdpi()
+            .resizable()
+            .build()
+            .unwrap();
+        // these two variables must be in scope, so don't remove their variables
+        let _gl_context = window.gl_create_context().unwrap();
+        let _gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
+        unsafe {
+            gl::Viewport(0, 0, 900, 700); // set viewport
+            gl::ClearColor(0.3, 0.3, 0.5, 1.0);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::DepthFunc(gl::LEQUAL);
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        }
+        let mut imgui = imgui::ImGui::init();
+        imgui.set_ini_filename(None);
+        let video = sdl_context.video().unwrap();
+        let mut imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
+        let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+        let event_pump = sdl_context.event_pump().unwrap();
+        Video {
+            sdl_context,
+            window,
+            imgui,
+            imgui_sdl2,
+            renderer,
+            event_pump,
+            _gl_context,
+//            _gl,
+        }
+    }
+
+    pub fn gl_swap_window(&self) {
+        self.window.gl_swap_window();
+    }
+
+    pub fn set_title(&mut self, title: &str) {
+        self.window.set_title(title).unwrap();
+    }
+}
 
 #[derive(Hash, Eq, PartialEq)]
 struct GlTextureContext(gl::types::GLuint);
