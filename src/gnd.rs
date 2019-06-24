@@ -3,7 +3,7 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
 
 use crate::common::BinaryReader;
-use crate::opengl::GlTexture;
+use crate::video::GlTexture;
 
 pub struct Gnd {
     pub version: f32,
