@@ -26,7 +26,7 @@ pub struct RsmNodeVertex {
     pub texcoord: [f32; 2],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoundingBox {
     pub min: Vector3<f32>,
     pub max: Vector3<f32>,
@@ -256,7 +256,7 @@ impl Rsm {
             main_node_index,
             &mut nodes,
             is_only,
-            &Matrix4::identity()
+            &Matrix4::identity(),
         );
 
         let mut bbox = BoundingBox::new();
@@ -290,7 +290,8 @@ impl Rsm {
         is_only: bool,
         nodes: &Vec<RsmNode>,
         textures: &Vec<GlTexture>,
-    ) -> Vec<DataForRenderingSingleNode> {
+    ) -> (Vec<DataForRenderingSingleNode>, BoundingBox) {
+        let mut real_bounding_box = BoundingBox::new();
         let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
         for node in nodes {
             let faces_by_texture_id = {
@@ -312,29 +313,43 @@ impl Rsm {
                         faces.as_slice(),
                         shade_type,
                         is_only);
+                    for v in mesh.iter() {
+                        for i in 0..3 {
+                            real_bounding_box.min[i] = v.pos[i].min(real_bounding_box.min[i]);
+                            real_bounding_box.max[i] = v.pos[i].max(real_bounding_box.max[i]);
+                        }
+                    }
+
                     let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
                     let renderable = SameTextureNodeFaces {
-                        vao: VertexArray::new(&mesh, mesh.len(), None, vec![
-                            VertexAttribDefinition {
-                                number_of_components: 3,
-                                offset_of_first_element: 0,
-                            },
-                            VertexAttribDefinition { // normal
-                                number_of_components: 3,
-                                offset_of_first_element: 3,
-                            },
-                            VertexAttribDefinition { // uv
-                                number_of_components: 2,
-                                offset_of_first_element: 6,
-                            }
-                        ]),
+                        vao: VertexArray::new(
+                            gl::TRIANGLES,
+                            &mesh, mesh.len(), None, vec![
+                                VertexAttribDefinition {
+                                    number_of_components: 3,
+                                    offset_of_first_element: 0,
+                                },
+                                VertexAttribDefinition { // normal
+                                    number_of_components: 3,
+                                    offset_of_first_element: 3,
+                                },
+                                VertexAttribDefinition { // uv
+                                    number_of_components: 2,
+                                    offset_of_first_element: 6,
+                                }
+                            ]),
                         texture: gl_tex,
                     };
                     renderable
                 }).collect();
             full_model_rendering_data.push(vertices_per_texture_per_node);
         }
-        return full_model_rendering_data;
+        for i in 0..3 {
+            real_bounding_box.offset[i] = (real_bounding_box.max[i] + real_bounding_box.min[i]) / 2.0;
+            real_bounding_box.range[i] = (real_bounding_box.max[i] - real_bounding_box.min[i]) / 2.0;
+            real_bounding_box.center[i] = real_bounding_box.min[i] + real_bounding_box.range[i];
+        }
+        return (full_model_rendering_data, real_bounding_box);
     }
 
     pub fn load_textures(texture_names: &Vec<String>) -> Vec<GlTexture> {
