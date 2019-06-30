@@ -1,13 +1,14 @@
 use crate::cam::Camera;
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
-use nalgebra::{Point3, Vector3};
-use ncollide3d::shape::ShapeHandle;
-use nphysics3d::object::{ColliderDesc, RigidBodyDesc};
+use nalgebra::{Point3, Vector3, Vector2, Point2};
 use std::collections::HashSet;
 use sdl2::keyboard::Scancode;
-use crate::Tick;
+use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
 use specs::prelude::*;
+use ncollide2d::shape::ShapeHandle;
+use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
+use ncollide2d::world::CollisionGroups;
 
 #[derive(Component)]
 pub struct CameraComponent {
@@ -51,7 +52,7 @@ pub struct InputProducerComponent {
 
 #[derive(Component)]
 pub struct DummyAiComponent {
-    pub target_pos: Point3<f32>,
+    pub target_pos: Point2<f32>,
     pub state: i32, // 0 standing, 1 walking
 }
 
@@ -68,14 +69,20 @@ pub struct AnimatedSpriteComponent {
 
 #[derive(Component, Clone)]
 pub struct PhysicsComponent {
-    pub handle: nphysics3d::object::BodyHandle
+    pub handle: nphysics2d::object::BodyHandle
 }
 
 impl PhysicsComponent {
-    pub fn new(world: &mut nphysics3d::world::World<f32>,
-           pos: Vector3<f32>) -> PhysicsComponent {
-        let capsule = ShapeHandle::new(ncollide3d::shape::Capsule::new(2.0, 1.0));
+    pub fn new(
+        world: &mut nphysics2d::world::World<f32>,
+        pos: Vector2<f32>,
+    ) -> PhysicsComponent {
+        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(1.0));
         let mut collider_desc = ColliderDesc::new(capsule)
+            .collision_groups(CollisionGroups::new()
+                .with_membership(&[LIVING_COLLISION_GROUP])
+                .with_blacklist(&[])
+                .with_whitelist(&[STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP]))
             .density(1.3);
         let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
         let handle = rb_desc

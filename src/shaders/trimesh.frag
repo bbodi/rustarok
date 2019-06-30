@@ -1,8 +1,9 @@
 #version 330 core
 
-out vec4 Color;
+out vec4 out_color;
 uniform float alpha;
+uniform vec3 color;
 
 void main() {
-    Color = vec4(1, 0, 1, 1);
+    out_color = vec4(color, 1);
 }

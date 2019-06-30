@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Matrix3};
+use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
@@ -11,6 +11,7 @@ use imgui::ImGui;
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
 use sdl2::event::{EventPollIterator, Event};
+use crate::systems::SystemVariables;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -74,6 +75,60 @@ impl Video {
     pub fn set_title(&mut self, title: &str) {
         self.window.set_title(title).unwrap();
     }
+}
+
+pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
+                                projection: &Matrix4<f32>,
+                                view: &Matrix4<f32>,
+                                points: &[Vector3<f32>],
+                                color: &[f32]) {
+    trimesh_shader.gl_use();
+    trimesh_shader.set_mat4("projection", &projection);
+    trimesh_shader.set_mat4("view", view);
+    trimesh_shader.set_vec3("color", color);
+    trimesh_shader.set_mat4("model", &Matrix4::identity());
+    VertexArray::new(
+        gl::LINES,
+        points, points.len(), None, vec![
+            VertexAttribDefinition {
+                number_of_components: 3,
+                offset_of_first_element: 0,
+            }
+        ]).bind().draw();
+}
+
+pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
+                                 projection: &Matrix4<f32>,
+                                 view: &Matrix4<f32>,
+                                 center: &Vector3<f32>,
+                                 r: f32,
+                                 color: &[f32]) {
+    trimesh_shader.gl_use();
+    trimesh_shader.set_mat4("projection", &projection);
+    trimesh_shader.set_mat4("view", view);
+    trimesh_shader.set_vec3("color", color);
+    let mut matrix = Matrix4::identity();
+    matrix.prepend_translation_mut(center);
+    let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
+    matrix = matrix * rotation;
+    trimesh_shader.set_mat4("model", &matrix);
+    let mut capsule_mesh = ncollide2d::procedural::circle(
+        &(r * 2.0),
+        32,
+    );
+
+    let coords = capsule_mesh.coords();
+    let capsule_vertex_array = VertexArray::new(
+        gl::LINE_LOOP,
+        coords,
+        coords.len(),
+        None,
+        vec![
+            VertexAttribDefinition {
+                number_of_components: 2,
+                offset_of_first_element: 0,
+            }
+        ]).bind().draw();
 }
 
 #[derive(Hash, Eq, PartialEq)]
@@ -214,18 +269,18 @@ pub struct VertexArrayBind<'a> {
 }
 
 impl<'a> VertexArrayBind<'a> {
-    pub fn draw(&self, draw_mode: u32) {
+    pub fn draw(&self) {
         unsafe {
             if let Some(index_vbo) = self.vertex_array.index_vbo {
                 gl::DrawElements(
-                    draw_mode,      // mode
+                    self.vertex_array.draw_mode,      // mode
                     self.vertex_array.vertex_count as i32,    // count
                     gl::UNSIGNED_INT,   // type
                     std::ptr::null(),           // element array buffer offset
                 );
             } else {
                 gl::DrawArrays(
-                    draw_mode, // mode
+                    self.vertex_array.draw_mode, // mode
                     0, // starting index in the enabled arrays
                     self.vertex_array.vertex_count as i32, // number of indices to be rendered
                 );
@@ -252,6 +307,7 @@ pub struct VertexArray {
     vertex_count: usize,
     stride: gl::types::GLint,
     vertex_attrib_pointer_defs: Vec<VertexAttribDefinition>,
+    draw_mode: u32,
 }
 
 impl VertexArray {
@@ -287,6 +343,7 @@ impl VertexArray {
     }
 
     pub fn new<T>(
+        draw_mode: u32,
         vertices: &[T],
         vertex_count: usize,
         indices: Option<&[u32]>,
@@ -344,6 +401,7 @@ impl VertexArray {
         }
 
         VertexArray {
+            draw_mode,
             buffer_id: vbo,
             vertex_array_id: vao,
             index_vbo,

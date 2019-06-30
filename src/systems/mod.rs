@@ -1,5 +1,5 @@
 use std::time::Instant;
-use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData};
+use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime};
 use std::collections::HashMap;
 
 pub mod ai;
@@ -11,9 +11,10 @@ pub struct SystemVariables {
     pub shaders: Shaders,
     pub sprite_resources: Vec<SpriteResource>,
     pub tick: Tick,
+    pub dt: DeltaTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
-    pub physics_world: nphysics3d::world::World<f32>,
+    pub physics_world: nphysics2d::world::World<f32>,
 }
 
 pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);

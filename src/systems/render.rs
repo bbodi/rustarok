@@ -1,7 +1,7 @@
-use nalgebra::Matrix4;
-use crate::video::VertexArray;
+use nalgebra::{Matrix4, Vector3, Rotation3, Point3};
+use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently};
 use crate::video::VertexAttribDefinition;
-use crate::components::{CameraComponent, BrowserClient, PositionComponent, PhysicsComponent, DirectionComponent, AnimatedSpriteComponent};
+use crate::components::{CameraComponent, BrowserClient, PositionComponent, PhysicsComponent, DirectionComponent, AnimatedSpriteComponent, DummyAiComponent};
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{Shaders, MapRenderData};
@@ -53,6 +53,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, DirectionComponent>,
         specs::ReadStorage<'a, AnimatedSpriteComponent>,
+        specs::ReadStorage<'a, DummyAiComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
@@ -64,6 +65,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         physics_storage,
         dir_storage,
         animated_sprite_storage,
+        ai_storage,
         system_vars,
         mut system_benchmark,
     ): Self::SystemData) {
@@ -76,19 +78,21 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &system_vars.matrices.projection,
                 &system_vars.map_render_data,
             );
-            system_vars.shaders.sprite_shader.gl_use();
-            system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
-            system_vars.shaders.sprite_shader.set_mat4("view", &view);
-            system_vars.shaders.sprite_shader.set_int("model_texture", 0);
-            system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
-
-            let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
 
-            for (_entity_pos, physics, dir, animated_sprite) in (&position_storage,
-                                                                 &physics_storage,
-                                                                 &dir_storage,
-                                                                 &animated_sprite_storage).join() {
+            for (_entity_pos, physics, dir, animated_sprite,
+                ai) in (&position_storage,
+                        &physics_storage,
+                        &dir_storage,
+                        &animated_sprite_storage,
+                        &ai_storage).join() {
+                system_vars.shaders.sprite_shader.gl_use();
+                system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
+                system_vars.shaders.sprite_shader.set_mat4("view", &view);
+                system_vars.shaders.sprite_shader.set_int("model_texture", 0);
+                system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+                let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
+
                 // draw layer
                 let tick = system_vars.tick;
                 let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
@@ -109,9 +113,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     sprite_frame.texture.bind(gl::TEXTURE0);
 
                     let mut matrix = Matrix4::<f32>::identity();
-//                    let mut pos = entity_pos.0;
                     let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
-                    let mut pos = body.position().translation.vector;
+                    let pos = body.position().translation.vector;
+                    let mut pos = Vector3::new(pos.x, 1.0, pos.y);
                     pos.x += layer.pos[0] as f32 / 175.0 * 5.0;
                     pos.y -= layer.pos[1] as f32 / 175.0 * 5.0;
                     matrix.prepend_translation_mut(&pos);
@@ -126,8 +130,20 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     ]);
                     system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
 
-                    binded_sprite_vertex_array.draw(gl::TRIANGLE_STRIP);
+                    binded_sprite_vertex_array.draw();
                 }
+
+//                let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
+//                let pos = body.position().translation.vector;
+//                let pos = Vector3::new(pos.x, 1.0, pos.y);
+//                let target = Vector3::new(ai.target_pos.x, 1.0, ai.target_pos.y);
+//                draw_lines_inefficiently(
+//                    &system_vars.shaders.trimesh_shader,
+//                    &system_vars.matrices.projection,
+//                    &view,
+//                    &[pos, target],
+//                    &[1.0, 0.0, 1.0],
+//                );
             }
         }
     }
@@ -173,25 +189,26 @@ fn render_client(view: &Matrix4<f32>,
     shaders.ground_shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
     shaders.ground_shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
     shaders.ground_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    map_render_data.ground_vertex_array.bind().draw();
 
-
-    map_render_data.ground_vertex_array_obj.bind().draw(gl::TRIANGLES);
 
     if map_render_data.draw_models {
-        shaders.model_shader.gl_use();
-        shaders.model_shader.set_mat4("projection", &projection_matrix);
-        shaders.model_shader.set_mat4("view", &view);
-        shaders.model_shader.set_mat3("normal_matrix", &normal_matrix);
-        shaders.model_shader.set_int("model_texture", 0);
+        for (i, (model_name, matrix)) in map_render_data.model_instances.iter().enumerate() {
+            shaders.model_shader.gl_use();
+            shaders.model_shader.set_mat4("projection", &projection_matrix);
+            shaders.model_shader.set_mat4("view", &view);
+            shaders.model_shader.set_mat3("normal_matrix", &normal_matrix);
+            shaders.model_shader.set_int("model_texture", 0);
 
-        shaders.model_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-        shaders.model_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-        shaders.model_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-        shaders.model_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+            shaders.model_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+            shaders.model_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+            shaders.model_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+            shaders.model_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-        shaders.model_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+            shaders.model_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
 
-        for (model_name, matrix) in &map_render_data.model_instances {
+
+            ///
             shaders.model_shader.set_mat4("model", &matrix);
             let model_render_data = &map_render_data.models[&model_name];
             shaders.model_shader.set_f32("alpha", model_render_data.alpha);
@@ -199,9 +216,35 @@ fn render_client(view: &Matrix4<f32>,
                 // TODO: optimize this
                 for face_render_data in node_render_data {
                     face_render_data.texture.bind(gl::TEXTURE0);
-                    face_render_data.vao.bind().draw(gl::TRIANGLES);
+                    face_render_data.vao.bind().draw();
                 }
             }
+
+            let bbox = &model_render_data.bounding_box;
+            let min = bbox.min;
+            let min = matrix.transform_point(&Point3::new(min.x, 0.0, min.z));
+            let max = bbox.max;
+            let max = matrix.transform_point(&Point3::new(max.x, 0.0, max.z));
+
+//            draw_lines_inefficiently(
+//                &shaders.trimesh_shader,
+//                &projection_matrix,
+//                &view,
+//                &[min.coords, max.coords],
+//                &[1.0, 0.0, 0.0],
+//            );
+
+            let r: f32 = nalgebra::distance(&min, &max) / 2.0;
+            let center = bbox.center;
+            let center = matrix.transform_point(&Point3::new(center.x, center.y, center.z));
+            draw_circle_inefficiently(
+                &shaders.trimesh_shader,
+                &projection_matrix,
+                &view,
+                &center.coords,
+                r,
+                &[1.0, 0.0, 0.0],
+            );
         }
     }
 }
@@ -213,23 +256,20 @@ pub struct PhysicsDebugDrawingSystem {
 
 impl PhysicsDebugDrawingSystem {
     pub fn new() -> PhysicsDebugDrawingSystem {
-        let mut capsule_mesh = ncollide3d::procedural::capsule(
+        let mut capsule_mesh = ncollide2d::procedural::circle(
             &2.0f32,
-            &4.0f32,
-            100, 100);
+            32,
+        );
 
-        capsule_mesh.unify_index_buffer();
-//        let capsule_mesh = ncollide3d::shape::TriMesh::from(capsule_mesh);
-        let indices: Vec<u32> = capsule_mesh.indices.unwrap_unified().into_iter().map(|idx| {
-            idx[0]
-        }).collect();
+        let coords = capsule_mesh.coords();
         let capsule_vertex_array = VertexArray::new(
-            &capsule_mesh.coords,
-            indices.len(),
-            Some(indices.as_slice()),
+            gl::LINE_LOOP,
+            coords,
+            coords.len(),
+            None,
             vec![
                 VertexAttribDefinition {
-                    number_of_components: 3,
+                    number_of_components: 2,
                     offset_of_first_element: 0,
                 }
             ]);
@@ -263,14 +303,18 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
                 let mut matrix = Matrix4::<f32>::identity();
                 let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
                 let pos = body.position().translation.vector;
+                let pos = Vector3::new(pos.x, 1.0, pos.y);
                 matrix.prepend_translation_mut(&pos);
+                let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
+                matrix = matrix * rotation;
 
                 system_vars.shaders.trimesh_shader.gl_use();
                 system_vars.shaders.trimesh_shader.set_mat4("projection", &system_vars.matrices.projection);
                 system_vars.shaders.trimesh_shader.set_mat4("view", &view);
                 system_vars.shaders.trimesh_shader.set_f32("alpha", 1.0);
                 system_vars.shaders.trimesh_shader.set_mat4("model", &matrix);
-                self.capsule_vertex_array.bind().draw(gl::TRIANGLES);
+                system_vars.shaders.trimesh_shader.set_vec3("color", &[1.0, 0.0, 1.0]);
+                self.capsule_vertex_array.bind().draw();
             }
         }
     }
