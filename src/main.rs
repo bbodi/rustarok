@@ -38,7 +38,7 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::job_name_table;
-use crate::components::{PositionComponent, ControllerComponent, PhysicsComponent, BrowserClient, AnimatedSpriteComponent, DirectionComponent, DummyAiComponent};
+use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, SimpleSpriteComponent, DummyAiComponent, ExtraSpriteComponent};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations};
 use crate::systems::render::{PhysicsDebugDrawingSystem, RenderBrowserClientsSystem, RenderStreamingSystem, RenderDesktopClientSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
@@ -69,7 +69,8 @@ mod hardcoded_consts;
 mod components;
 mod systems;
 
-enum ActionIndex {
+#[derive(Clone, Copy)]
+pub enum ActionIndex {
     Idle = 0,
     Walking = 8,
     Sitting = 16,
@@ -83,6 +84,15 @@ enum ActionIndex {
     Attacking2 = 80,
     Attacking3 = 88,
     CastingSpell = 96,
+}
+
+#[derive(Clone, Copy)]
+pub enum MonsterActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Attack = 16,
+    ReceivingDamage = 24,
+    Die = 32,
 }
 
 const STATIC_MODELS_COLLISION_GROUP: usize = 1;
@@ -188,11 +198,10 @@ fn main() {
     };
 
     let mut ecs_world = specs::World::new();
-    ecs_world.register::<PositionComponent>();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<ControllerComponent>();
-    ecs_world.register::<AnimatedSpriteComponent>();
-    ecs_world.register::<DirectionComponent>();
+    ecs_world.register::<SimpleSpriteComponent>();
+    ecs_world.register::<ExtraSpriteComponent>();
     ecs_world.register::<DummyAiComponent>();
     ecs_world.register::<PhysicsComponent>();
 
@@ -249,7 +258,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let (elapsed, (sprite_resources, head_sprites)) = measure_time(|| {
+    let (elapsed, (sprite_resources, head_sprites, monster_sprites)) = measure_time(|| {
         let head_sprites = (1..=26).map(|i| {
             let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
             let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
@@ -261,6 +270,14 @@ fn main() {
             } else { None };
             vec![male, female]
         }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
+
+        let monster_sprites = ["baphomet", "poring"].iter().map(|name| {
+            let file_name = grf("sprite\\npc\\") + name;
+            let male = if Path::new(&(file_name.clone() + ".act")).exists() {
+                Some(SpriteResource::new(&file_name))
+            } else { None };
+            male
+        }).filter_map(|it| it).collect::<Vec<SpriteResource>>();
 
         let sprite_resources =
             job_name_table().values().take(10).map(|job_name| {
@@ -274,15 +291,10 @@ fn main() {
                 } else { None };
                 vec![male, female]
             }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
-        (sprite_resources, head_sprites)
+        (sprite_resources, head_sprites, monster_sprites)
     });
 
-    dbg!(&sprite_resources[0].action.actions[0].frames[0].positions);
-    dbg!(&sprite_resources[0].action.actions[0].frames[0].layers[0].pos);
-    dbg!(&head_sprites[0].action.actions[0].frames[0].positions);
-    dbg!(&head_sprites[0].action.actions[0].frames[0].layers[0].pos);
-
-    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len() + head_sprites.len(), elapsed.as_millis());
+    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len() + head_sprites.len() + monster_sprites.len(), elapsed.as_millis());
 
     let my_str = ImString::new("shitaka");
 
@@ -309,6 +321,7 @@ fn main() {
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprite_resources,
+        monster_sprites,
         head_sprites,
         tick: Tick(0),
         dt: DeltaTime(0.0),
@@ -522,9 +535,10 @@ fn imgui_frame(desktop_client_entity: Entity,
             });
     }
     {
-        let current_entity_count = ecs_world.read_storage::<AnimatedSpriteComponent>().join().count() as i32;
+        let current_entity_count = ecs_world.read_storage::<SimpleSpriteComponent>().join().count() as i32;
         if current_entity_count < *entity_count {
-            for _i in 0..(*entity_count - current_entity_count) {
+            let count_to_add = *entity_count - current_entity_count;
+            for _i in 0..count_to_add {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
@@ -547,36 +561,73 @@ fn imgui_frame(desktop_client_entity: Entity,
                 let head_count = ecs_world.read_resource::<SystemVariables>().head_sprites.len();
                 ecs_world
                     .create_entity()
-                    .with(PositionComponent(pos.coords))
-                    .with(DirectionComponent(0.0))
                     .with(physics_component)
-                    .with(DummyAiComponent { target_pos: pos2d, state: 0, controller: Some(desktop_client_entity) })
-                    .with(AnimatedSpriteComponent {
-                        file_index: rng.gen::<usize>() % sprite_count,
+                    .with(DummyAiComponent { target_pos: pos2d, state: ActionIndex::Idle, controller: Some(desktop_client_entity) })
+                    .with(ExtraSpriteComponent {
                         head_index: rng.gen::<usize>() % head_count,
+                    })
+                    .with(SimpleSpriteComponent {
+                        file_index: rng.gen::<usize>() % sprite_count,
                         action_index: 8,
                         animation_start: Tick(0),
                         direction: 0,
+                        is_monster: false,
                     })
                     .build();
             }
+            // add monsters
+            for _i in 0..count_to_add {
+                let pos = {
+                    let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
+                    // TODO: extract it
+                    let (x, y) = loop {
+                        let x = map_render_data.gnd.width as f32 * (rng.gen::<f32>());
+                        let y = map_render_data.gnd.height as f32 * (rng.gen::<f32>());
+                        let index = y as usize * map_render_data.gat.width as usize + y as usize;
+                        let walkable = (map_render_data.gat.cells[index].cell_type & CellType::Walkable as u8) != 0;
+                        if walkable {
+                            break (2.0 * x, 2.0 * y);
+                        }
+                    };
+                    Point3::<f32>::new(x, 0.5, -y)
+                };
+                let pos2d = Point2::new(pos.x, pos.z);
+                let physics_component = {
+                    let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
+                    PhysicsComponent::new(&mut physics_world, pos2d.coords)
+                };
+                let sprite_count = ecs_world.read_resource::<SystemVariables>().monster_sprites.len();
+                ecs_world
+                    .create_entity()
+                    .with(physics_component)
+                    .with(DummyAiComponent { target_pos: pos2d, state: ActionIndex::Idle, controller: Some(desktop_client_entity) })
+                    .with(SimpleSpriteComponent {
+                        file_index: rng.gen::<usize>() % sprite_count,
+                        action_index: 8,
+                        animation_start: Tick(0),
+                        direction: 0,
+                        is_monster: true,
+                    })
+                    .build();
+            }
+            *entity_count += count_to_add;
         } else if current_entity_count > *entity_count {
             let entities: Vec<_> = {
                 let to_remove = current_entity_count - *entity_count;
                 let entities_storage = ecs_world.entities();
-                let sprite_storage = ecs_world.read_storage::<AnimatedSpriteComponent>(); // it is need only for filtering entities
+                let sprite_storage = ecs_world.read_storage::<SimpleSpriteComponent>(); // it is need only for filtering entities
                 let physics_storage = ecs_world.read_storage::<PhysicsComponent>();
                 (&entities_storage, &sprite_storage, &physics_storage).join()
                     .take(to_remove as usize)
-                    .map(|(entity, _sprite_comp, phys_comp)| (entity, (*phys_comp).clone()))
+                    .map(|(entity, _sprite_comp, phys_comp)| (entity, phys_comp.handle.clone()))
                     .collect()
             };
-            let entity_ids: Vec<_> = entities.iter().map(|(entity, _phys_comp)| *entity).collect();
+            let entity_ids: Vec<_> = entities.iter().map(|(entity, _body_handle)| *entity).collect();
             ecs_world.delete_entities(entity_ids.as_slice());
 
             // remove rigid bodies from the physic simulation
             let physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
-            let body_handles: Vec<_> = entities.iter().map(|(_entity, phys_comp)| phys_comp.handle).collect();
+            let body_handles: Vec<_> = entities.iter().map(|(_entity, body_handle)| body_handle.clone()).collect();
             physics_world.remove_bodies(body_handles.as_slice());
         }
     }

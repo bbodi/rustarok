@@ -1,14 +1,17 @@
+extern crate rand;
+
 use crate::cam::Camera;
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
 use nalgebra::{Point3, Vector3, Vector2, Point2};
 use std::collections::HashSet;
 use sdl2::keyboard::Scancode;
-use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
+use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex};
 use specs::prelude::*;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
+use rand::Rng;
 
 #[derive(Component)]
 pub struct BrowserClient {
@@ -16,9 +19,6 @@ pub struct BrowserClient {
     pub offscreen: Vec<u8>,
     pub ping: u16,
 }
-
-#[derive(Component)]
-pub struct PositionComponent(pub Vector3<f32>);
 
 #[derive(Component)]
 pub struct ControllerComponent {
@@ -51,25 +51,31 @@ impl ControllerComponent {
 #[derive(Component)]
 pub struct DummyAiComponent {
     pub target_pos: Point2<f32>,
-    pub state: i32,
-    // 0 standing, 1 walking
+    pub state: ActionIndex,
     pub controller: Option<Entity>,
 }
 
 #[derive(Component)]
-pub struct DirectionComponent(pub f32);
-
-#[derive(Component)]
-pub struct AnimatedSpriteComponent {
+pub struct SimpleSpriteComponent {
     pub file_index: usize,
-    pub head_index: usize,
     pub action_index: usize,
     pub animation_start: Tick,
     pub direction: usize,
+    pub is_monster: bool,
 }
 
-#[derive(Component, Clone)]
+#[derive(Component)]
+pub struct ExtraSpriteComponent {
+    pub head_index: usize,
+}
+
+// radius = ComponentRadius * 0.5f32
+#[derive(Eq, PartialEq, Hash)]
+pub struct ComponentRadius(pub i32);
+
+#[derive(Component)]
 pub struct PhysicsComponent {
+    pub radius: ComponentRadius,
     pub handle: nphysics2d::object::BodyHandle
 }
 
@@ -78,7 +84,9 @@ impl PhysicsComponent {
         world: &mut nphysics2d::world::World<f32>,
         pos: Vector2<f32>,
     ) -> PhysicsComponent {
-        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(1.0));
+        let mut rng = rand::thread_rng();
+        let radius = rng.gen_range(1, 5);
+        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius as f32 * 0.5));
         let mut collider_desc = ColliderDesc::new(capsule)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[LIVING_COLLISION_GROUP])
@@ -90,6 +98,7 @@ impl PhysicsComponent {
             .set_translation(pos)
             .build(world).handle();
         PhysicsComponent {
+            radius: ComponentRadius(radius),
             handle
         }
     }
