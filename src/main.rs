@@ -17,11 +17,11 @@ use std::io::ErrorKind;
 use crate::common::BinaryReader;
 use crate::rsw::Rsw;
 use crate::gnd::Gnd;
-use crate::gat::Gat;
+use crate::gat::{Gat, CellType};
 
 use imgui::ImString;
-use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3, Vector2, Point2};
-use crate::video::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture, Video};
+use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3, Vector2, Point2, Isometry, Isometry2};
+use crate::video::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
 use std::time::{Duration, SystemTime, Instant};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, BoundingBox};
@@ -38,7 +38,7 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::job_name_table;
-use crate::components::{CameraComponent, PositionComponent, InputProducerComponent, PhysicsComponent, BrowserClient, AnimatedSpriteComponent, DirectionComponent, DummyAiComponent};
+use crate::components::{PositionComponent, ControllerComponent, PhysicsComponent, BrowserClient, AnimatedSpriteComponent, DirectionComponent, DummyAiComponent};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations};
 use crate::systems::render::{PhysicsDebugDrawingSystem, RenderBrowserClientsSystem, RenderStreamingSystem, RenderDesktopClientSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
@@ -46,7 +46,7 @@ use crate::systems::ai::DummyAiSystem;
 use crate::systems::phys::PhysicsSystem;
 use rand::prelude::ThreadRng;
 use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::ColliderDesc;
+use nphysics2d::object::{ColliderDesc, Collider};
 use std::ops::Bound;
 use ncollide2d::world::CollisionGroups;
 
@@ -189,9 +189,8 @@ fn main() {
 
     let mut ecs_world = specs::World::new();
     ecs_world.register::<PositionComponent>();
-    ecs_world.register::<CameraComponent>();
     ecs_world.register::<BrowserClient>();
-    ecs_world.register::<InputProducerComponent>();
+    ecs_world.register::<ControllerComponent>();
     ecs_world.register::<AnimatedSpriteComponent>();
     ecs_world.register::<DirectionComponent>();
     ecs_world.register::<DummyAiComponent>();
@@ -199,8 +198,7 @@ fn main() {
 
     let desktop_client_entity = ecs_world
         .create_entity()
-        .with(CameraComponent::new())
-        .with(InputProducerComponent::default())
+        .with(ControllerComponent::new())
         .build();
 
 
@@ -215,33 +213,35 @@ fn main() {
         .with_thread_local(PhysicsDebugDrawingSystem::new())
         .build();
 
-    let mut physics_world = nphysics2d::world::World::new();
-    let map_render_data = load_map("prontera");
-    for (model_name, matrix) in &map_render_data.model_instances {
-        shaders.model_shader.set_mat4("model", &matrix);
-        let model_render_data = &map_render_data.models[&model_name];
-        let bbox = &model_render_data.bounding_box;
+    let map_render_data = load_map("geffen");
+    let w = map_render_data.gat.width;
+//    let mut physics_world = map_render_data.physics_world;
 
-        let min = bbox.min;
-        let min = matrix.transform_point(&Point3::new(min.x, 0.0, min.z));
-        let max = bbox.max;
-        let max = matrix.transform_point(&Point3::new(max.x, 0.0, max.z));
-        let r: f32 = nalgebra::distance(&min, &max) / 2.0;
-
-        let translation_vector = matrix.transform_point(&Point3::new(bbox.center.x, 0.0, bbox.center.z));
-
-        let cuboid = ShapeHandle::new(
-            ncollide2d::shape::Ball::new(r)
-        );
-        ColliderDesc::new(cuboid)
-            .density(10.0)
-            .translation(Vector2::new(translation_vector.x, translation_vector.z))
-            .collision_groups(CollisionGroups::new()
-                .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
-                .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
-                .with_whitelist(&[LIVING_COLLISION_GROUP]))
-            .build(&mut physics_world);
-    }
+//    for (model_name, matrix) in &map_render_data.model_instances {
+//        shaders.model_shader.set_mat4("model", &matrix);
+//        let model_render_data = &map_render_data.models[&model_name];
+//        let bbox = &model_render_data.bounding_box;
+//
+//        let min = bbox.min;
+//        let min = matrix.transform_point(&Point3::new(min.x, 0.0, min.z));
+//        let max = bbox.max;
+//        let max = matrix.transform_point(&Point3::new(max.x, 0.0, max.z));
+//        let r: f32 = nalgebra::distance(&min, &max) / 2.0;
+//
+//        let translation_vector = matrix.transform_point(&Point3::new(bbox.center.x, 0.0, bbox.center.z));
+//
+//        let cuboid = ShapeHandle::new(
+//            ncollide2d::shape::Ball::new(r)
+//        );
+//        ColliderDesc::new(cuboid)
+//            .density(10.0)
+//            .translation(Vector2::new(translation_vector.x, translation_vector.z))
+//            .collision_groups(CollisionGroups::new()
+//                .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
+//                .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
+//                .with_whitelist(&[LIVING_COLLISION_GROUP]))
+//            .build(&mut physics_world);
+//    }
 
     fn grf(str: &str) -> String {
         format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
@@ -249,10 +249,10 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let (elapsed, sprite_resources) = measure_time(|| {
-        job_name_table().values().take(10).map(|job_name| {
-            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + job_name + "_³²";
-            let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + job_name + "_¿©";
+    let (elapsed, (sprite_resources, head_sprites)) = measure_time(|| {
+        let head_sprites = (1..=26).map(|i| {
+            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
+            let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
             let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
                 Some(SpriteResource::new(&male_file_name))
             } else { None };
@@ -260,13 +260,33 @@ fn main() {
                 Some(SpriteResource::new(&female_file_name))
             } else { None };
             vec![male, female]
-        }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>()
+        }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
+
+        let sprite_resources =
+            job_name_table().values().take(10).map(|job_name| {
+                let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + job_name + "_³²";
+                let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + job_name + "_¿©";
+                let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
+                    Some(SpriteResource::new(&male_file_name))
+                } else { None };
+                let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
+                    Some(SpriteResource::new(&female_file_name))
+                } else { None };
+                vec![male, female]
+            }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
+        (sprite_resources, head_sprites)
     });
-    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len(), elapsed.as_millis());
+
+    dbg!(&sprite_resources[0].action.actions[0].frames[0].positions);
+    dbg!(&sprite_resources[0].action.actions[0].frames[0].layers[0].pos);
+    dbg!(&head_sprites[0].action.actions[0].frames[0].positions);
+    dbg!(&head_sprites[0].action.actions[0].frames[0].layers[0].pos);
+
+    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len() + head_sprites.len(), elapsed.as_millis());
 
     let my_str = ImString::new("shitaka");
 
-    let map_name_filter = ImString::new("prontera");
+    let mut map_name_filter = ImString::new("prontera");
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
         if dir_entry.file_name().into_string().unwrap().ends_with("rsw") {
@@ -278,17 +298,22 @@ fn main() {
     }).filter_map(|x| x).collect::<Vec<String>>();
 
     let render_matrices = RenderMatrices {
-        projection: Matrix4::new_perspective(std::f32::consts::FRAC_PI_4, 900f32 / 700f32, 0.1f32, 1000.0f32),
+        projection: Matrix4::new_perspective(
+            std::f32::consts::FRAC_PI_4,
+            VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+            0.1f32,
+            1000.0f32,
+        ),
     };
 
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprite_resources,
+        head_sprites,
         tick: Tick(0),
         dt: DeltaTime(0.0),
         matrices: render_matrices,
         map_render_data,
-        physics_world,
     });
 
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
@@ -314,11 +339,10 @@ fn main() {
                 info!("Client connected");
                 ecs_world
                     .create_entity()
-                    .with(CameraComponent::new())
-                    .with(InputProducerComponent::default())
+                    .with(ControllerComponent::new())
                     .with(BrowserClient {
                         websocket: Mutex::new(browser_client),
-                        offscreen: vec![0; 900 * 700 * 4],
+                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
                         ping: 0,
                     })
                     .build();
@@ -327,7 +351,7 @@ fn main() {
         };
 
         {
-            let mut storage = ecs_world.write_storage::<InputProducerComponent>();
+            let mut storage = ecs_world.write_storage::<ControllerComponent>();
             let inputs = storage.get_mut(desktop_client_entity).unwrap();
 
             for event in video.event_pump.poll_iter() {
@@ -349,7 +373,7 @@ fn main() {
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
-        imgui_frame(
+        if let Some(new_map_name) = imgui_frame(
             desktop_client_entity,
             &mut video,
             &mut ecs_world,
@@ -357,8 +381,13 @@ fn main() {
             sent_bytes_per_second,
             &mut entity_count,
             &mut time_multiplier,
+            &mut map_name_filter,
+            &all_map_names,
             fps,
-        );
+        ) {
+            let map_render_data = load_map(&new_map_name);
+            ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
+        }
 
         video.gl_swap_window();
 
@@ -397,39 +426,38 @@ fn imgui_frame(desktop_client_entity: Entity,
                sent_bytes_per_second: usize,
                entity_count: &mut i32,
                time_multiplier: &mut i32,
-               fps: u64) {
+               mut map_name_filter: &mut ImString,
+               all_map_names: &Vec<String>,
+               fps: u64) -> Option<String> {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
                                     &video.event_pump.mouse_state());
-//        extern crate sublime_fuzzy;
-//        let map_name_filter_clone = map_name_filter.clone();
-//        let filtered_map_names: Vec<&String> = all_map_names.iter()
-//            .filter(|map_name| {
-//                let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
-//                matc.is_some()
-//            }).collect();
-//        ui.window(im_str!("Maps: {},{},{}", camera.pos().x, camera.pos().y, camera.pos().z))
-//            .position((0.0, 200.0), ImGuiCond::FirstUseEver)
-//            .size((300.0, (100.0 + filtered_map_names.len() as f32 * 16.0).min(500.0)), ImGuiCond::Always)
-//            .build(|| {
-//                if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
-//                    .enter_returns_true(true)
-//                    .build() {
-//                    if let Some(map_name) = filtered_map_names.get(0) {
-//                        map_render_data = load_map(map_name);
-//                    }
-//                }
-//                for map_name in filtered_map_names.iter() {
-//                    if ui.small_button(&ImString::new(map_name.as_str())) {
-//                        map_render_data = load_map(map_name);
-//                    }
-//                }
-//            });
+    extern crate sublime_fuzzy;
+    let mut ret = None;
     { // IMGUI
         ui.window(im_str!("Graphic opsions"))
             .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
             .build(|| {
+                let map_name_filter_clone = map_name_filter.clone();
+                let filtered_map_names: Vec<&String> = all_map_names.iter()
+                    .filter(|map_name| {
+                        let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
+                        matc.is_some()
+                    }).collect();
+                if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
+                    .enter_returns_true(true)
+                    .build() {
+                    if let Some(&map_name) = filtered_map_names.get(0) {
+                        ret = Some(map_name.to_owned());
+                    }
+                }
+                for &map_name in filtered_map_names.iter() {
+                    if ui.small_button(&ImString::new(map_name.as_str())) {
+                        ret = Some(map_name.to_owned());
+                    }
+                }
+
                 let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
                 ui.checkbox(im_str!("Use tile_colors"), &mut map_render_data.use_tile_colors);
                 if ui.checkbox(im_str!("Use use_lighting"), &mut map_render_data.use_lighting) {
@@ -458,9 +486,9 @@ fn imgui_frame(desktop_client_entity: Entity,
                 ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
                     .min(0.0).max(1.0).speed(0.05).build();
 
-                let mut storage = ecs_world.write_storage::<CameraComponent>();
-                let camera = storage.get(desktop_client_entity).unwrap();
-                ui.text(im_str!("Maps: {},{},{}", camera.camera.pos().x, camera.camera.pos().y, camera.camera.pos().z));
+                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let controller = storage.get(desktop_client_entity).unwrap();
+                ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
                 ui.text(im_str!("FPS: {}", fps));
                 let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
@@ -499,22 +527,33 @@ fn imgui_frame(desktop_client_entity: Entity,
             for _i in 0..(*entity_count - current_entity_count) {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
-                    Point3::<f32>::new(2.0 * map_render_data.gnd.width as f32 * (rng.gen::<f32>()), 0.5, -(2.0 * map_render_data.gnd.height as f32 * (rng.gen::<f32>())))
+                    let (x, y) = loop {
+                        let x = map_render_data.gnd.width as f32 * (rng.gen::<f32>());
+                        let y = map_render_data.gnd.height as f32 * (rng.gen::<f32>());
+                        let index = y as usize * map_render_data.gat.width as usize + y as usize;
+                        let walkable = (map_render_data.gat.cells[index].cell_type & CellType::Walkable as u8) != 0;
+                        if walkable {
+                            break (2.0 * x, 2.0 * y);
+                        }
+                    };
+                    Point3::<f32>::new(x, 0.5, -y)
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
                 let physics_component = {
-                    let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().physics_world;
+                    let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
                     PhysicsComponent::new(&mut physics_world, pos2d.coords)
                 };
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().sprite_resources.len();
+                let head_count = ecs_world.read_resource::<SystemVariables>().head_sprites.len();
                 ecs_world
                     .create_entity()
                     .with(PositionComponent(pos.coords))
                     .with(DirectionComponent(0.0))
                     .with(physics_component)
-                    .with(DummyAiComponent { target_pos: pos2d, state: 0 })
+                    .with(DummyAiComponent { target_pos: pos2d, state: 0, controller: Some(desktop_client_entity) })
                     .with(AnimatedSpriteComponent {
                         file_index: rng.gen::<usize>() % sprite_count,
+                        head_index: rng.gen::<usize>() % head_count,
                         action_index: 8,
                         animation_start: Tick(0),
                         direction: 0,
@@ -536,18 +575,20 @@ fn imgui_frame(desktop_client_entity: Entity,
             ecs_world.delete_entities(entity_ids.as_slice());
 
             // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<SystemVariables>().physics_world;
+            let physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
             let body_handles: Vec<_> = entities.iter().map(|(_entity, phys_comp)| phys_comp.handle).collect();
             physics_world.remove_bodies(body_handles.as_slice());
         }
     }
     video.renderer.render(ui);
+    return ret;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ModelName(String);
 
 pub struct MapRenderData {
+    pub gat: Gat,
     pub gnd: Gnd,
     pub rsw: Rsw,
     pub light_wheight: [f32; 3],
@@ -562,6 +603,10 @@ pub struct MapRenderData {
     pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
     pub draw_models: bool,
+    pub ground_walkability_mesh: VertexArray,
+    pub ground_walkability_mesh2: VertexArray,
+    pub ground_walkability_mesh3: VertexArray,
+    pub physics_world: nphysics2d::world::World<f32>,
 }
 
 pub struct ModelRenderData {
@@ -593,9 +638,66 @@ fn load_map(map_name: &str) -> MapRenderData {
         Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)))
     });
     info!("rsw loaded: {}ms", elapsed.as_millis());
-    let (elapsed, _altitude) = measure_time(|| {
+    let (elapsed, gat) = measure_time(|| {
         Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)))
     });
+    let w = gat.width;
+    let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
+    let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+    let mut rotate_around_x_axis = |mut pos: Point3<f32>| {
+        v.x = pos[0];
+        v.y = pos[1];
+        v.z = pos[2];
+        v = rot * v;
+        pos[0] = v.x;
+        pos[1] = v.y;
+        pos[2] = v.z;
+        pos
+    };
+
+    let vertices: Vec<Point3<f32>> = gat.rectangles.iter().map(|cell| {
+        let x = cell.start_x as f32;
+        let x2 = (cell.start_x + cell.width) as f32;
+        let y = (cell.bottom - cell.height + 1) as f32;
+        let y2 = (cell.bottom + 1) as f32;
+        vec![rotate_around_x_axis(Point3::new(x, -2.0, y2)),
+             rotate_around_x_axis(Point3::new(x2, -2.0, y2)),
+             rotate_around_x_axis(Point3::new(x, -2.0, y)),
+             rotate_around_x_axis(Point3::new(x, -2.0, y)),
+             rotate_around_x_axis(Point3::new(x2, -2.0, y2)),
+             rotate_around_x_axis(Point3::new(x2, -2.0, y))]
+    }).flatten().collect();
+
+    let vertices2: Vec<Point3<f32>> = gat.cells.iter().enumerate().map(|(i, cell)| {
+        let x = (i as u32 % w) as f32;
+        let y = (i as u32 / w) as f32;
+        if cell.cell_type & CellType::Walkable as u8 == 0 {
+            vec![rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 1.0)),
+                 rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 1.0)),
+                 rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 0.0)),
+                 rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 0.0)),
+                 rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 1.0)),
+                 rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 0.0))]
+        } else {
+            vec![]
+        }
+    }).flatten().collect();
+    let ground_walkability_mesh = VertexArray::new(
+        gl::TRIANGLES,
+        &vertices, vertices.len(), None, vec![
+            VertexAttribDefinition {
+                number_of_components: 3,
+                offset_of_first_element: 0,
+            }
+        ]);
+    let ground_walkability_mesh2 = VertexArray::new(
+        gl::TRIANGLES,
+        &vertices2, vertices2.len(), None, vec![
+            VertexAttribDefinition {
+                number_of_components: 3,
+                offset_of_first_element: 0,
+            }
+        ]);
     info!("gat loaded: {}ms", elapsed.as_millis());
     let (elapsed, mut ground) = measure_time(|| {
         Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
@@ -699,7 +801,52 @@ fn load_map(map_name: &str) -> MapRenderData {
                 offset_of_first_element: 10,
             }
         ]);
+    let mut physics_world = nphysics2d::world::World::new();
+    let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat.rectangles.iter().map(|cell| {
+        let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+        let half_w = cell.width as f32 / 2.0;
+        let x = cell.start_x as f32 + half_w;
+        let half_h = cell.height as f32 / 2.0;
+        let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
+        let half_extents = Vector2::new(half_w, half_h);
+
+        let cuboid = ShapeHandle::new(
+            ncollide2d::shape::Cuboid::new(half_extents)
+        );
+        let v = rot * Vector3::new(x, 0.0, y);
+        let v2 = Vector2::new(v.x, v.z);
+        let shit = ColliderDesc::new(cuboid)
+            .density(10.0)
+            .translation(v2)
+            .collision_groups(CollisionGroups::new()
+                .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
+                .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
+                .with_whitelist(&[LIVING_COLLISION_GROUP]))
+            .build(&mut physics_world);
+        (half_extents, shit.position_wrt_body().translation.vector)
+    }).collect();
+    let vertices: Vec<Point3<f32>> = colliders.iter().map(|(extents, pos)| {
+        let x = pos.x - extents.x;
+        let x2 = pos.x + extents.x;
+        let y = pos.y - extents.y;
+        let y2 = pos.y + extents.y;
+        vec![Point3::new(x, 3.0, y2),
+             Point3::new(x2, 3.0, y2),
+             Point3::new(x, 3.0, y),
+             Point3::new(x, 3.0, y),
+             Point3::new(x2, 3.0, y2),
+             Point3::new(x2, 3.0, y)]
+    }).flatten().collect();
+    let ground_walkability_mesh3 = VertexArray::new(
+        gl::TRIANGLES,
+        &vertices, vertices.len(), None, vec![
+            VertexAttribDefinition {
+                number_of_components: 3,
+                offset_of_first_element: 0,
+            }
+        ]);
     MapRenderData {
+        gat,
         gnd: ground,
         rsw: world,
         ground_vertex_array,
@@ -713,6 +860,10 @@ fn load_map(map_name: &str) -> MapRenderData {
         use_lightmaps: true,
         use_lighting: true,
         draw_models: true,
+        ground_walkability_mesh,
+        ground_walkability_mesh2,
+        ground_walkability_mesh3,
         light_wheight: [0f32; 3],
+        physics_world: physics_world,
     }
 }

@@ -10,11 +10,11 @@ pub mod render;
 pub struct SystemVariables {
     pub shaders: Shaders,
     pub sprite_resources: Vec<SpriteResource>,
+    pub head_sprites: Vec<SpriteResource>,
     pub tick: Tick,
     pub dt: DeltaTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
-    pub physics_world: nphysics2d::world::World<f32>,
 }
 
 pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);

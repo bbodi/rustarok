@@ -13,6 +13,6 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         mut system_benchmark,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
-        system_vars.physics_world.step();
+        system_vars.map_render_data.physics_world.step();
     }
 }

@@ -2,7 +2,7 @@ use websocket::{OwnedMessage, WebSocketError};
 use std::time::SystemTime;
 use sdl2::keyboard::Scancode;
 use std::io::ErrorKind;
-use crate::components::{InputProducerComponent, CameraComponent, BrowserClient};
+use crate::components::{ControllerComponent, BrowserClient};
 use specs::prelude::*;
 
 pub struct BrowserInputProducerSystem;
@@ -10,7 +10,7 @@ pub struct BrowserInputProducerSystem;
 impl<'a> specs::System<'a> for BrowserInputProducerSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, InputProducerComponent>,
+        specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, BrowserClient>,
     );
 
@@ -155,23 +155,21 @@ pub struct InputConsumerSystem;
 
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
-        specs::WriteStorage<'a, InputProducerComponent>,
-        specs::WriteStorage<'a, CameraComponent>,
+        specs::WriteStorage<'a, ControllerComponent>,
     );
 
     fn run(&mut self, (
-        mut input_storage,
-        mut camera_storage,
+        mut controller_storage,
     ): Self::SystemData) {
-        for (client, input_producer) in (&mut camera_storage, &mut input_storage).join() {
-            let events: Vec<_> = input_producer.inputs.drain(..).collect();
+        for (controller) in (&mut controller_storage).join() {
+            let events: Vec<_> = controller.inputs.drain(..).collect();
             for event in events {
                 match event {
                     sdl2::event::Event::MouseButtonDown { .. } => {
-                        client.mouse_down = true;
+                        controller.mouse_down = true;
                     }
                     sdl2::event::Event::MouseButtonUp { .. } => {
-                        client.mouse_down = false;
+                        controller.mouse_down = false;
                     }
                     sdl2::event::Event::MouseMotion {
                         timestamp: _,
@@ -183,50 +181,50 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         xrel: _,
                         yrel: _
                     } => {
-                        if client.mouse_down {
-                            let x_offset = x - client.last_mouse_x as i32;
-                            let y_offset = client.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
-                            client.yaw += x_offset as f32;
-                            client.pitch += y_offset as f32;
-                            if client.pitch > 89.0 {
-                                client.pitch = 89.0;
+                        if controller.mouse_down {
+                            let x_offset = x - controller.last_mouse_x as i32;
+                            let y_offset = controller.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
+                            controller.yaw += x_offset as f32;
+                            controller.pitch += y_offset as f32;
+                            if controller.pitch > 89.0 {
+                                controller.pitch = 89.0;
                             }
-                            if client.pitch < -89.0 {
-                                client.pitch = -89.0;
+                            if controller.pitch < -89.0 {
+                                controller.pitch = -89.0;
                             }
-                            if client.yaw > 360.0 {
-                                client.yaw -= 360.0;
-                            } else if client.yaw < 0.0 {
-                                client.yaw += 360.0;
+                            if controller.yaw > 360.0 {
+                                controller.yaw -= 360.0;
+                            } else if controller.yaw < 0.0 {
+                                controller.yaw += 360.0;
                             }
-                            client.camera.rotate(client.pitch, client.yaw);
+                            controller.camera.rotate(controller.pitch, controller.yaw);
                         }
-                        client.last_mouse_x = x as u16;
-                        client.last_mouse_y = y as u16;
+                        controller.last_mouse_x = x as u16;
+                        controller.last_mouse_y = y as u16;
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if scancode.is_some() {
-                            input_producer.keys.insert(scancode.unwrap());
+                            controller.keys.insert(scancode.unwrap());
                         }
                     }
                     sdl2::event::Event::KeyUp { scancode, .. } => {
                         if scancode.is_some() {
-                            input_producer.keys.remove(&scancode.unwrap());
+                            controller.keys.remove(&scancode.unwrap());
                         }
                     }
                     _ => {}
                 }
             }
-            let camera_speed = if input_producer.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
-            if input_producer.keys.contains(&Scancode::W) {
-                client.camera.move_forward(camera_speed);
-            } else if input_producer.keys.contains(&Scancode::S) {
-                client.camera.move_forward(-camera_speed);
+            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+            if controller.keys.contains(&Scancode::W) {
+                controller.camera.move_forward(camera_speed);
+            } else if controller.keys.contains(&Scancode::S) {
+                controller.camera.move_forward(-camera_speed);
             }
-            if input_producer.keys.contains(&Scancode::A) {
-                client.camera.move_side(-camera_speed);
-            } else if input_producer.keys.contains(&Scancode::D) {
-                client.camera.move_side(camera_speed);
+            if controller.keys.contains(&Scancode::A) {
+                controller.camera.move_side(-camera_speed);
+            } else if controller.keys.contains(&Scancode::D) {
+                controller.camera.move_side(camera_speed);
             }
         }
     }
