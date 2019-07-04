@@ -34,15 +34,19 @@ pub struct ControllerComponent {
 
 impl ControllerComponent {
     pub fn new() -> ControllerComponent {
+        let pitch = -60.0;
+        let yaw = 270.0;
+        let mut camera = Camera::new(Point3::new(250.0, 30.0, -180.0));
+        camera.rotate(pitch, yaw);
         ControllerComponent {
-            camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
+            camera,
             inputs: vec![],
             keys: Default::default(),
             mouse_down: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
-            yaw: 270.0,
-            pitch: 0.0,
+            yaw,
+            pitch,
         }
     }
 }

@@ -1,10 +1,10 @@
 use nalgebra::{Point3, Vector3, Matrix4};
 
 pub struct Camera {
-    pub pos: Point3<f32>,
-    pub front: Vector3<f32>,
-    pub up: Vector3<f32>,
-    pub right: Vector3<f32>,
+    pos: Point3<f32>,
+    front: Vector3<f32>,
+    up: Vector3<f32>,
+    right: Vector3<f32>,
 }
 
 impl Camera {
@@ -23,6 +23,14 @@ impl Camera {
         self.pos
     }
 
+    pub fn set_x(&mut self, x: f32) {
+        self.pos.x = x;
+    }
+
+    pub fn set_z(&mut self, z: f32) {
+        self.pos.z = z;
+    }
+
     pub fn rotate(&mut self, pitch: f32, yaw: f32) {
         self.front = Vector3::<f32>::new(
             pitch.to_radians().cos() * yaw.to_radians().cos(),
@@ -39,6 +47,14 @@ impl Camera {
 
     pub fn move_side(&mut self, speed: f32) {
         self.pos += self.front.cross(&self.up).normalize() * speed;
+    }
+
+    pub fn move_along_z(&mut self, speed: f32) {
+        self.pos.z += speed;
+    }
+
+    pub fn move_along_x(&mut self, speed: f32) {
+        self.pos.x += speed;
     }
 
     pub fn create_view_matrix(&self) -> Matrix4<f32> {

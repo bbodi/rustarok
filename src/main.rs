@@ -141,7 +141,7 @@ pub struct Tick(u64);
 pub struct DeltaTime(f32);
 
 fn main() {
-    simple_logging::log_to_stderr(LevelFilter::Info);
+    simple_logging::log_to_stderr(LevelFilter::Trace);
 
 
     let mut video = Video::init();
@@ -222,35 +222,8 @@ fn main() {
         .with_thread_local(PhysicsDebugDrawingSystem::new())
         .build();
 
-    let map_render_data = load_map("geffen");
+    let map_render_data = load_map("prontera");
     let w = map_render_data.gat.width;
-//    let mut physics_world = map_render_data.physics_world;
-
-//    for (model_name, matrix) in &map_render_data.model_instances {
-//        shaders.model_shader.set_mat4("model", &matrix);
-//        let model_render_data = &map_render_data.models[&model_name];
-//        let bbox = &model_render_data.bounding_box;
-//
-//        let min = bbox.min;
-//        let min = matrix.transform_point(&Point3::new(min.x, 0.0, min.z));
-//        let max = bbox.max;
-//        let max = matrix.transform_point(&Point3::new(max.x, 0.0, max.z));
-//        let r: f32 = nalgebra::distance(&min, &max) / 2.0;
-//
-//        let translation_vector = matrix.transform_point(&Point3::new(bbox.center.x, 0.0, bbox.center.z));
-//
-//        let cuboid = ShapeHandle::new(
-//            ncollide2d::shape::Ball::new(r)
-//        );
-//        ColliderDesc::new(cuboid)
-//            .density(10.0)
-//            .translation(Vector2::new(translation_vector.x, translation_vector.z))
-//            .collision_groups(CollisionGroups::new()
-//                .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
-//                .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
-//                .with_whitelist(&[LIVING_COLLISION_GROUP]))
-//            .build(&mut physics_world);
-//    }
 
     fn grf(str: &str) -> String {
         format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
@@ -502,6 +475,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
                 let controller = storage.get(desktop_client_entity).unwrap();
                 ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
+                ui.text(im_str!("yaw: {}, pitch: {}", controller.yaw, controller.pitch));
                 ui.text(im_str!("FPS: {}", fps));
                 let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
@@ -538,7 +512,7 @@ fn imgui_frame(desktop_client_entity: Entity,
         let current_entity_count = ecs_world.read_storage::<SimpleSpriteComponent>().join().count() as i32;
         if current_entity_count < *entity_count {
             let count_to_add = *entity_count - current_entity_count;
-            for _i in 0..count_to_add {
+            for _i in 0..count_to_add/2 {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
@@ -576,7 +550,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     .build();
             }
             // add monsters
-            for _i in 0..count_to_add {
+            for _i in 0..count_to_add/2 {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
@@ -610,7 +584,6 @@ fn imgui_frame(desktop_client_entity: Entity,
                     })
                     .build();
             }
-            *entity_count += count_to_add;
         } else if current_entity_count > *entity_count {
             let entities: Vec<_> = {
                 let to_remove = current_entity_count - *entity_count;

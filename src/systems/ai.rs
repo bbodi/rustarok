@@ -54,7 +54,7 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                     let ray_world = view_matrix.try_inverse().unwrap() * ray_eye;
                     let ray_world = Vector3::new(ray_world.x, ray_world.y, ray_world.z).normalize();
 
-                    let line_location = controller.camera.pos;
+                    let line_location = controller.camera.pos();
                     let line_direction: Vector3<f32> = ray_world;
                     let plane_normal = Vector3::new(0.0, 1.0, 0.0);
                     let plane_point = Vector3::new(0.0, 0.0, 0.0);
