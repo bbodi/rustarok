@@ -11,6 +11,7 @@ pub struct SystemVariables {
     pub shaders: Shaders,
     pub sprite_resources: Vec<SpriteResource>,
     pub head_sprites: Vec<SpriteResource>,
+    pub monster_sprites: Vec<SpriteResource>,
     pub tick: Tick,
     pub dt: DeltaTime,
     pub matrices: RenderMatrices,

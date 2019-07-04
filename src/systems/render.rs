@@ -1,10 +1,11 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3};
 use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
-use crate::components::{BrowserClient, PositionComponent, PhysicsComponent, DirectionComponent, AnimatedSpriteComponent, DummyAiComponent, ControllerComponent};
+use crate::components::{BrowserClient, PhysicsComponent, SimpleSpriteComponent, DummyAiComponent, ControllerComponent, ComponentRadius, ExtraSpriteComponent};
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{Shaders, MapRenderData, SpriteResource, Tick};
+use std::collections::HashMap;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -49,24 +50,24 @@ pub struct RenderDesktopClientSystem;
 
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
+        specs::Entities<'a>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, PositionComponent>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, DirectionComponent>,
-        specs::ReadStorage<'a, AnimatedSpriteComponent>,
+        specs::ReadStorage<'a, SimpleSpriteComponent>,
+        specs::ReadStorage<'a, ExtraSpriteComponent>,
         specs::ReadStorage<'a, DummyAiComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(&mut self, (
+        entities,
         input_storage,
         browser_client_storage,
-        position_storage,
         physics_storage,
-        dir_storage,
         animated_sprite_storage,
+        extra_sprite_storage,
         ai_storage,
         system_vars,
         mut system_benchmark,
@@ -82,10 +83,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             );
 
 
-            for (_entity_pos, physics, dir, animated_sprite,
-                ai) in (&position_storage,
-                        &physics_storage,
-                        &dir_storage,
+            for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
                         &animated_sprite_storage,
                         &ai_storage).join() {
                 let pos = {
@@ -93,38 +91,32 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     body.position().translation.vector
                 };
                 let tick = system_vars.tick;
-                let body_res = &system_vars.sprite_resources[animated_sprite.file_index];
+                let body_res = if animated_sprite.is_monster {
+                    &system_vars.monster_sprites[animated_sprite.file_index]
+                } else {
+                    &system_vars.sprite_resources[animated_sprite.file_index]
+                };
                 let pos_offset = render_sprite(&system_vars,
                                                tick,
                                                &animated_sprite,
-                                               &body_res,
+                                               body_res,
                                                &view,
                                                &controller,
                                                &pos,
                                                [0, 0],
                                                true);
-                let head_res = &system_vars.head_sprites[animated_sprite.head_index];
-                render_sprite(&system_vars,
-                              tick,
-                              &animated_sprite,
-                              &head_res,
-                              &view,
-                              &controller,
-                              &pos,
-                              pos_offset,
-                              false);
-
-//                let body = system_vars.physics_world.rigid_body(physics.handle).unwrap();
-//                let pos = body.position().translation.vector;
-//                let pos = Vector3::new(pos.x, 1.0, pos.y);
-//                let target = Vector3::new(ai.target_pos.x, 1.0, ai.target_pos.y);
-//                draw_lines_inefficiently(
-//                    &system_vars.shaders.trimesh_shader,
-//                    &system_vars.matrices.projection,
-//                    &view,
-//                    &[pos, target],
-//                    &[1.0, 0.0, 1.0, 1.0],
-//                );
+                if let Some(extra_sprite) = extra_sprite_storage.get(entity) {
+                    let head_res = &system_vars.head_sprites[extra_sprite.head_index];
+                    render_sprite(&system_vars,
+                                  tick,
+                                  &animated_sprite,
+                                  head_res,
+                                  &view,
+                                  &controller,
+                                  &pos,
+                                  pos_offset,
+                                  false);
+                }
             }
         }
     }
@@ -132,7 +124,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
 fn render_sprite(system_vars: &SystemVariables,
                  tick: Tick,
-                 animated_sprite: &AnimatedSpriteComponent,
+                 animated_sprite: &SimpleSpriteComponent,
                  sprite_res: &SpriteResource,
                  view: &Matrix4<f32>,
                  controller: &ControllerComponent,
@@ -289,30 +281,33 @@ fn render_ground(shaders: &Shaders,
 
 
 pub struct PhysicsDebugDrawingSystem {
-    capsule_vertex_array: VertexArray,
+    capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray>, // radius to vertexArray
 }
 
 impl PhysicsDebugDrawingSystem {
     pub fn new() -> PhysicsDebugDrawingSystem {
-        let mut capsule_mesh = ncollide2d::procedural::circle(
-            &2.0f32,
-            32,
-        );
+        let capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray> = [1, 2, 3, 4].iter().map(|radius| {
+            let mut capsule_mesh = ncollide2d::procedural::circle(
+                &(*radius as f32 * 0.5 * 2.0),
+                32,
+            );
 
-        let coords = capsule_mesh.coords();
-        let capsule_vertex_array = VertexArray::new(
-            gl::LINE_LOOP,
-            coords,
-            coords.len(),
-            None,
-            vec![
-                VertexAttribDefinition {
-                    number_of_components: 2,
-                    offset_of_first_element: 0,
-                }
-            ]);
+            let coords = capsule_mesh.coords();
+            (ComponentRadius(*radius), VertexArray::new(
+                gl::LINE_LOOP,
+                coords,
+                coords.len(),
+                None,
+                vec![
+                    VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }
+                ])
+            )
+        }).collect();
         PhysicsDebugDrawingSystem {
-            capsule_vertex_array,
+            capsule_vertex_arrays,
         }
     }
 }
@@ -352,7 +347,7 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
                 system_vars.shaders.trimesh_shader.set_f32("alpha", 1.0);
                 system_vars.shaders.trimesh_shader.set_mat4("model", &matrix);
                 system_vars.shaders.trimesh_shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
-                self.capsule_vertex_array.bind().draw();
+                self.capsule_vertex_arrays[&physics.radius].bind().draw();
             }
         }
     }

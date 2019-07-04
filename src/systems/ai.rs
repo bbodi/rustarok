@@ -1,4 +1,4 @@
-use crate::components::{PositionComponent, PhysicsComponent, DummyAiComponent, AnimatedSpriteComponent, ControllerComponent};
+use crate::components::{PhysicsComponent, DummyAiComponent, SimpleSpriteComponent, ControllerComponent};
 use nalgebra::{Point3, Point2, Vector2, Vector3, Perspective3, Vector4};
 use crate::systems::render::DIRECTION_TABLE;
 use specs::prelude::*;
@@ -6,16 +6,16 @@ use rand::Rng;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use sdl2::keyboard::Scancode;
+use crate::ActionIndex;
 
 pub struct DummyAiSystem;
 
 impl<'a> specs::System<'a> for DummyAiSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, PositionComponent>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, DummyAiComponent>,
-        specs::WriteStorage<'a, AnimatedSpriteComponent>,
+        specs::WriteStorage<'a, SimpleSpriteComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -23,7 +23,6 @@ impl<'a> specs::System<'a> for DummyAiSystem {
 
     fn run(&mut self, (
         entities,
-        mut position_storage,
         mut physics_storage,
         mut ai_storage,
         mut animated_sprite_storage,
@@ -34,8 +33,7 @@ impl<'a> specs::System<'a> for DummyAiSystem {
         let stopwatch = system_benchmark.start_measurement("DummyAiSystem");
         let mut rng = rand::thread_rng();
         let dt = system_vars.dt.0;
-        for (entity, pos, ai, physics_comp) in (&entities,
-                                                &mut position_storage,
+        for (entity, ai, physics_comp) in (&entities,
                                                 &mut ai_storage,
                                                 &mut physics_storage).join() {
             let projection_matrix = system_vars.matrices.projection.clone();
@@ -63,8 +61,10 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                     let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords)) / plane_normal.dot(&line_direction);
                     let world_pos = line_location + (line_direction.scale(t));
                     ai.target_pos = dbg!(Point2::new(world_pos.x, world_pos.z));
+                    ai.state = ActionIndex::Walking;
                     if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
                         anim_sprite.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
+                        anim_sprite.action_index = ai.state as usize;
                     }
                 }
             }
@@ -72,9 +72,12 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                 if ai.controller.is_none() {
                     ai.target_pos = Point2::<f32>::new(0.5 * 200.0 * (rng.gen::<f32>()), -(0.5 * 200.0 * (rng.gen::<f32>())));
                 }
+                ai.state = ActionIndex::Idle;
                 if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
                     anim_sprite.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
+                    anim_sprite.action_index = ai.state as usize;
                 }
+                body.set_linear_velocity(Vector2::new(0.0, 0.0));
             } else {
                 let force = (ai.target_pos - nalgebra::Point::from(pos)).normalize() * 200.0 * dt;
                 body.set_linear_velocity(force);
