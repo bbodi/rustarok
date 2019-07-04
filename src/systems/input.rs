@@ -4,6 +4,8 @@ use sdl2::keyboard::Scancode;
 use std::io::ErrorKind;
 use crate::components::{ControllerComponent, BrowserClient};
 use specs::prelude::*;
+use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
+use crate::systems::SystemVariables;
 
 pub struct BrowserInputProducerSystem;
 
@@ -156,12 +158,15 @@ pub struct InputConsumerSystem;
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
         specs::WriteStorage<'a, ControllerComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(&mut self, (
         mut controller_storage,
+        system_vars,
     ): Self::SystemData) {
         for (controller) in (&mut controller_storage).join() {
+            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
             let events: Vec<_> = controller.inputs.drain(..).collect();
             for event in events {
                 match event {
@@ -178,27 +183,51 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         mousestate: _,
                         x,
                         y,
-                        xrel: _,
-                        yrel: _
+                        xrel,
+                        yrel
                     } => {
-                        if controller.mouse_down {
-                            let x_offset = x - controller.last_mouse_x as i32;
-                            let y_offset = controller.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
-                            controller.yaw += x_offset as f32;
-                            controller.pitch += y_offset as f32;
-                            if controller.pitch > 89.0 {
-                                controller.pitch = 89.0;
-                            }
-                            if controller.pitch < -89.0 {
-                                controller.pitch = -89.0;
-                            }
-                            if controller.yaw > 360.0 {
-                                controller.yaw -= 360.0;
-                            } else if controller.yaw < 0.0 {
-                                controller.yaw += 360.0;
-                            }
-                            controller.camera.rotate(controller.pitch, controller.yaw);
+                        // SDL generates only one event when the mouse touches the edge of the screen,
+                        // so I put this pseudo key into the controller in that case, which will
+                        // indicate screen movement
+                        if x == 0 {
+                            controller.keys.insert(Scancode::Left);
+                            controller.camera.move_along_x(-camera_speed);
+                        } else if x == (VIDEO_WIDTH as i32) - 1 {
+                            controller.keys.insert(Scancode::Right);
+                            controller.camera.move_along_x(camera_speed);
+                        } else {
+                            controller.keys.remove(&Scancode::Left);
+                            controller.keys.remove(&Scancode::Right);
                         }
+                        if y == 0 {
+                            controller.keys.insert(Scancode::Up);
+                            controller.camera.move_along_z(-camera_speed);
+                        } else if y == (VIDEO_HEIGHT as i32) - 1 {
+                            controller.keys.insert(Scancode::Down);
+                            controller.camera.move_along_z(camera_speed);
+                        } else {
+                            controller.keys.remove(&Scancode::Up);
+                            controller.keys.remove(&Scancode::Down);
+                        }
+                        // free look
+//                        if controller.mouse_down {
+//                            let x_offset = x - controller.last_mouse_x as i32;
+//                            let y_offset = controller.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
+//                            controller.yaw += x_offset as f32;
+//                            controller.pitch += y_offset as f32;
+//                            if controller.pitch > 89.0 {
+//                                controller.pitch = 89.0;
+//                            }
+//                            if controller.pitch < -89.0 {
+//                                controller.pitch = -89.0;
+//                            }
+//                            if controller.yaw > 360.0 {
+//                                controller.yaw -= 360.0;
+//                            } else if controller.yaw < 0.0 {
+//                                controller.yaw += 360.0;
+//                            }
+//                            controller.camera.rotate(controller.pitch, controller.yaw);
+//                        }
                         controller.last_mouse_x = x as u16;
                         controller.last_mouse_y = y as u16;
                     }
@@ -215,17 +244,37 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     _ => {}
                 }
             }
-            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
-            if controller.keys.contains(&Scancode::W) {
-                controller.camera.move_forward(camera_speed);
-            } else if controller.keys.contains(&Scancode::S) {
-                controller.camera.move_forward(-camera_speed);
+            if controller.keys.contains(&Scancode::Left) {
+                controller.camera.move_along_x(-camera_speed);
+            } else if controller.keys.contains(&Scancode::Right) {
+                controller.camera.move_along_x(camera_speed);
             }
-            if controller.keys.contains(&Scancode::A) {
-                controller.camera.move_side(-camera_speed);
-            } else if controller.keys.contains(&Scancode::D) {
-                controller.camera.move_side(camera_speed);
+            if controller.keys.contains(&Scancode::Up) {
+                controller.camera.move_along_z(-camera_speed);
+            } else if controller.keys.contains(&Scancode::Down) {
+                controller.camera.move_along_z(camera_speed);
             }
+            if controller.camera.pos().x < 0.0 {
+                controller.camera.set_x(0.0);
+            } else if controller.camera.pos().x > system_vars.map_render_data.gnd.width as f32 * 2.0 {
+                controller.camera.set_x(system_vars.map_render_data.gnd.width as f32 * 2.0);
+            }
+            if controller.camera.pos().z > 0.0 {
+                controller.camera.set_z(0.0);
+            } else if controller.camera.pos().z < -(system_vars.map_render_data.gnd.height as f32 * 2.0) {
+                controller.camera.set_z(-(system_vars.map_render_data.gnd.height as f32 * 2.0));
+            }
+//            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+//            if controller.keys.contains(&Scancode::W) {
+//                controller.camera.move_forward(camera_speed);
+//            } else if controller.keys.contains(&Scancode::S) {
+//                controller.camera.move_forward(-camera_speed);
+//            }
+//            if controller.keys.contains(&Scancode::A) {
+//                controller.camera.move_side(-camera_speed);
+//            } else if controller.keys.contains(&Scancode::D) {
+//                controller.camera.move_side(camera_speed);
+//            }
         }
     }
 }

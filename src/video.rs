@@ -40,6 +40,7 @@ impl Video {
             .opengl()
             .allow_highdpi()
             .resizable()
+            .input_grabbed()
             .build()
             .unwrap();
         // these two variables must be in scope, so don't remove their variables
