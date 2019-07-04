@@ -11,29 +11,6 @@ use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
 
 #[derive(Component)]
-pub struct CameraComponent {
-    pub camera: Camera,
-    pub mouse_down: bool,
-    pub last_mouse_x: u16,
-    pub last_mouse_y: u16,
-    pub yaw: f32,
-    pub pitch: f32,
-}
-
-impl CameraComponent {
-    pub fn new() -> CameraComponent {
-        CameraComponent {
-            camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
-            mouse_down: false,
-            last_mouse_x: 400,
-            last_mouse_y: 300,
-            yaw: 270.0,
-            pitch: 0.0,
-        }
-    }
-}
-
-#[derive(Component)]
 pub struct BrowserClient {
     pub websocket: Mutex<websocket::sync::Client<TcpStream>>,
     pub offscreen: Vec<u8>,
@@ -43,17 +20,40 @@ pub struct BrowserClient {
 #[derive(Component)]
 pub struct PositionComponent(pub Vector3<f32>);
 
-#[derive(Component, Default)]
-pub struct InputProducerComponent {
+#[derive(Component)]
+pub struct ControllerComponent {
+    pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub keys: HashSet<Scancode>,
+    pub mouse_down: bool,
+    pub last_mouse_x: u16,
+    pub last_mouse_y: u16,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl ControllerComponent {
+    pub fn new() -> ControllerComponent {
+        ControllerComponent {
+            camera: Camera::new(Point3::new(0.0, 0.0, 3.0)),
+            inputs: vec![],
+            keys: Default::default(),
+            mouse_down: false,
+            last_mouse_x: 400,
+            last_mouse_y: 300,
+            yaw: 270.0,
+            pitch: 0.0,
+        }
+    }
 }
 
 
 #[derive(Component)]
 pub struct DummyAiComponent {
     pub target_pos: Point2<f32>,
-    pub state: i32, // 0 standing, 1 walking
+    pub state: i32,
+    // 0 standing, 1 walking
+    pub controller: Option<Entity>,
 }
 
 #[derive(Component)]
@@ -62,6 +62,7 @@ pub struct DirectionComponent(pub f32);
 #[derive(Component)]
 pub struct AnimatedSpriteComponent {
     pub file_index: usize,
+    pub head_index: usize,
     pub action_index: usize,
     pub animation_start: Tick,
     pub direction: usize,

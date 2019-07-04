@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3};
+use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
@@ -25,6 +25,9 @@ pub struct Video {
 //    _gl: *const (),
 }
 
+pub const VIDEO_WIDTH: u32 = 900;
+pub const VIDEO_HEIGHT: u32 = 700;
+
 impl Video {
     pub fn init() -> Video {
         let sdl_context = sdl2::init().unwrap();
@@ -33,7 +36,7 @@ impl Video {
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(4, 5);
         let mut window = video_subsystem
-            .window("Rustarok", 900, 700)
+            .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
             .opengl()
             .allow_highdpi()
             .resizable()
@@ -43,7 +46,7 @@ impl Video {
         let _gl_context = window.gl_create_context().unwrap();
         let _gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
         unsafe {
-            gl::Viewport(0, 0, 900, 700); // set viewport
+            gl::Viewport(0, 0, VIDEO_WIDTH as i32, VIDEO_HEIGHT as i32); // set viewport
             gl::ClearColor(0.3, 0.3, 0.5, 1.0);
             gl::Enable(gl::DEPTH_TEST);
             gl::DepthFunc(gl::LEQUAL);
@@ -77,6 +80,17 @@ impl Video {
     }
 }
 
+pub fn draw_lines_inefficiently2(trimesh_shader: &ShaderProgram,
+                                 projection: &Matrix4<f32>,
+                                 view: &Matrix4<f32>,
+                                 points: &[Point3<f32>],
+                                 color: &[f32]) {
+    let points: Vec<Vector3<f32>> = points.iter().map(|&p| p.coords).collect();
+    draw_lines_inefficiently(trimesh_shader, projection, view,
+                             points.as_slice(),
+                             color);
+}
+
 pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
                                 projection: &Matrix4<f32>,
                                 view: &Matrix4<f32>,
@@ -85,10 +99,10 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
     trimesh_shader.gl_use();
     trimesh_shader.set_mat4("projection", &projection);
     trimesh_shader.set_mat4("view", view);
-    trimesh_shader.set_vec3("color", color);
+    trimesh_shader.set_vec4("color", color);
     trimesh_shader.set_mat4("model", &Matrix4::identity());
     VertexArray::new(
-        gl::LINES,
+        gl::LINE_LOOP,
         points, points.len(), None, vec![
             VertexAttribDefinition {
                 number_of_components: 3,
@@ -106,7 +120,7 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     trimesh_shader.gl_use();
     trimesh_shader.set_mat4("projection", &projection);
     trimesh_shader.set_mat4("view", view);
-    trimesh_shader.set_vec3("color", color);
+    trimesh_shader.set_vec4("color", color);
     let mut matrix = Matrix4::identity();
     matrix.prepend_translation_mut(center);
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
@@ -515,6 +529,30 @@ impl ShaderProgram {
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform3fv(
+                location,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
+        }
+    }
+
+    pub fn set_vec2(&self, name: &str, vector: &[f32]) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform2fv(
+                location,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
+        }
+    }
+
+    pub fn set_vec4(&self, name: &str, vector: &[f32]) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform4fv(
                 location,
                 1, // count
                 vector.as_ptr() as *const f32,
