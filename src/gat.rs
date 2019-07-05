@@ -1,5 +1,11 @@
-use crate::common::BinaryReader;
 use std::cmp::max;
+use std::fs::File;
+use std::path::Path;
+
+use crate::common::BinaryReader;
+
+use byteorder::{ReadBytesExt, LittleEndian};
+use byteorder::WriteBytesExt;
 
 pub enum CellType {
     None = 1 << 0,
@@ -44,7 +50,7 @@ pub struct BlockingRectangle {
 }
 
 impl Gat {
-    pub fn load(mut buf: BinaryReader) -> Gat {
+    pub fn load(mut buf: BinaryReader, map_name: &str) -> Gat {
         let header = buf.string(4);
         if header != "GRAT" {
             panic!("Invalig GAT header: {}", header);
@@ -62,7 +68,36 @@ impl Gat {
                 cell_type: TYPE_TABLE[buf.next_u32() as usize],
             }
         }).collect();
-        let rectangles = Gat::shit0(&cells, width as usize, height as usize);
+        let rectangles = if let Ok(mut cache_file) = File::open(map_name.to_owned() + ".cel") {
+            let mut rectangles = vec![];
+            loop {
+                let area = cache_file.read_u32::<LittleEndian>();
+                if area.is_err() {
+                    break;
+                }
+                rectangles.push(
+                    BlockingRectangle {
+                        area: area.unwrap() as i32,
+                        start_x: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                        bottom: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                        width: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                        height: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                    });
+            }
+            rectangles
+        } else {
+            let rectangles = Gat::merge_cells_into_convex_rectangles(&cells, width as usize, height as usize);
+            let mut cache_file = File::create(map_name.to_owned() + ".cel").unwrap();
+            for rectangle in rectangles.iter() {
+                cache_file.write_u32::<LittleEndian>(rectangle.area as u32);
+                cache_file.write_u16::<LittleEndian>(rectangle.start_x as u16);
+                cache_file.write_u16::<LittleEndian>(rectangle.bottom as u16);
+                cache_file.write_u16::<LittleEndian>(rectangle.width as u16);
+                cache_file.write_u16::<LittleEndian>(rectangle.height as u16);
+            }
+            rectangles
+        };
+
         Gat {
             width,
             height,
@@ -72,7 +107,7 @@ impl Gat {
         }
     }
 
-    fn shit0(cells: &[GatCell], width: usize, height: usize) -> Vec<BlockingRectangle> {
+    fn merge_cells_into_convex_rectangles(cells: &[GatCell], width: usize, height: usize) -> Vec<BlockingRectangle> {
         let mut non_walkable_cells: Vec<bool> = cells.iter().map(|c| {
             c.cell_type & CellType::Walkable as u8 == 0
         }).collect();
@@ -81,13 +116,13 @@ impl Gat {
         let mut rectangles: Vec<BlockingRectangle> = Vec::new();
         loop {
             let largest_rect = {
-                let row_areas = Gat::shit(&non_walkable_cells, width, height);
+                let row_areas = Gat::calc_area_of_continous_convex_cells(&non_walkable_cells, width, height);
                 row_areas.iter().max_by(|x, y| {
                     x.area.cmp(&y.area)
                 }).unwrap().clone()
             };
             // remove the max rectangle
-            let start_y = largest_rect.bottom - (largest_rect.height-1);
+            let start_y = largest_rect.bottom - (largest_rect.height - 1);
             for x in largest_rect.start_x..=largest_rect.start_x + largest_rect.width {
                 for y in start_y..=largest_rect.bottom {
                     let i = (y as usize * width) + x as usize;
@@ -118,18 +153,7 @@ impl Gat {
         return rectangles;
     }
 
-    fn shit(cells: &[bool], width: usize, height: usize) -> Vec<BlockingRectangle> {
-        // végigmenni minden soron, és egy számot rendelni a cellákhoz
-        // kiszámolni az adott sor legnagyobb területű téglalapját
-        // kiválasztani a egy cellát, h = cell_h
-        // start = balra lépkedni, amig bal cella h >=, h = min(h, cell_h)
-        // end = jobbra lépkedni, amig bal cella h >=, h = min(h, cell_h)
-        // w = end - start; terület = w*h;, elmenteni ezt és a hozzá tartozó cellákat
-        // a legnagyobb téglalap celláit eltávolítani a cellák listájából
-        //  és ...
-        // kezdődik előlről a művelet, amig a legnagyobb méretü cella 1 nem lesz
-        // ekko minden cella 1 méretű
-
+    fn calc_area_of_continous_convex_cells(cells: &[bool], width: usize, height: usize) -> Vec<BlockingRectangle> {
         let mut heights = vec![0; (width * height) as usize];
         let mut row_heights = Vec::<BlockingRectangle>::with_capacity(height);
         for (i, cell) in cells.iter().enumerate() {
@@ -147,7 +171,7 @@ impl Gat {
 
             if (x + 1) % width == 0 && x > 1 { // row is ready
                 let row = &heights[y * width..(y * width) + width];
-                let (area, start_x, width, height) = Gat::shit2(row, width);
+                let (area, start_x, width, height) = Gat::largest_rectangle_until_this_row(row, width);
                 row_heights.push(BlockingRectangle {
                     area,
                     start_x,
@@ -161,7 +185,7 @@ impl Gat {
         return row_heights;
     }
 
-    fn shit2(heights: &[usize], width: usize) -> (i32, i32, i32, usize) {
+    fn largest_rectangle_until_this_row(heights: &[usize], width: usize) -> (i32, i32, i32, usize) {
         let mut max_area = 0;
         let mut max_width = 0;
         let mut max_start_i = 0;
@@ -198,9 +222,9 @@ mod tests {
 
     #[test]
     fn test_shit2() {
-        assert_eq!(Gat::shit2(&[1, 1, 0, 0, 1, 0], 6), (2, 0, 2, 1));
-        assert_eq!(Gat::shit2(&[1, 3, 2, 2, 3, 0], 6), (8, 1, 4, 2));
-        assert_eq!(Gat::shit2(&[0, 0, 0, 0, 0, 0], 6), (0, 0, 0, 0));
+        assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 1, 0, 0, 1, 0], 6), (2, 0, 2, 1));
+        assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 3, 2, 2, 3, 0], 6), (8, 1, 4, 2));
+        assert_eq!(Gat::largest_rectangle_until_this_row(&[0, 0, 0, 0, 0, 0], 6), (0, 0, 0, 0));
     }
 
     #[test]
@@ -266,6 +290,6 @@ mod tests {
                 height: 3,
             }
         ];
-        assert_eq!(Gat::shit(&input, 6, 4), expected_output);
+        assert_eq!(Gat::calc_area_of_continous_convex_cells(&input, 6, 4), expected_output);
     }
 }

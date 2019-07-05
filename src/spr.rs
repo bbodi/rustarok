@@ -18,7 +18,7 @@ pub struct Frame {
     pub data: Vec<u8>,
 }
 
-pub struct RenderableFrame {
+pub struct SpriteTexture {
     pub original_width: usize,
     pub original_height: usize,
     pub texture: GlTexture,
@@ -134,8 +134,8 @@ impl SpriteFile {
     }
 }
 
-impl RenderableFrame {
-    pub fn from(mut frame: Frame) -> RenderableFrame {
+impl SpriteTexture {
+    pub fn from(mut frame: Frame) -> SpriteTexture {
         let frame_surface = sdl2::surface::Surface::from_data(
             &mut frame.data,
             frame.width as u32, frame.height as u32,
@@ -156,7 +156,7 @@ impl RenderableFrame {
         let dst_rect = sdl2::rect::Rect::new(start_x as i32, start_y as i32, frame.width as u32, frame.height as u32);
         frame_surface.blit(None, &mut opengl_surface, dst_rect).unwrap();
 
-        RenderableFrame {
+        SpriteTexture {
             original_width: frame.width,
             original_height: frame.height,
             texture: GlTexture::from_surface(opengl_surface),

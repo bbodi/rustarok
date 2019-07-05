@@ -1,3 +1,4 @@
+extern crate byteorder;
 extern crate sdl2;
 extern crate gl;
 extern crate nalgebra;
@@ -21,7 +22,7 @@ use crate::gat::{Gat, CellType};
 
 use imgui::ImString;
 use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3, Vector2, Point2, Isometry, Isometry2};
-use crate::video::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture, Video, VIDEO_HEIGHT, VIDEO_WIDTH, ortho};
 use std::time::{Duration, SystemTime, Instant};
 use std::collections::{HashMap, HashSet};
 use crate::rsm::{Rsm, BoundingBox};
@@ -39,7 +40,7 @@ use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::{job_name_table, JobId};
 use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, SimpleSpriteComponent, DummyAiComponent, ExtraSpriteComponent};
-use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations};
+use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
 use crate::systems::render::{PhysicsDebugDrawingSystem, RenderBrowserClientsSystem, RenderStreamingSystem, RenderDesktopClientSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
 use crate::systems::ai::DummyAiSystem;
@@ -49,8 +50,10 @@ use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, Collider};
 use std::ops::Bound;
 use ncollide2d::world::CollisionGroups;
+use crate::systems::ui::RenderUI;
 
 mod common;
+mod cursor;
 mod cam;
 mod video;
 mod gat;
@@ -95,24 +98,24 @@ const LIVING_COLLISION_GROUP: usize = 2;
 
 pub struct SpriteResource {
     action: ActionFile,
-    frames: Vec<spr::RenderableFrame>,
+    textures: Vec<spr::SpriteTexture>,
 }
 
 impl SpriteResource {
     pub fn new(path: &str) -> SpriteResource {
         trace!("Loading {}", path);
-        let frames: Vec<spr::RenderableFrame> = SpriteFile::load(
+        let frames: Vec<spr::SpriteTexture> = SpriteFile::load(
             BinaryReader::new(format!("{}.spr", path))
         ).frames
             .into_iter()
-            .map(|frame| spr::RenderableFrame::from(frame))
+            .map(|frame| spr::SpriteTexture::from(frame))
             .collect();
         let action = ActionFile::load(
             BinaryReader::new(format!("{}.act", path))
         );
         SpriteResource {
             action,
-            frames,
+            textures: frames,
         }
     }
 }
@@ -122,6 +125,7 @@ pub struct Shaders {
     pub ground_shader: ShaderProgram,
     pub model_shader: ShaderProgram,
     pub sprite_shader: ShaderProgram,
+    pub sprite2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
 }
 
@@ -137,6 +141,7 @@ pub struct Shaders {
 
 pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
+    pub ortho: Matrix4<f32>,
 }
 
 #[derive(Copy, Clone)]
@@ -188,6 +193,18 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
+        sprite2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/sprite2d.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/sprite2d.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
         trimesh_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
@@ -225,6 +242,7 @@ fn main() {
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem)
         .with_thread_local(PhysicsDebugDrawingSystem::new())
+        .with_thread_local(RenderUI)
         .build();
 
     let map_render_data = load_map("prontera");
@@ -294,11 +312,16 @@ fn main() {
             0.1f32,
             1000.0f32,
         ),
+        ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0)
     };
+
 
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprite_resources,
+        system_sprites: SystemSprites {
+            cursors: SpriteResource::new(&grf("sprite\\cursors"))
+        },
         monster_sprites,
         head_sprites,
         tick: Tick(0),
@@ -711,7 +734,7 @@ fn load_map(map_name: &str) -> MapRenderData {
     });
     info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| {
-        Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)))
+        Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)), map_name)
     });
     let w = gat.width;
     let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);

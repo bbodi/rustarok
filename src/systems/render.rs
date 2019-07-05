@@ -163,7 +163,7 @@ fn render_sprite(system_vars: &SystemVariables,
         if layer.sprite_frame_index < 0 {
             continue;
         }
-        let sprite_frame = &sprite_res.frames[layer.sprite_frame_index as usize];
+        let sprite_frame = &sprite_res.textures[layer.sprite_frame_index as usize];
 
         let width = sprite_frame.original_width as f32 * layer.scale[0];
         let height = sprite_frame.original_height as f32 * layer.scale[1];

@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 gl = "0.12.0"
+byteorder = "1.3.2"
 encoding = "0.2.33"
 nalgebra = "0.18.0"
 ncollide2d = "0.19.2"
