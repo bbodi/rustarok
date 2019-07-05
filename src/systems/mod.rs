@@ -1,6 +1,7 @@
 use std::time::Instant;
 use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime};
 use std::collections::HashMap;
+use crate::video::GlTexture;
 
 pub mod ai;
 pub mod input;
@@ -10,6 +11,7 @@ pub mod ui;
 
 pub struct SystemSprites {
     pub cursors: SpriteResource,
+    pub numbers: GlTexture,
 }
 
 pub struct SystemVariables {

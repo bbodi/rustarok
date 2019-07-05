@@ -99,7 +99,7 @@ pub fn draw_lines_inefficiently2(trimesh_shader: &ShaderProgram,
                                  projection: &Matrix4<f32>,
                                  view: &Matrix4<f32>,
                                  points: &[Point3<f32>],
-                                 color: &[f32]) {
+                                 color: &[f32; 4]) {
     let points: Vec<Vector3<f32>> = points.iter().map(|&p| p.coords).collect();
     draw_lines_inefficiently(trimesh_shader, projection, view,
                              points.as_slice(),
@@ -110,7 +110,7 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
                                 projection: &Matrix4<f32>,
                                 view: &Matrix4<f32>,
                                 points: &[Vector3<f32>],
-                                color: &[f32]) {
+                                color: &[f32; 4]) {
     trimesh_shader.gl_use();
     trimesh_shader.set_mat4("projection", &projection);
     trimesh_shader.set_mat4("view", view);
@@ -131,7 +131,7 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
                                  view: &Matrix4<f32>,
                                  center: &Vector3<f32>,
                                  r: f32,
-                                 color: &[f32]) {
+                                 color: &[f32; 4]) {
     trimesh_shader.gl_use();
     trimesh_shader.set_mat4("projection", &projection);
     trimesh_shader.set_mat4("view", view);
@@ -177,18 +177,6 @@ pub struct GlTexture {
     pub width: i32,
     pub height: i32,
 }
-
-//impl Hash for GlTexture {
-//    fn hash<H: Hasher>(&self, state: &mut H) {
-//        self.context.0.hash(state);
-//    }
-//}
-//
-//impl Eq for GlTexture {
-//    fn hash<H: Hasher>(&self, state: &mut H) {
-//        self.context.0.hash(state);
-//    }
-//}
 
 impl GlTexture {
     pub fn id(&self) -> gl::types::GLuint {
@@ -539,7 +527,7 @@ impl ShaderProgram {
         }
     }
 
-    pub fn set_vec3(&self, name: &str, vector: &[f32]) {
+    pub fn set_vec3(&self, name: &str, vector: &[f32; 3]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
@@ -551,7 +539,7 @@ impl ShaderProgram {
         }
     }
 
-    pub fn set_vec2(&self, name: &str, vector: &[f32]) {
+    pub fn set_vec2(&self, name: &str, vector: &[f32; 2]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
@@ -563,7 +551,7 @@ impl ShaderProgram {
         }
     }
 
-    pub fn set_vec4(&self, name: &str, vector: &[f32]) {
+    pub fn set_vec4(&self, name: &str, vector: &[f32; 4]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);

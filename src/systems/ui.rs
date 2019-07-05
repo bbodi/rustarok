@@ -5,7 +5,7 @@ use specs::prelude::*;
 
 use crate::{MapRenderData, Shaders, SpriteResource, Tick};
 use crate::cam::Camera;
-use crate::components::{BrowserClient, ComponentRadius, ControllerComponent, DummyAiComponent, ExtraSpriteComponent, PhysicsComponent, SimpleSpriteComponent};
+use crate::components::{BrowserClient, ComponentRadius, ControllerComponent, DummyAiComponent, PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent};
 use crate::cursor::CURSOR_NORMAL;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -19,8 +19,7 @@ impl<'a> specs::System<'a> for RenderUI {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, SimpleSpriteComponent>,
-        specs::ReadStorage<'a, ExtraSpriteComponent>,
+        specs::ReadStorage<'a, PlayerSpriteComponent>,
         specs::ReadStorage<'a, DummyAiComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -32,7 +31,6 @@ impl<'a> specs::System<'a> for RenderUI {
         browser_client_storage,
         physics_storage,
         animated_sprite_storage,
-        extra_sprite_storage,
         ai_storage,
         system_vars,
         mut system_benchmark,
@@ -42,12 +40,11 @@ impl<'a> specs::System<'a> for RenderUI {
             let tick = system_vars.tick;
             render_sprite_2d(&system_vars,
                              tick,
-                             &SimpleSpriteComponent {
+                             &MonsterSpriteComponent {
                                  file_index: 0, //
                                  action_index: CURSOR_NORMAL.1,
                                  animation_start: Tick(0),
                                  direction: 0,
-                                 is_monster: false,
                              },
                              &system_vars.system_sprites.cursors,
                              &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32))
@@ -57,7 +54,7 @@ impl<'a> specs::System<'a> for RenderUI {
 
 fn render_sprite_2d(system_vars: &SystemVariables,
                     tick: Tick,
-                    animated_sprite: &SimpleSpriteComponent,
+                    animated_sprite: &MonsterSpriteComponent,
                     sprite_res: &SpriteResource,
                     pos: &Vector2<f32>,
 ) {
@@ -97,14 +94,14 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         system_vars.shaders.sprite2d_shader.set_mat4("projection", &system_vars.matrices.ortho);
         system_vars.shaders.sprite2d_shader.set_int("model_texture", 0);
         system_vars.shaders.sprite2d_shader.set_f32("alpha", 1.0);
-        system_vars.shaders.sprite_shader.set_mat4("model", &matrix);
-        system_vars.shaders.sprite_shader.set_vec2("offset", &offset);
-        system_vars.shaders.sprite_shader.set_vec3("size", &[
+        system_vars.shaders.player_shader.set_mat4("model", &matrix);
+        system_vars.shaders.player_shader.set_vec2("offset", &offset);
+        system_vars.shaders.player_shader.set_vec3("size", &[
             width,
             -height as f32,
             0.0
         ]);
-        system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+        system_vars.shaders.player_shader.set_f32("alpha", 1.0);
         system_vars.map_render_data.sprite_vertex_array.bind().draw();
     }
 }

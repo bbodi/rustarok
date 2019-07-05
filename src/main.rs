@@ -39,9 +39,9 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::{job_name_table, JobId};
-use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, SimpleSpriteComponent, DummyAiComponent, ExtraSpriteComponent};
+use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, PlayerSpriteComponent, DummyAiComponent, MonsterSpriteComponent, FlyingNumberComponent, FlyingNumberType};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
-use crate::systems::render::{PhysicsDebugDrawingSystem, RenderBrowserClientsSystem, RenderStreamingSystem, RenderDesktopClientSystem};
+use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
 use crate::systems::ai::DummyAiSystem;
 use crate::systems::phys::PhysicsSystem;
@@ -125,6 +125,7 @@ pub struct Shaders {
     pub ground_shader: ShaderProgram,
     pub model_shader: ShaderProgram,
     pub sprite_shader: ShaderProgram,
+    pub player_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
 }
@@ -142,6 +143,7 @@ pub struct Shaders {
 pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
     pub ortho: Matrix4<f32>,
+    pub view: Matrix4<f32>,
 }
 
 #[derive(Copy, Clone)]
@@ -193,6 +195,18 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
+        player_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/player.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/player.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
         sprite2d_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
@@ -222,10 +236,11 @@ fn main() {
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<ControllerComponent>();
-    ecs_world.register::<SimpleSpriteComponent>();
-    ecs_world.register::<ExtraSpriteComponent>();
+    ecs_world.register::<PlayerSpriteComponent>();
+    ecs_world.register::<MonsterSpriteComponent>();
     ecs_world.register::<DummyAiComponent>();
     ecs_world.register::<PhysicsComponent>();
+    ecs_world.register::<FlyingNumberComponent>();
 
     let desktop_client_entity = ecs_world
         .create_entity()
@@ -238,10 +253,11 @@ fn main() {
         .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
         .with(DummyAiSystem, "ai", &[])
         .with(PhysicsSystem, "physics", &["ai", "input_handler", "browser_input_processor"])
-        .with_thread_local(RenderBrowserClientsSystem)
+        .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem)
         .with_thread_local(PhysicsDebugDrawingSystem::new())
+        .with_thread_local(DamageRenderSystem::new())
         .with_thread_local(RenderUI)
         .build();
 
@@ -312,7 +328,8 @@ fn main() {
             0.1f32,
             1000.0f32,
         ),
-        ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0)
+        view: Matrix4::identity(), // it is filled before every frame
+        ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
 
@@ -320,7 +337,8 @@ fn main() {
         shaders,
         sprite_resources,
         system_sprites: SystemSprites {
-            cursors: SpriteResource::new(&grf("sprite\\cursors"))
+            cursors: SpriteResource::new(&grf("sprite\\cursors")),
+            numbers: GlTexture::from_file("damage.bmp"),
         },
         monster_sprites,
         head_sprites,
@@ -356,16 +374,15 @@ fn main() {
             target_pos: pos2d,
             moving_speed: 400.0,
             state: ActionIndex::Idle,
-            controller: Some(desktop_client_entity)
+            controller: Some(desktop_client_entity),
         })
-        .with(SimpleSpriteComponent {
-            file_index: 10 as usize,
-            action_index: ActionIndex::Idle as usize,
-            animation_start: Tick(0),
-            direction: 0,
-            is_monster: false,
-        })
-        .with(ExtraSpriteComponent {
+        .with(PlayerSpriteComponent {
+            base: MonsterSpriteComponent {
+                file_index: 10 as usize,
+                action_index: ActionIndex::Idle as usize,
+                animation_start: Tick(0),
+                direction: 0,
+            },
             head_index: 0,
         })
         .build();
@@ -413,8 +430,25 @@ fn main() {
             }
         }
 
-        let tick = ecs_world.read_resource::<SystemVariables>().tick.0 as f32;
-
+        {
+            let mut storage = ecs_world.write_storage::<ControllerComponent>();
+            let controller = storage.get_mut(desktop_client_entity).unwrap();
+            ecs_world.write_resource::<SystemVariables>().matrices.view = controller.camera.create_view_matrix();
+        }
+        {
+            let player_pos = {
+                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let controller = storage.get_mut(desktop_client_entity).unwrap();
+                Point2::new(controller.camera.pos().x, controller.camera.pos().z)
+            };
+            let tick = ecs_world.read_resource::<SystemVariables>().tick;
+            if tick.0 % 100 == 0 {
+                ecs_world
+                    .create_entity()
+                    .with(FlyingNumberComponent::new(FlyingNumberType::Damage, 123456789, player_pos, tick))
+                    .build();
+            }
+        }
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
@@ -568,10 +602,10 @@ fn imgui_frame(desktop_client_entity: Entity,
             });
     }
     {
-        let current_entity_count = ecs_world.read_storage::<SimpleSpriteComponent>().join().count() as i32;
+        let current_entity_count = ecs_world.read_storage::<PlayerSpriteComponent>().join().count() as i32;
         if current_entity_count < *entity_count {
             let count_to_add = *entity_count - current_entity_count;
-            for _i in 0..count_to_add/2 {
+            for _i in 0..count_to_add / 2 {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
@@ -599,22 +633,21 @@ fn imgui_frame(desktop_client_entity: Entity,
                         target_pos: pos2d,
                         state: ActionIndex::Idle,
                         moving_speed: 200.0,
-                        controller: None
+                        controller: None,
                     })
-                    .with(ExtraSpriteComponent {
+                    .with(PlayerSpriteComponent {
                         head_index: rng.gen::<usize>() % head_count,
-                    })
-                    .with(SimpleSpriteComponent {
-                        file_index: rng.gen::<usize>() % sprite_count,
-                        action_index: 8,
-                        animation_start: Tick(0),
-                        direction: 0,
-                        is_monster: false,
+                        base: MonsterSpriteComponent {
+                            file_index: rng.gen::<usize>() % sprite_count,
+                            action_index: 8,
+                            animation_start: Tick(0),
+                            direction: 0,
+                        },
                     })
                     .build();
             }
             // add monsters
-            for _i in 0..count_to_add/2 {
+            for _i in 0..count_to_add / 2 {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
@@ -642,14 +675,13 @@ fn imgui_frame(desktop_client_entity: Entity,
                         target_pos: pos2d,
                         state: ActionIndex::Idle,
                         moving_speed: 200.0,
-                        controller: None
+                        controller: None,
                     })
-                    .with(SimpleSpriteComponent {
+                    .with(MonsterSpriteComponent {
                         file_index: rng.gen::<usize>() % sprite_count,
                         action_index: 8,
                         animation_start: Tick(0),
                         direction: 0,
-                        is_monster: true,
                     })
                     .build();
             }
@@ -657,7 +689,7 @@ fn imgui_frame(desktop_client_entity: Entity,
             let entities: Vec<_> = {
                 let to_remove = current_entity_count - *entity_count;
                 let entities_storage = ecs_world.entities();
-                let sprite_storage = ecs_world.read_storage::<SimpleSpriteComponent>(); // it is need only for filtering entities
+                let sprite_storage = ecs_world.read_storage::<PlayerSpriteComponent>(); // it is need only for filtering entities
                 let physics_storage = ecs_world.read_storage::<PhysicsComponent>();
                 let ai_storage = ecs_world.read_storage::<DummyAiComponent>();
                 (&entities_storage, &sprite_storage, &physics_storage, &ai_storage).join()

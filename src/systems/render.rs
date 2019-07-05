@@ -1,7 +1,7 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3};
 use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
-use crate::components::{BrowserClient, PhysicsComponent, SimpleSpriteComponent, DummyAiComponent, ControllerComponent, ComponentRadius, ExtraSpriteComponent};
+use crate::components::{BrowserClient, PhysicsComponent, PlayerSpriteComponent, DummyAiComponent, ControllerComponent, ComponentRadius, MonsterSpriteComponent, FlyingNumberComponent};
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{Shaders, MapRenderData, SpriteResource, Tick};
@@ -12,9 +12,9 @@ use crate::cam::Camera;
 // direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
-pub struct RenderBrowserClientsSystem;
+pub struct OpenGlInitializerFor3D;
 
-impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
+impl<'a> specs::System<'a> for OpenGlInitializerFor3D {
     type SystemData = (
         specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, BrowserClient>,
@@ -26,8 +26,10 @@ impl<'a> specs::System<'a> for RenderBrowserClientsSystem {
         mut browser_client_storage,
         system_vars,
     ): Self::SystemData) {
+        unsafe {
+            gl::Enable(gl::DEPTH_TEST); // depth test is disabled for damages, here we turn it back
+        }
         for (controller, browser) in (&controller_storage, &mut browser_client_storage).join() {
-            let view = controller.camera.create_view_matrix();
 //            render_client(
 //                &view,
 //                &system_vars.shaders.ground_shader_program,
@@ -55,8 +57,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, SimpleSpriteComponent>,
-        specs::ReadStorage<'a, ExtraSpriteComponent>,
+        specs::ReadStorage<'a, PlayerSpriteComponent>,
+        specs::ReadStorage<'a, MonsterSpriteComponent>,
         specs::ReadStorage<'a, DummyAiComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -67,8 +69,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         input_storage,
         browser_client_storage,
         physics_storage,
-        animated_sprite_storage,
-        extra_sprite_storage,
+        player_sprite_storage,
+        monster_sprite_storage,
         ai_storage,
         system_vars,
         mut system_benchmark,
@@ -78,42 +80,55 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
-            let view = controller.camera.create_view_matrix();
-
+            // Draw players
             for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
-                                                           &animated_sprite_storage,
+                                                           &player_sprite_storage,
                                                            &ai_storage).join() {
                 let pos = {
                     let body = system_vars.map_render_data.physics_world.rigid_body(physics.handle).unwrap();
                     body.position().translation.vector
                 };
                 let tick = system_vars.tick;
-                let body_res = if animated_sprite.is_monster {
-                    &system_vars.monster_sprites[animated_sprite.file_index]
-                } else {
-                    &system_vars.sprite_resources[animated_sprite.file_index]
-                };
+                let body_res = &system_vars.sprite_resources[animated_sprite.base.file_index];
                 let pos_offset = render_sprite(&system_vars,
                                                tick,
-                                               &animated_sprite,
+                                               &animated_sprite.base,
                                                body_res,
-                                               &view,
+                                               &system_vars.matrices.view,
                                                &controller,
                                                &pos,
                                                [0, 0],
                                                true);
-                if let Some(extra_sprite) = extra_sprite_storage.get(entity) {
-                    let head_res = &system_vars.head_sprites[extra_sprite.head_index];
-                    render_sprite(&system_vars,
-                                  tick,
-                                  &animated_sprite,
-                                  head_res,
-                                  &view,
-                                  &controller,
-                                  &pos,
-                                  pos_offset,
-                                  false);
-                }
+                let head_res = &system_vars.head_sprites[animated_sprite.head_index];
+                render_sprite(&system_vars,
+                              tick,
+                              &animated_sprite.base,
+                              head_res,
+                              &system_vars.matrices.view,
+                              &controller,
+                              &pos,
+                              pos_offset,
+                              false);
+            }
+            // Draw monsters
+            for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
+                                                           &monster_sprite_storage,
+                                                           &ai_storage).join() {
+                let pos = {
+                    let body = system_vars.map_render_data.physics_world.rigid_body(physics.handle).unwrap();
+                    body.position().translation.vector
+                };
+                let tick = system_vars.tick;
+                let body_res = &system_vars.monster_sprites[animated_sprite.file_index];
+                let pos_offset = render_sprite(&system_vars,
+                                               tick,
+                                               &animated_sprite,
+                                               body_res,
+                                               &system_vars.matrices.view,
+                                               &controller,
+                                               &pos,
+                                               [0, 0],
+                                               true);
             }
 
             let physics = physics_storage.get(controller.char.unwrap()).unwrap();
@@ -124,7 +139,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             render_client(
                 &char_pos,
                 &controller.camera,
-                &view,
+                &system_vars.matrices.view,
                 &system_vars.shaders,
                 &system_vars.matrices.projection,
                 &system_vars.map_render_data,
@@ -135,7 +150,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
 fn render_sprite(system_vars: &SystemVariables,
                  tick: Tick,
-                 animated_sprite: &SimpleSpriteComponent,
+                 animated_sprite: &MonsterSpriteComponent,
                  sprite_res: &SpriteResource,
                  view: &Matrix4<f32>,
                  controller: &ControllerComponent,
@@ -143,11 +158,10 @@ fn render_sprite(system_vars: &SystemVariables,
                  pos_offset: [i32; 2],
                  is_main: bool,
 ) -> [i32; 2] {
-    system_vars.shaders.sprite_shader.gl_use();
-    system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
-    system_vars.shaders.sprite_shader.set_mat4("view", &view);
-    system_vars.shaders.sprite_shader.set_int("model_texture", 0);
-    system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+    system_vars.shaders.player_shader.gl_use();
+    system_vars.shaders.player_shader.set_mat4("projection", &system_vars.matrices.projection);
+    system_vars.shaders.player_shader.set_mat4("view", &view);
+    system_vars.shaders.player_shader.set_int("model_texture", 0);
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
     // draw layer
@@ -182,22 +196,21 @@ fn render_sprite(system_vars: &SystemVariables,
             offset[0] as f32 / 175.0 * 5.0,
             offset[1] as f32 / 175.0 * 5.0 - 0.5
         ];
-        system_vars.shaders.sprite_shader.set_vec2("offset", &offset);
+        system_vars.shaders.player_shader.set_vec2("offset", &offset);
 
         let mut matrix = Matrix4::<f32>::identity();
         let mut pos = Vector3::new(pos.x, 1.0, pos.y);
         matrix.prepend_translation_mut(&pos);
-        system_vars.shaders.sprite_shader.set_mat4("model", &matrix);
+        system_vars.shaders.player_shader.set_mat4("model", &matrix);
 
         let width = width as f32 / 175.0 * 5.0;
         let width = if layer.is_mirror { -width } else { width };
-        system_vars.shaders.sprite_shader.set_vec3("size", &[
+        system_vars.shaders.player_shader.set_vec2("size", &[
             width,
             height as f32 / 175.0 * 5.0,
-            0.0
         ]);
 
-        system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+        system_vars.shaders.player_shader.set_f32("alpha", 1.0);
 
         binded_sprite_vertex_array.draw();
     }
@@ -378,8 +391,6 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("PhysicsDebugDrawingSystem");
         for (controller, _not_browser) in (&controller_storage, !&browser_client_storage).join() {
-            let view = controller.camera.create_view_matrix();
-
             for physics in (&physics_storage).join() {
                 let mut matrix = Matrix4::<f32>::identity();
                 let body = system_vars.map_render_data.physics_world.rigid_body(physics.handle).unwrap();
@@ -391,7 +402,7 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
 
                 system_vars.shaders.trimesh_shader.gl_use();
                 system_vars.shaders.trimesh_shader.set_mat4("projection", &system_vars.matrices.projection);
-                system_vars.shaders.trimesh_shader.set_mat4("view", &view);
+                system_vars.shaders.trimesh_shader.set_mat4("view", &system_vars.matrices.view);
                 system_vars.shaders.trimesh_shader.set_f32("alpha", 1.0);
                 system_vars.shaders.trimesh_shader.set_mat4("model", &matrix);
                 system_vars.shaders.trimesh_shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
@@ -418,6 +429,124 @@ impl<'a> specs::System<'a> for RenderStreamingSystem {
             // it is ok if it fails, the client might have disconnected but
             // ecs_world.maintain has not executed yet to remove it from the world
             let _result = browser.websocket.lock().unwrap().send_message(&message);
+        }
+    }
+}
+
+
+pub struct DamageRenderSystem {
+    single_digit_u_coord: f32,
+    texture_u_coords: [f32; 10],
+}
+
+impl DamageRenderSystem {
+    pub fn new() -> DamageRenderSystem {
+        let single_digit_width = 10.0;
+        let texture_width = single_digit_width * 10.0;
+        let single_digit_u_coord = single_digit_width / texture_width;
+        DamageRenderSystem {
+            single_digit_u_coord,
+            texture_u_coords: [
+                single_digit_u_coord * 0.0,
+                single_digit_u_coord * 1.0,
+                single_digit_u_coord * 2.0,
+                single_digit_u_coord * 3.0,
+                single_digit_u_coord * 4.0,
+                single_digit_u_coord * 5.0,
+                single_digit_u_coord * 6.0,
+                single_digit_u_coord * 7.0,
+                single_digit_u_coord * 8.0,
+                single_digit_u_coord * 9.0,
+            ],
+        }
+    }
+
+    fn get_digits(n: u32) -> Vec<u8> {
+        let mut digits = Vec::new();
+        let mut n = n;
+        while n > 9 {
+            digits.push((n % 10) as u8);
+            n = n / 10;
+        }
+        digits.push(n as u8);
+        digits.reverse();
+        digits
+    }
+}
+
+impl<'a> specs::System<'a> for DamageRenderSystem {
+    type SystemData = (
+        specs::Entities<'a>,
+        specs::ReadStorage<'a, FlyingNumberComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemFrameDurations>,
+        specs::Write<'a, LazyUpdate>,
+    );
+    fn run(&mut self, (
+        entities,
+        numbers,
+        system_vars,
+        mut system_benchmark,
+        updater,
+    ): Self::SystemData) {
+        unsafe {
+            gl::Disable(gl::DEPTH_TEST);
+        }
+        let stopwatch = system_benchmark.start_measurement("DamageRenderSystem");
+
+        for (entity, number) in (&entities, &numbers).join() {
+//            pub value: u32,
+//            pub color: [f32; 3],
+//            pub start_pos: Point2<f32>,
+//            pub start_tick: Tick,
+//            pub duration: u16,
+            let digits = DamageRenderSystem::get_digits(number.value);
+            // create vbo based on the numbers
+            let mut x = 0.0;
+            let mut vertices = vec![];
+            digits.iter().for_each(|&digit| {
+                let digit = digit as usize;
+                vertices.push([x - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
+                vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+                vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+                vertices.push([x + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
+                x += 1.0;
+            });
+            let vertex_array = VertexArray::new(
+                gl::TRIANGLE_STRIP,
+                &vertices, vertices.len(), None, vec![
+                    VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }, VertexAttribDefinition { // uv
+                        number_of_components: 2,
+                        offset_of_first_element: 2,
+                    }
+                ]);
+
+            system_vars.system_sprites.numbers.bind(gl::TEXTURE0);
+            system_vars.shaders.sprite_shader.gl_use();
+            let mut matrix = Matrix4::<f32>::identity();
+            let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+
+            pos.y += 4.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
+            matrix.prepend_translation_mut(&pos);
+            system_vars.shaders.sprite_shader.set_mat4("model", &matrix);
+
+            system_vars.shaders.sprite_shader.set_vec2("size", &[
+                1.0,
+                1.0
+            ]);
+            system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
+            system_vars.shaders.sprite_shader.set_mat4("view", &system_vars.matrices.view);
+            system_vars.shaders.sprite_shader.set_int("model_texture", 0);
+            system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+
+            vertex_array.bind().draw();
+
+            if system_vars.tick.0 > (number.start_tick.0 + number.duration as u64) {
+                updater.remove::<FlyingNumberComponent>(entity);
+            }
         }
     }
 }
