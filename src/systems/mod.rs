@@ -6,10 +6,16 @@ pub mod ai;
 pub mod input;
 pub mod phys;
 pub mod render;
+pub mod ui;
+
+pub struct SystemSprites {
+    pub cursors: SpriteResource,
+}
 
 pub struct SystemVariables {
     pub shaders: Shaders,
     pub sprite_resources: Vec<SpriteResource>,
+    pub system_sprites: SystemSprites,
     pub head_sprites: Vec<SpriteResource>,
     pub monster_sprites: Vec<SpriteResource>,
     pub tick: Tick,

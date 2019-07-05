@@ -31,11 +31,12 @@ pub const VIDEO_HEIGHT: u32 = 700;
 impl Video {
     pub fn init() -> Video {
         let sdl_context = sdl2::init().unwrap();
-        let video_subsystem = sdl_context.video().unwrap();
-        let gl_attr = video_subsystem.gl_attr();
+        sdl_context.mouse().show_cursor(false);
+        let video = sdl_context.video().unwrap();
+        let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(4, 5);
-        let mut window = video_subsystem
+        let mut window = video
             .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
             .opengl()
             .allow_highdpi()
@@ -45,7 +46,7 @@ impl Video {
             .unwrap();
         // these two variables must be in scope, so don't remove their variables
         let _gl_context = window.gl_create_context().unwrap();
-        let _gl = gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::os::raw::c_void);
+        let _gl = gl::load_with(|s| video.gl_get_proc_address(s) as *const std::os::raw::c_void);
         unsafe {
             gl::Viewport(0, 0, VIDEO_WIDTH as i32, VIDEO_HEIGHT as i32); // set viewport
             gl::ClearColor(0.3, 0.3, 0.5, 1.0);
@@ -56,10 +57,10 @@ impl Video {
         }
         let mut imgui = imgui::ImGui::init();
         imgui.set_ini_filename(None);
-        let video = sdl_context.video().unwrap();
         let mut imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
         let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
+        sdl_context.mouse().show_cursor(false);
         Video {
             sdl_context,
             window,
@@ -68,7 +69,6 @@ impl Video {
             renderer,
             event_pump,
             _gl_context,
-//            _gl,
         }
     }
 
@@ -79,6 +79,20 @@ impl Video {
     pub fn set_title(&mut self, title: &str) {
         self.window.set_title(title).unwrap();
     }
+}
+
+pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
+    let two = 2.0;
+    let mut mat = Matrix4::<f32>::identity();
+
+    mat[(0, 0)] = two / (right - left);
+    mat[(0, 3)] = -(right + left) / (right - left);
+    mat[(1, 1)] = two / (top - bottom);
+    mat[(1, 3)] = -(top + bottom) / (top - bottom);
+    mat[(2, 2)] = -two / (zfar - znear);
+    mat[(2, 3)] = -(zfar + znear) / (zfar - znear);
+
+    mat
 }
 
 pub fn draw_lines_inefficiently2(trimesh_shader: &ShaderProgram,

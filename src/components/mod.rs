@@ -40,7 +40,7 @@ impl ControllerComponent {
     pub fn new(x: f32, z: f32) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
-        let mut camera = Camera::new(Point3::new(x, 30.0, z));
+        let mut camera = Camera::new(Point3::new(x, 20.0, z));
         camera.rotate(pitch, yaw);
         ControllerComponent {
             char: None,

@@ -699,7 +699,7 @@ mod tests {
     #[test]
     fn test_mesh_loading() {
         let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", "new_zone01")));
-        let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")));
+        let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")), "new_zone01");
         let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", "new_zone01")),
                                world.water.level,
                                world.water.wave_height);
