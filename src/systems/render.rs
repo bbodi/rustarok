@@ -6,6 +6,7 @@ use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{Shaders, MapRenderData, SpriteResource, Tick};
 use std::collections::HashMap;
+use crate::cam::Camera;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -73,19 +74,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         mut system_benchmark,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
+        unsafe {
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
             let view = controller.camera.create_view_matrix();
-            render_client(
-                &view,
-                &system_vars.shaders,
-                &system_vars.matrices.projection,
-                &system_vars.map_render_data,
-            );
-
 
             for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
-                        &animated_sprite_storage,
-                        &ai_storage).join() {
+                                                           &animated_sprite_storage,
+                                                           &ai_storage).join() {
                 let pos = {
                     let body = system_vars.map_render_data.physics_world.rigid_body(physics.handle).unwrap();
                     body.position().translation.vector
@@ -118,6 +115,20 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                   false);
                 }
             }
+
+            let physics = physics_storage.get(controller.char.unwrap()).unwrap();
+            let char_pos = {
+                let body = system_vars.map_render_data.physics_world.rigid_body(physics.handle).unwrap();
+                body.position().translation.vector
+            };
+            render_client(
+                &char_pos,
+                &controller.camera,
+                &view,
+                &system_vars.shaders,
+                &system_vars.matrices.projection,
+                &system_vars.map_render_data,
+            );
         }
     }
 }
@@ -193,14 +204,12 @@ fn render_sprite(system_vars: &SystemVariables,
     return animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
 }
 
-fn render_client(view: &Matrix4<f32>,
+fn render_client(char_pos: &Vector2<f32>,
+                 camera: &Camera,
+                 view: &Matrix4<f32>,
                  shaders: &Shaders,
                  projection_matrix: &Matrix4<f32>,
                  map_render_data: &MapRenderData) {
-    unsafe {
-        gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-    }
-
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
     let normal_matrix = {
@@ -237,11 +246,50 @@ fn render_client(view: &Matrix4<f32>,
 
     shaders.model_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
 
+    // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
         for (i, (model_name, matrix)) in map_render_data.model_instances.iter().enumerate() {
-            shaders.model_shader.set_mat4("model", &matrix);
             let model_render_data = &map_render_data.models[&model_name];
-            shaders.model_shader.set_f32("alpha", model_render_data.alpha);
+            // TODO: before transformation, max and min is reversed
+//            min: Point {
+//                coords: Matrix {
+//                    data: [
+//                        -32.90765,
+//                        -70.0698,
+//                        -30.87375,
+//                    ],
+//                },
+//            },
+//            max: Point {
+//                coords: Matrix {
+//                    data: [
+//                        32.90765,
+//                        0.0,
+//                        30.87375,
+//                    ],
+//                },
+//            },
+            let min = matrix.transform_point(&model_render_data.bounding_box.min);
+            let max = matrix.transform_point(&model_render_data.bounding_box.max);
+            let cam_pos = camera.pos();
+            if ((max.x < cam_pos.x - 40.0 || max.x > cam_pos.x + 40.0) &&
+                (min.x < cam_pos.x - 40.0 || min.x > cam_pos.x + 40.0)) ||
+                ((max.z < cam_pos.z - 70.0 || max.z > cam_pos.z + 5.0) &&
+                    (min.z < cam_pos.z - 70.0 || min.z > cam_pos.z + 5.0))
+            {
+                continue;
+            }
+            shaders.model_shader.set_mat4("model", &matrix);
+            let alpha = if
+            ((max.x > cam_pos.x - 10.0 && max.x < cam_pos.x + 10.0) ||
+                (min.x > cam_pos.x - 10.0 && min.x < cam_pos.x + 10.0))
+                && char_pos.y <= max.z // character is behind
+                && min.y > 5.0 {
+                0.3
+            } else {
+                model_render_data.alpha
+            };
+            shaders.model_shader.set_f32("alpha", alpha);
             for node_render_data in &model_render_data.model {
                 // TODO: optimize this
                 for face_render_data in node_render_data {

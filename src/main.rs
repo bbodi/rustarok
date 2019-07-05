@@ -50,11 +50,6 @@ use nphysics2d::object::{ColliderDesc, Collider};
 use std::ops::Bound;
 use ncollide2d::world::CollisionGroups;
 
-// guild_vs4.rsw
-
-//head sprite kirajzolása
-//3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
-
 mod common;
 mod cam;
 mod video;
@@ -129,6 +124,16 @@ pub struct Shaders {
     pub sprite_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
 }
+
+//áttetsző modellek
+//  csak a camera felé néző falak rajzolódjanak ilyenkor ki
+//  a modelleket z sorrendben növekvőleg rajzold ki
+//jobIDt tartalmazzon ne indexet a sprite
+// guild_vs4.rsw
+
+//head sprite kirajzolása
+//3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
+
 
 pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
@@ -321,7 +326,7 @@ fn main() {
         let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
         PhysicsComponent::new(&mut physics_world, pos2d.coords)
     };
-    ecs_world
+    let desktop_client_char = ecs_world
         .create_entity()
         .with(physics_component)
         .with(DummyAiComponent {
@@ -341,7 +346,11 @@ fn main() {
             head_index: 0,
         })
         .build();
-
+    {
+        let mut storage = ecs_world.write_storage::<ControllerComponent>();
+        let controller = storage.get_mut(desktop_client_entity).unwrap();
+        controller.char = Some(desktop_client_char);
+    }
 
     let mut entity_count = 0;
     'running: loop {
