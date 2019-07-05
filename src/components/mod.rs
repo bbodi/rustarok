@@ -22,6 +22,7 @@ pub struct BrowserClient {
 
 #[derive(Component)]
 pub struct ControllerComponent {
+    pub char: Option<Entity>,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub keys: HashSet<Scancode>,
@@ -42,6 +43,7 @@ impl ControllerComponent {
         let mut camera = Camera::new(Point3::new(x, 30.0, z));
         camera.rotate(pitch, yaw);
         ControllerComponent {
+            char: None,
             camera,
             inputs: vec![],
             keys: Default::default(),

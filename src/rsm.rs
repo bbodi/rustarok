@@ -28,21 +28,21 @@ pub struct RsmNodeVertex {
 
 #[derive(Debug, Clone)]
 pub struct BoundingBox {
-    pub min: Vector3<f32>,
-    pub max: Vector3<f32>,
+    pub min: Point3<f32>,
+    pub max: Point3<f32>,
     pub offset: Vector3<f32>,
     pub range: Vector3<f32>,
-    pub center: Vector3<f32>,
+    pub center: Point3<f32>,
 }
 
 impl BoundingBox {
     fn new() -> BoundingBox {
         BoundingBox {
-            min: Vector3::new(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
-            max: Vector3::new(std::f32::NEG_INFINITY, std::f32::NEG_INFINITY, std::f32::NEG_INFINITY),
+            min: Point3::new(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
+            max: Point3::new(std::f32::NEG_INFINITY, std::f32::NEG_INFINITY, std::f32::NEG_INFINITY),
             offset: Vector3::new(0.0, 0.0, 0.0),
             range: Vector3::new(0.0, 0.0, 0.0),
-            center: Vector3::new(0.0, 0.0, 0.0),
+            center: Point3::new(0.0, 0.0, 0.0),
         }
     }
 }
