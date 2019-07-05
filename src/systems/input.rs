@@ -6,6 +6,7 @@ use crate::components::{ControllerComponent, BrowserClient};
 use specs::prelude::*;
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
+use sdl2::mouse::MouseButton;
 
 pub struct BrowserInputProducerSystem;
 
@@ -166,15 +167,37 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         system_vars,
     ): Self::SystemData) {
         for (controller) in (&mut controller_storage).join() {
-            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 1.0 };
             let events: Vec<_> = controller.inputs.drain(..).collect();
+            controller.left_mouse_released = false;
+            controller.right_mouse_released = false;
             for event in events {
                 match event {
-                    sdl2::event::Event::MouseButtonDown { .. } => {
-                        controller.mouse_down = true;
+                    sdl2::event::Event::MouseButtonDown { mouse_btn, .. } => {
+                        match mouse_btn {
+                            MouseButton::Left => {
+                                controller.left_mouse_down = true;
+                                controller.left_mouse_released = false;
+                            }
+                            MouseButton::Right => {
+                                controller.right_mouse_down = true;
+                                controller.right_mouse_released = false;
+                            }
+                            _ => {}
+                        }
                     }
-                    sdl2::event::Event::MouseButtonUp { .. } => {
-                        controller.mouse_down = false;
+                    sdl2::event::Event::MouseButtonUp { mouse_btn, .. } => {
+                        match mouse_btn {
+                            MouseButton::Left => {
+                                controller.left_mouse_down = false;
+                                controller.left_mouse_released = true;
+                            }
+                            MouseButton::Right => {
+                                controller.right_mouse_down = false;
+                                controller.right_mouse_released = true;
+                            }
+                            _ => {}
+                        }
                     }
                     sdl2::event::Event::MouseMotion {
                         timestamp: _,
@@ -230,6 +253,12 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 //                        }
                         controller.last_mouse_x = x as u16;
                         controller.last_mouse_y = y as u16;
+                    }
+                    sdl2::event::Event::MouseWheel {
+                        y,
+                        ..
+                    } => {
+                        controller.camera.move_forward(y as f32);
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if scancode.is_some() {
