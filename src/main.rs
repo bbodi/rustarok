@@ -37,7 +37,7 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
-use crate::hardcoded_consts::job_name_table;
+use crate::hardcoded_consts::{job_name_table, JobId};
 use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, SimpleSpriteComponent, DummyAiComponent, ExtraSpriteComponent};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations};
 use crate::systems::render::{PhysicsDebugDrawingSystem, RenderBrowserClientsSystem, RenderStreamingSystem, RenderDesktopClientSystem};
@@ -141,7 +141,7 @@ pub struct Tick(u64);
 pub struct DeltaTime(f32);
 
 fn main() {
-    simple_logging::log_to_stderr(LevelFilter::Trace);
+    simple_logging::log_to_stderr(LevelFilter::Info);
 
 
     let mut video = Video::init();
@@ -207,7 +207,7 @@ fn main() {
 
     let desktop_client_entity = ecs_world
         .create_entity()
-        .with(ControllerComponent::new())
+        .with(ControllerComponent::new(250.0, -180.0))
         .build();
 
 
@@ -316,6 +316,33 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
+    let pos2d = Point2::new(250.0, -200.0);
+    let physics_component = {
+        let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
+        PhysicsComponent::new(&mut physics_world, pos2d.coords)
+    };
+    ecs_world
+        .create_entity()
+        .with(physics_component)
+        .with(DummyAiComponent {
+            target_pos: pos2d,
+            moving_speed: 400.0,
+            state: ActionIndex::Idle,
+            controller: Some(desktop_client_entity)
+        })
+        .with(SimpleSpriteComponent {
+            file_index: 10 as usize,
+            action_index: ActionIndex::Idle as usize,
+            animation_start: Tick(0),
+            direction: 0,
+            is_monster: false,
+        })
+        .with(ExtraSpriteComponent {
+            head_index: 0,
+        })
+        .build();
+
+
     let mut entity_count = 0;
     'running: loop {
         match websocket_server.accept() {
@@ -325,7 +352,7 @@ fn main() {
                 info!("Client connected");
                 ecs_world
                     .create_entity()
-                    .with(ControllerComponent::new())
+                    .with(ControllerComponent::new(250.0, -180.0))
                     .with(BrowserClient {
                         websocket: Mutex::new(browser_client),
                         offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
@@ -536,7 +563,12 @@ fn imgui_frame(desktop_client_entity: Entity,
                 ecs_world
                     .create_entity()
                     .with(physics_component)
-                    .with(DummyAiComponent { target_pos: pos2d, state: ActionIndex::Idle, controller: Some(desktop_client_entity) })
+                    .with(DummyAiComponent {
+                        target_pos: pos2d,
+                        state: ActionIndex::Idle,
+                        moving_speed: 200.0,
+                        controller: None
+                    })
                     .with(ExtraSpriteComponent {
                         head_index: rng.gen::<usize>() % head_count,
                     })
@@ -574,7 +606,12 @@ fn imgui_frame(desktop_client_entity: Entity,
                 ecs_world
                     .create_entity()
                     .with(physics_component)
-                    .with(DummyAiComponent { target_pos: pos2d, state: ActionIndex::Idle, controller: Some(desktop_client_entity) })
+                    .with(DummyAiComponent {
+                        target_pos: pos2d,
+                        state: ActionIndex::Idle,
+                        moving_speed: 200.0,
+                        controller: None
+                    })
                     .with(SimpleSpriteComponent {
                         file_index: rng.gen::<usize>() % sprite_count,
                         action_index: 8,
@@ -584,15 +621,17 @@ fn imgui_frame(desktop_client_entity: Entity,
                     })
                     .build();
             }
-        } else if current_entity_count > *entity_count {
+        } else if current_entity_count - 1 > *entity_count { // -1 is the entity of the controller
             let entities: Vec<_> = {
                 let to_remove = current_entity_count - *entity_count;
                 let entities_storage = ecs_world.entities();
                 let sprite_storage = ecs_world.read_storage::<SimpleSpriteComponent>(); // it is need only for filtering entities
                 let physics_storage = ecs_world.read_storage::<PhysicsComponent>();
-                (&entities_storage, &sprite_storage, &physics_storage).join()
+                let ai_storage = ecs_world.read_storage::<DummyAiComponent>();
+                (&entities_storage, &sprite_storage, &physics_storage, &ai_storage).join()
                     .take(to_remove as usize)
-                    .map(|(entity, _sprite_comp, phys_comp)| (entity, phys_comp.handle.clone()))
+                    .filter(|(_entity, _sprite_comp, _phys_comp, ai)| ai.controller.is_none())
+                    .map(|(entity, _sprite_comp, phys_comp, _ai)| (entity, phys_comp.handle.clone()))
                     .collect()
             };
             let entity_ids: Vec<_> = entities.iter().map(|(entity, _body_handle)| *entity).collect();

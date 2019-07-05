@@ -25,7 +25,10 @@ pub struct ControllerComponent {
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub keys: HashSet<Scancode>,
-    pub mouse_down: bool,
+    pub left_mouse_down: bool,
+    pub right_mouse_down: bool,
+    pub left_mouse_released: bool,
+    pub right_mouse_released: bool,
     pub last_mouse_x: u16,
     pub last_mouse_y: u16,
     pub yaw: f32,
@@ -33,16 +36,19 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
-    pub fn new() -> ControllerComponent {
+    pub fn new(x: f32, z: f32) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
-        let mut camera = Camera::new(Point3::new(250.0, 30.0, -180.0));
+        let mut camera = Camera::new(Point3::new(x, 30.0, z));
         camera.rotate(pitch, yaw);
         ControllerComponent {
             camera,
             inputs: vec![],
             keys: Default::default(),
-            mouse_down: false,
+            left_mouse_down: false,
+            right_mouse_down: false,
+            left_mouse_released: false,
+            right_mouse_released: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
             yaw,
@@ -57,6 +63,7 @@ pub struct DummyAiComponent {
     pub target_pos: Point2<f32>,
     pub state: ActionIndex,
     pub controller: Option<Entity>,
+    pub moving_speed: f32,
 }
 
 #[derive(Component)]
@@ -96,7 +103,7 @@ impl PhysicsComponent {
                 .with_membership(&[LIVING_COLLISION_GROUP])
                 .with_blacklist(&[])
                 .with_whitelist(&[STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP]))
-            .density(1.3);
+            .density(radius as f32 * 0.5);
         let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
         let handle = rb_desc
             .set_translation(pos)

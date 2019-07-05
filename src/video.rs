@@ -39,7 +39,7 @@ impl Video {
             .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
             .opengl()
             .allow_highdpi()
-            .resizable()
+//            .resizable()
             .input_grabbed()
             .build()
             .unwrap();

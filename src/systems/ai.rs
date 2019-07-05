@@ -41,7 +41,7 @@ impl<'a> specs::System<'a> for DummyAiSystem {
             let pos = body.position().translation.vector;
             if let Some(controller_entity) = ai.controller {
                 let controller = controller_storage.get(controller_entity).unwrap();
-                if controller.mouse_down && controller.keys.contains(&Scancode::LShift) {
+                if controller.right_mouse_released {
                     let screen_point = Point2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32);
 
                     let ray_clip = Vector4::new(2.0 * screen_point.x as f32 / VIDEO_WIDTH as f32 - 1.0,
@@ -68,7 +68,8 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                     }
                 }
             }
-            if nalgebra::distance(&nalgebra::Point::from(pos), &ai.target_pos) < 10.0 {
+            let distance = nalgebra::distance(&nalgebra::Point::from(pos), &ai.target_pos);
+            if distance < 0.2 {
                 if ai.controller.is_none() {
                     ai.target_pos = Point2::<f32>::new(0.5 * 200.0 * (rng.gen::<f32>()), -(0.5 * 200.0 * (rng.gen::<f32>())));
                 }
@@ -79,7 +80,9 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                 }
                 body.set_linear_velocity(Vector2::new(0.0, 0.0));
             } else {
-                let force = (ai.target_pos - nalgebra::Point::from(pos)).normalize() * 200.0 * dt;
+                let dir = (ai.target_pos - nalgebra::Point::from(pos)).normalize();
+                let speed = dir * ai.moving_speed * dt;
+                let force = speed;
                 body.set_linear_velocity(force);
             }
         }
