@@ -1,4 +1,4 @@
-use crate::components::{PhysicsComponent, DummyAiComponent, SimpleSpriteComponent, ControllerComponent};
+use crate::components::{PhysicsComponent, DummyAiComponent, PlayerSpriteComponent, ControllerComponent, FlyingNumberComponent};
 use nalgebra::{Point3, Point2, Vector2, Vector3, Perspective3, Vector4};
 use crate::systems::render::DIRECTION_TABLE;
 use specs::prelude::*;
@@ -15,7 +15,7 @@ impl<'a> specs::System<'a> for DummyAiSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, DummyAiComponent>,
-        specs::WriteStorage<'a, SimpleSpriteComponent>,
+        specs::WriteStorage<'a, PlayerSpriteComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -37,6 +37,7 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                                                 &mut ai_storage,
                                                 &mut physics_storage).join() {
             let projection_matrix = system_vars.matrices.projection.clone();
+            let view_matrix = system_vars.matrices.view.clone();
             let body = system_vars.map_render_data.physics_world.rigid_body_mut(physics_comp.handle).unwrap();
             let pos = body.position().translation.vector;
             if let Some(controller_entity) = ai.controller {
@@ -50,7 +51,6 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                                                 1.0);
                     let ray_eye = projection_matrix.try_inverse().unwrap() * ray_clip;
                     let ray_eye = Vector4::new(ray_eye.x, ray_eye.y, -1.0, 0.0);
-                    let view_matrix = controller.camera.create_view_matrix();
                     let ray_world = view_matrix.try_inverse().unwrap() * ray_eye;
                     let ray_world = Vector3::new(ray_world.x, ray_world.y, ray_world.z).normalize();
 
@@ -63,8 +63,8 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                     ai.target_pos = dbg!(Point2::new(world_pos.x, world_pos.z));
                     ai.state = ActionIndex::Walking;
                     if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
-                        anim_sprite.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
-                        anim_sprite.action_index = ai.state as usize;
+                        anim_sprite.base.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
+                        anim_sprite.base.action_index = ai.state as usize;
                     }
                 }
             }
@@ -75,8 +75,8 @@ impl<'a> specs::System<'a> for DummyAiSystem {
                 }
                 ai.state = ActionIndex::Idle;
                 if let Some(anim_sprite) = animated_sprite_storage.get_mut(entity) {
-                    anim_sprite.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
-                    anim_sprite.action_index = ai.state as usize;
+                    anim_sprite.base.direction = DummyAiSystem::determine_dir(&ai.target_pos, &pos);
+                    anim_sprite.base.action_index = ai.state as usize;
                 }
                 body.set_linear_velocity(Vector2::new(0.0, 0.0));
             } else {

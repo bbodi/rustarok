@@ -69,17 +69,52 @@ pub struct DummyAiComponent {
 }
 
 #[derive(Component)]
-pub struct SimpleSpriteComponent {
+pub struct PlayerSpriteComponent {
+    pub base: MonsterSpriteComponent,
+    pub head_index: usize,
+}
+
+#[derive(Component)]
+pub struct MonsterSpriteComponent {
     pub file_index: usize,
     pub action_index: usize,
     pub animation_start: Tick,
     pub direction: usize,
-    pub is_monster: bool,
 }
 
 #[derive(Component)]
-pub struct ExtraSpriteComponent {
-    pub head_index: usize,
+pub struct FlyingNumberComponent {
+    pub value: u32,
+    pub color: [f32; 3],
+    pub start_pos: Point2<f32>,
+    pub start_tick: Tick,
+    pub duration: u16,
+}
+
+pub enum FlyingNumberType {
+    Damage,
+    Heal,
+    Normal,
+    Mana,
+    Crit
+}
+
+impl FlyingNumberComponent{
+    pub fn new (typ: FlyingNumberType, value: u32, start_pos: Point2<f32>, tick: Tick) -> FlyingNumberComponent {
+        FlyingNumberComponent {
+            value,
+            color: match typ {
+                FlyingNumberType::Damage => [1.0, 0.0, 0.0],
+                FlyingNumberType::Heal => [0.0, 1.0, 0.0],
+                FlyingNumberType::Normal => [1.0, 1.0, 1.0],
+                FlyingNumberType::Mana => [0.0, 0.0, 1.0],
+                FlyingNumberType::Crit => [1.0, 1.0, 1.0]
+            },
+            start_pos,
+            start_tick: tick,
+            duration: 60
+        }
+    }
 }
 
 // radius = ComponentRadius * 0.5f32

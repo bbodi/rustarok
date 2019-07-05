@@ -7,11 +7,15 @@ uniform mat4 view;
 uniform mat4 model;
 uniform mat4 projection;
 uniform vec2 size;
+uniform vec2 offset;
+
 
 out vec2 tex_coord;
 
 void main() {
     vec4 pos = vec4(Position.x * size.x, Position.y * size.y, 0.0, 1.0);
+    pos.x += offset.x;
+    pos.y -= offset.y + 0.5;
     mat4 model_view = view * model;
     model_view[0][0] = 1.0;
     model_view[0][1] = 0.0;
