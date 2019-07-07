@@ -3,11 +3,11 @@ use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaT
 use std::collections::HashMap;
 use crate::video::GlTexture;
 
-pub mod ai;
 pub mod input;
 pub mod phys;
 pub mod render;
 pub mod ui;
+pub mod control;
 
 pub struct SystemSprites {
     pub cursors: SpriteResource,

@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use nalgebra::{Point3, Vector3, Vector2, Point2};
 use std::collections::HashSet;
 use sdl2::keyboard::Scancode;
-use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex};
+use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex, PhysicsWorld};
 use specs::prelude::*;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
@@ -22,7 +22,7 @@ pub struct BrowserClient {
 
 #[derive(Component)]
 pub struct ControllerComponent {
-    pub char: Option<Entity>,
+    pub char: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub keys: HashSet<Scancode>,
@@ -37,13 +37,13 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
-    pub fn new(x: f32, z: f32) -> ControllerComponent {
+    pub fn new(char: Entity, x: f32, z: f32) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
         let mut camera = Camera::new(Point3::new(x, 20.0, z));
         camera.rotate(pitch, yaw);
         ControllerComponent {
-            char: None,
+            char,
             camera,
             inputs: vec![],
             keys: Default::default(),
@@ -60,12 +60,91 @@ impl ControllerComponent {
 }
 
 
-#[derive(Component)]
-pub struct DummyAiComponent {
-    pub target_pos: Point2<f32>,
-    pub state: ActionIndex,
-    pub controller: Option<Entity>,
+//#[derive(Component)]
+//pub struct CharacterStateComponent {
+//    pub target_pos: Point2<f32>,
+//    pub state: ActionIndex,
+//    pub controller: Option<Entity>,
+//}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CharState {
+    Idle,
+    Walking,
+    Sitting,
+    PickingItem,
+    StandBy,
+    Attacking { attack_ends: Tick },
+    ReceivingDamage,
+    Freeze,
+    Dead,
+    CastingSpell,
+}
+
+impl CharState {
+    pub fn is_attacking(&self) -> bool {
+        match self {
+            CharState::Attacking {attack_ends: _} => true,
+            _ => false
+        }
+    }
+
+    pub fn get_sprite_index(&self) -> ActionIndex {
+        match self {
+            CharState::Idle => ActionIndex::Idle,
+            CharState::Walking => ActionIndex::Walking,
+            CharState::Sitting => ActionIndex::Sitting,
+            CharState::PickingItem => ActionIndex::PickingItem,
+            CharState::StandBy => ActionIndex::StandBy,
+            CharState::Attacking{attack_ends: _} => ActionIndex::Attacking1,
+            CharState::ReceivingDamage => ActionIndex::ReceivingDamage,
+            CharState::Freeze => ActionIndex::Freeze1,
+            CharState::Dead => ActionIndex::Dead,
+            CharState::CastingSpell => ActionIndex::CastingSpell,
+        }
+    }
+}
+
+#[derive(Component, Debug)]
+pub struct CharacterStateComponent {
+    pub target_pos: Option<Point2<f32>>,
+    pub target: Option<Entity>,
+    state: CharState,
     pub moving_speed: f32,
+    pub attack_range: f32,
+    pub attack_speed: f32,
+    // attacks per second
+    dir: usize,
+}
+
+impl CharacterStateComponent {
+    pub fn new() -> CharacterStateComponent {
+        CharacterStateComponent {
+            target_pos: None,
+            moving_speed: 400.0,
+            attack_range: 2.0,
+            state: CharState::Idle,
+            target: None,
+            attack_speed: 2.0,
+            dir: 0,
+        }
+    }
+
+    pub fn state(&self) -> CharState {
+        self.state
+    }
+
+    pub fn dir(&self) -> usize {
+        self.dir
+    }
+
+    pub fn set_state(&mut self, state: CharState, dir: usize, anim_sprite: &mut PlayerSpriteComponent, tick: Tick) {
+        self.state = state;
+        self.dir = dir;
+        anim_sprite.base.direction = dir;
+        anim_sprite.base.animation_start = tick;
+        anim_sprite.base.action_index = state.get_sprite_index() as usize;
+    }
 }
 
 #[derive(Component)]
@@ -96,11 +175,11 @@ pub enum FlyingNumberType {
     Heal,
     Normal,
     Mana,
-    Crit
+    Crit,
 }
 
-impl FlyingNumberComponent{
-    pub fn new (typ: FlyingNumberType, value: u32, start_pos: Point2<f32>, tick: Tick) -> FlyingNumberComponent {
+impl FlyingNumberComponent {
+    pub fn new(typ: FlyingNumberType, value: u32, start_pos: Point2<f32>, tick: Tick) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,
             color: match typ {
@@ -112,7 +191,7 @@ impl FlyingNumberComponent{
             },
             start_pos,
             start_tick: tick,
-            duration: 60
+            duration: 40,
         }
     }
 }
@@ -121,33 +200,43 @@ impl FlyingNumberComponent{
 #[derive(Eq, PartialEq, Hash)]
 pub struct ComponentRadius(pub i32);
 
+impl ComponentRadius {
+    pub fn get(&self) -> f32 {
+        self.0 as f32 * 0.5
+    }
+}
+
 #[derive(Component)]
 pub struct PhysicsComponent {
     pub radius: ComponentRadius,
-    pub handle: nphysics2d::object::BodyHandle
+    pub body_handle: nphysics2d::object::BodyHandle,
 }
 
 impl PhysicsComponent {
     pub fn new(
         world: &mut nphysics2d::world::World<f32>,
         pos: Vector2<f32>,
+        radius: ComponentRadius,
     ) -> PhysicsComponent {
-        let mut rng = rand::thread_rng();
-        let radius = rng.gen_range(1, 5);
-        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius as f32 * 0.5));
+        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
         let mut collider_desc = ColliderDesc::new(capsule)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[LIVING_COLLISION_GROUP])
                 .with_blacklist(&[])
                 .with_whitelist(&[STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP]))
-            .density(radius as f32 * 0.5);
+            .density(radius.0 as f32 * 0.5);
         let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
         let handle = rb_desc
             .set_translation(pos)
             .build(world).handle();
         PhysicsComponent {
-            radius: ComponentRadius(radius),
-            handle
+            radius: radius,
+            body_handle: handle,
         }
+    }
+
+    pub fn pos(&self, physics_world: &PhysicsWorld) -> Vector2<f32> {
+        let body = physics_world.rigid_body(self.body_handle).unwrap();
+        body.position().translation.vector
     }
 }
