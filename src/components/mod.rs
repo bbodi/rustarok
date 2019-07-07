@@ -121,7 +121,7 @@ impl CharacterStateComponent {
     pub fn new() -> CharacterStateComponent {
         CharacterStateComponent {
             target_pos: None,
-            moving_speed: 400.0,
+            moving_speed: 600.0,
             attack_range: 2.0,
             state: CharState::Idle,
             target: None,
@@ -231,7 +231,7 @@ impl PhysicsComponent {
                 .with_membership(&[LIVING_COLLISION_GROUP])
                 .with_blacklist(&[])
                 .with_whitelist(&[STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP]))
-            .density(radius.0 as f32 * 0.5);
+            .density(radius.0 as f32 * 5.0);
         let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
         let handle = rb_desc
             .set_translation(pos)

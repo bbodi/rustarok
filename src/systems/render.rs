@@ -377,6 +377,7 @@ impl PhysicsDebugDrawingSystem {
 
 impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
     type SystemData = (
+        specs::Entities<'a>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
@@ -386,6 +387,7 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
     );
 
     fn run(&mut self, (
+        entities,
         controller_storage,
         browser_client_storage,
         physics_storage,

@@ -43,7 +43,7 @@ use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, Pl
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
 use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
-use crate::systems::phys::PhysicsSystem;
+use crate::systems::phys::{PhysicsSystem, FrictionSystem};
 use rand::prelude::ThreadRng;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, Collider, BodyHandle};
@@ -250,7 +250,8 @@ fn main() {
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
         .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
-        .with(CharacterControlSystem, "char_control", &["input_handler", "browser_input_processor"])
+        .with(FrictionSystem, "friction_sys", &[])
+        .with(CharacterControlSystem, "char_control", &["friction_sys", "input_handler", "browser_input_processor"])
         .with(PhysicsSystem, "physics", &["char_control"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
@@ -534,7 +535,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                 }
                 ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
 
-                ui.slider_int(im_str!("Entities"), entity_count, 0, 300)
+                ui.slider_int(im_str!("Entities"), entity_count, 0, 20)
                     .build();
 
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
@@ -601,10 +602,17 @@ fn imgui_frame(desktop_client_entity: Entity,
             let count_to_add = *entity_count - current_entity_count;
             for _i in 0..count_to_add / 2 {
                 let pos = {
+                    let hero_pos = {
+                        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+                        let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
+                        let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                        let controller = storage.get(desktop_client_entity).unwrap();
+                        phys_storage.get(controller.char).unwrap().pos(&physics_world)
+                    };
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
-                        let x = map_render_data.gnd.width as f32 * (rng.gen::<f32>());
-                        let y = map_render_data.gnd.height as f32 * (rng.gen::<f32>());
+                        let x = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
+                        let y = rng.gen_range(-hero_pos.y - 10.0, -hero_pos.y + 10.0);
                         let index = y as usize * map_render_data.gat.width as usize + y as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type & CellType::Walkable as u8) != 0;
                         if walkable {

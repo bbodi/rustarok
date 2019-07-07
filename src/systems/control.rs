@@ -136,7 +136,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                                                &mut sprite);
                         }
                         let dir = (target_pos - nalgebra::Point::from(char_pos)).normalize();
-                        let speed = dir * char_state.moving_speed * dt;
+                        let speed = dir * char_state.moving_speed * 0.01;
                         let force = speed;
                         body.set_linear_velocity(force);
                     }
