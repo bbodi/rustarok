@@ -139,7 +139,7 @@ pub struct Shaders {
 //  a modelleket z sorrendben növekvőleg rajzold ki
 //jobIDt tartalmazzon ne indexet a sprite
 // guild_vs4.rsw
-
+// implement attack range check with proximity events
 //head sprite kirajzolása
 //3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
 
@@ -375,7 +375,8 @@ fn main() {
             base: MonsterSpriteComponent {
                 file_index: 10 as usize,
                 action_index: ActionIndex::Idle as usize,
-                animation_start: Tick(0),
+                animation_started: Tick(0),
+                animation_finish: None,
                 direction: 0,
             },
             head_index: 0,
@@ -630,7 +631,8 @@ fn imgui_frame(desktop_client_entity: Entity,
                         base: MonsterSpriteComponent {
                             file_index: rng.gen::<usize>() % sprite_count,
                             action_index: 8,
-                            animation_start: Tick(0),
+                            animation_started: Tick(0),
+                            animation_finish: None,
                             direction: 0,
                         },
                     })
@@ -668,7 +670,8 @@ fn imgui_frame(desktop_client_entity: Entity,
                     .with(MonsterSpriteComponent {
                         file_index: rng.gen::<usize>() % sprite_count,
                         action_index: 8,
-                        animation_start: Tick(0),
+                        animation_started: Tick(0),
+                        animation_finish: None,
                         direction: 0,
                     })
                     .build()

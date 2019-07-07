@@ -43,7 +43,8 @@ impl<'a> specs::System<'a> for RenderUI {
                              &MonsterSpriteComponent {
                                  file_index: 0, //
                                  action_index: CURSOR_NORMAL.1,
-                                 animation_start: Tick(0),
+                                 animation_started: Tick(0),
+                                 animation_finish: None,
                                  direction: 0,
                              },
                              &system_vars.system_sprites.cursors,
@@ -59,7 +60,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
                     pos: &Vector2<f32>,
 ) {
     // draw layer
-    let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
+    let animation_elapsed_tick = tick.0 - animated_sprite.animation_started.0;
     let idx = animated_sprite.action_index;
 
     let delay = sprite_res.action.actions[idx].delay;

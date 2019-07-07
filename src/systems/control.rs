@@ -90,7 +90,8 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                     char_state.set_state(CharState::Idle,
                                          char_state.dir(),
                                          &mut sprite,
-                                         system_vars.tick);
+                                         system_vars.tick,
+                                         None);
                     let damage = entities.create();
                     let mut rng = rand::thread_rng();
                     let typ = match rng.gen_range(1, 5) {
@@ -111,28 +112,35 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                     let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
                     if char_state.target.is_some() && distance <= char_state.attack_range {
                         let attack_ends = system_vars.tick.0 + (TICKS_PER_SECOND as f32 / char_state.attack_speed) as u64;
-                        char_state.set_state(CharState::Attacking { attack_ends: Tick(attack_ends) },
+                        let attack_ends = Tick(attack_ends);
+                        char_state.set_state(CharState::Attacking { attack_ends },
                                              CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                             &mut sprite, system_vars.tick);
+                                             &mut sprite, system_vars.tick,
+                                             Some(attack_ends));
+                        body.set_linear_velocity(Vector2::new(0.0, 0.0));
                     } else if distance < 0.2 {
                         char_state.set_state(CharState::Idle,
                                              char_state.dir(),
-                                             &mut sprite, system_vars.tick);
+                                             &mut sprite, system_vars.tick,
+                                             None);
                         body.set_linear_velocity(Vector2::new(0.0, 0.0));
                         char_state.target_pos = None;
                     } else {
-                        char_state.set_state(CharState::Walking,
-                                             CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                             &mut sprite, system_vars.tick);
+                        if char_state.state() != CharState::Walking {
+                            char_state.set_state(CharState::Walking,
+                                                 CharacterControlSystem::determine_dir(&target_pos, &char_pos),
+                                                 &mut sprite, system_vars.tick,
+                                                 None);
+                        } else {
+                            char_state.set_dir(CharacterControlSystem::determine_dir(&target_pos, &char_pos),
+                                               &mut sprite);
+                        }
                         let dir = (target_pos - nalgebra::Point::from(char_pos)).normalize();
                         let speed = dir * char_state.moving_speed * dt;
                         let force = speed;
                         body.set_linear_velocity(force);
                     }
                 }
-            }
-            if controller.right_mouse_released {
-                dbg!(char_state);
             }
         }
     }

@@ -138,12 +138,18 @@ impl CharacterStateComponent {
         self.dir
     }
 
-    pub fn set_state(&mut self, state: CharState, dir: usize, anim_sprite: &mut PlayerSpriteComponent, tick: Tick) {
+    pub fn set_state(&mut self, state: CharState, dir: usize, anim_sprite: &mut PlayerSpriteComponent, tick: Tick, finish: Option<Tick>) {
         self.state = state;
         self.dir = dir;
         anim_sprite.base.direction = dir;
-        anim_sprite.base.animation_start = tick;
+        anim_sprite.base.animation_started = tick;
+        anim_sprite.base.animation_finish = finish;
         anim_sprite.base.action_index = state.get_sprite_index() as usize;
+    }
+
+    pub fn set_dir(&mut self, dir: usize, anim_sprite: &mut PlayerSpriteComponent) {
+        self.dir = dir;
+        anim_sprite.base.direction = dir;
     }
 }
 
@@ -157,7 +163,8 @@ pub struct PlayerSpriteComponent {
 pub struct MonsterSpriteComponent {
     pub file_index: usize,
     pub action_index: usize,
-    pub animation_start: Tick,
+    pub animation_started: Tick,
+    pub animation_finish: Option<Tick>,
     pub direction: usize,
 }
 

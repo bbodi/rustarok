@@ -4,9 +4,10 @@ use crate::video::VertexAttribDefinition;
 use crate::components::{BrowserClient, PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, ControllerComponent, ComponentRadius, MonsterSpriteComponent, FlyingNumberComponent};
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld};
+use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND};
 use std::collections::HashMap;
 use crate::cam::Camera;
+use std::cmp::max;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -158,13 +159,21 @@ fn render_sprite(system_vars: &SystemVariables,
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
     // draw layer
-    let animation_elapsed_tick = tick.0 - animated_sprite.animation_start.0;
+    let animation_elapsed_tick = tick.0 - animated_sprite.animation_started.0;
     let cam_dir = (((controller.yaw / 45.0) + 0.5) as usize) % 8;
     let idx = animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8;
 
-    let delay = sprite_res.action.actions[idx].delay;
+    let delay_in_ms = sprite_res.action.actions[idx].delay;
+
     let frame_count = sprite_res.action.actions[idx].frames.len();
-    let frame_index = ((animation_elapsed_tick / (delay / 20) as u64) % frame_count as u64) as usize;
+    let delay_in_ticks = max(1, if let Some(finish_tick) = animated_sprite.animation_finish {
+        let duration = finish_tick.0 - animated_sprite.animation_started.0;
+        duration / frame_count as u64
+    } else {
+        delay_in_ms as u64 / TICKS_PER_SECOND
+    });
+
+    let frame_index = ((animation_elapsed_tick / delay_in_ticks) % frame_count as u64) as usize;
     let animation = &sprite_res.action.actions[idx].frames[frame_index];
     for layer in &animation.layers {
         if layer.sprite_frame_index < 0 {
