@@ -39,18 +39,18 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::{job_name_table, JobId};
-use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, PlayerSpriteComponent, DummyAiComponent, MonsterSpriteComponent, FlyingNumberComponent, FlyingNumberType};
+use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, FlyingNumberComponent, FlyingNumberType, ComponentRadius};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
 use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
-use crate::systems::ai::DummyAiSystem;
 use crate::systems::phys::PhysicsSystem;
 use rand::prelude::ThreadRng;
 use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{ColliderDesc, Collider};
+use nphysics2d::object::{ColliderDesc, Collider, BodyHandle};
 use std::ops::Bound;
 use ncollide2d::world::CollisionGroups;
 use crate::systems::ui::RenderUI;
+use crate::systems::control::CharacterControlSystem;
 
 mod common;
 mod cursor;
@@ -66,6 +66,10 @@ mod hardcoded_consts;
 
 mod components;
 mod systems;
+
+pub type PhysicsWorld = nphysics2d::world::World<f32>;
+
+pub const TICKS_PER_SECOND: u64 = 1000 / 30;
 
 #[derive(Clone, Copy)]
 pub enum ActionIndex {
@@ -146,7 +150,7 @@ pub struct RenderMatrices {
     pub view: Matrix4<f32>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tick(u64);
 
 #[derive(Copy, Clone)]
@@ -238,21 +242,16 @@ fn main() {
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<PlayerSpriteComponent>();
     ecs_world.register::<MonsterSpriteComponent>();
-    ecs_world.register::<DummyAiComponent>();
+    ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
-
-    let desktop_client_entity = ecs_world
-        .create_entity()
-        .with(ControllerComponent::new(250.0, -180.0))
-        .build();
 
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
         .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
-        .with(DummyAiSystem, "ai", &[])
-        .with(PhysicsSystem, "physics", &["ai", "input_handler", "browser_input_processor"])
+        .with(CharacterControlSystem, "char_control", &["input_handler", "browser_input_processor"])
+        .with(PhysicsSystem, "physics", &["char_control"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem)
@@ -261,7 +260,7 @@ fn main() {
         .with_thread_local(RenderUI)
         .build();
 
-    let map_render_data = load_map("prontera");
+    let (map_render_data, physics_world) = load_map("prontera");
     let w = map_render_data.gat.width;
 
     fn grf(str: &str) -> String {
@@ -348,6 +347,7 @@ fn main() {
         map_render_data,
     });
 
+    ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
 
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
@@ -364,18 +364,13 @@ fn main() {
 
     let pos2d = Point2::new(250.0, -200.0);
     let physics_component = {
-        let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
-        PhysicsComponent::new(&mut physics_world, pos2d.coords)
+        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+        PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(1))
     };
     let desktop_client_char = ecs_world
         .create_entity()
         .with(physics_component)
-        .with(DummyAiComponent {
-            target_pos: pos2d,
-            moving_speed: 400.0,
-            state: ActionIndex::Idle,
-            controller: Some(desktop_client_entity),
-        })
+        .with(CharacterStateComponent::new())
         .with(PlayerSpriteComponent {
             base: MonsterSpriteComponent {
                 file_index: 10 as usize,
@@ -386,11 +381,13 @@ fn main() {
             head_index: 0,
         })
         .build();
-    {
-        let mut storage = ecs_world.write_storage::<ControllerComponent>();
-        let controller = storage.get_mut(desktop_client_entity).unwrap();
-        controller.char = Some(desktop_client_char);
-    }
+
+    let desktop_client_entity = ecs_world
+        .create_entity()
+        .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
+        .build();
+
+    let mut other_entities: Vec<Entity> = vec![];
 
     let mut entity_count = 0;
     'running: loop {
@@ -399,15 +396,15 @@ fn main() {
                 let browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
                 info!("Client connected");
-                ecs_world
-                    .create_entity()
-                    .with(ControllerComponent::new(250.0, -180.0))
-                    .with(BrowserClient {
-                        websocket: Mutex::new(browser_client),
-                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
-                        ping: 0,
-                    })
-                    .build();
+//                ecs_world
+//                    .create_entity()
+//                    .with(ControllerComponent::new(250.0, -180.0))
+//                    .with(BrowserClient {
+//                        websocket: Mutex::new(browser_client),
+//                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
+//                        ping: 0,
+//                    })
+//                    .build();
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
@@ -435,20 +432,6 @@ fn main() {
             let controller = storage.get_mut(desktop_client_entity).unwrap();
             ecs_world.write_resource::<SystemVariables>().matrices.view = controller.camera.create_view_matrix();
         }
-        {
-            let player_pos = {
-                let mut storage = ecs_world.write_storage::<ControllerComponent>();
-                let controller = storage.get_mut(desktop_client_entity).unwrap();
-                Point2::new(controller.camera.pos().x, controller.camera.pos().z)
-            };
-            let tick = ecs_world.read_resource::<SystemVariables>().tick;
-            if tick.0 % 100 == 0 {
-                ecs_world
-                    .create_entity()
-                    .with(FlyingNumberComponent::new(FlyingNumberType::Damage, 123456789, player_pos, tick))
-                    .build();
-            }
-        }
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
@@ -463,9 +446,11 @@ fn main() {
             &mut map_name_filter,
             &all_map_names,
             fps,
+            &mut other_entities,
         ) {
-            let map_render_data = load_map(&new_map_name);
+            let (map_render_data, physics_world) = load_map(&new_map_name);
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
+            ecs_world.add_resource(physics_world);
         }
 
         video.gl_swap_window();
@@ -507,7 +492,8 @@ fn imgui_frame(desktop_client_entity: Entity,
                time_multiplier: &mut i32,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
-               fps: u64) -> Option<String> {
+               fps: u64,
+               other_entities: &mut Vec<Entity>) -> Option<String> {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
                                     &video.event_pump.mouse_state());
@@ -549,6 +535,15 @@ fn imgui_frame(desktop_client_entity: Entity,
 
                 ui.slider_int(im_str!("Entities"), entity_count, 0, 300)
                     .build();
+
+                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let controller = storage.get(desktop_client_entity).unwrap();
+                {
+                    let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                    let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                    ui.slider_float(im_str!("Attack Speed"), &mut char_state.attack_speed, 1.0, 5.0)
+                        .build();
+                }
                 ui.slider_int(im_str!("Speedup"), time_multiplier, 0, 3)
                     .build();
 
@@ -565,8 +560,6 @@ fn imgui_frame(desktop_client_entity: Entity,
                 ui.drag_float(im_str!("light_opacity"), &mut map_render_data.rsw.light.opacity)
                     .min(0.0).max(1.0).speed(0.05).build();
 
-                let mut storage = ecs_world.write_storage::<ControllerComponent>();
-                let controller = storage.get(desktop_client_entity).unwrap();
                 ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
                 ui.text(im_str!("yaw: {}, pitch: {}", controller.yaw, controller.pitch));
                 ui.text(im_str!("FPS: {}", fps));
@@ -620,21 +613,18 @@ fn imgui_frame(desktop_client_entity: Entity,
                     Point3::<f32>::new(x, 0.5, -y)
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
+                let mut rng = rand::thread_rng();
+                let radius = rng.gen_range(1, 5);
                 let physics_component = {
-                    let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
-                    PhysicsComponent::new(&mut physics_world, pos2d.coords)
+                    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+                    PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius))
                 };
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().sprite_resources.len();
                 let head_count = ecs_world.read_resource::<SystemVariables>().head_sprites.len();
-                ecs_world
+                other_entities.push(ecs_world
                     .create_entity()
                     .with(physics_component)
-                    .with(DummyAiComponent {
-                        target_pos: pos2d,
-                        state: ActionIndex::Idle,
-                        moving_speed: 200.0,
-                        controller: None,
-                    })
+                    .with(CharacterStateComponent::new())
                     .with(PlayerSpriteComponent {
                         head_index: rng.gen::<usize>() % head_count,
                         base: MonsterSpriteComponent {
@@ -644,7 +634,8 @@ fn imgui_frame(desktop_client_entity: Entity,
                             direction: 0,
                         },
                     })
-                    .build();
+                    .build()
+                );
             }
             // add monsters
             for _i in 0..count_to_add / 2 {
@@ -663,47 +654,39 @@ fn imgui_frame(desktop_client_entity: Entity,
                     Point3::<f32>::new(x, 0.5, -y)
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
+                let mut rng = rand::thread_rng();
+                let radius = rng.gen_range(1, 5);
                 let physics_component = {
-                    let mut physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
-                    PhysicsComponent::new(&mut physics_world, pos2d.coords)
+                    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+                    PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius))
                 };
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().monster_sprites.len();
-                ecs_world
+                other_entities.push(ecs_world
                     .create_entity()
                     .with(physics_component)
-                    .with(DummyAiComponent {
-                        target_pos: pos2d,
-                        state: ActionIndex::Idle,
-                        moving_speed: 200.0,
-                        controller: None,
-                    })
+                    .with(CharacterStateComponent::new())
                     .with(MonsterSpriteComponent {
                         file_index: rng.gen::<usize>() % sprite_count,
                         action_index: 8,
                         animation_start: Tick(0),
                         direction: 0,
                     })
-                    .build();
+                    .build()
+                );
             }
         } else if current_entity_count - 1 > *entity_count { // -1 is the entity of the controller
-            let entities: Vec<_> = {
-                let to_remove = current_entity_count - *entity_count;
-                let entities_storage = ecs_world.entities();
-                let sprite_storage = ecs_world.read_storage::<PlayerSpriteComponent>(); // it is need only for filtering entities
-                let physics_storage = ecs_world.read_storage::<PhysicsComponent>();
-                let ai_storage = ecs_world.read_storage::<DummyAiComponent>();
-                (&entities_storage, &sprite_storage, &physics_storage, &ai_storage).join()
-                    .take(to_remove as usize)
-                    .filter(|(_entity, _sprite_comp, _phys_comp, ai)| ai.controller.is_none())
-                    .map(|(entity, _sprite_comp, phys_comp, _ai)| (entity, phys_comp.handle.clone()))
-                    .collect()
+            let to_remove = (current_entity_count - *entity_count) as usize;
+            let entity_ids: Vec<Entity> = other_entities.drain(0..to_remove).collect();
+            let body_handles: Vec<BodyHandle> = {
+                let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                entity_ids.iter().map(|entity| {
+                    physic_storage.get(*entity).unwrap().body_handle
+                }).collect()
             };
-            let entity_ids: Vec<_> = entities.iter().map(|(entity, _body_handle)| *entity).collect();
             ecs_world.delete_entities(entity_ids.as_slice());
 
             // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<SystemVariables>().map_render_data.physics_world;
-            let body_handles: Vec<_> = entities.iter().map(|(_entity, body_handle)| body_handle.clone()).collect();
+            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
             physics_world.remove_bodies(body_handles.as_slice());
         }
     }
@@ -733,7 +716,6 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub physics_world: nphysics2d::world::World<f32>,
 }
 
 pub struct ModelRenderData {
@@ -760,7 +742,7 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-fn load_map(map_name: &str) -> MapRenderData {
+fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
     let (elapsed, world) = measure_time(|| {
         Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)))
     });
@@ -972,7 +954,7 @@ fn load_map(map_name: &str) -> MapRenderData {
                 offset_of_first_element: 0,
             }
         ]);
-    MapRenderData {
+    (MapRenderData {
         gat,
         gnd: ground,
         rsw: world,
@@ -991,6 +973,5 @@ fn load_map(map_name: &str) -> MapRenderData {
         ground_walkability_mesh2,
         ground_walkability_mesh3,
         light_wheight: [0f32; 3],
-        physics_world: physics_world,
-    }
+    }, physics_world)
 }

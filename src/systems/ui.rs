@@ -5,7 +5,7 @@ use specs::prelude::*;
 
 use crate::{MapRenderData, Shaders, SpriteResource, Tick};
 use crate::cam::Camera;
-use crate::components::{BrowserClient, ComponentRadius, ControllerComponent, DummyAiComponent, PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent};
+use crate::components::{BrowserClient, ComponentRadius, ControllerComponent, CharacterStateComponent, PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent};
 use crate::cursor::CURSOR_NORMAL;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -20,7 +20,7 @@ impl<'a> specs::System<'a> for RenderUI {
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, PlayerSpriteComponent>,
-        specs::ReadStorage<'a, DummyAiComponent>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
