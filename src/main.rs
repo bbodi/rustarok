@@ -612,11 +612,11 @@ fn imgui_frame(desktop_client_entity: Entity,
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
                         let x = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
-                        let y = rng.gen_range(-hero_pos.y - 10.0, -hero_pos.y + 10.0);
-                        let index = y as usize * map_render_data.gat.width as usize + y as usize;
+                        let y = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
+                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type & CellType::Walkable as u8) != 0;
                         if walkable {
-                            break (2.0 * x, 2.0 * y);
+                            break (x, y);
                         }
                     };
                     Point3::<f32>::new(x, 0.5, -y)
@@ -652,13 +652,20 @@ fn imgui_frame(desktop_client_entity: Entity,
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
+                    let hero_pos = {
+                        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+                        let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
+                        let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                        let controller = storage.get(desktop_client_entity).unwrap();
+                        phys_storage.get(controller.char).unwrap().pos(&physics_world)
+                    };
                     let (x, y) = loop {
-                        let x = map_render_data.gnd.width as f32 * (rng.gen::<f32>());
-                        let y = map_render_data.gnd.height as f32 * (rng.gen::<f32>());
-                        let index = y as usize * map_render_data.gat.width as usize + y as usize;
+                        let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
+                        let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
+                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type & CellType::Walkable as u8) != 0;
                         if walkable {
-                            break (2.0 * x, 2.0 * y);
+                            break (x, y);
                         }
                     };
                     Point3::<f32>::new(x, 0.5, -y)
