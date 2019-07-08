@@ -2,11 +2,12 @@ use websocket::{OwnedMessage, WebSocketError};
 use std::time::SystemTime;
 use sdl2::keyboard::Scancode;
 use std::io::ErrorKind;
-use crate::components::{ControllerComponent, BrowserClient};
+use crate::components::{BrowserClient};
 use specs::prelude::*;
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
 use sdl2::mouse::MouseButton;
+use crate::components::controller::ControllerComponent;
 
 pub struct BrowserInputProducerSystem;
 

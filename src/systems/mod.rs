@@ -2,6 +2,7 @@ use std::time::Instant;
 use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime};
 use std::collections::HashMap;
 use crate::video::GlTexture;
+use specs::Entity;
 
 pub mod input;
 pub mod phys;
@@ -21,6 +22,8 @@ pub struct SystemVariables {
     pub head_sprites: Vec<SpriteResource>,
     pub monster_sprites: Vec<SpriteResource>,
     pub tick: Tick,
+    pub entity_below_cursor: Option<Entity>,
+    pub cell_below_cursor_walkable: bool,
     pub dt: DeltaTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
