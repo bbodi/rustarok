@@ -1,17 +1,21 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3};
 use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
-use crate::components::{BrowserClient, PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, ControllerComponent, ComponentRadius, MonsterSpriteComponent, FlyingNumberComponent};
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND};
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
+use crate::components::controller::ControllerComponent;
+use crate::components::{BrowserClient, FlyingNumberComponent};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect};
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
+
+pub const ONE_PIXEL_SIZE_IN_3D: f32 = (1.0 / 175.0) * 5.0;
 
 pub struct OpenGlInitializerFor3D;
 
@@ -60,7 +64,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, PlayerSpriteComponent>,
         specs::ReadStorage<'a, MonsterSpriteComponent>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
+        specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -73,7 +77,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         physics_storage,
         player_sprite_storage,
         monster_sprite_storage,
-        ai_storage,
+        mut char_state_storage,
         system_vars,
         physics_world,
         mut system_benchmark,
@@ -84,48 +88,92 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         }
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
             // Draw players
-            for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
-                                                           &player_sprite_storage,
-                                                           &ai_storage).join() {
+            for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
+                                                                   &player_sprite_storage,
+                                                                   &mut char_state_storage).join() {
                 let pos = physics.pos(&physics_world);
                 let tick = system_vars.tick;
                 let body_res = &system_vars.sprite_resources[animated_sprite.base.file_index];
-                let pos_offset = render_sprite(&system_vars,
-                                               tick,
-                                               &animated_sprite.base,
-                                               body_res,
-                                               &system_vars.matrices.view,
-                                               &controller,
-                                               &pos,
-                                               [0, 0],
-                                               true);
+                if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                    let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
+                                                                         tick,
+                                                                         &animated_sprite.base,
+                                                                         body_res,
+                                                                         &system_vars.matrices.view,
+                                                                         &controller,
+                                                                         &pos,
+                                                                         [0, 0],
+                                                                         true,
+                                                                         1.1, 0.5);
+                    let head_res = &system_vars.head_sprites[animated_sprite.head_index];
+                    let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
+                                                                                tick,
+                                                                                &animated_sprite.base,
+                                                                                head_res,
+                                                                                &system_vars.matrices.view,
+                                                                                &controller,
+                                                                                &pos,
+                                                                                pos_offset,
+                                                                                false,
+                                                                                1.1, 0.5);
+                }
+
+                // todo: kell a pos_offset még mindig? (bounding rect)
+                let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
+                                                                     tick,
+                                                                     &animated_sprite.base,
+                                                                     body_res,
+                                                                     &system_vars.matrices.view,
+                                                                     &controller,
+                                                                     &pos,
+                                                                     [0, 0],
+                                                                     true,
+                                                                     1.0, 1.0);
                 let head_res = &system_vars.head_sprites[animated_sprite.head_index];
-                render_sprite(&system_vars,
-                              tick,
-                              &animated_sprite.base,
-                              head_res,
-                              &system_vars.matrices.view,
-                              &controller,
-                              &pos,
-                              pos_offset,
-                              false);
+                let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
+                                                                          tick,
+                                                                          &animated_sprite.base,
+                                                                          head_res,
+                                                                          &system_vars.matrices.view,
+                                                                          &controller,
+                                                                          &pos,
+                                                                          pos_offset,
+                                                                          false,
+                                                                          1.0, 1.0);
+
+                char_state.bounding_rect = body_bounding_rect;
+                char_state.bounding_rect.size[1] += head_bounding_rect.size[1];
             }
             // Draw monsters
-            for (entity, physics, animated_sprite, ai) in (&entities, &physics_storage,
-                                                           &monster_sprite_storage,
-                                                           &ai_storage).join() {
+            for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
+                                                                   &monster_sprite_storage,
+                                                                   &mut char_state_storage).join() {
                 let pos = physics.pos(&physics_world);
                 let tick = system_vars.tick;
                 let body_res = &system_vars.monster_sprites[animated_sprite.file_index];
-                let pos_offset = render_sprite(&system_vars,
-                                               tick,
-                                               &animated_sprite,
-                                               body_res,
-                                               &system_vars.matrices.view,
-                                               &controller,
-                                               &pos,
-                                               [0, 0],
-                                               true);
+                if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                    let (pos_offset, bounding_rect) = render_sprite(&system_vars,
+                                                                    tick,
+                                                                    &animated_sprite,
+                                                                    body_res,
+                                                                    &system_vars.matrices.view,
+                                                                    &controller,
+                                                                    &pos,
+                                                                    [0, 0],
+                                                                    true,
+                                                                    1.1, 0.5);
+                }
+                let (pos_offset, bounding_rect) = render_sprite(&system_vars,
+                                                                tick,
+                                                                &animated_sprite,
+                                                                body_res,
+                                                                &system_vars.matrices.view,
+                                                                &controller,
+                                                                &pos,
+                                                                [0, 0],
+                                                                true,
+                                                                1.0, 1.0);
+                char_state.bounding_rect = bounding_rect;
             }
 
             let physics = physics_storage.get(controller.char).unwrap();
@@ -151,7 +199,9 @@ fn render_sprite(system_vars: &SystemVariables,
                  pos: &Vector2<f32>,
                  pos_offset: [i32; 2],
                  is_main: bool,
-) -> [i32; 2] {
+                 size_multiplier: f32,
+                 alpha: f32,
+) -> ([i32; 2], SpriteBoundingRect) {
     system_vars.shaders.player_shader.gl_use();
     system_vars.shaders.player_shader.set_mat4("projection", &system_vars.matrices.projection);
     system_vars.shaders.player_shader.set_mat4("view", &view);
@@ -175,48 +225,57 @@ fn render_sprite(system_vars: &SystemVariables,
 
     let frame_index = ((animation_elapsed_tick / delay_in_ticks) % frame_count as u64) as usize;
     let animation = &sprite_res.action.actions[idx].frames[frame_index];
-    for layer in &animation.layers {
-        if layer.sprite_frame_index < 0 {
-            continue;
-        }
-        let sprite_frame = &sprite_res.textures[layer.sprite_frame_index as usize];
+    let layer = &animation.layers[0];
+//    for layer in animation.layers.iter().take(1) {
+//    if layer.sprite_frame_index < 0 {
+//        continue;
+//    }
+    let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
 
-        let width = sprite_frame.original_width as f32 * layer.scale[0];
-        let height = sprite_frame.original_height as f32 * layer.scale[1];
-        sprite_frame.texture.bind(gl::TEXTURE0);
+    let width = sprite_texture.original_width as f32 * layer.scale[0] * size_multiplier;
+    let height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
+    sprite_texture.texture.bind(gl::TEXTURE0);
 
-        let mut offset = if !animation.positions.is_empty() && !is_main {
-            [
-                pos_offset[0] - animation.positions[0][0],
-                pos_offset[1] - animation.positions[0][1]
-            ]
-        } else {
-            [0, 0]
-        };
-        let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
-        let offset = [
-            offset[0] as f32 / 175.0 * 5.0,
-            offset[1] as f32 / 175.0 * 5.0 - 0.5
-        ];
-        system_vars.shaders.player_shader.set_vec2("offset", &offset);
+    let mut offset = if !animation.positions.is_empty() && !is_main {
+        [
+            pos_offset[0] - animation.positions[0][0],
+            pos_offset[1] - animation.positions[0][1]
+        ]
+    } else {
+        [0, 0]
+    };
+    let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
+    let offset = [
+        offset[0] as f32 * ONE_PIXEL_SIZE_IN_3D,
+        offset[1] as f32 * ONE_PIXEL_SIZE_IN_3D - 0.5
+    ];
+    system_vars.shaders.player_shader.set_vec2("offset", &offset);
 
-        let mut matrix = Matrix4::<f32>::identity();
-        let mut pos = Vector3::new(pos.x, 1.0, pos.y);
-        matrix.prepend_translation_mut(&pos);
-        system_vars.shaders.player_shader.set_mat4("model", &matrix);
+    let mut matrix = Matrix4::<f32>::identity();
+    let mut pos = Vector3::new(pos.x, 0.0, pos.y); // y was 1.0
+    matrix.prepend_translation_mut(&pos);
+    system_vars.shaders.player_shader.set_mat4("model", &matrix);
 
-        let width = width as f32 / 175.0 * 5.0;
-        let width = if layer.is_mirror { -width } else { width };
-        system_vars.shaders.player_shader.set_vec2("size", &[
-            width,
-            height as f32 / 175.0 * 5.0,
-        ]);
+    let width = width as f32 * ONE_PIXEL_SIZE_IN_3D;
+    let width = if layer.is_mirror { -width } else { width };
+    let height = height as f32 * ONE_PIXEL_SIZE_IN_3D;
+    system_vars.shaders.player_shader.set_vec2("size", &[
+        width,
+        height,
+    ]);
 
-        system_vars.shaders.player_shader.set_f32("alpha", 1.0);
+    system_vars.shaders.player_shader.set_f32("alpha", alpha);
 
-        binded_sprite_vertex_array.draw();
-    }
-    return animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
+    binded_sprite_vertex_array.draw();
+    let anim_pos = animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
+    let bb = SpriteBoundingRect {
+        size: [width.abs(), height],
+        offset,
+    };
+    return ([
+                (anim_pos[0] as f32 * size_multiplier) as i32,
+                (anim_pos[1] as f32 * size_multiplier) as i32
+            ], bb);
 }
 
 fn render_client(char_pos: &Vector2<f32>,

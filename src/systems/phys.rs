@@ -1,8 +1,8 @@
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::PhysicsWorld;
-use crate::components::PhysicsComponent;
 use nalgebra::Vector2;
 use specs::prelude::*;
+use crate::components::char::PhysicsComponent;
 
 pub struct PhysicsSystem;
 pub struct FrictionSystem;

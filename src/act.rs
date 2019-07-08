@@ -22,7 +22,8 @@ pub struct ActionFrame {
 #[derive(Debug)]
 pub struct Layer {
     pub pos: [i32; 2],
-    pub sprite_frame_index: i32, // can be -1!!
+    pub sprite_frame_index: i32,
+    // can be -1!!
     pub is_mirror: bool,
     pub scale: [f32; 2],
     pub color: [f32; 4],
@@ -120,6 +121,8 @@ impl ActionFile {
                 width,
                 height,
             }
-        }).collect()
+        })
+            .filter(|it| it.sprite_frame_index >= 0) // for head sprites, the first layer refers to sprite '-1', which is skipped anyway during rendering
+            .collect()
     }
 }

@@ -5,11 +5,13 @@ use specs::prelude::*;
 
 use crate::{MapRenderData, Shaders, SpriteResource, Tick};
 use crate::cam::Camera;
-use crate::components::{BrowserClient, ComponentRadius, ControllerComponent, CharacterStateComponent, PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent};
-use crate::cursor::CURSOR_NORMAL;
+use crate::cursor::{CURSOR_NORMAL, CURSOR_ATTACK, CURSOR_STOP};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
+use crate::components::controller::ControllerComponent;
+use crate::components::BrowserClient;
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent};
 
 pub struct RenderUI;
 
@@ -38,11 +40,18 @@ impl<'a> specs::System<'a> for RenderUI {
         let stopwatch = system_benchmark.start_measurement("RenderUI");
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
             let tick = system_vars.tick;
+            let cursor = if system_vars.entity_below_cursor.is_some() {
+                CURSOR_ATTACK
+            } else if !system_vars.cell_below_cursor_walkable {
+                CURSOR_STOP
+            } else {
+                CURSOR_NORMAL
+            };
             render_sprite_2d(&system_vars,
                              tick,
                              &MonsterSpriteComponent {
                                  file_index: 0, //
-                                 action_index: CURSOR_NORMAL.1,
+                                 action_index: cursor.1,
                                  animation_started: Tick(0),
                                  animation_finish: None,
                                  direction: 0,

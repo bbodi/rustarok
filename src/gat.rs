@@ -30,6 +30,12 @@ pub struct Gat {
     pub rectangles: Vec<BlockingRectangle>,
 }
 
+impl Gat {
+    pub fn is_walkable(&self, x: usize, y: usize) -> bool {
+        self.cells[y * self.width as usize + x].cell_type & CellType::Walkable as u8 != 0
+    }
+}
+
 static TYPE_TABLE: [u8; 7] = [
     CellType::Walkable as u8 | CellType::Snipable as u8,                  // walkable ground
     CellType::None as u8,                                          // non-walkable ground

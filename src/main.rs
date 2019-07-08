@@ -39,7 +39,6 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::{job_name_table, JobId};
-use crate::components::{ControllerComponent, PhysicsComponent, BrowserClient, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, FlyingNumberComponent, FlyingNumberType, ComponentRadius};
 use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
 use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
@@ -51,6 +50,10 @@ use std::ops::Bound;
 use ncollide2d::world::CollisionGroups;
 use crate::systems::ui::RenderUI;
 use crate::systems::control::CharacterControlSystem;
+use nphysics2d::solver::SignoriniModel;
+use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius};
+use crate::components::controller::ControllerComponent;
+use crate::components::{BrowserClient, FlyingNumberComponent};
 
 mod common;
 mod cursor;
@@ -140,7 +143,6 @@ pub struct Shaders {
 //jobIDt tartalmazzon ne indexet a sprite
 // guild_vs4.rsw
 // implement attack range check with proximity events
-//head sprite kirajzolása
 //3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
 
 
@@ -343,6 +345,8 @@ fn main() {
         monster_sprites,
         head_sprites,
         tick: Tick(0),
+        entity_below_cursor: None,
+        cell_below_cursor_walkable: false,
         dt: DeltaTime(0.0),
         matrices: render_matrices,
         map_render_data,
@@ -929,6 +933,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
             }
         ]);
     let mut physics_world = nphysics2d::world::World::new();
+    physics_world.set_contact_model(SignoriniModel::new());
     let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat.rectangles.iter().map(|cell| {
         let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
         let half_w = cell.width as f32 / 2.0;
