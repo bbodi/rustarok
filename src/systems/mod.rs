@@ -1,5 +1,5 @@
 use std::time::Instant;
-use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime};
+use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime, ElapsedTime};
 use std::collections::HashMap;
 use crate::video::GlTexture;
 use specs::Entity;
@@ -15,6 +15,7 @@ pub struct SystemSprites {
     pub numbers: GlTexture,
 }
 
+
 pub struct SystemVariables {
     pub shaders: Shaders,
     pub sprite_resources: Vec<SpriteResource>,
@@ -25,6 +26,7 @@ pub struct SystemVariables {
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,
     pub dt: DeltaTime,
+    pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
 }

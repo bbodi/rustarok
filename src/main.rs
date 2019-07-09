@@ -54,12 +54,14 @@ use nphysics2d::solver::SignoriniModel;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius};
 use crate::components::controller::ControllerComponent;
 use crate::components::{BrowserClient, FlyingNumberComponent};
+use crate::components::skill::PushBackWallSkillComponent;
 
 mod common;
 mod cursor;
 mod cam;
 mod video;
 mod gat;
+mod str;
 mod rsw;
 mod gnd;
 mod rsm;
@@ -102,6 +104,7 @@ pub enum MonsterActionIndex {
 
 const STATIC_MODELS_COLLISION_GROUP: usize = 1;
 const LIVING_COLLISION_GROUP: usize = 2;
+const SKILL_AREA_COLLISION_GROUP: usize = 3;
 
 pub struct SpriteResource {
     action: ActionFile,
@@ -145,6 +148,7 @@ pub struct Shaders {
 // guild_vs4.rsw
 // implement attack range check with proximity events
 //3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
+// tick helyett idő mértékgeységgel számolj
 
 
 pub struct RenderMatrices {
@@ -156,8 +160,30 @@ pub struct RenderMatrices {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tick(u64);
 
-#[derive(Copy, Clone)]
-pub struct DeltaTime(f32);
+#[derive(Copy, Clone, Debug)]
+pub struct DeltaTime(pub f32);
+
+#[derive(Debug)]
+pub struct ElapsedTime(f32);
+
+impl ElapsedTime {
+
+    pub fn after_seconds(system_time: &ElapsedTime, seconds: i32) -> ElapsedTime {
+        ElapsedTime(system_time.0 + seconds as f32)
+    }
+
+    pub fn run_at_least_until_seconds(&mut self, system_time: &ElapsedTime, seconds: i32) {
+        self.0 = self.0.max(system_time.0 + seconds as f32);
+    }
+
+    pub fn has_passed(&self, system_time: &ElapsedTime) -> bool {
+        self.0 <= system_time.0
+    }
+
+    pub fn has_not_passed(&self, system_time: &ElapsedTime) -> bool {
+        self.0 > system_time.0
+    }
+}
 
 fn main() {
     simple_logging::log_to_stderr(LevelFilter::Info);
@@ -261,6 +287,8 @@ fn main() {
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
 
+    ecs_world.register::<PushBackWallSkillComponent>();
+
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
@@ -361,6 +389,7 @@ fn main() {
         entity_below_cursor: None,
         cell_below_cursor_walkable: false,
         dt: DeltaTime(0.0),
+        time: ElapsedTime(0.0),
         matrices: render_matrices,
         map_render_data,
     });
@@ -372,7 +401,6 @@ fn main() {
     let mut last_tick_time: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
-    let mut time_multiplier = 1;
 
 
     let mut sent_bytes_per_second: usize = 0;
@@ -380,27 +408,13 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
-    let pos2d = Point2::new(250.0, -200.0);
-    let physics_component = {
-        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-        PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(1))
-    };
-    let desktop_client_char = ecs_world
-        .create_entity()
-        .with(physics_component)
-        .with(CharacterStateComponent::new())
-        .with(PlayerSpriteComponent {
-            base: MonsterSpriteComponent {
-                file_index: 10 as usize,
-                action_index: ActionIndex::Idle as usize,
-                animation_started: Tick(0),
-                animation_finish: None,
-                direction: 0,
-            },
-            head_index: 0,
-        })
-        .build();
-
+    let desktop_client_char = components::char::create_char(
+        &mut ecs_world,
+        Point2::new(250.0, -200.0),
+        10,
+        Some(0),
+        1
+    );
     let desktop_client_entity = ecs_world
         .create_entity()
         .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
@@ -461,7 +475,6 @@ fn main() {
             rng.clone(),
             sent_bytes_per_second,
             &mut entity_count,
-            &mut time_multiplier,
             &mut map_name_filter,
             &all_map_names,
             fps,
@@ -476,7 +489,7 @@ fn main() {
 
         let now = std::time::SystemTime::now();
         let now_ms = now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
-        let dt = (now_ms - last_tick_time) as f32 / 1000.0 * time_multiplier as f32;
+        let dt = (now_ms - last_tick_time) as f32 / 1000.0;
         last_tick_time = now_ms;
         if now >= next_second {
             fps = fps_counter;
@@ -499,16 +512,16 @@ fn main() {
         fps_counter += 1;
         ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
         ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
+        ecs_world.write_resource::<SystemVariables>().time.0 += dt;
     }
 }
 
 fn imgui_frame(desktop_client_entity: Entity,
                video: &mut Video,
-               ecs_world: &mut World,
+               mut ecs_world: &mut specs::world::World,
                mut rng: ThreadRng,
                sent_bytes_per_second: usize,
                entity_count: &mut i32,
-               time_multiplier: &mut i32,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
                fps: u64,
@@ -563,8 +576,6 @@ fn imgui_frame(desktop_client_entity: Entity,
                     ui.slider_float(im_str!("Attack Speed"), &mut char_state.attack_speed, 1.0, 5.0)
                         .build();
                 }
-                ui.slider_int(im_str!("Speedup"), time_multiplier, 0, 3)
-                    .build();
 
                 ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
                     .min(-1.0).max(1.0).speed(0.05).build();
@@ -640,29 +651,17 @@ fn imgui_frame(desktop_client_entity: Entity,
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
                 let mut rng = rand::thread_rng();
-                let radius = rng.gen_range(1, 5);
-                let physics_component = {
-                    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-                    PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius))
-                };
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().sprite_resources.len();
                 let head_count = ecs_world.read_resource::<SystemVariables>().head_sprites.len();
-                other_entities.push(ecs_world
-                    .create_entity()
-                    .with(physics_component)
-                    .with(CharacterStateComponent::new())
-                    .with(PlayerSpriteComponent {
-                        head_index: rng.gen::<usize>() % head_count,
-                        base: MonsterSpriteComponent {
-                            file_index: rng.gen::<usize>() % sprite_count,
-                            action_index: 8,
-                            animation_started: Tick(0),
-                            animation_finish: None,
-                            direction: 0,
-                        },
-                    })
-                    .build()
+                let entity_id = components::char::create_char(
+                    &mut ecs_world,
+                    pos2d,
+                    rng.gen::<usize>() % sprite_count,
+                    Some(rng.gen::<usize>() % head_count),
+                    rng.gen_range(1, 5)
                 );
+
+                other_entities.push(entity_id);
             }
             // add monsters
             for _i in 0..count_to_add / 2 {
@@ -689,25 +688,15 @@ fn imgui_frame(desktop_client_entity: Entity,
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
                 let mut rng = rand::thread_rng();
-                let radius = rng.gen_range(1, 5);
-                let physics_component = {
-                    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-                    PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius))
-                };
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().monster_sprites.len();
-                other_entities.push(ecs_world
-                    .create_entity()
-                    .with(physics_component)
-                    .with(CharacterStateComponent::new())
-                    .with(MonsterSpriteComponent {
-                        file_index: rng.gen::<usize>() % sprite_count,
-                        action_index: 8,
-                        animation_started: Tick(0),
-                        animation_finish: None,
-                        direction: 0,
-                    })
-                    .build()
+                let entity_id = components::char::create_char(
+                    &mut ecs_world,
+                    pos2d,
+                    rng.gen::<usize>() % sprite_count,
+                    None,
+                    rng.gen_range(1, 5)
                 );
+                other_entities.push(entity_id);
             }
         } else if current_entity_count - 1 > *entity_count { // -1 is the entity of the controller
             let to_remove = (current_entity_count - *entity_count) as usize;
@@ -966,7 +955,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
                 .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
-                .with_whitelist(&[LIVING_COLLISION_GROUP]))
+            )
             .build(&mut physics_world);
         (half_extents, shit.position_wrt_body().translation.vector)
     }).collect();

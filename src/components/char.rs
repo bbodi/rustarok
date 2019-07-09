@@ -2,9 +2,49 @@ use ncollide2d::shape::ShapeHandle;
 use nalgebra::{Vector2, Point2};
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
-use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, ActionIndex};
+use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, ActionIndex, ElapsedTime};
 use specs::Entity;
 use specs::prelude::*;
+
+pub fn create_char(
+    ecs_world: &mut specs::world::World,
+    pos2d: Point2<f32>,
+    body_index: usize,
+    head_index: Option<usize>,
+    radius: i32
+) -> Entity {
+    let entity_id = {
+        let mut entity_builder = ecs_world.create_entity()
+            .with(CharacterStateComponent::new());
+        let entity_id = entity_builder.entity;
+        if let Some(head_index) = head_index {
+            entity_builder = entity_builder.with(PlayerSpriteComponent {
+                base: MonsterSpriteComponent {
+                    file_index: body_index,
+                    action_index: ActionIndex::Idle as usize,
+                    animation_started: Tick(0),
+                    animation_finish: None,
+                    direction: 0,
+                },
+                head_index: head_index,
+            });
+        } else {
+            entity_builder = entity_builder.with(MonsterSpriteComponent {
+                file_index: body_index,
+                action_index: 8,
+                animation_started: Tick(0),
+                animation_finish: None,
+                direction: 0,
+            });
+        }
+        entity_builder.build()
+    };
+    let mut storage = ecs_world.write_storage();
+    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+    let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
+    storage.insert(entity_id, physics_component).unwrap();
+    return entity_id;
+}
 
 // radius = ComponentRadius * 0.5f32
 #[derive(Eq, PartialEq, Hash)]
@@ -27,15 +67,18 @@ impl PhysicsComponent {
         world: &mut nphysics2d::world::World<f32>,
         pos: Vector2<f32>,
         radius: ComponentRadius,
+        entity_id: Entity,
     ) -> PhysicsComponent {
         let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
         let mut collider_desc = ColliderDesc::new(capsule)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[LIVING_COLLISION_GROUP])
                 .with_blacklist(&[])
-                .with_whitelist(&[STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP]))
+            )
             .density(radius.0 as f32 * 5.0);
-        let mut rb_desc = RigidBodyDesc::new().collider(&collider_desc);
+        let mut rb_desc = RigidBodyDesc::new()
+            .user_data(entity_id)
+            .collider(&collider_desc);
         let handle = rb_desc
             .gravity_enabled(false)
             .set_translation(pos)
@@ -105,7 +148,6 @@ pub struct SpriteBoundingRect {
 }
 
 impl SpriteBoundingRect {
-
     pub fn merge(&mut self, other: &SpriteBoundingRect) {
         self.bottom_left[0] = self.bottom_left[0].min(other.bottom_left[0]);
         self.bottom_left[1] = self.bottom_left[1].max(other.bottom_left[1]);
@@ -113,7 +155,6 @@ impl SpriteBoundingRect {
         self.top_right[0] = self.top_right[0].max(other.top_right[0]);
         self.top_right[1] = self.top_right[1].min(other.top_right[1]);
     }
-
 }
 
 #[derive(Component, Debug)]
@@ -127,6 +168,7 @@ pub struct CharacterStateComponent {
     pub bounding_rect: SpriteBoundingRect,
     // attacks per second
     dir: usize,
+    pub cannot_control_until: ElapsedTime,
 }
 
 impl CharacterStateComponent {
@@ -140,6 +182,7 @@ impl CharacterStateComponent {
             attack_speed: 2.0,
             dir: 0,
             bounding_rect: SpriteBoundingRect::default(),
+            cannot_control_until: ElapsedTime(0.0),
         }
     }
 
