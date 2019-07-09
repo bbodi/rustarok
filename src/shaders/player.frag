@@ -1,11 +1,12 @@
 #version 330 core
 
-out vec4 Color;
+out vec4 out_color;
 
 in vec2 tex_coord;
 
 uniform sampler2D model_texture;
 uniform float alpha;
+uniform vec4 color;
 
 
 void main() {
@@ -13,8 +14,8 @@ void main() {
     if (texture.a == 0.0) {
         discard;
     } else {
-        Color = texture;
-        Color.a *= alpha;
+        out_color = texture * color;
+        out_color.a = color.a;
     }
 
 }

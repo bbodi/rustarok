@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3};
+use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3, Vector4};
 use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
@@ -104,7 +104,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          &pos,
                                                                          [0, 0],
                                                                          true,
-                                                                         1.1, 0.5);
+                                                                         1.1,
+                                                                         &[0.0, 0.0, 1.0, 0.4]);
                     let head_res = &system_vars.head_sprites[animated_sprite.head_index];
                     let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
                                                                                 tick,
@@ -115,7 +116,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                 &pos,
                                                                                 pos_offset,
                                                                                 false,
-                                                                                1.1, 0.5);
+                                                                                1.1,
+                                                                                &[0.0, 0.0, 1.0, 0.5]);
                 }
 
                 // todo: kell a pos_offset még mindig? (bounding rect)
@@ -128,7 +130,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                      &pos,
                                                                      [0, 0],
                                                                      true,
-                                                                     1.0, 1.0);
+                                                                     1.0,
+                                                                     &[1.0, 1.0, 1.0, 1.0]);
                 let head_res = &system_vars.head_sprites[animated_sprite.head_index];
                 let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
                                                                           tick,
@@ -139,10 +142,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                           &pos,
                                                                           pos_offset,
                                                                           false,
-                                                                          1.0, 1.0);
+                                                                          1.0,
+                                                                          &[1.0, 1.0, 1.0, 1.0]);
 
                 char_state.bounding_rect = body_bounding_rect;
-                char_state.bounding_rect.size[1] += head_bounding_rect.size[1];
+                char_state.bounding_rect.merge(&head_bounding_rect);
             }
             // Draw monsters
             for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
@@ -161,7 +165,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                     &pos,
                                                                     [0, 0],
                                                                     true,
-                                                                    1.1, 0.5);
+                                                                    1.1,
+                                                                    &[0.0, 0.0, 1.0, 0.5]);
                 }
                 let (pos_offset, bounding_rect) = render_sprite(&system_vars,
                                                                 tick,
@@ -172,7 +177,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                 &pos,
                                                                 [0, 0],
                                                                 true,
-                                                                1.0, 1.0);
+                                                                1.0,
+                                                                &[1.0, 1.0, 1.0, 1.0]);
                 char_state.bounding_rect = bounding_rect;
             }
 
@@ -190,6 +196,18 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     }
 }
 
+fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
+    model_view[0] = 1.0;
+    model_view[1] = 0.0;
+    model_view[2] = 0.0;
+    model_view[4] = 0.0;
+    model_view[5] = 1.0;
+    model_view[6] = 0.0;
+    model_view[8] = 0.0;
+    model_view[9] = 0.0;
+    model_view[10] = 1.0;
+}
+
 fn render_sprite(system_vars: &SystemVariables,
                  tick: Tick,
                  animated_sprite: &MonsterSpriteComponent,
@@ -200,7 +218,7 @@ fn render_sprite(system_vars: &SystemVariables,
                  pos_offset: [i32; 2],
                  is_main: bool,
                  size_multiplier: f32,
-                 alpha: f32,
+                 color: &[f32; 4],
 ) -> ([i32; 2], SpriteBoundingRect) {
     system_vars.shaders.player_shader.gl_use();
     system_vars.shaders.player_shader.set_mat4("projection", &system_vars.matrices.projection);
@@ -259,23 +277,45 @@ fn render_sprite(system_vars: &SystemVariables,
     let width = width as f32 * ONE_PIXEL_SIZE_IN_3D;
     let width = if layer.is_mirror { -width } else { width };
     let height = height as f32 * ONE_PIXEL_SIZE_IN_3D;
-    system_vars.shaders.player_shader.set_vec2("size", &[
-        width,
-        height,
-    ]);
+    system_vars.shaders.player_shader.set_vec2("size", &[width, height]);
 
-    system_vars.shaders.player_shader.set_f32("alpha", alpha);
+//    system_vars.shaders.player_shader.set_f32("alpha", alpha);
+    system_vars.shaders.player_shader.set_vec4("color", color);
 
     binded_sprite_vertex_array.draw();
     let anim_pos = animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
-    let bb = SpriteBoundingRect {
-        size: [width.abs(), height],
-        offset,
-    };
+
+    let size = [width.abs(), height];
+    let bb = project_to_screen(&size, &offset, view * matrix, &system_vars.matrices.projection);
     return ([
                 (anim_pos[0] as f32 * size_multiplier) as i32,
                 (anim_pos[1] as f32 * size_multiplier) as i32
             ], bb);
+}
+
+fn project_to_screen(size: &[f32; 2], offset: &[f32; 2], mut model_view: Matrix4<f32>, projection: &Matrix4<f32>) -> SpriteBoundingRect {
+    let mut top_right = Vector4::new(0.5 * size[0], 0.5 * size[1], 0.0, 1.0);
+    top_right.x += offset[0];
+    top_right.y -= offset[1]; // itt régen + 0.5
+
+    let mut bottom_left = Vector4::new(-0.5 * size[0], -0.5 * size[1], 0.0, 1.0);
+    bottom_left.x += offset[0];
+    bottom_left.y -= offset[1]; // itt régen + 0.5
+
+    set_spherical_billboard(&mut model_view);
+    fn sh(v: Vector4<f32>) -> [i32; 2] {
+        let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
+        [
+            ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
+            VIDEO_HEIGHT as i32 - ((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32
+        ]
+    }
+    let bottom_left = sh(projection * model_view * bottom_left);
+    let top_right = sh(projection * model_view * top_right);
+    return SpriteBoundingRect {
+        bottom_left,
+        top_right,
+    };
 }
 
 fn render_client(char_pos: &Vector2<f32>,

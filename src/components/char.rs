@@ -100,8 +100,20 @@ impl CharState {
 
 #[derive(Default, Debug)]
 pub struct SpriteBoundingRect {
-    pub size: [f32; 2],
-    pub offset: [f32; 2],
+    pub bottom_left: [i32; 2],
+    pub top_right: [i32; 2],
+}
+
+impl SpriteBoundingRect {
+
+    pub fn merge(&mut self, other: &SpriteBoundingRect) {
+        self.bottom_left[0] = self.bottom_left[0].min(other.bottom_left[0]);
+        self.bottom_left[1] = self.bottom_left[1].max(other.bottom_left[1]);
+
+        self.top_right[0] = self.top_right[0].max(other.top_right[0]);
+        self.top_right[1] = self.top_right[1].min(other.top_right[1]);
+    }
+
 }
 
 #[derive(Component, Debug)]

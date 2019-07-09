@@ -32,7 +32,7 @@ pub struct Gat {
 
 impl Gat {
     pub fn is_walkable(&self, x: usize, y: usize) -> bool {
-        self.cells[y * self.width as usize + x].cell_type & CellType::Walkable as u8 != 0
+        self.cells.get(y * self.width as usize + x).map(|it| it.cell_type & CellType::Walkable as u8 != 0).unwrap_or(false)
     }
 }
 
