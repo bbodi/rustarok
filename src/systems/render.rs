@@ -10,6 +10,8 @@ use std::cmp::max;
 use crate::components::controller::ControllerComponent;
 use crate::components::{BrowserClient, FlyingNumberComponent};
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect};
+use crate::components::skill::PushBackWallSkillComponent;
+use ncollide2d::shape::Shape;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -68,6 +70,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
+        specs::WriteStorage<'a, PushBackWallSkillComponent>, // TODO remove me
     );
 
     fn run(&mut self, (
@@ -81,6 +84,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         system_vars,
         physics_world,
         mut system_benchmark,
+        mut skill_storage,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
@@ -192,6 +196,26 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &system_vars.matrices.projection,
                 &system_vars.map_render_data,
             );
+
+            for (skill) in (&skill_storage).join() {
+                let half = skill.half_extents;
+                let bottom_left = skill.pos - Vector2::new(-half.x, -half.y);
+                let top_left = skill.pos - Vector2::new(-half.x, half.y);
+                let top_right = skill.pos - Vector2::new(half.x, half.y);
+                let bottom_right = skill.pos - Vector2::new(half.x, -half.y);
+                draw_lines_inefficiently(
+                    &system_vars.shaders.trimesh_shader,
+                    &system_vars.matrices.projection,
+                    &system_vars.matrices.view,
+                    &[
+                        Vector3::new(bottom_left.x, 1.0, bottom_left.y),
+                        Vector3::new(top_left.x, 1.0, top_left.y),
+                        Vector3::new(top_right.x, 1.0, top_right.y),
+                        Vector3::new(bottom_right.x, 1.0, bottom_right.y),
+                    ],
+                    &[0.0, 1.0, 0.0, 1.0],
+                )
+            }
         }
     }
 }

@@ -15,6 +15,7 @@ use rand::Rng;
 
 pub mod char;
 pub mod controller;
+pub mod skill;
 
 #[derive(Component)]
 pub struct BrowserClient {

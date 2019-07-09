@@ -14,6 +14,8 @@ use specs::join::JoinIter;
 use crate::components::{FlyingNumberType, FlyingNumberComponent};
 use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent};
 use crate::components::controller::ControllerComponent;
+use crate::components::skill::PushBackWallSkillComponent;
+use nphysics2d::object::Body;
 
 pub struct CharacterControlSystem;
 
@@ -84,11 +86,28 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                     char_state.target_pos = Some(Point2::new(target_pos.x, target_pos.y));
                 }
             }
+
+            //
+            if controller.is_key_just_pressed(Scancode::Q) {
+                let skill_area = entities.create();
+                updater.insert(skill_area, PushBackWallSkillComponent::new(
+                    &mut physics_world,
+                    mouse_world_pos.coords,
+                    skill_area
+                ));
+            }
+            //
             let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+            if char_state.cannot_control_until.has_not_passed(&system_vars.time) {
+                continue;
+            }
+
+
             let mut sprite = sprite_storage.get_mut(controller.char).unwrap();
             let mut physics_comp = physics_storage.get_mut(controller.char).unwrap();
             let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
             let char_pos = body.position().translation.vector;
+
             if let CharState::Attacking { attack_ends } = char_state.state() {
                 if system_vars.tick.0 >= attack_ends.0 {
                     char_state.set_state(CharState::Idle,
@@ -142,7 +161,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         let dir = (target_pos - nalgebra::Point::from(char_pos)).normalize();
                         let speed = dir * char_state.moving_speed * 0.01;
                         let force = speed;
-                        body.set_linear_velocity(force);
+                        body.set_linear_velocity(body.velocity().linear + force);
                     }
                 }
             }

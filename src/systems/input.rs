@@ -168,10 +168,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         system_vars,
     ): Self::SystemData) {
         for (controller) in (&mut controller_storage).join() {
-            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 1.0 };
+            let camera_speed = if controller.is_key_down(Scancode::LShift) { 6.0 } else { 1.0 };
             let events: Vec<_> = controller.inputs.drain(..).collect();
             controller.left_mouse_released = false;
             controller.right_mouse_released = false;
+            controller.cleanup_released_keys();
             for event in events {
                 match event {
                     sdl2::event::Event::MouseButtonDown { mouse_btn, .. } => {
@@ -214,24 +215,24 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         // so I put this pseudo key into the controller in that case, which will
                         // indicate screen movement
                         if x == 0 {
-                            controller.keys.insert(Scancode::Left);
+                            controller.key_pressed(Scancode::Left);
                             controller.camera.move_along_x(-camera_speed);
                         } else if x == (VIDEO_WIDTH as i32) - 1 {
-                            controller.keys.insert(Scancode::Right);
+                            controller.key_pressed(Scancode::Right);
                             controller.camera.move_along_x(camera_speed);
                         } else {
-                            controller.keys.remove(&Scancode::Left);
-                            controller.keys.remove(&Scancode::Right);
+                            controller.key_released(Scancode::Left);
+                            controller.key_released(Scancode::Right);
                         }
                         if y == 0 {
-                            controller.keys.insert(Scancode::Up);
+                            controller.key_pressed(Scancode::Up);
                             controller.camera.move_along_z(-camera_speed);
                         } else if y == (VIDEO_HEIGHT as i32) - 1 {
-                            controller.keys.insert(Scancode::Down);
+                            controller.key_pressed(Scancode::Down);
                             controller.camera.move_along_z(camera_speed);
                         } else {
-                            controller.keys.remove(&Scancode::Up);
-                            controller.keys.remove(&Scancode::Down);
+                            controller.key_released(Scancode::Up);
+                            controller.key_released(Scancode::Down);
                         }
                         // free look
 //                        if controller.mouse_down {
@@ -263,25 +264,25 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if scancode.is_some() {
-                            controller.keys.insert(scancode.unwrap());
+                            controller.key_pressed(scancode.unwrap());
                         }
                     }
                     sdl2::event::Event::KeyUp { scancode, .. } => {
                         if scancode.is_some() {
-                            controller.keys.remove(&scancode.unwrap());
+                            controller.key_released(scancode.unwrap());
                         }
                     }
                     _ => {}
                 }
             }
-            if controller.keys.contains(&Scancode::Left) {
+            if controller.is_key_down(Scancode::Left) {
                 controller.camera.move_along_x(-camera_speed);
-            } else if controller.keys.contains(&Scancode::Right) {
+            } else if controller.is_key_down(Scancode::Right) {
                 controller.camera.move_along_x(camera_speed);
             }
-            if controller.keys.contains(&Scancode::Up) {
+            if controller.is_key_down(Scancode::Up) {
                 controller.camera.move_along_z(-camera_speed);
-            } else if controller.keys.contains(&Scancode::Down) {
+            } else if controller.is_key_down(Scancode::Down) {
                 controller.camera.move_along_z(camera_speed);
             }
             if controller.camera.pos().x < 0.0 {
