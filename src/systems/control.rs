@@ -55,32 +55,19 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                                                                         &system_vars.matrices);
             let mut entity_below_cursor: Option<Entity> = None;
             for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
-                if entity == controller.char {
-                    continue;
-                }
-                if other_char_state.bounding_rect.size[0] > 0.0 {
-                    let size = &other_char_state.bounding_rect.size;
-                    let offset = &other_char_state.bounding_rect.offset;
-                    let entity_pos = other_physics.pos(&physics_world);
-//                let ball = Ball::new(other_physics.radius.get());
-                    let half_h = size[1] / 2.0;
-                    let ball = Cuboid::new(
-                        Vector2::new(
-                            size[0]/2.0,
-                            half_h,
-                        )
-                    );
-                    let point = mouse_world_pos - Vector2::new(entity_pos.x - offset[0], entity_pos.y + offset[1]);
-                    if ball.contains_point(&Isometry2::identity(), &point) {
-                        entity_below_cursor = Some(entity);
-                        break;
-                    }
+                let bb = &other_char_state.bounding_rect;
+                let mx = controller.last_mouse_x as i32;
+                let my = controller.last_mouse_y as i32;
+                if mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
+                    my <= bb.bottom_left[1] && my >= bb.top_right[1] {
+                    entity_below_cursor = Some(entity);
+                    break;
                 }
             }
             system_vars.entity_below_cursor = entity_below_cursor;
             system_vars.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
                 mouse_world_pos.x as usize,
-                -mouse_world_pos.y as usize,
+                mouse_world_pos.y.abs() as usize,
             );
             if controller.right_mouse_released {
                 let mut char_state = char_state_storage.get_mut(controller.char).unwrap();

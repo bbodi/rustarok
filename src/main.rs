@@ -135,6 +135,7 @@ pub struct Shaders {
     pub player_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
+    pub trimesh2d_shader: ShaderProgram,
 }
 
 //áttetsző modellek
@@ -233,6 +234,18 @@ fn main() {
                 ).unwrap(),
                 Shader::from_source(
                     include_str!("shaders/trimesh.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
+        trimesh2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/trimesh2d.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/trimesh2d.frag"),
                     gl::FRAGMENT_SHADER,
                 ).unwrap()
             ]

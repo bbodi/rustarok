@@ -5,7 +5,7 @@ use specs::prelude::*;
 
 use crate::{MapRenderData, Shaders, SpriteResource, Tick};
 use crate::cam::Camera;
-use crate::cursor::{CURSOR_NORMAL, CURSOR_ATTACK, CURSOR_STOP};
+use crate::cursor::{CURSOR_NORMAL, CURSOR_ATTACK, CURSOR_STOP, CURSOR_LOCK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
@@ -40,8 +40,12 @@ impl<'a> specs::System<'a> for RenderUI {
         let stopwatch = system_benchmark.start_measurement("RenderUI");
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
             let tick = system_vars.tick;
-            let cursor = if system_vars.entity_below_cursor.is_some() {
-                CURSOR_ATTACK
+            let cursor = if let Some(entity_below_cursor) = system_vars.entity_below_cursor {
+                if entity_below_cursor == controller.char {
+                    CURSOR_LOCK
+                } else {
+                    CURSOR_ATTACK
+                }
             } else if !system_vars.cell_below_cursor_walkable {
                 CURSOR_STOP
             } else {
