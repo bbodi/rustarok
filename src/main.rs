@@ -320,9 +320,6 @@ fn main() {
         .with_thread_local(RenderUI::new())
         .build();
 
-    let (map_render_data, physics_world) = load_map("prontera");
-    let w = map_render_data.gat.width;
-
     fn grf(str: &str) -> String {
         format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
     }
@@ -384,8 +381,6 @@ fn main() {
               sprites.head_sprites[0].len() + sprites.head_sprites[1].len() +
               sprites.monster_sprites.len(), elapsed.as_millis());
 
-    let my_str = ImString::new("shitaka");
-
     let mut map_name_filter = ImString::new("prontera");
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
@@ -409,6 +404,7 @@ fn main() {
     };
 
 
+    let (map_render_data, physics_world) = load_map("prontera");
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprites,
@@ -423,6 +419,20 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
+    let mut desktop_client_entity = {
+        let desktop_client_char = components::char::create_char(
+            &mut ecs_world,
+            Point2::new(250.0, -200.0),
+            Sex::Male,
+            JobId::ROGUE,
+            1,
+            1,
+        );
+        ecs_world
+            .create_entity()
+            .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
+            .build()
+    };
 
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
     let mut last_tick_time: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -434,19 +444,6 @@ fn main() {
     let mut sent_bytes_per_second_counter: usize = 0;
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
-
-    let desktop_client_char = components::char::create_char(
-        &mut ecs_world,
-        Point2::new(250.0, -200.0),
-        Sex::Male,
-        JobId::ROGUE,
-        1,
-        1,
-    );
-    let desktop_client_entity = ecs_world
-        .create_entity()
-        .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
-        .build();
 
     let mut other_entities: Vec<Entity> = vec![];
 
@@ -508,9 +505,25 @@ fn main() {
             fps,
             &mut other_entities,
         ) {
+            ecs_world.delete_all();
             let (map_render_data, physics_world) = load_map(&new_map_name);
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
+
+            desktop_client_entity = {
+                let desktop_client_char = components::char::create_char(
+                    &mut ecs_world,
+                    Point2::new(250.0, -200.0),
+                    Sex::Male,
+                    JobId::ROGUE,
+                    1,
+                    1,
+                );
+                ecs_world
+                    .create_entity()
+                    .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
+                    .build()
+            };
         }
 
         video.gl_swap_window();
