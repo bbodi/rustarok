@@ -54,7 +54,8 @@ use nphysics2d::solver::SignoriniModel;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius};
 use crate::components::controller::ControllerComponent;
 use crate::components::{BrowserClient, FlyingNumberComponent};
-use crate::components::skill::PushBackWallSkillComponent;
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
+use crate::systems::skill_sys::SkillSystem;
 
 mod common;
 mod cursor;
@@ -168,8 +169,8 @@ pub struct ElapsedTime(f32);
 
 impl ElapsedTime {
 
-    pub fn after_seconds(system_time: &ElapsedTime, seconds: i32) -> ElapsedTime {
-        ElapsedTime(system_time.0 + seconds as f32)
+    pub fn add_seconds(&self, seconds: i32) -> ElapsedTime {
+        ElapsedTime(self.0 + seconds as f32)
     }
 
     pub fn run_at_least_until_seconds(&mut self, system_time: &ElapsedTime, seconds: i32) {
@@ -287,13 +288,14 @@ fn main() {
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
 
-    ecs_world.register::<PushBackWallSkillComponent>();
+    ecs_world.register::<SkillManifestationComponent>();
 
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
         .with(InputConsumerSystem, "input_handler", &["browser_input_processor"])
         .with(FrictionSystem, "friction_sys", &[])
+        .with(SkillSystem, "skill_sys", &[])
         .with(CharacterControlSystem, "char_control", &["friction_sys", "input_handler", "browser_input_processor"])
         .with(PhysicsSystem, "physics", &["char_control"])
         .with_thread_local(OpenGlInitializerFor3D)

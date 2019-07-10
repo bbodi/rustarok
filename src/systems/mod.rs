@@ -9,6 +9,7 @@ pub mod phys;
 pub mod render;
 pub mod ui;
 pub mod control;
+pub mod skill_sys;
 
 pub struct SystemSprites {
     pub cursors: SpriteResource,

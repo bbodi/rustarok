@@ -4,7 +4,7 @@ use nalgebra::Vector2;
 use specs::prelude::*;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use ncollide2d::query::Proximity;
-use crate::components::skill::PushBackWallSkillComponent;
+use crate::components::skill::PushBackWallSkill;
 use nphysics2d::object::{Body, BodyHandle};
 
 pub struct PhysicsSystem;
@@ -45,7 +45,6 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, PushBackWallSkillComponent>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::ReadExpect<'a, SystemVariables>,
     );
@@ -54,7 +53,6 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         mut physics_world,
         mut system_benchmark,
         mut char_storage,
-        skill_storage,
         physics_storage,
         system_vars,
     ): Self::SystemData) {
@@ -83,7 +81,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
             let entity_id = body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
             let char_state = char_storage.get_mut(*entity_id).unwrap();
             char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
-            body.set_linear_velocity(dbg!(body.velocity().linear) * -1.0);
+            body.set_linear_velocity(body.velocity().linear * -1.0);
         }
     }
 }
