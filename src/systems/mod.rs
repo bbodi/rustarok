@@ -3,6 +3,7 @@ use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaT
 use std::collections::HashMap;
 use crate::video::GlTexture;
 use specs::Entity;
+use crate::consts::{JobId, MonsterId};
 
 pub mod input;
 pub mod phys;
@@ -11,10 +12,6 @@ pub mod ui;
 pub mod control;
 pub mod skill_sys;
 
-pub struct SystemSprites {
-    pub cursors: SpriteResource,
-    pub numbers: GlTexture,
-}
 
 pub struct EffectSprites {
     pub torch: SpriteResource,
@@ -22,13 +19,24 @@ pub struct EffectSprites {
     pub fire_ball: SpriteResource,
 }
 
-pub struct SystemVariables {
-    pub shaders: Shaders,
-    pub sprite_resources: Vec<SpriteResource>,
-    pub system_sprites: SystemSprites,
-    pub head_sprites: Vec<SpriteResource>,
-    pub monster_sprites: Vec<SpriteResource>,
+#[derive(Eq, PartialEq, Clone, Copy)]
+pub enum Sex {
+    Male,
+    Female
+}
+
+pub struct Sprites {
+    pub cursors: SpriteResource,
+    pub numbers: GlTexture,
+    pub character_sprites: HashMap<JobId, [SpriteResource; 2]>,
+    pub head_sprites: [Vec<SpriteResource>; 2],
+    pub monster_sprites: HashMap<MonsterId, SpriteResource>,
     pub effect_sprites: EffectSprites,
+}
+
+pub struct SystemVariables {
+    pub sprites: Sprites,
+    pub shaders: Shaders,
     pub tick: Tick,
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,

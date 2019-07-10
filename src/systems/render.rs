@@ -9,9 +9,10 @@ use crate::cam::Camera;
 use std::cmp::max;
 use crate::components::controller::ControllerComponent;
 use crate::components::{BrowserClient, FlyingNumberComponent};
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use ncollide2d::shape::Shape;
+use crate::consts::{JobId, MonsterId};
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -97,10 +98,17 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                    &mut char_state_storage).join() {
                 let pos = physics.pos(&physics_world);
                 let tick = system_vars.tick;
-                let body_res = &system_vars.sprite_resources[animated_sprite.base.file_index];
+                let body_res = {
+                    let sprites = &system_vars.sprites.character_sprites;
+                    &sprites[&animated_sprite.job_id][animated_sprite.sex as usize]
+                };
+                let head_res = {
+                    let sprites = &system_vars.sprites.head_sprites;
+                    &sprites[animated_sprite.sex as usize][animated_sprite.head_index]
+                };
                 if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
-                                                                         &animated_sprite.base,
+                                                                         &animated_sprite.descr,
                                                                          body_res,
                                                                          &system_vars.matrices.view,
                                                                          Some(controller.yaw),
@@ -109,9 +117,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          true,
                                                                          1.1,
                                                                          &[0.0, 0.0, 1.0, 0.4]);
-                    let head_res = &system_vars.head_sprites[animated_sprite.head_index];
+
                     let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
-                                                                                &animated_sprite.base,
+                                                                                &animated_sprite.descr,
                                                                                 head_res,
                                                                                 &system_vars.matrices.view,
                                                                                 Some(controller.yaw),
@@ -124,7 +132,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
                 // todo: kell a pos_offset még mindig? (bounding rect)
                 let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
-                                                                     &animated_sprite.base,
+                                                                     &animated_sprite.descr,
                                                                      body_res,
                                                                      &system_vars.matrices.view,
                                                                      Some(controller.yaw),
@@ -133,9 +141,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                      true,
                                                                      1.0,
                                                                      &[1.0, 1.0, 1.0, 1.0]);
-                let head_res = &system_vars.head_sprites[animated_sprite.head_index];
                 let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
-                                                                          &animated_sprite.base,
+                                                                          &animated_sprite.descr,
                                                                           head_res,
                                                                           &system_vars.matrices.view,
                                                                           Some(controller.yaw),
@@ -154,10 +161,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                    &mut char_state_storage).join() {
                 let pos = physics.pos(&physics_world);
                 let tick = system_vars.tick;
-                let body_res = &system_vars.monster_sprites[animated_sprite.file_index];
+                let body_res = {
+                    let sprites = &system_vars.sprites.monster_sprites;
+                    &sprites[&animated_sprite.monster_id]
+                };
                 if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                    &animated_sprite,
+                                                                    &animated_sprite.descr,
                                                                     body_res,
                                                                     &system_vars.matrices.view,
                                                                     Some(controller.yaw),
@@ -168,7 +178,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                     &[0.0, 0.0, 1.0, 0.5]);
                 }
                 let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                &animated_sprite,
+                                                                &animated_sprite.descr,
                                                                 body_res,
                                                                 &system_vars.matrices.view,
                                                                 Some(controller.yaw),
@@ -211,7 +221,7 @@ fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
 }
 
 pub fn render_sprite(system_vars: &SystemVariables,
-                     animated_sprite: &MonsterSpriteComponent,
+                     animation: &SpriteRenderDescriptor,
                      sprite_res: &SpriteResource,
                      view: &Matrix4<f32>,
                      yaw: Option<f32>,
@@ -231,21 +241,21 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
     let idx = if let Some(yaw) = yaw {
         let cam_dir = (((yaw / 45.0) + 0.5) as usize) % 8;
-        animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8
+        animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
     } else {
         0
     };
 
     let frame_count = sprite_res.action.actions[idx].frames.len();
-    let mut time_needed_for_one_frame = if let Some(duration) = animated_sprite.forced_duration {
+    let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
         duration.div(frame_count as f32)
     } else {
         sprite_res.action.actions[idx].delay as f32 / 1000.0
     };
     time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
-    let elapsed_time = system_vars.time.elapsed_since(&animated_sprite.animation_started);
+    let elapsed_time = system_vars.time.elapsed_since(&animation.animation_started);
     let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
-    let animation = &sprite_res.action.actions[idx].frames[frame_index];
+    let action_anim = &sprite_res.action.actions[idx].frames[frame_index];
 
     // TODO: refactor: ugly, valahol csak 1 layert kell irajzolni (player), valahol többet is (effektek)
     let mut width = 0.0;
@@ -258,7 +268,10 @@ pub fn render_sprite(system_vars: &SystemVariables,
         system_vars.shaders.player_shader.set_mat4("model", &matrix);
         matrix
     };
-    for layer in animation.layers.iter() {
+    for layer in action_anim.layers.iter() {
+        if idx == 40 {
+            dbg!(layer.sprite_frame_index);
+        }
         if layer.sprite_frame_index < 0 {
             continue;
         }
@@ -268,10 +281,10 @@ pub fn render_sprite(system_vars: &SystemVariables,
         height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
         sprite_texture.texture.bind(gl::TEXTURE0);
 
-        offset = if !animation.positions.is_empty() && !is_main {
+        offset = if !action_anim.positions.is_empty() && !is_main {
             [
-                (pos_offset[0] - animation.positions[0][0]) as f32,
-                (pos_offset[1] - animation.positions[0][1]) as f32
+                (pos_offset[0] - action_anim.positions[0][0]) as f32,
+                (pos_offset[1] - action_anim.positions[0][1]) as f32
             ]
         } else {
             [0.0, 0.0]
@@ -296,7 +309,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
         binded_sprite_vertex_array.draw();
     }
-    let anim_pos = animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
+    let anim_pos = action_anim.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
 
     let size = [width.abs(), height];
     let bb = project_to_screen(&size, &offset, view * matrix, &system_vars.matrices.projection);
@@ -638,7 +651,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                     }
                 ]);
 
-            system_vars.system_sprites.numbers.bind(gl::TEXTURE0);
+            system_vars.sprites.numbers.bind(gl::TEXTURE0);
             system_vars.shaders.sprite_shader.gl_use();
             let mut matrix = Matrix4::<f32>::identity();
             let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
