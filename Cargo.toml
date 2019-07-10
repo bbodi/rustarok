@@ -21,6 +21,8 @@ log = "0.4.6"
 simple-logging = "2.0.2"
 specs = "0.14.3"
 specs-derive = "0.4.0"
+strum = "0.15.0" # for iterating over enums
+strum_macros = "0.15.0"
 
 [dependencies.sdl2]
 version = "0.32.1"

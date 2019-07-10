@@ -14,6 +14,8 @@ extern crate specs;
 #[macro_use]
 extern crate specs_derive;
 
+use strum::IntoEnumIterator;
+
 use std::io::ErrorKind;
 use crate::common::BinaryReader;
 use crate::rsw::Rsw;
@@ -38,8 +40,8 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
-use crate::hardcoded_consts::{job_name_table, JobId};
-use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites, EffectSprites};
+use crate::consts::{job_name_table, JobId, MonsterId};
+use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, EffectSprites, Sprites, Sex};
 use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
 use crate::systems::phys::{PhysicsSystem, FrictionSystem};
@@ -68,7 +70,7 @@ mod gnd;
 mod rsm;
 mod act;
 mod spr;
-mod hardcoded_consts;
+mod consts;
 
 mod components;
 mod systems;
@@ -107,6 +109,7 @@ const STATIC_MODELS_COLLISION_GROUP: usize = 1;
 const LIVING_COLLISION_GROUP: usize = 2;
 const SKILL_AREA_COLLISION_GROUP: usize = 3;
 
+#[derive(Clone)]
 pub struct SpriteResource {
     action: ActionFile,
     textures: Vec<spr::SpriteTexture>,
@@ -326,50 +329,60 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let (elapsed, (sprite_resources, head_sprites, monster_sprites, effect_sprites)) = measure_time(|| {
-        let head_sprites = (1..=26).map(|i| {
-            let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
-            let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
-            let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
-                Some(SpriteResource::new(&male_file_name))
-            } else { None };
-            let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
-                Some(SpriteResource::new(&female_file_name))
-            } else { None };
-            vec![male, female]
-        }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
-
-        let monster_sprites = ["baphomet", "poring"].iter().map(|name| {
-            let file_name = grf("sprite\\npc\\") + name;
-            let male = if Path::new(&(file_name.clone() + ".act")).exists() {
-                Some(SpriteResource::new(&file_name))
-            } else { None };
-            male
-        }).filter_map(|it| it).collect::<Vec<SpriteResource>>();
-
-        let sprite_resources =
-            job_name_table().values().take(10).map(|job_name| {
-                let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + job_name + "_³²";
-                let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + job_name + "_¿©";
-                let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
-                    Some(SpriteResource::new(&male_file_name))
-                } else { None };
-                let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
-                    Some(SpriteResource::new(&female_file_name))
-                } else { None };
-                vec![male, female]
-            }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
-
-        let effect_sprites = EffectSprites {
-            torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01")),
-            fire_wall: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\firewall")),
-            fire_ball: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\fireball")),
-        };
-
-        (sprite_resources, head_sprites, monster_sprites, effect_sprites)
+    let (elapsed, sprites) = measure_time(|| {
+        let job_name_table = job_name_table();
+        Sprites {
+            cursors: SpriteResource::new(&grf("sprite\\cursors")),
+            numbers: GlTexture::from_file("damage.bmp"),
+            character_sprites: JobId::iter().take(25).map(|job_id| {
+                let job_file_name = &job_name_table[&job_id];
+                let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &job_file_name + "_³²";
+                let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + &job_file_name + "_¿©";
+                let (male, female) = if !Path::new(&(female_file_name.clone() + ".act")).exists() {
+                    let male = SpriteResource::new(&male_file_name);
+                    let female = male.clone();
+                    (male, female)
+                } else if !Path::new(&(male_file_name.clone() + ".act")).exists() {
+                    let female = SpriteResource::new(&female_file_name);
+                    let male = female.clone();
+                    (male, female)
+                } else {
+                    (SpriteResource::new(&male_file_name), SpriteResource::new(&female_file_name))
+                };
+                (job_id, [male, female])
+            }).collect::<HashMap<JobId, [SpriteResource; 2]>>(),
+            head_sprites: [
+                (1..=26).map(|i| {
+                    let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
+                    let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
+                        Some(SpriteResource::new(&male_file_name))
+                    } else { None };
+                    male
+                }).filter_map(|it| it).collect::<Vec<SpriteResource>>(),
+                (1..=26).map(|i| {
+                    let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
+                    let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
+                        Some(SpriteResource::new(&female_file_name))
+                    } else { None };
+                    female
+                }).filter_map(|it| it).collect::<Vec<SpriteResource>>()
+            ],
+            monster_sprites: MonsterId::iter().map(|monster_id| {
+                let file_name = grf("sprite\\npc\\") + &monster_id.to_string().to_lowercase();
+                (monster_id, SpriteResource::new(&file_name))
+            }).collect::<HashMap<MonsterId, SpriteResource>>(),
+            effect_sprites: EffectSprites {
+                torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01")),
+                fire_wall: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\firewall")),
+                fire_ball: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\fireball")),
+            },
+        }
     });
 
-    info!("act and spr files loaded[{}]: {}ms", sprite_resources.len() + head_sprites.len() + monster_sprites.len(), elapsed.as_millis());
+    info!("act and spr files loaded[{}]: {}ms",
+          (sprites.character_sprites.len() * 2) +
+              sprites.head_sprites[0].len() + sprites.head_sprites[1].len() +
+              sprites.monster_sprites.len(), elapsed.as_millis());
 
     let my_str = ImString::new("shitaka");
 
@@ -398,14 +411,7 @@ fn main() {
 
     ecs_world.add_resource(SystemVariables {
         shaders,
-        sprite_resources,
-        system_sprites: SystemSprites {
-            cursors: SpriteResource::new(&grf("sprite\\cursors")),
-            numbers: GlTexture::from_file("damage.bmp"),
-        },
-        monster_sprites,
-        effect_sprites,
-        head_sprites,
+        sprites,
         tick: Tick(0),
         entity_below_cursor: None,
         cell_below_cursor_walkable: false,
@@ -432,8 +438,9 @@ fn main() {
     let desktop_client_char = components::char::create_char(
         &mut ecs_world,
         Point2::new(250.0, -200.0),
-        10,
-        Some(0),
+        Sex::Male,
+        JobId::ROGUE,
+        1,
         1,
     );
     let desktop_client_entity = ecs_world
@@ -672,13 +679,15 @@ fn imgui_frame(desktop_client_entity: Entity,
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
                 let mut rng = rand::thread_rng();
-                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprite_resources.len();
-                let head_count = ecs_world.read_resource::<SystemVariables>().head_sprites.len();
+                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.character_sprites.len();
+                let sex = if rng.gen::<usize>() % 2 == 0 { Sex::Male } else { Sex::Female };
+                let head_count = ecs_world.read_resource::<SystemVariables>().sprites.head_sprites[Sex::Male as usize].len();
                 let entity_id = components::char::create_char(
                     &mut ecs_world,
                     pos2d,
-                    rng.gen::<usize>() % sprite_count,
-                    Some(rng.gen::<usize>() % head_count),
+                    sex,
+                    JobId::SWORDMAN,
+                    rng.gen::<usize>() % head_count,
                     rng.gen_range(1, 5),
                 );
 
@@ -709,12 +718,11 @@ fn imgui_frame(desktop_client_entity: Entity,
                 };
                 let pos2d = Point2::new(pos.x, pos.z);
                 let mut rng = rand::thread_rng();
-                let sprite_count = ecs_world.read_resource::<SystemVariables>().monster_sprites.len();
-                let entity_id = components::char::create_char(
+                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.monster_sprites.len();
+                let entity_id = components::char::create_monster(
                     &mut ecs_world,
                     pos2d,
-                    rng.gen::<usize>() % sprite_count,
-                    None,
+                    MonsterId::Poring,
                     rng.gen_range(1, 5),
                 );
                 other_entities.push(entity_id);

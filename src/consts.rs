@@ -1,9 +1,19 @@
 use std::collections::HashMap;
 use encoding;
 use encoding::types::Encoding;
-use encoding::{DecoderTrap};
+use encoding::DecoderTrap;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use strum_macros::Display;
+
+#[derive(EnumIter, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum MonsterId {
+    Baphomet,
+    Poring,
+}
+
+#[derive(EnumIter, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobId {
     NOVICE = 0,
     SWORDMAN = 1,

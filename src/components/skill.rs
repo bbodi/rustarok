@@ -8,7 +8,7 @@ use crate::systems::SystemVariables;
 use std::sync::{Arc, Mutex};
 use crate::video::draw_lines_inefficiently;
 use crate::systems::render::render_sprite;
-use crate::components::char::MonsterSpriteComponent;
+use crate::components::char::{MonsterSpriteComponent, SpriteRenderDescriptor};
 
 pub trait SkillManifestation {
     fn update(
@@ -127,14 +127,13 @@ impl SkillManifestation for PushBackWallSkill {
             &[0.0, 1.0, 0.0, 1.0],
         );
         render_sprite(&system_vars,
-                      &MonsterSpriteComponent {
-                          file_index: 0,
+                      &SpriteRenderDescriptor {
                           action_index: 0,
                           animation_started: self.created_at,
                           forced_duration: None,
                           direction: 0
                       },
-                      &system_vars.effect_sprites.torch,
+                      &system_vars.sprites.effect_sprites.torch,
                       &system_vars.matrices.view,
                       None,
                       &self.pos,

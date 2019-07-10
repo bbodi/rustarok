@@ -5,38 +5,32 @@ use ncollide2d::world::CollisionGroups;
 use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, ActionIndex, ElapsedTime};
 use specs::Entity;
 use specs::prelude::*;
+use crate::consts::{MonsterId, JobId};
+use crate::systems::Sex;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
     pos2d: Point2<f32>,
-    body_index: usize,
-    head_index: Option<usize>,
+    sex: Sex,
+    job_id: JobId,
+    head_index: usize,
     radius: i32,
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity()
             .with(CharacterStateComponent::new());
         let entity_id = entity_builder.entity;
-        if let Some(head_index) = head_index {
-            entity_builder = entity_builder.with(PlayerSpriteComponent {
-                base: MonsterSpriteComponent {
-                    file_index: body_index,
-                    action_index: ActionIndex::Idle as usize,
-                    animation_started: ElapsedTime(0.0),
-                    forced_duration: None,
-                    direction: 0,
-                },
-                head_index: head_index,
-            });
-        } else {
-            entity_builder = entity_builder.with(MonsterSpriteComponent {
-                file_index: body_index,
-                action_index: 8,
+        entity_builder = entity_builder.with(PlayerSpriteComponent {
+            job_id,
+            head_index,
+            sex,
+            descr: SpriteRenderDescriptor {
+                action_index: ActionIndex::Idle as usize,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
-            });
-        }
+            }
+        });
         entity_builder.build()
     };
     let mut storage = ecs_world.write_storage();
@@ -45,6 +39,36 @@ pub fn create_char(
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
 }
+
+pub fn create_monster(
+    ecs_world: &mut specs::world::World,
+    pos2d: Point2<f32>,
+    monster_id: MonsterId,
+    radius: i32,
+) -> Entity {
+    let entity_id = {
+        let mut entity_builder = ecs_world.create_entity()
+            .with(CharacterStateComponent::new());
+        let entity_id = entity_builder.entity;
+        entity_builder = entity_builder.with(MonsterSpriteComponent {
+            monster_id,
+            descr: SpriteRenderDescriptor {
+                action_index: 8,
+                animation_started: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+            }
+        });
+        entity_builder.build()
+    };
+    let mut storage = ecs_world.write_storage();
+    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+    let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
+    storage.insert(entity_id, physics_component).unwrap();
+    return entity_id;
+}
+
+
 
 // radius = ComponentRadius * 0.5f32
 #[derive(Eq, PartialEq, Hash)]
@@ -204,32 +228,38 @@ impl CharacterStateComponent {
     pub fn set_state(&mut self,
                      state: CharState,
                      dir: usize,
-                     anim_sprite: &mut PlayerSpriteComponent,
+                     anim_sprite: &mut SpriteRenderDescriptor,
                      animation_started: ElapsedTime,
                      animation_duration: Option<ElapsedTime>) {
         self.state = state;
         self.dir = dir;
-        anim_sprite.base.direction = dir;
-        anim_sprite.base.animation_started = animation_started;
-        anim_sprite.base.forced_duration = animation_duration;
-        anim_sprite.base.action_index = state.get_sprite_index() as usize;
+        anim_sprite.direction = dir;
+        anim_sprite.animation_started = animation_started;
+        anim_sprite.forced_duration = animation_duration;
+        anim_sprite.action_index = state.get_sprite_index() as usize;
     }
 
     pub fn set_dir(&mut self, dir: usize, anim_sprite: &mut PlayerSpriteComponent) {
         self.dir = dir;
-        anim_sprite.base.direction = dir;
+        anim_sprite.descr.direction = dir;
     }
 }
 
 #[derive(Component)]
 pub struct PlayerSpriteComponent {
-    pub base: MonsterSpriteComponent,
+    pub job_id: JobId,
     pub head_index: usize,
+    pub sex: Sex,
+    pub descr: SpriteRenderDescriptor,
 }
 
 #[derive(Component)]
 pub struct MonsterSpriteComponent {
-    pub file_index: usize,
+    pub monster_id: MonsterId,
+    pub descr: SpriteRenderDescriptor,
+}
+
+pub struct SpriteRenderDescriptor {
     pub action_index: usize,
     pub animation_started: ElapsedTime,
     pub forced_duration: Option<ElapsedTime>,

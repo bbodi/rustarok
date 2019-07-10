@@ -11,17 +11,16 @@ use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lin
 use crate::video::VertexAttribDefinition;
 use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, SpriteRenderDescriptor};
 
 pub struct RenderUI {
-    cursor_anim_descr: MonsterSpriteComponent
+    cursor_anim_descr: SpriteRenderDescriptor
 }
 
 impl RenderUI {
     pub fn new() -> RenderUI {
         RenderUI {
-            cursor_anim_descr: MonsterSpriteComponent {
-                file_index: 0, //
+            cursor_anim_descr: SpriteRenderDescriptor {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
@@ -70,14 +69,14 @@ impl<'a> specs::System<'a> for RenderUI {
             self.cursor_anim_descr.action_index = cursor.1;
             render_sprite_2d(&system_vars,
                              &self.cursor_anim_descr,
-                             &system_vars.system_sprites.cursors,
+                             &system_vars.sprites.cursors,
                              &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32))
         }
     }
 }
 
 fn render_sprite_2d(system_vars: &SystemVariables,
-                    animated_sprite: &MonsterSpriteComponent,
+                    animated_sprite: &SpriteRenderDescriptor,
                     sprite_res: &SpriteResource,
                     pos: &Vector2<f32>,
 ) {

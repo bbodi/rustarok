@@ -1,25 +1,25 @@
 use crate::common::BinaryReader;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionFile {
     pub actions: Vec<Action>,
     pub sounds: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Action {
     pub frames: Vec<ActionFrame>,
     pub delay: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionFrame {
     pub layers: Vec<Layer>,
     pub sound: i32,
     pub positions: Vec<[i32; 2]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Layer {
     pub pos: [i32; 2],
     pub sprite_frame_index: i32,

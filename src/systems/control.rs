@@ -114,7 +114,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 if attack_ends.has_passed(&system_vars.time) {
                     char_state.set_state(CharState::Idle,
                                          char_state.dir(),
-                                         &mut sprite,
+                                         &mut sprite.descr,
                                          system_vars.time,
                                          None);
                     let damage = entities.create();
@@ -140,13 +140,14 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         let attack_ends = system_vars.time.add(&attack_anim_duration);
                         char_state.set_state(CharState::Attacking { attack_ends },
                                              CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                             &mut sprite, system_vars.time,
+                                             &mut sprite.descr,
+                                             system_vars.time,
                                              Some(attack_anim_duration));
                         body.set_linear_velocity(Vector2::new(0.0, 0.0));
                     } else if distance < 0.2 {
                         char_state.set_state(CharState::Idle,
                                              char_state.dir(),
-                                             &mut sprite, system_vars.time,
+                                             &mut sprite.descr, system_vars.time,
                                              None);
                         body.set_linear_velocity(Vector2::new(0.0, 0.0));
                         char_state.target_pos = None;
@@ -154,7 +155,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         if !char_state.state().is_walking() {
                             char_state.set_state(CharState::Walking,
                                                  CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                                 &mut sprite, system_vars.time,
+                                                 &mut sprite.descr, system_vars.time,
                                                  None);
                         } else {
                             char_state.set_dir(CharacterControlSystem::determine_dir(&target_pos, &char_pos),

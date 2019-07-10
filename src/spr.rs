@@ -18,6 +18,7 @@ pub struct Frame {
     pub data: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct SpriteTexture {
     pub original_width: usize,
     pub original_height: usize,
