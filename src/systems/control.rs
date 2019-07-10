@@ -14,7 +14,7 @@ use specs::join::JoinIter;
 use crate::components::{FlyingNumberType, FlyingNumberComponent};
 use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent};
 use crate::components::controller::ControllerComponent;
-use crate::components::skill::PushBackWallSkillComponent;
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use nphysics2d::object::Body;
 
 pub struct CharacterControlSystem;
@@ -89,12 +89,14 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
 
             //
             if controller.is_key_just_pressed(Scancode::Q) {
-                let skill_area = entities.create();
-                updater.insert(skill_area, PushBackWallSkillComponent::new(
+                let skill_entity_id = entities.create();
+                let skill = PushBackWallSkill::new(
                     &mut physics_world,
                     mouse_world_pos.coords,
-                    skill_area
-                ));
+                    skill_entity_id,
+                    &system_vars.time,
+                );
+                updater.insert(skill_entity_id, SkillManifestationComponent::new(skill));
             }
             //
             let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
