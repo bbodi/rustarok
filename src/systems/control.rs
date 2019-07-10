@@ -135,7 +135,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
             if !char_state.state().is_attacking() {
                 if let Some(target_pos) = char_state.target_pos {
                     let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
-                    if char_state.target.is_some() && distance <= char_state.attack_range {
+                    if char_state.target.is_some() && char_state.target.unwrap() != controller.char && distance <= char_state.attack_range {
                         let attack_anim_duration = ElapsedTime(1.0 / char_state.attack_speed);
                         let attack_ends = system_vars.time.add(&attack_anim_duration);
                         char_state.set_state(CharState::Attacking { attack_ends },

@@ -13,7 +13,23 @@ use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent};
 
-pub struct RenderUI;
+pub struct RenderUI {
+    cursor_anim_descr: MonsterSpriteComponent
+}
+
+impl RenderUI {
+    pub fn new() -> RenderUI {
+        RenderUI {
+            cursor_anim_descr: MonsterSpriteComponent {
+                file_index: 0, //
+                action_index: 0,
+                animation_started: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+            }
+        }
+    }
+}
 
 impl<'a> specs::System<'a> for RenderUI {
     type SystemData = (
@@ -51,14 +67,9 @@ impl<'a> specs::System<'a> for RenderUI {
             } else {
                 CURSOR_NORMAL
             };
+            self.cursor_anim_descr.action_index = cursor.1;
             render_sprite_2d(&system_vars,
-                             &MonsterSpriteComponent {
-                                 file_index: 0, //
-                                 action_index: cursor.1,
-                                 animation_started: ElapsedTime(0.0),
-                                 animation_duration: None,
-                                 direction: 0,
-                             },
+                             &self.cursor_anim_descr,
                              &system_vars.system_sprites.cursors,
                              &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32))
         }

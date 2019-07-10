@@ -8,7 +8,7 @@ pub struct SpriteFile {
 
 pub enum SpriteType {
     PAL,
-    RGBA,
+    ABGR,
 }
 
 pub struct Frame {
@@ -78,14 +78,14 @@ impl SpriteFile {
         for y in 0..frame.height {
             for x in 0..frame.width {
                 let idx1 = frame.data[(y * frame.width + x)] as usize * 4;
-                buf.push(pal[idx1 + 0]);
-                buf.push(pal[idx1 + 1]);
-                buf.push(pal[idx1 + 2]);
-                buf.push(if idx1 != 0 { 255 } else { 0 });
+                buf.push(pal[idx1 + 0]); // r
+                buf.push(pal[idx1 + 1]); // g
+                buf.push(pal[idx1 + 2]); // b
+                buf.push(if idx1 != 0 { 255 } else { 0 }); // a
             }
         }
         Frame {
-            typ: SpriteType::RGBA,
+            typ: SpriteType::ABGR,
             data: buf,
             ..frame
         }
@@ -124,11 +124,14 @@ impl SpriteFile {
         (0..rgba_frame_count).map(|_i| {
             let width = buf.next_u16();
             let height = buf.next_u16();
+            let mut data = buf.next(width as u32 * height as u32 * 4);
+            // it seems ABGR sprites are stored upside down
+            data.reverse();
             Frame {
-                typ: SpriteType::RGBA,
+                typ: SpriteType::ABGR,
                 width: width as usize,
                 height: height as usize,
-                data: buf.next(width as u32 * height as u32 * 4),
+                data,
             }
         }).collect()
     }

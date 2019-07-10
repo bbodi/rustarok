@@ -18,6 +18,8 @@ pub struct SystemSprites {
 
 pub struct EffectSprites {
     pub torch: SpriteResource,
+    pub fire_wall: SpriteResource,
+    pub fire_ball: SpriteResource,
 }
 
 pub struct SystemVariables {

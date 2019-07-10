@@ -23,7 +23,7 @@ pub fn create_char(
                     file_index: body_index,
                     action_index: ActionIndex::Idle as usize,
                     animation_started: ElapsedTime(0.0),
-                    animation_duration: None,
+                    forced_duration: None,
                     direction: 0,
                 },
                 head_index: head_index,
@@ -33,7 +33,7 @@ pub fn create_char(
                 file_index: body_index,
                 action_index: 8,
                 animation_started: ElapsedTime(0.0),
-                animation_duration: None,
+                forced_duration: None,
                 direction: 0,
             });
         }
@@ -211,7 +211,7 @@ impl CharacterStateComponent {
         self.dir = dir;
         anim_sprite.base.direction = dir;
         anim_sprite.base.animation_started = animation_started;
-        anim_sprite.base.animation_duration = animation_duration;
+        anim_sprite.base.forced_duration = animation_duration;
         anim_sprite.base.action_index = state.get_sprite_index() as usize;
     }
 
@@ -232,6 +232,6 @@ pub struct MonsterSpriteComponent {
     pub file_index: usize,
     pub action_index: usize,
     pub animation_started: ElapsedTime,
-    pub animation_duration: Option<ElapsedTime>,
+    pub forced_duration: Option<ElapsedTime>,
     pub direction: usize,
 }

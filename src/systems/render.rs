@@ -17,7 +17,7 @@ use ncollide2d::shape::Shape;
 // direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
-pub const ONE_PIXEL_SIZE_IN_3D: f32 = (1.0 / 175.0) * 5.0;
+pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = (1.0 / 175.0) * 5.0;
 
 pub struct OpenGlInitializerFor3D;
 
@@ -103,7 +103,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          &animated_sprite.base,
                                                                          body_res,
                                                                          &system_vars.matrices.view,
-                                                                         &controller,
+                                                                         Some(controller.yaw),
                                                                          &pos,
                                                                          [0, 0],
                                                                          true,
@@ -114,7 +114,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                 &animated_sprite.base,
                                                                                 head_res,
                                                                                 &system_vars.matrices.view,
-                                                                                &controller,
+                                                                                Some(controller.yaw),
                                                                                 &pos,
                                                                                 pos_offset,
                                                                                 false,
@@ -127,7 +127,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                      &animated_sprite.base,
                                                                      body_res,
                                                                      &system_vars.matrices.view,
-                                                                     &controller,
+                                                                     Some(controller.yaw),
                                                                      &pos,
                                                                      [0, 0],
                                                                      true,
@@ -138,7 +138,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                           &animated_sprite.base,
                                                                           head_res,
                                                                           &system_vars.matrices.view,
-                                                                          &controller,
+                                                                          Some(controller.yaw),
                                                                           &pos,
                                                                           pos_offset,
                                                                           false,
@@ -160,7 +160,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                     &animated_sprite,
                                                                     body_res,
                                                                     &system_vars.matrices.view,
-                                                                    &controller,
+                                                                    Some(controller.yaw),
                                                                     &pos,
                                                                     [0, 0],
                                                                     true,
@@ -171,7 +171,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                 &animated_sprite,
                                                                 body_res,
                                                                 &system_vars.matrices.view,
-                                                                &controller,
+                                                                Some(controller.yaw),
                                                                 &pos,
                                                                 [0, 0],
                                                                 true,
@@ -214,7 +214,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
                      animated_sprite: &MonsterSpriteComponent,
                      sprite_res: &SpriteResource,
                      view: &Matrix4<f32>,
-                     controller: &ControllerComponent,
+                     yaw: Option<f32>,
                      pos: &Vector2<f32>,
                      pos_offset: [i32; 2],
                      is_main: bool,
@@ -228,12 +228,17 @@ pub fn render_sprite(system_vars: &SystemVariables,
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
     // draw layer
-    let cam_dir = (((controller.yaw / 45.0) + 0.5) as usize) % 8;
-    let idx = animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8;
+
+    let idx = if let Some(yaw) = yaw {
+        let cam_dir = (((yaw / 45.0) + 0.5) as usize) % 8;
+        animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8
+    } else {
+        0
+    };
 
     let frame_count = sprite_res.action.actions[idx].frames.len();
-    let mut time_needed_for_one_frame = if let Some(duration) = animated_sprite.animation_duration {
-        dbg!(duration.div(frame_count as f32))
+    let mut time_needed_for_one_frame = if let Some(duration) = animated_sprite.forced_duration {
+        duration.div(frame_count as f32)
     } else {
         sprite_res.action.actions[idx].delay as f32 / 1000.0
     };
@@ -241,46 +246,56 @@ pub fn render_sprite(system_vars: &SystemVariables,
     let elapsed_time = system_vars.time.elapsed_since(&animated_sprite.animation_started);
     let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
     let animation = &sprite_res.action.actions[idx].frames[frame_index];
-    let layer = &animation.layers[0];
-//    for layer in animation.layers.iter().take(1) {
-//    if layer.sprite_frame_index < 0 {
-//        continue;
-//    }
-    let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
 
-    let width = sprite_texture.original_width as f32 * layer.scale[0] * size_multiplier;
-    let height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
-    sprite_texture.texture.bind(gl::TEXTURE0);
-
-    let mut offset = if !animation.positions.is_empty() && !is_main {
-        [
-            pos_offset[0] - animation.positions[0][0],
-            pos_offset[1] - animation.positions[0][1]
-        ]
-    } else {
-        [0, 0]
+    // TODO: refactor: ugly, valahol csak 1 layert kell irajzolni (player), valahol többet is (effektek)
+    let mut width = 0.0;
+    let mut height = 0.0;
+    let mut offset = [0.0, 0.0];
+    let matrix = {
+        let mut matrix = Matrix4::<f32>::identity();
+        let pos = Vector3::new(pos.x, 0.0, pos.y); // y was 1.0
+        matrix.prepend_translation_mut(&pos);
+        system_vars.shaders.player_shader.set_mat4("model", &matrix);
+        matrix
     };
-    let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
-    let offset = [
-        offset[0] as f32 * ONE_PIXEL_SIZE_IN_3D,
-        offset[1] as f32 * ONE_PIXEL_SIZE_IN_3D - 0.5
-    ];
-    system_vars.shaders.player_shader.set_vec2("offset", &offset);
+    for layer in animation.layers.iter() {
+        if layer.sprite_frame_index < 0 {
+            continue;
+        }
+        let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
 
-    let mut matrix = Matrix4::<f32>::identity();
-    let mut pos = Vector3::new(pos.x, 0.0, pos.y); // y was 1.0
-    matrix.prepend_translation_mut(&pos);
-    system_vars.shaders.player_shader.set_mat4("model", &matrix);
+        width = sprite_texture.original_width as f32 * layer.scale[0] * size_multiplier;
+        height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
+        sprite_texture.texture.bind(gl::TEXTURE0);
 
-    let width = width as f32 * ONE_PIXEL_SIZE_IN_3D;
-    let width = if layer.is_mirror { -width } else { width };
-    let height = height as f32 * ONE_PIXEL_SIZE_IN_3D;
-    system_vars.shaders.player_shader.set_vec2("size", &[width, height]);
+        offset = if !animation.positions.is_empty() && !is_main {
+            [
+                (pos_offset[0] - animation.positions[0][0]) as f32,
+                (pos_offset[1] - animation.positions[0][1]) as f32
+            ]
+        } else {
+            [0.0, 0.0]
+        };
+        offset = [layer.pos[0] as f32 + offset[0], layer.pos[1] as f32 + offset[1]];
+        offset = [
+            offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.5
+        ];
+        system_vars.shaders.player_shader.set_vec2("offset", &offset);
 
-//    system_vars.shaders.player_shader.set_f32("alpha", alpha);
-    system_vars.shaders.player_shader.set_vec4("color", color);
+        width = width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
+        width = if layer.is_mirror { -width } else { width };
+        height = height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
+        system_vars.shaders.player_shader.set_vec2("size", &[width, height]);
 
-    binded_sprite_vertex_array.draw();
+        let mut color = color.clone();
+        for i in 0..4 {
+            color[i] *= layer.color[i];
+        }
+        system_vars.shaders.player_shader.set_vec4("color", &color);
+
+        binded_sprite_vertex_array.draw();
+    }
     let anim_pos = animation.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
 
     let size = [width.abs(), height];

@@ -314,7 +314,7 @@ fn main() {
         .with_thread_local(RenderDesktopClientSystem)
         .with_thread_local(PhysicsDebugDrawingSystem::new())
         .with_thread_local(DamageRenderSystem::new())
-        .with_thread_local(RenderUI)
+        .with_thread_local(RenderUI::new())
         .build();
 
     let (map_render_data, physics_world) = load_map("prontera");
@@ -361,7 +361,9 @@ fn main() {
             }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
 
         let effect_sprites = EffectSprites {
-            torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01"))
+            torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01")),
+            fire_wall: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\firewall")),
+            fire_ball: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\fireball")),
         };
 
         (sprite_resources, head_sprites, monster_sprites, effect_sprites)
