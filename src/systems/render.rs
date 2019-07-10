@@ -3,7 +3,7 @@ use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficien
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND};
+use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime};
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
@@ -100,7 +100,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let body_res = &system_vars.sprite_resources[animated_sprite.base.file_index];
                 if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
-                                                                         tick,
                                                                          &animated_sprite.base,
                                                                          body_res,
                                                                          &system_vars.matrices.view,
@@ -112,7 +111,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          &[0.0, 0.0, 1.0, 0.4]);
                     let head_res = &system_vars.head_sprites[animated_sprite.head_index];
                     let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
-                                                                                tick,
                                                                                 &animated_sprite.base,
                                                                                 head_res,
                                                                                 &system_vars.matrices.view,
@@ -126,7 +124,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
                 // todo: kell a pos_offset még mindig? (bounding rect)
                 let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
-                                                                     tick,
                                                                      &animated_sprite.base,
                                                                      body_res,
                                                                      &system_vars.matrices.view,
@@ -138,7 +135,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                      &[1.0, 1.0, 1.0, 1.0]);
                 let head_res = &system_vars.head_sprites[animated_sprite.head_index];
                 let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
-                                                                          tick,
                                                                           &animated_sprite.base,
                                                                           head_res,
                                                                           &system_vars.matrices.view,
@@ -161,7 +157,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let body_res = &system_vars.monster_sprites[animated_sprite.file_index];
                 if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                    tick,
                                                                     &animated_sprite,
                                                                     body_res,
                                                                     &system_vars.matrices.view,
@@ -173,7 +168,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                     &[0.0, 0.0, 1.0, 0.5]);
                 }
                 let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                tick,
                                                                 &animated_sprite,
                                                                 body_res,
                                                                 &system_vars.matrices.view,
@@ -216,17 +210,16 @@ fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
     model_view[10] = 1.0;
 }
 
-fn render_sprite(system_vars: &SystemVariables,
-                 tick: Tick,
-                 animated_sprite: &MonsterSpriteComponent,
-                 sprite_res: &SpriteResource,
-                 view: &Matrix4<f32>,
-                 controller: &ControllerComponent,
-                 pos: &Vector2<f32>,
-                 pos_offset: [i32; 2],
-                 is_main: bool,
-                 size_multiplier: f32,
-                 color: &[f32; 4],
+pub fn render_sprite(system_vars: &SystemVariables,
+                     animated_sprite: &MonsterSpriteComponent,
+                     sprite_res: &SpriteResource,
+                     view: &Matrix4<f32>,
+                     controller: &ControllerComponent,
+                     pos: &Vector2<f32>,
+                     pos_offset: [i32; 2],
+                     is_main: bool,
+                     size_multiplier: f32,
+                     color: &[f32; 4],
 ) -> ([i32; 2], SpriteBoundingRect) {
     system_vars.shaders.player_shader.gl_use();
     system_vars.shaders.player_shader.set_mat4("projection", &system_vars.matrices.projection);
@@ -235,21 +228,18 @@ fn render_sprite(system_vars: &SystemVariables,
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
     // draw layer
-    let animation_elapsed_tick = tick.0 - animated_sprite.animation_started.0;
     let cam_dir = (((controller.yaw / 45.0) + 0.5) as usize) % 8;
     let idx = animated_sprite.action_index + (animated_sprite.direction + DIRECTION_TABLE[cam_dir]) % 8;
 
-    let delay_in_ms = sprite_res.action.actions[idx].delay;
-
     let frame_count = sprite_res.action.actions[idx].frames.len();
-    let delay_in_ticks = max(1, if let Some(finish_tick) = animated_sprite.animation_finish {
-        let duration = finish_tick.0 - animated_sprite.animation_started.0;
-        duration / frame_count as u64
+    let mut time_needed_for_one_frame = if let Some(duration) = animated_sprite.animation_duration {
+        dbg!(duration.div(frame_count as f32))
     } else {
-        delay_in_ms as u64 / TICKS_PER_SECOND
-    });
-
-    let frame_index = ((animation_elapsed_tick / delay_in_ticks) % frame_count as u64) as usize;
+        sprite_res.action.actions[idx].delay as f32 / 1000.0
+    };
+    time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
+    let elapsed_time = system_vars.time.elapsed_since(&animated_sprite.animation_started);
+    let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
     let animation = &sprite_res.action.actions[idx].frames[frame_index];
     let layer = &animation.layers[0];
 //    for layer in animation.layers.iter().take(1) {

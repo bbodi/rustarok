@@ -5,7 +5,7 @@ use rand::Rng;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use sdl2::keyboard::Scancode;
-use crate::{ActionIndex, RenderMatrices, PhysicsWorld, TICKS_PER_SECOND, Tick};
+use crate::{ActionIndex, RenderMatrices, PhysicsWorld, TICKS_PER_SECOND, Tick, ElapsedTime};
 use crate::cam::Camera;
 use ncollide2d::shape::{Cuboid, Ball};
 use ncollide2d::query::point_internal::point_query::PointQuery;
@@ -111,11 +111,11 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
             let char_pos = body.position().translation.vector;
 
             if let CharState::Attacking { attack_ends } = char_state.state() {
-                if system_vars.tick.0 >= attack_ends.0 {
+                if attack_ends.has_passed(&system_vars.time) {
                     char_state.set_state(CharState::Idle,
                                          char_state.dir(),
                                          &mut sprite,
-                                         system_vars.tick,
+                                         system_vars.time,
                                          None);
                     let damage = entities.create();
                     let mut rng = rand::thread_rng();
@@ -136,25 +136,25 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 if let Some(target_pos) = char_state.target_pos {
                     let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
                     if char_state.target.is_some() && distance <= char_state.attack_range {
-                        let attack_ends = system_vars.tick.0 + (TICKS_PER_SECOND as f32 / char_state.attack_speed) as u64;
-                        let attack_ends = Tick(attack_ends);
+                        let attack_anim_duration = ElapsedTime(1.0 / char_state.attack_speed);
+                        let attack_ends = system_vars.time.add(&attack_anim_duration);
                         char_state.set_state(CharState::Attacking { attack_ends },
                                              CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                             &mut sprite, system_vars.tick,
-                                             Some(attack_ends));
+                                             &mut sprite, system_vars.time,
+                                             Some(attack_anim_duration));
                         body.set_linear_velocity(Vector2::new(0.0, 0.0));
                     } else if distance < 0.2 {
                         char_state.set_state(CharState::Idle,
                                              char_state.dir(),
-                                             &mut sprite, system_vars.tick,
+                                             &mut sprite, system_vars.time,
                                              None);
                         body.set_linear_velocity(Vector2::new(0.0, 0.0));
                         char_state.target_pos = None;
                     } else {
-                        if char_state.state() != CharState::Walking {
+                        if !char_state.state().is_walking() {
                             char_state.set_state(CharState::Walking,
                                                  CharacterControlSystem::determine_dir(&target_pos, &char_pos),
-                                                 &mut sprite, system_vars.tick,
+                                                 &mut sprite, system_vars.time,
                                                  None);
                         } else {
                             char_state.set_dir(CharacterControlSystem::determine_dir(&target_pos, &char_pos),

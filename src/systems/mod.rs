@@ -16,6 +16,9 @@ pub struct SystemSprites {
     pub numbers: GlTexture,
 }
 
+pub struct EffectSprites {
+    pub torch: SpriteResource,
+}
 
 pub struct SystemVariables {
     pub shaders: Shaders,
@@ -23,6 +26,7 @@ pub struct SystemVariables {
     pub system_sprites: SystemSprites,
     pub head_sprites: Vec<SpriteResource>,
     pub monster_sprites: Vec<SpriteResource>,
+    pub effect_sprites: EffectSprites,
     pub tick: Tick,
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,
