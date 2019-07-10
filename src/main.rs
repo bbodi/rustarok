@@ -39,14 +39,14 @@ use specs::Join;
 use specs::prelude::*;
 use std::path::Path;
 use crate::hardcoded_consts::{job_name_table, JobId};
-use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites};
+use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, SystemSprites, EffectSprites};
 use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
 use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
 use crate::systems::phys::{PhysicsSystem, FrictionSystem};
 use rand::prelude::ThreadRng;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, Collider, BodyHandle};
-use std::ops::Bound;
+use std::ops::{Bound, Div};
 use ncollide2d::world::CollisionGroups;
 use crate::systems::ui::RenderUI;
 use crate::systems::control::CharacterControlSystem;
@@ -164,13 +164,24 @@ pub struct Tick(u64);
 #[derive(Copy, Clone, Debug)]
 pub struct DeltaTime(pub f32);
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct ElapsedTime(f32);
 
 impl ElapsedTime {
-
-    pub fn add_seconds(&self, seconds: i32) -> ElapsedTime {
+    pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
+    }
+
+    pub fn add(&self, other: &ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 + other.0)
+    }
+
+    pub fn elapsed_since(&self, other: &ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 - other.0)
+    }
+
+    pub fn div(&self, other: f32) -> f32 {
+        self.0 / other
     }
 
     pub fn run_at_least_until_seconds(&mut self, system_time: &ElapsedTime, seconds: i32) {
@@ -315,7 +326,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let (elapsed, (sprite_resources, head_sprites, monster_sprites)) = measure_time(|| {
+    let (elapsed, (sprite_resources, head_sprites, monster_sprites, effect_sprites)) = measure_time(|| {
         let head_sprites = (1..=26).map(|i| {
             let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
             let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
@@ -348,7 +359,12 @@ fn main() {
                 } else { None };
                 vec![male, female]
             }).flatten().filter_map(|it| it).collect::<Vec<SpriteResource>>();
-        (sprite_resources, head_sprites, monster_sprites)
+
+        let effect_sprites = EffectSprites {
+            torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01"))
+        };
+
+        (sprite_resources, head_sprites, monster_sprites, effect_sprites)
     });
 
     info!("act and spr files loaded[{}]: {}ms", sprite_resources.len() + head_sprites.len() + monster_sprites.len(), elapsed.as_millis());
@@ -386,6 +402,7 @@ fn main() {
             numbers: GlTexture::from_file("damage.bmp"),
         },
         monster_sprites,
+        effect_sprites,
         head_sprites,
         tick: Tick(0),
         entity_below_cursor: None,
@@ -415,7 +432,7 @@ fn main() {
         Point2::new(250.0, -200.0),
         10,
         Some(0),
-        1
+        1,
     );
     let desktop_client_entity = ecs_world
         .create_entity()
@@ -660,7 +677,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     pos2d,
                     rng.gen::<usize>() % sprite_count,
                     Some(rng.gen::<usize>() % head_count),
-                    rng.gen_range(1, 5)
+                    rng.gen_range(1, 5),
                 );
 
                 other_entities.push(entity_id);
@@ -696,7 +713,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     pos2d,
                     rng.gen::<usize>() % sprite_count,
                     None,
-                    rng.gen_range(1, 5)
+                    rng.gen_range(1, 5),
                 );
                 other_entities.push(entity_id);
             }

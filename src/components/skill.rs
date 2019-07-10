@@ -7,6 +7,8 @@ use nalgebra::{Vector2, Vector3};
 use crate::systems::SystemVariables;
 use std::sync::{Arc, Mutex};
 use crate::video::draw_lines_inefficiently;
+use crate::systems::render::render_sprite;
+use crate::components::char::MonsterSpriteComponent;
 
 pub trait SkillManifestation {
     fn update(
@@ -86,7 +88,7 @@ impl PushBackWallSkill {
             collider_handle,
             pos,
             half_extents,
-            die_at: system_time.add_seconds(2),
+            die_at: system_time.add_seconds(2.0),
         }
     }
 }
@@ -122,5 +124,22 @@ impl SkillManifestation for PushBackWallSkill {
             ],
             &[0.0, 1.0, 0.0, 1.0],
         );
+//        render_sprite(&system_vars,
+//                      tick,
+//                      MonsterSpriteComponent {
+//                          file_index: 0,
+//                          action_index: 0,
+//                          animation_started: Tick(),
+//                          animation_finish: None,
+//                          direction: 0
+//                      },
+//                      &system_vars.effect_sprites.torch,
+//                      &system_vars.matrices.view,
+//                      &controller,
+//                      &pos,
+//                      [0, 0],
+//                      true,
+//                      1.1,
+//                      &[0.0, 0.0, 1.0, 0.4]);
     }
 }

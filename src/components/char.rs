@@ -11,7 +11,7 @@ pub fn create_char(
     pos2d: Point2<f32>,
     body_index: usize,
     head_index: Option<usize>,
-    radius: i32
+    radius: i32,
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity()
@@ -22,8 +22,8 @@ pub fn create_char(
                 base: MonsterSpriteComponent {
                     file_index: body_index,
                     action_index: ActionIndex::Idle as usize,
-                    animation_started: Tick(0),
-                    animation_finish: None,
+                    animation_started: ElapsedTime(0.0),
+                    animation_duration: None,
                     direction: 0,
                 },
                 head_index: head_index,
@@ -32,8 +32,8 @@ pub fn create_char(
             entity_builder = entity_builder.with(MonsterSpriteComponent {
                 file_index: body_index,
                 action_index: 8,
-                animation_started: Tick(0),
-                animation_finish: None,
+                animation_started: ElapsedTime(0.0),
+                animation_duration: None,
                 direction: 0,
             });
         }
@@ -103,14 +103,14 @@ impl PhysicsComponent {
 //    pub controller: Option<Entity>,
 //}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub enum CharState {
     Idle,
     Walking,
     Sitting,
     PickingItem,
     StandBy,
-    Attacking { attack_ends: Tick },
+    Attacking { attack_ends: ElapsedTime },
     ReceivingDamage,
     Freeze,
     Dead,
@@ -121,6 +121,13 @@ impl CharState {
     pub fn is_attacking(&self) -> bool {
         match self {
             CharState::Attacking { attack_ends: _ } => true,
+            _ => false
+        }
+    }
+
+    pub fn is_walking(&self) -> bool {
+        match self {
+            CharState::Walking => true,
             _ => false
         }
     }
@@ -164,7 +171,7 @@ pub struct CharacterStateComponent {
     state: CharState,
     pub moving_speed: f32,
     pub attack_range: f32,
-    pub attack_speed: f32,
+    pub attack_speed: f32, // attack count per seconds
     pub bounding_rect: SpriteBoundingRect,
     // attacks per second
     dir: usize,
@@ -194,12 +201,17 @@ impl CharacterStateComponent {
         self.dir
     }
 
-    pub fn set_state(&mut self, state: CharState, dir: usize, anim_sprite: &mut PlayerSpriteComponent, tick: Tick, finish: Option<Tick>) {
+    pub fn set_state(&mut self,
+                     state: CharState,
+                     dir: usize,
+                     anim_sprite: &mut PlayerSpriteComponent,
+                     animation_started: ElapsedTime,
+                     animation_duration: Option<ElapsedTime>) {
         self.state = state;
         self.dir = dir;
         anim_sprite.base.direction = dir;
-        anim_sprite.base.animation_started = tick;
-        anim_sprite.base.animation_finish = finish;
+        anim_sprite.base.animation_started = animation_started;
+        anim_sprite.base.animation_duration = animation_duration;
         anim_sprite.base.action_index = state.get_sprite_index() as usize;
     }
 
@@ -219,7 +231,7 @@ pub struct PlayerSpriteComponent {
 pub struct MonsterSpriteComponent {
     pub file_index: usize,
     pub action_index: usize,
-    pub animation_started: Tick,
-    pub animation_finish: Option<Tick>,
+    pub animation_started: ElapsedTime,
+    pub animation_duration: Option<ElapsedTime>,
     pub direction: usize,
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use specs::prelude::*;
 
-use crate::{MapRenderData, Shaders, SpriteResource, Tick};
+use crate::{MapRenderData, Shaders, SpriteResource, Tick, ElapsedTime};
 use crate::cam::Camera;
 use crate::cursor::{CURSOR_NORMAL, CURSOR_ATTACK, CURSOR_STOP, CURSOR_LOCK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -52,12 +52,11 @@ impl<'a> specs::System<'a> for RenderUI {
                 CURSOR_NORMAL
             };
             render_sprite_2d(&system_vars,
-                             tick,
                              &MonsterSpriteComponent {
                                  file_index: 0, //
                                  action_index: cursor.1,
-                                 animation_started: Tick(0),
-                                 animation_finish: None,
+                                 animation_started: ElapsedTime(0.0),
+                                 animation_duration: None,
                                  direction: 0,
                              },
                              &system_vars.system_sprites.cursors,
@@ -67,18 +66,17 @@ impl<'a> specs::System<'a> for RenderUI {
 }
 
 fn render_sprite_2d(system_vars: &SystemVariables,
-                    tick: Tick,
                     animated_sprite: &MonsterSpriteComponent,
                     sprite_res: &SpriteResource,
                     pos: &Vector2<f32>,
 ) {
     // draw layer
-    let animation_elapsed_tick = tick.0 - animated_sprite.animation_started.0;
+    let elapsed_time = system_vars.time.elapsed_since(&animated_sprite.animation_started);
     let idx = animated_sprite.action_index;
 
-    let delay = sprite_res.action.actions[idx].delay;
+    let delay = sprite_res.action.actions[idx].delay as f32 / 1000.0;
     let frame_count = sprite_res.action.actions[idx].frames.len();
-    let frame_index = ((animation_elapsed_tick / (delay / 20) as u64) % frame_count as u64) as usize;
+    let frame_index = ((elapsed_time.div(delay) as usize) % frame_count as usize) as usize;
     let animation = &sprite_res.action.actions[idx].frames[frame_index];
     for layer in &animation.layers {
         if layer.sprite_frame_index < 0 {
