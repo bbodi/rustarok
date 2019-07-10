@@ -99,6 +99,14 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 updater.insert(skill_entity_id, SkillManifestationComponent::new(skill));
             }
             //
+            if controller.is_key_just_pressed(Scancode::R) {
+                let physics_comp = physics_storage.get(controller.char).unwrap();
+                let mut body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
+                let mut new_pos = Isometry2::identity();
+                new_pos.translation.vector = mouse_world_pos.coords;
+                body.set_position(new_pos);
+            }
+            //
             let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
             if char_state.cannot_control_until.has_not_passed(&system_vars.time) {
                 continue;

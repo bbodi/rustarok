@@ -132,6 +132,8 @@ impl Gat {
             for x in largest_rect.start_x..=largest_rect.start_x + largest_rect.width {
                 for y in start_y..=largest_rect.bottom {
                     let i = (y as usize * width) + x as usize;
+                    // TODO alde cas 04
+                    // thread 'main' panicked at 'index out of bounds: the len is 57600 but the index is 57600',
                     non_walkable_cells[i] = false;
                 }
             }
