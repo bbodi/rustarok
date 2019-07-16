@@ -10,7 +10,7 @@ use std::cmp::max;
 use crate::components::controller::{ControllerComponent, SkillKey};
 use crate::components::{BrowserClient, FlyingNumberComponent};
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, TestSkill, SkillDescriptor};
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
 
@@ -207,8 +207,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 draw_rect(0, 0, 130, 19, &[0.0, 0.0, 0.0, 1.0]); // black background
                 draw_rect(1, 1, 128, 17, &[0.44, 0.49, 0.56, 1.0]); // grey inner
 
+                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32) * 124.0;
                 draw_rect(2, 2, 126, 10, &[0.0, 0.0, 0.0, 1.0]); // black health background
-                draw_rect(3, 3, 124, 8, &[0.29, 0.80, 0.11, 1.0]); // green health bar
+                draw_rect(3, 3, hp_percentage as i32, 8, &[0.29, 0.80, 0.11, 1.0]); // green health bar
 
                 draw_rect(2, 12, 126, 5, &[0.0, 0.0, 0.0, 1.0]); // black mana background
                 draw_rect(3, 13, 100, 3, &[0.23, 0.79, 0.88, 1.0]); // blue mana bar
@@ -261,7 +262,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
             if let Some(skill_key) = controller.is_casting_selection {
                 if skill_key == SkillKey::Q {
-                    TestSkill { pos: Point2::new(0.0, 0.0) }.render_target_selection(
+                    Skills::TestSkill { pos: Point2::new(0.0, 0.0) }.render_target_selection(
                         &char_pos,
                         &controller.mouse_world_pos,
                         &system_vars,
@@ -721,9 +722,10 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
             let mut matrix = Matrix4::<f32>::identity();
             let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
-            pos.y += 20.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
-            pos.z -= 10.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
-            pos.x += 10.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
+            let lifetime_perc = system_vars.time.elapsed_since(&number.start_time).div(number.duration as f32);
+            pos.y += 4.0 * lifetime_perc;
+            pos.z -= 2.0 * lifetime_perc;
+            pos.x += 2.0 * lifetime_perc;
             matrix.prepend_translation_mut(&pos);
             shader.set_mat4("model", &matrix);
             shader.set_vec3("color", &number.color);
@@ -739,7 +741,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
 
             vertex_array.bind().draw();
 
-            if system_vars.tick.0 > (number.start_tick.0 + number.duration as u64) {
+            if number.die_at.has_passed(&system_vars.time) {
                 updater.remove::<FlyingNumberComponent>(entity);
             }
         }

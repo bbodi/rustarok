@@ -14,7 +14,7 @@ use specs::join::JoinIter;
 use crate::components::{FlyingNumberType, FlyingNumberComponent};
 use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, EntityTarget};
 use crate::components::controller::{ControllerComponent, ControllerAction, SkillKey};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, TestSkill};
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
 use nphysics2d::object::Body;
 use std::sync::{Arc, Mutex};
 
@@ -82,7 +82,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                             cast_ends: system_vars.time.add_seconds(casting_time_seconds),
                             can_move: false,
                             skill: Arc::new(Mutex::new(Box::new(
-                                TestSkill { pos: controller.mouse_world_pos }
+                                Skills::TestSkill { pos: controller.mouse_world_pos }
                             ))),
                         };
                         char_state.set_state(new_state, dir);

@@ -53,12 +53,13 @@ use ncollide2d::world::CollisionGroups;
 use crate::systems::ui::RenderUI;
 use crate::systems::control_sys::CharacterControlSystem;
 use nphysics2d::solver::SignoriniModel;
-use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius};
+use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius, U16Float, Percentage, U8Float};
 use crate::components::controller::{ControllerComponent, CastMode};
-use crate::components::{BrowserClient, FlyingNumberComponent};
+use crate::components::{BrowserClient, FlyingNumberComponent, AttackComponent};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
+use crate::systems::atk_calc::AttackSystem;
 
 mod common;
 mod cursor;
@@ -322,6 +323,7 @@ fn main() {
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
+    ecs_world.register::<AttackComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
 
@@ -334,6 +336,7 @@ fn main() {
         .with(CharacterControlSystem, "char_control", &["friction_sys", "input_handler", "browser_input_processor"])
         .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
         .with(PhysicsSystem, "physics", &["char_state_update"])
+        .with(AttackSystem, "attack_sys", &["physics"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
@@ -662,8 +665,10 @@ fn imgui_frame(desktop_client_entity: Entity,
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
-                    ui.slider_float(im_str!("Attack Speed"), &mut char_state.attack_speed, 1.0, 5.0)
+                    let mut aspd: f32 = char_state.attack_speed.as_f32();
+                    ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
                         .build();
+                    char_state.attack_speed = U8Float::new(Percentage::from_f32(aspd));
                 }
 
                 ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)

@@ -13,6 +13,7 @@ pub mod ui;
 pub mod control_sys;
 pub mod skill_sys;
 pub mod char_state_sys;
+pub mod atk_calc;
 
 
 pub struct EffectSprites {

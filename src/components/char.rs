@@ -7,9 +7,10 @@ use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
 use crate::systems::Sex;
-use crate::components::skill::{SkillDescriptor};
+use crate::components::skill::SkillDescriptor;
 use crate::systems::control_sys::CharacterControlSystem;
 use std::sync::{Mutex, Arc};
+use std::ops::Mul;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -20,8 +21,10 @@ pub fn create_char(
     radius: i32,
 ) -> Entity {
     let entity_id = {
+        let mut char_comp = CharacterStateComponent::new();
+        char_comp.armor = U8Float::new(Percentage::new(10.0));
         let mut entity_builder = ecs_world.create_entity()
-            .with(CharacterStateComponent::new());
+            .with(char_comp);
         let entity_id = entity_builder.entity;
         entity_builder = entity_builder.with(PlayerSpriteComponent {
             job_id,
@@ -129,7 +132,7 @@ pub enum CharState {
     Sitting,
     PickingItem,
     StandBy,
-    Attacking { attack_ends: ElapsedTime },
+    Attacking { attack_ends: ElapsedTime, target: Entity },
     ReceivingDamage,
     Freeze,
     Dead,
@@ -145,7 +148,7 @@ unsafe impl Sync for CharState {}
 
 unsafe impl Send for CharState {}
 
-impl PartialEq  for CharState {
+impl PartialEq for CharState {
     fn eq(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
@@ -156,14 +159,14 @@ impl Eq for CharState {}
 impl CharState {
     pub fn is_attacking(&self) -> bool {
         match self {
-            CharState::Attacking { attack_ends: _ } => true,
+            CharState::Attacking { attack_ends: _, target: _ } => true,
             _ => false
         }
     }
 
     pub fn is_casting(&self) -> bool {
         match self {
-            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move: _, skill: _ } => true,
+            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move: _, skill: _ } => true,
             _ => false
         }
     }
@@ -182,11 +185,11 @@ impl CharState {
             CharState::Sitting => ActionIndex::Sitting,
             CharState::PickingItem => ActionIndex::PickingItem,
             CharState::StandBy => ActionIndex::StandBy,
-            CharState::Attacking { attack_ends: _ } => ActionIndex::Attacking1,
+            CharState::Attacking { attack_ends: _, target: _ } => ActionIndex::Attacking1,
             CharState::ReceivingDamage => ActionIndex::ReceivingDamage,
             CharState::Freeze => ActionIndex::Freeze1,
             CharState::Dead => ActionIndex::Dead,
-            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move: _, skill: _ } => ActionIndex::CastingSpell,
+            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move: _, skill: _ } => ActionIndex::CastingSpell,
         }
     }
 }
@@ -213,33 +216,109 @@ pub enum EntityTarget {
     Pos(Point2<f32>),
 }
 
+#[derive(Copy, Clone)]
+pub struct Percentage(f32);
+
+impl Percentage {
+    pub fn new(percentage: f32) -> Percentage {
+        Percentage(percentage / 100.0)
+    }
+
+    pub fn from_f32(percentage: f32) -> Percentage {
+        Percentage(percentage)
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
+    }
+}
+
+/// Representing f32 values from 0 to 1.0 or 0% to 100%, with 0.1% increments
+/// e.g. U16Float(550).as_f32() == 55% == 0.55
+/// e.g. U16Float(10).as_f32() == 1% == 0.01
+/// e.g. U16Float(12).as_f32() == 1.2% == 0.012
+/// e.g. U16Float(60000).as_f32() == 600% == 60.0
+#[derive(Copy, Clone, Debug)]
+pub struct U16Float(u16);
+
+impl U16Float {
+    pub fn new(p: Percentage) -> U16Float {
+        U16Float((p.as_f32() * 1000.0) as u16)
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0 as f32 / 1000.0
+    }
+}
+
+/// Representing f32 values from 0 to 5.1 or 0% to 510%, with 0.1% increments
+/// e.g. U8Float(250).as_f32() == 500% == 5
+/// e.g. U8Float(10).as_f32() == 20% == 0.2
+/// e.g. U8Float(12).as_f32() == 24% == 0.24
+/// e.g. U8Float(1).as_f32() == 2% == 0.02
+#[derive(Copy, Clone, Debug)]
+pub struct U8Float(u8);
+
+impl U8Float {
+    pub fn new(p: Percentage) -> U8Float {
+        U8Float((p.as_f32() * 50.0) as u8)
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0 as f32 / 50.0
+    }
+
+    pub fn multiply(&self, num: f32) -> f32 {
+        self.as_f32() * num
+    }
+
+    pub fn add_me_to_as_percentage(&self, num: f32) -> f32 {
+        num + (self.as_f32() * num)
+    }
+
+    pub fn subtract_me_from_as_percentage(&self, num: f32) -> f32 {
+        num - (self.as_f32() * num)
+    }
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pub target: Option<EntityTarget>,
     state: CharState,
     prev_state: CharState,
-    pub moving_speed: f32,
-    pub attack_range: f32,
-    pub attack_speed: f32,
     // attack count per seconds
     pub bounding_rect_2d: SpriteBoundingRect,
     // attacks per second
     dir: usize,
     pub cannot_control_until: ElapsedTime,
+
+    pub max_hp: u32,
+    pub hp: i32,
+    pub moving_speed: U8Float,
+    pub attack_range: U8Float,
+    pub attack_speed: U8Float,
+    pub attack_damage: u16,
+    pub attack_damage_bonus: U8Float,
+    pub armor: U8Float,
 }
 
 impl CharacterStateComponent {
     pub fn new() -> CharacterStateComponent {
         CharacterStateComponent {
             target: None,
-            moving_speed: 600.0,
-            attack_range: 2.0,
+            moving_speed: U8Float::new(Percentage::new(100.0)),
+            attack_range: U8Float::new(Percentage::new(100.0)),
             state: CharState::Idle,
             prev_state: CharState::Idle,
-            attack_speed: 2.0,
+            attack_speed: U8Float::new(Percentage::new(100.0)),
+            attack_damage: 76,
+            attack_damage_bonus: U8Float::new(Percentage::new(0.0)),
+            armor: U8Float::new(Percentage::new(0.0)),
             dir: 0,
             bounding_rect_2d: SpriteBoundingRect::default(),
             cannot_control_until: ElapsedTime(0.0),
+            max_hp: 2000,
+            hp: 2000
         }
     }
 
@@ -252,13 +331,13 @@ impl CharacterStateComponent {
 
     pub fn can_move(&self, sys_time: &ElapsedTime) -> bool {
         let can_move_by_state = match self.state {
-            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move, skill: _ } => can_move,
+            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move, skill: _ } => can_move,
             CharState::Idle => true,
             CharState::Walking(_pos) => true,
             CharState::Sitting => true,
             CharState::PickingItem => false,
             CharState::StandBy => true,
-            CharState::Attacking { attack_ends: _ } => false,
+            CharState::Attacking { attack_ends: _, target: _ } => false,
             CharState::ReceivingDamage => true,
             CharState::Freeze => false,
             CharState::Dead => false,
