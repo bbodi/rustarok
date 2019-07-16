@@ -13,11 +13,11 @@ use crate::cam::Camera;
 use crate::components::{FlyingNumberComponent, FlyingNumberType};
 use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, EntityTarget};
 use crate::components::controller::ControllerComponent;
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::render::DIRECTION_TABLE;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::systems::control::CharacterControlSystem;
+use crate::systems::control_sys::CharacterControlSystem;
 
 pub struct CharacterStateUpdateSystem;
 
@@ -63,19 +63,19 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     cast_started,
                     cast_ends,
                     can_move,
-                    skill: skill_id
+                    skill
                 } => {
                     if cast_ends.has_passed(&system_vars.time) {
                         let skill_entity_id = entities.create();
-                        let skill = match skill_id {
-                            Skills::Test(pos) => PushBackWallSkill::new(
-                                &mut physics_world,
-                                pos.coords,
-                                skill_entity_id,
-                                &system_vars.time,
-                            )
-                        };
-                        updater.insert(skill_entity_id, SkillManifestationComponent::new(skill));
+
+                        let manifestation = skill.lock().unwrap().create_manifestation(
+                            &mut physics_world,
+                            &system_vars,
+                        );
+                        updater.insert(skill_entity_id, SkillManifestationComponent::new(
+                            skill_entity_id,
+                            manifestation)
+                        );
 
                         //
                         char_state.set_state(CharState::Idle, char_state.dir());

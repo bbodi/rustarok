@@ -109,13 +109,13 @@ impl<'a> specs::System<'a> for RenderUI {
             }
 
             // Draw cursor
-            let cursor = if let Some(entity_below_cursor) = system_vars.entity_below_cursor {
+            let cursor = if let Some(entity_below_cursor) = controller.entity_below_cursor {
                 if entity_below_cursor == controller.char {
                     CURSOR_LOCK
                 } else {
                     CURSOR_ATTACK
                 }
-            } else if !system_vars.cell_below_cursor_walkable {
+            } else if !controller.cell_below_cursor_walkable {
                 CURSOR_STOP
             } else {
                 CURSOR_NORMAL

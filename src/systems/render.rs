@@ -7,10 +7,10 @@ use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PE
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
-use crate::components::controller::ControllerComponent;
+use crate::components::controller::{ControllerComponent, SkillKey};
 use crate::components::{BrowserClient, FlyingNumberComponent};
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, TestSkill, SkillDescriptor};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
 
@@ -100,7 +100,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
     fn run(&mut self, (
         entities,
-        input_storage,
+        controller_storage,
         browser_client_storage,
         physics_storage,
         player_sprite_storage,
@@ -115,11 +115,16 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
+        for (controller, _not_browser) in (&controller_storage, !&browser_client_storage).join() {
+            // for autocompletion
+            let controller: &ControllerComponent = controller;
             // Draw players
             for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
                                                                    &player_sprite_storage,
                                                                    &mut char_state_storage).join() {
+                // for autocompletion
+                let char_state: &mut CharacterStateComponent = char_state;
+
                 let pos = physics.pos(&physics_world);
                 let tick = system_vars.tick;
                 let body_res = {
@@ -130,7 +135,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     let sprites = &system_vars.sprites.head_sprites;
                     &sprites[animated_sprite.sex as usize][animated_sprite.head_index]
                 };
-                if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                if controller.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
                                                                          &animated_sprite.descr,
                                                                          body_res,
@@ -218,7 +223,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     let sprites = &system_vars.sprites.monster_sprites;
                     &sprites[&animated_sprite.monster_id]
                 };
-                if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                if controller.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, bounding_rect) = render_sprite(&system_vars,
                                                                     &animated_sprite.descr,
                                                                     body_res,
@@ -253,6 +258,16 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &system_vars.matrices.projection,
                 &system_vars.map_render_data,
             );
+
+            if let Some(skill_key) = controller.is_casting_selection {
+                if skill_key == SkillKey::Q {
+                    TestSkill { pos: Point2::new(0.0, 0.0) }.render_target_selection(
+                        &char_pos,
+                        &controller.mouse_world_pos,
+                        &system_vars,
+                    );
+                }
+            }
 
             for (skill) in (&skill_storage).join() {
                 skill.render(&system_vars);

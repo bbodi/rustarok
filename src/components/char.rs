@@ -7,8 +7,9 @@ use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
 use crate::systems::Sex;
-use crate::components::skill::Skills;
-use crate::systems::control::CharacterControlSystem;
+use crate::components::skill::{SkillDescriptor};
+use crate::systems::control_sys::CharacterControlSystem;
+use std::sync::{Mutex, Arc};
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -121,14 +122,7 @@ impl PhysicsComponent {
     }
 }
 
-//#[derive(Component)]
-//pub struct CharacterStateComponent {
-//    pub target_pos: Point2<f32>,
-//    pub state: ActionIndex,
-//    pub controller: Option<Entity>,
-//}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub enum CharState {
     Idle,
     Walking(Point2<f32>),
@@ -143,9 +137,13 @@ pub enum CharState {
         cast_started: ElapsedTime,
         cast_ends: ElapsedTime,
         can_move: bool,
-        skill: Skills,
+        skill: Arc<Mutex<Box<SkillDescriptor>>>,
     },
 }
+
+unsafe impl Sync for CharState {}
+
+unsafe impl Send for CharState {}
 
 impl PartialEq  for CharState {
     fn eq(&self, other: &Self) -> bool {
@@ -215,7 +213,7 @@ pub enum EntityTarget {
     Pos(Point2<f32>),
 }
 
-#[derive(Component, Debug)]
+#[derive(Component)]
 pub struct CharacterStateComponent {
     pub target: Option<EntityTarget>,
     state: CharState,
@@ -247,7 +245,8 @@ impl CharacterStateComponent {
 
     pub fn set_and_get_state_change(&mut self) -> bool {
         let ret = self.prev_state != self.state;
-        self.prev_state = self.state;
+        // TODO: is it necessary to clone here?
+        self.prev_state = self.state.clone();
         return ret;
     }
 
@@ -267,8 +266,8 @@ impl CharacterStateComponent {
         can_move_by_state && self.cannot_control_until.has_passed(&sys_time)
     }
 
-    pub fn state(&self) -> CharState {
-        self.state
+    pub fn state(&self) -> &CharState {
+        &self.state
     }
 
     pub fn dir(&self) -> usize {
