@@ -111,11 +111,11 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
                                 view: &Matrix4<f32>,
                                 points: &[Vector3<f32>],
                                 color: &[f32; 4]) {
-    trimesh_shader.gl_use();
-    trimesh_shader.set_mat4("projection", &projection);
-    trimesh_shader.set_mat4("view", view);
-    trimesh_shader.set_vec4("color", color);
-    trimesh_shader.set_mat4("model", &Matrix4::identity());
+    let shader = trimesh_shader.gl_use();
+    shader.set_mat4("projection", &projection);
+    shader.set_mat4("view", view);
+    shader.set_vec4("color", color);
+    shader.set_mat4("model", &Matrix4::identity());
     VertexArray::new(
         gl::LINE_LOOP,
         points, points.len(), None, vec![
@@ -132,15 +132,15 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
                                  center: &Vector3<f32>,
                                  r: f32,
                                  color: &[f32; 4]) {
-    trimesh_shader.gl_use();
-    trimesh_shader.set_mat4("projection", &projection);
-    trimesh_shader.set_mat4("view", view);
-    trimesh_shader.set_vec4("color", color);
+    let shader = trimesh_shader.gl_use();
+    shader.set_mat4("projection", &projection);
+    shader.set_mat4("view", view);
+    shader.set_vec4("color", color);
     let mut matrix = Matrix4::identity();
     matrix.prepend_translation_mut(center);
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
     matrix = matrix * rotation;
-    trimesh_shader.set_mat4("model", &matrix);
+    shader.set_mat4("model", &matrix);
     let mut capsule_mesh = ncollide2d::procedural::circle(
         &(r * 2.0),
         32,
@@ -493,13 +493,11 @@ pub struct ShaderProgram {
     id: gl::types::GLuint,
 }
 
-impl ShaderProgram {
-    pub fn gl_use(&self) {
-        unsafe {
-            gl::UseProgram(self.id);
-        }
-    }
+pub struct ActiveShaderProgram {
+    id: gl::types::GLuint,
+}
 
+impl ActiveShaderProgram {
     pub fn set_mat4(&self, name: &str, matrix: &Matrix4<f32>) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
@@ -576,6 +574,17 @@ impl ShaderProgram {
         unsafe {
             let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform1f(location, value);
+        }
+    }
+}
+
+impl ShaderProgram {
+    pub fn gl_use(&self) -> ActiveShaderProgram {
+        unsafe {
+            gl::UseProgram(self.id);
+        }
+        ActiveShaderProgram {
+            id: self.id
         }
     }
 

@@ -5,7 +5,7 @@ layout (location = 1) in vec2 aTexCoord;
 
 uniform mat4 model;
 uniform mat4 projection;
-uniform vec3 size;
+uniform vec2 size;
 uniform vec2 offset;
 
 

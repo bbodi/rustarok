@@ -2,7 +2,7 @@ use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
 use nalgebra::Vector2;
 use specs::prelude::*;
-use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use crate::components::char::{PhysicsComponent, CharacterStateComponent, CharState};
 use ncollide2d::query::Proximity;
 use crate::components::skill::PushBackWallSkill;
 use nphysics2d::object::{Body, BodyHandle};
@@ -81,6 +81,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
             let entity_id = body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
             let char_state = char_storage.get_mut(*entity_id).unwrap();
             char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
+            char_state.set_state(CharState::ReceivingDamage, char_state.dir());
             body.set_linear_velocity(body.velocity().linear * -1.0);
         }
     }

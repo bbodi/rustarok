@@ -7,6 +7,8 @@ use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
 use crate::systems::Sex;
+use crate::components::skill::Skills;
+use crate::systems::control::CharacterControlSystem;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -29,7 +31,7 @@ pub fn create_char(
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
-            }
+            },
         });
         entity_builder.build()
     };
@@ -57,7 +59,7 @@ pub fn create_monster(
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
-            }
+            },
         });
         entity_builder.build()
     };
@@ -67,7 +69,6 @@ pub fn create_monster(
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
 }
-
 
 
 // radius = ComponentRadius * 0.5f32
@@ -130,7 +131,7 @@ impl PhysicsComponent {
 #[derive(Debug, Clone, Copy)]
 pub enum CharState {
     Idle,
-    Walking,
+    Walking(Point2<f32>),
     Sitting,
     PickingItem,
     StandBy,
@@ -138,8 +139,21 @@ pub enum CharState {
     ReceivingDamage,
     Freeze,
     Dead,
-    CastingSpell,
+    CastingSkill {
+        cast_started: ElapsedTime,
+        cast_ends: ElapsedTime,
+        can_move: bool,
+        skill: Skills,
+    },
 }
+
+impl PartialEq  for CharState {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+impl Eq for CharState {}
 
 impl CharState {
     pub fn is_attacking(&self) -> bool {
@@ -149,9 +163,16 @@ impl CharState {
         }
     }
 
+    pub fn is_casting(&self) -> bool {
+        match self {
+            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move: _, skill: _ } => true,
+            _ => false
+        }
+    }
+
     pub fn is_walking(&self) -> bool {
         match self {
-            CharState::Walking => true,
+            CharState::Walking(_pos) => true,
             _ => false
         }
     }
@@ -159,7 +180,7 @@ impl CharState {
     pub fn get_sprite_index(&self) -> ActionIndex {
         match self {
             CharState::Idle => ActionIndex::Idle,
-            CharState::Walking => ActionIndex::Walking,
+            CharState::Walking(_pos) => ActionIndex::Walking,
             CharState::Sitting => ActionIndex::Sitting,
             CharState::PickingItem => ActionIndex::PickingItem,
             CharState::StandBy => ActionIndex::StandBy,
@@ -167,7 +188,7 @@ impl CharState {
             CharState::ReceivingDamage => ActionIndex::ReceivingDamage,
             CharState::Freeze => ActionIndex::Freeze1,
             CharState::Dead => ActionIndex::Dead,
-            CharState::CastingSpell => ActionIndex::CastingSpell,
+            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move: _, skill: _ } => ActionIndex::CastingSpell,
         }
     }
 }
@@ -188,15 +209,22 @@ impl SpriteBoundingRect {
     }
 }
 
+#[derive(Debug)]
+pub enum EntityTarget {
+    OtherEntity(Entity),
+    Pos(Point2<f32>),
+}
+
 #[derive(Component, Debug)]
 pub struct CharacterStateComponent {
-    pub target_pos: Option<Point2<f32>>,
-    pub target: Option<Entity>,
+    pub target: Option<EntityTarget>,
     state: CharState,
+    prev_state: CharState,
     pub moving_speed: f32,
     pub attack_range: f32,
-    pub attack_speed: f32, // attack count per seconds
-    pub bounding_rect: SpriteBoundingRect,
+    pub attack_speed: f32,
+    // attack count per seconds
+    pub bounding_rect_2d: SpriteBoundingRect,
     // attacks per second
     dir: usize,
     pub cannot_control_until: ElapsedTime,
@@ -205,16 +233,38 @@ pub struct CharacterStateComponent {
 impl CharacterStateComponent {
     pub fn new() -> CharacterStateComponent {
         CharacterStateComponent {
-            target_pos: None,
+            target: None,
             moving_speed: 600.0,
             attack_range: 2.0,
             state: CharState::Idle,
-            target: None,
+            prev_state: CharState::Idle,
             attack_speed: 2.0,
             dir: 0,
-            bounding_rect: SpriteBoundingRect::default(),
+            bounding_rect_2d: SpriteBoundingRect::default(),
             cannot_control_until: ElapsedTime(0.0),
         }
+    }
+
+    pub fn set_and_get_state_change(&mut self) -> bool {
+        let ret = self.prev_state != self.state;
+        self.prev_state = self.state;
+        return ret;
+    }
+
+    pub fn can_move(&self, sys_time: &ElapsedTime) -> bool {
+        let can_move_by_state = match self.state {
+            CharState::CastingSkill { cast_started:_, cast_ends: _, can_move, skill: _ } => can_move,
+            CharState::Idle => true,
+            CharState::Walking(_pos) => true,
+            CharState::Sitting => true,
+            CharState::PickingItem => false,
+            CharState::StandBy => true,
+            CharState::Attacking { attack_ends: _ } => false,
+            CharState::ReceivingDamage => true,
+            CharState::Freeze => false,
+            CharState::Dead => false,
+        };
+        can_move_by_state && self.cannot_control_until.has_passed(&sys_time)
     }
 
     pub fn state(&self) -> CharState {
@@ -228,20 +278,19 @@ impl CharacterStateComponent {
     pub fn set_state(&mut self,
                      state: CharState,
                      dir: usize,
-                     anim_sprite: &mut SpriteRenderDescriptor,
+                     /*anim_sprite: &mut SpriteRenderDescriptor,
                      animation_started: ElapsedTime,
-                     animation_duration: Option<ElapsedTime>) {
+                     animation_duration: Option<ElapsedTime>*/) {
         self.state = state;
         self.dir = dir;
-        anim_sprite.direction = dir;
-        anim_sprite.animation_started = animation_started;
-        anim_sprite.forced_duration = animation_duration;
-        anim_sprite.action_index = state.get_sprite_index() as usize;
+//        anim_sprite.direction = dir;
+//        anim_sprite.animation_started = animation_started;
+//        anim_sprite.forced_duration = animation_duration;
+//        anim_sprite.action_index = state.get_sprite_index() as usize;
     }
 
-    pub fn set_dir(&mut self, dir: usize, anim_sprite: &mut PlayerSpriteComponent) {
+    pub fn set_dir(&mut self, dir: usize) {
         self.dir = dir;
-        anim_sprite.descr.direction = dir;
     }
 }
 
