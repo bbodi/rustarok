@@ -136,6 +136,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             );
                         }
                     }
+                } else { // no target and no receieving damage, casting or attacking
+                    char_state.set_state(CharState::Idle, char_state.dir());
                 }
 
                 if let CharState::Walking((target_pos)) = char_state.state() {
@@ -155,8 +157,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 let state = char_state.state();
                 sprite.descr.animation_started = system_vars.time;
                 sprite.descr.forced_duration = match state {
-                    CharState::Attacking { attack_ends } => Some(attack_ends.diff(&system_vars.time)),
-                    CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.diff(&system_vars.time)),
+                    CharState::Attacking { attack_ends } => Some(attack_ends.minus(&system_vars.time)),
+                    CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.minus(&system_vars.time)),
                     _ => None
                 };
                 sprite.descr.action_index = state.get_sprite_index() as usize;
