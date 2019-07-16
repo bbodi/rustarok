@@ -1,11 +1,12 @@
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{PhysicsWorld, ElapsedTime};
+use crate::{PhysicsWorld, ElapsedTime, SKILL_AREA_COLLISION_GROUP};
 use nalgebra::Vector2;
 use specs::prelude::*;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, CharState};
 use ncollide2d::query::Proximity;
 use crate::components::skill::PushBackWallSkill;
-use nphysics2d::object::{Body, BodyHandle};
+use nphysics2d::object::{Body, BodyHandle, ColliderHandle, Collider};
+use ncollide2d::events::{ContactEvent, ContactEvents};
 
 pub struct PhysicsSystem;
 
@@ -62,27 +63,55 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         physics_world.step();
 
         //
-        let events = physics_world.proximity_events();
-        let bodies: Vec<BodyHandle> = events.iter().map(|event| {
+        let mut bodies: Vec<(ColliderHandle, ColliderHandle)> = physics_world.proximity_events().iter().map(|event| {
+            dbg!(&event);
             if event.new_status == Proximity::Intersecting {
-                let body_handle = {
-                    let collider1_body = physics_world.collider(event.collider1).unwrap().body();
+                let (char_body_collider, other_obj_collider) = {
+                    let collider1 = physics_world.collider(event.collider1).unwrap();
+                    let collider1_body = collider1.body();
+                    let collider2 = physics_world.collider(event.collider2).unwrap();
+                    let collider2_body = collider2.body();
                     if collider1_body.is_ground() {
-                        physics_world.collider(event.collider2).unwrap().body()
+                        (collider2, collider1)
                     } else {
-                        collider1_body
+                        (collider1, collider2)
                     }
                 };
-                Some(body_handle)
+                Some((char_body_collider.handle(), other_obj_collider.handle()))
             } else { None }
         }).filter(|it| it.is_some()).map(|it| it.unwrap()).collect();
-        for body_handle in bodies {
-            let body = physics_world.rigid_body_mut(body_handle).unwrap();
-            let entity_id = body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
-            let char_state = char_storage.get_mut(*entity_id).unwrap();
-            char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
-            char_state.set_state(CharState::ReceivingDamage, char_state.dir());
-            body.set_linear_velocity(body.velocity().linear * -1.0);
+        bodies.extend(
+            physics_world.contact_events().iter().map(|event| {
+                dbg!(&event);
+                if let ContactEvent::Started(handle1, handle2) = event {
+                    let (char_body_collider, other_obj_collider) = {
+                        let collider1 = physics_world.collider(*handle1).unwrap();
+                        let collider1_body = collider1.body();
+                        let collider2 = physics_world.collider(*handle2).unwrap();
+                        let collider2_body = collider2.body();
+                        if collider1_body.is_ground() {
+                            (collider2, collider1)
+                        } else {
+                            (collider1, collider2)
+                        }
+                    };
+                    Some((char_body_collider.handle(), other_obj_collider.handle()))
+                } else { None }
+            }).filter(|it| it.is_some()).map(|it| it.unwrap())
+        );
+
+        for (char_collider_handle, other_obj_collider_handle) in bodies {
+            let other_obj_collider = physics_world.collider(other_obj_collider_handle).unwrap();
+            let collide_with_skill = other_obj_collider.collision_groups().is_member_of(SKILL_AREA_COLLISION_GROUP);
+            if collide_with_skill {
+                let char_body = physics_world.collider(char_collider_handle).unwrap().body();
+                let body = physics_world.rigid_body_mut(char_body).unwrap();
+                let entity_id = body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
+                let char_state = char_storage.get_mut(*entity_id).unwrap();
+                char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
+                char_state.set_state(CharState::ReceivingDamage, char_state.dir());
+                body.set_linear_velocity(body.velocity().linear * -1.0);
+            }
         }
     }
 }

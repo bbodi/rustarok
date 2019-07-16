@@ -51,10 +51,10 @@ use nphysics2d::object::{ColliderDesc, Collider, BodyHandle};
 use std::ops::{Bound, Div};
 use ncollide2d::world::CollisionGroups;
 use crate::systems::ui::RenderUI;
-use crate::systems::control::CharacterControlSystem;
+use crate::systems::control_sys::CharacterControlSystem;
 use nphysics2d::solver::SignoriniModel;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius};
-use crate::components::controller::ControllerComponent;
+use crate::components::controller::{ControllerComponent, CastMode};
 use crate::components::{BrowserClient, FlyingNumberComponent};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use crate::systems::skill_sys::SkillSystem;
@@ -173,7 +173,7 @@ pub struct DeltaTime(pub f32);
 #[derive(Debug, Copy, Clone)]
 pub struct ElapsedTime(f32);
 
-impl PartialEq  for ElapsedTime {
+impl PartialEq for ElapsedTime {
     fn eq(&self, other: &Self) -> bool {
         (self.0 * 1000.0) as u32 == (other.0 * 1000.0) as u32
     }
@@ -404,6 +404,7 @@ fn main() {
               sprites.monster_sprites.len(), elapsed.as_millis());
 
     let mut map_name_filter = ImString::new("prontera");
+    let mut filtered_map_names = vec![];
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
         if dir_entry.file_name().into_string().unwrap().ends_with("rsw") {
@@ -431,8 +432,6 @@ fn main() {
         shaders,
         sprites,
         tick: Tick(0),
-        entity_below_cursor: None,
-        cell_below_cursor_walkable: false,
         dt: DeltaTime(0.0),
         time: ElapsedTime(0.0),
         matrices: render_matrices,
@@ -524,6 +523,7 @@ fn main() {
             &mut entity_count,
             &mut map_name_filter,
             &all_map_names,
+            &mut filtered_map_names,
             fps,
             &mut other_entities,
         ) {
@@ -587,6 +587,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                entity_count: &mut i32,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
+               mut filtered_map_names: &mut Vec<String>,
                fps: u64,
                other_entities: &mut Vec<Entity>) -> Option<String> {
     let ui = video.imgui_sdl2.frame(&video.window,
@@ -600,19 +601,24 @@ fn imgui_frame(desktop_client_entity: Entity,
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
             .build(|| {
                 let map_name_filter_clone = map_name_filter.clone();
-                let filtered_map_names: Vec<&String> = all_map_names.iter()
-                    .filter(|map_name| {
-                        let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
-                        matc.is_some()
-                    }).collect();
                 if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
-                    .enter_returns_true(true)
+                    .enter_returns_true(false)
                     .build() {
-                    if let Some(&map_name) = filtered_map_names.get(0) {
-                        ret = Some(map_name.to_owned());
-                    }
+                    filtered_map_names.clear();
+                    filtered_map_names.extend(
+                        all_map_names
+                            .iter()
+                            .filter(|map_name| {
+                                let matc = sublime_fuzzy::best_match(map_name_filter_clone.to_str(), map_name);
+                                matc.is_some()
+                            })
+                            .map(|it| it.to_owned())
+                    );
+//                    if let Some(&map_name) = filtered_map_names.get(0) {
+//                        ret = Some(map_name.to_owned());
+//                    }
                 }
-                for &map_name in filtered_map_names.iter() {
+                for map_name in filtered_map_names.iter() {
                     if ui.small_button(&ImString::new(map_name.as_str())) {
                         ret = Some(map_name.to_owned());
                     }
@@ -632,6 +638,26 @@ fn imgui_frame(desktop_client_entity: Entity,
                     .build();
 
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
+
+                {
+                    let controller = storage.get_mut(desktop_client_entity).unwrap();
+                    let mut cast_mode = match controller.cast_mode {
+                        CastMode::Normal => 0,
+                        CastMode::OnKeyPress => 1,
+                        CastMode::OnKeyRelease => 2,
+                    };
+                    if ui.combo(im_str!("quick_cast"), &mut cast_mode,
+                                &[im_str!("Off"), im_str!("On"), im_str!("On Release")],
+                                10,
+                    ) {
+                        controller.cast_mode = match cast_mode {
+                            0 => CastMode::Normal,
+                            1 => CastMode::OnKeyPress,
+                            _ => CastMode::OnKeyRelease,
+                        };
+                    }
+                }
+
                 let controller = storage.get(desktop_client_entity).unwrap();
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();

@@ -4,12 +4,13 @@ use std::collections::HashMap;
 use crate::video::GlTexture;
 use specs::Entity;
 use crate::consts::{JobId, MonsterId};
+use crate::components::controller::WorldCoords;
 
 pub mod input;
 pub mod phys;
 pub mod render;
 pub mod ui;
-pub mod control;
+pub mod control_sys;
 pub mod skill_sys;
 pub mod char_state_sys;
 
@@ -39,8 +40,6 @@ pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub tick: Tick,
-    pub entity_below_cursor: Option<Entity>,
-    pub cell_below_cursor_walkable: bool,
     pub dt: DeltaTime,
     pub time: ElapsedTime, // extract from the struct?
     pub matrices: RenderMatrices,

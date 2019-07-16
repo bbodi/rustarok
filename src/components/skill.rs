@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use crate::video::draw_lines_inefficiently;
 use crate::systems::render::render_sprite;
 use crate::components::char::{MonsterSpriteComponent, SpriteRenderDescriptor};
+use crate::components::controller::WorldCoords;
 
 pub trait SkillManifestation {
     fn update(
@@ -26,13 +27,18 @@ pub trait SkillManifestation {
 #[storage(HashMapStorage)]
 #[derive(Component)]
 pub struct SkillManifestationComponent {
+    pub entity_id: Entity,
     pub skill: Arc<Mutex<Box<SkillManifestation>>>,
 }
 
 impl SkillManifestationComponent {
-    pub fn new(skill: impl SkillManifestation + 'static) -> SkillManifestationComponent {
+    pub fn new(
+        entity_id: Entity,
+        skill: Box<SkillManifestation>,
+    ) -> SkillManifestationComponent {
         SkillManifestationComponent {
-            skill: Arc::new(Mutex::new(Box::new(skill)))
+            entity_id,
+            skill: Arc::new(Mutex::new(skill)),
         }
     }
 
@@ -56,9 +62,67 @@ unsafe impl Sync for SkillManifestationComponent {}
 
 unsafe impl Send for SkillManifestationComponent {}
 
-#[derive(Debug, Copy, Clone)]
-pub enum Skills {
-    Test(Point2<f32>)
+
+pub trait SkillDescriptor {
+    fn create_manifestation(
+        &self,
+        physics_world: &mut PhysicsWorld,
+        system_vars: &SystemVariables,
+    ) -> Box<SkillManifestation>;
+
+    fn render_target_selection(
+        &self,
+        char_pos: &Vector2<f32>,
+        mouse_pos: &WorldCoords,
+        system_vars: &SystemVariables,
+    );
+}
+
+pub struct TestSkill {
+    //  TODO: it is needed for create manifestation, not here
+    pub pos: WorldCoords,
+}
+
+impl SkillDescriptor for TestSkill {
+    fn create_manifestation(
+        &self,
+        physics_world: &mut PhysicsWorld,
+        system_vars: &SystemVariables,
+    ) -> Box<SkillManifestation> {
+        Box::new(
+            PushBackWallSkill::new(
+                physics_world,
+                self.pos.coords,
+                &system_vars.time,
+            )
+        )
+    }
+
+    fn render_target_selection(
+        &self,
+        char_pos: &Vector2<f32>,
+        mouse_pos: &WorldCoords,
+        system_vars: &SystemVariables
+    ) {
+        let half_extents = Vector2::new(1.0, 2.0);
+        let half = half_extents;
+        let bottom_left = mouse_pos.coords - Vector2::new(-half.x, -half.y);
+        let top_left = mouse_pos.coords - Vector2::new(-half.x, half.y);
+        let top_right = mouse_pos.coords - Vector2::new(half.x, half.y);
+        let bottom_right = mouse_pos.coords - Vector2::new(half.x, -half.y);
+        draw_lines_inefficiently(
+            &system_vars.shaders.trimesh_shader,
+            &system_vars.matrices.projection,
+            &system_vars.matrices.view,
+            &[
+                Vector3::new(bottom_left.x, 1.0, bottom_left.y),
+                Vector3::new(top_left.x, 1.0, top_left.y),
+                Vector3::new(top_right.x, 1.0, top_right.y),
+                Vector3::new(bottom_right.x, 1.0, bottom_right.y),
+            ],
+            &[0.0, 1.0, 0.0, 1.0],
+        );
+    }
 }
 
 pub struct PushBackWallSkill {
@@ -72,7 +136,6 @@ pub struct PushBackWallSkill {
 impl PushBackWallSkill {
     pub fn new(physics_world: &mut PhysicsWorld,
                pos: Vector2<f32>,
-               entity_id: Entity,
                system_time: &ElapsedTime) -> PushBackWallSkill {
         let half_extents = Vector2::new(1.0, 2.0);
 
@@ -80,10 +143,9 @@ impl PushBackWallSkill {
             ncollide2d::shape::Cuboid::new(half_extents)
         );
         let collider_handle = ColliderDesc::new(cuboid)
-            .sensor(true)
-            .density(10.0)
+            .density(1000.0)
             .translation(pos)
-            .user_data(entity_id)
+//            .user_data(entity_id)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[SKILL_AREA_COLLISION_GROUP])
                 .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
@@ -136,7 +198,7 @@ impl SkillManifestation for PushBackWallSkill {
                           action_index: 0,
                           animation_started: self.created_at,
                           forced_duration: None,
-                          direction: 0
+                          direction: 0,
                       },
                       &system_vars.sprites.effect_sprites.torch,
                       &system_vars.matrices.view,

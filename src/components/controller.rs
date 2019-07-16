@@ -2,7 +2,7 @@ use specs::Entity;
 use crate::cam::Camera;
 use std::collections::{HashSet, HashMap};
 use sdl2::keyboard::Scancode;
-use nalgebra::Point3;
+use nalgebra::{Point3, Point2};
 use specs::prelude::*;
 
 #[derive(Default)]
@@ -28,25 +28,101 @@ impl KeyState {
     }
 }
 
+pub type ScreenCoords = Point2<u16>;
+pub type WorldCoords = Point2<f32>;
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum SkillKey {
+    Q,
+    W,
+    E,
+    R,
+    D,
+    Num1,
+    Num2,
+    Num3,
+}
+
+impl SkillKey {
+    pub fn scancode(&self) -> Scancode {
+        match self {
+            SkillKey::Q => Scancode::Q,
+            SkillKey::W => Scancode::W,
+            SkillKey::E => Scancode::E,
+            SkillKey::R => Scancode::R,
+            SkillKey::D => Scancode::D,
+            SkillKey::Num1 => Scancode::Num1,
+            SkillKey::Num2 => Scancode::Num2,
+            SkillKey::Num3 => Scancode::Num3,
+        }
+    }
+}
+
+pub const ALL_SKILL_KEYS: [SkillKey; 8] = [SkillKey::Q,
+    SkillKey::W,
+    SkillKey::E,
+    SkillKey::R,
+    SkillKey::D,
+    SkillKey::Num1,
+    SkillKey::Num2,
+    SkillKey::Num3
+];
+
+pub enum ControllerAction {
+    MoveTowardsMouse(ScreenCoords),
+    /// Move to the coordination, or if an enemy stands there, attack her.
+    MoveOrAttackTo(ScreenCoords),
+    /// Move to the coordination, attack any enemy on the way.
+    AttackTo(ScreenCoords),
+    CastingSelectTarget(SkillKey),
+    CancelCastingSelectTarget,
+    Casting(SkillKey),
+    LeftClick,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum CastMode {
+    /// Pressing the skill key moves you into target selection mode, then
+    /// pressing LMB will cast the skill
+    Normal,
+    /// Pressing the skill key moves you into target selection mode, then
+    ///  releasing the key will cast the skill
+    OnKeyRelease,
+    /// Pressing the skill key casts the skill immediately
+    OnKeyPress,
+}
+
 #[derive(Component)]
 pub struct ControllerComponent {
     pub char: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
+    pub next_action: Option<ControllerAction>,
+    pub last_action: Option<ControllerAction>,
+    pub is_casting_selection: Option<SkillKey>,
+    pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
     keys_pressed_in_prev_frame: Vec<Scancode>,
     pub left_mouse_down: bool,
     pub right_mouse_down: bool,
+    pub left_mouse_pressed: bool,
+    pub right_mouse_pressed: bool,
     pub left_mouse_released: bool,
     pub right_mouse_released: bool,
     pub last_mouse_x: u16,
     pub last_mouse_y: u16,
+    pub mouse_world_pos: WorldCoords,
+    pub entity_below_cursor: Option<Entity>,
+    pub cell_below_cursor_walkable: bool,
     pub yaw: f32,
     pub pitch: f32,
 }
 
 impl ControllerComponent {
+    pub fn mouse_pos(&self) -> ScreenCoords {
+        Point2::new(self.last_mouse_x, self.last_mouse_x)
+    }
 
     pub fn cleanup_released_keys(&mut self) {
         for key in self.keys_released_in_prev_frame.drain(..) {
@@ -67,6 +143,7 @@ impl ControllerComponent {
         ControllerComponent {
             char,
             camera,
+            cast_mode: CastMode::Normal,
             inputs: vec![],
             keys: ControllerComponent::shit(),
             keys_released_in_prev_frame: vec![],
@@ -74,11 +151,19 @@ impl ControllerComponent {
             left_mouse_down: false,
             right_mouse_down: false,
             left_mouse_released: false,
+            left_mouse_pressed: false,
+            right_mouse_pressed: false,
             right_mouse_released: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
             yaw,
             pitch,
+            next_action: None,
+            last_action: None,
+            entity_below_cursor: None,
+            cell_below_cursor_walkable: false,
+            is_casting_selection: None,
+            mouse_world_pos: Point2::new(0.0, 0.0)
         }
     }
 
