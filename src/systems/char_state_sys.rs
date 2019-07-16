@@ -10,7 +10,7 @@ use specs::world::EntitiesRes;
 
 use crate::{ActionIndex, ElapsedTime, PhysicsWorld, RenderMatrices, Tick, TICKS_PER_SECOND};
 use crate::cam::Camera;
-use crate::components::{FlyingNumberComponent, FlyingNumberType};
+use crate::components::{FlyingNumberComponent, FlyingNumberType, AttackComponent, AttackType};
 use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, EntityTarget};
 use crate::components::controller::ControllerComponent;
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
@@ -18,6 +18,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::render::DIRECTION_TABLE;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::systems::control_sys::CharacterControlSystem;
+use crate::systems::atk_calc::{AttackCalculation, AttackOutcome};
 
 pub struct CharacterStateUpdateSystem;
 
@@ -44,21 +45,20 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         mut updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("CharacterStateUpdateSystem");
-        let mut rng = rand::thread_rng();
-        let dt = system_vars.dt.0;
-        for (char_state, sprite, physics_comp) in (&mut char_state_storage,
-                                                   &mut sprite_storage,
-                                                   &physics_storage).join() {
+
+        for (entity_id, char_state, sprite, physics_comp) in (&entities,
+                                                              &mut char_state_storage,
+                                                              &mut sprite_storage,
+                                                              &physics_storage).join() {
             // shitty IntelliJ plugin
-            let char_state: &mut CharacterStateComponent = char_state;
+            let char_comp: &mut CharacterStateComponent = char_state;
             //
 
             let char_pos = {
                 let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
                 body.position().translation.vector
             };
-
-            match char_state.state() {
+            match char_comp.state().clone() {
                 CharState::CastingSkill {
                     cast_started,
                     cast_ends,
@@ -74,36 +74,29 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         );
                         updater.insert(skill_entity_id, SkillManifestationComponent::new(
                             skill_entity_id,
-                            manifestation)
+                            manifestation),
                         );
 
-                        //
-                        char_state.set_state(CharState::Idle, char_state.dir());
+                        char_comp.set_state(CharState::Idle, char_comp.dir());
                     }
                 }
-                CharState::Attacking { attack_ends } => {
+                CharState::Attacking { attack_ends, target } => {
                     if attack_ends.has_passed(&system_vars.time) {
-                        char_state.set_state(CharState::Idle, char_state.dir());
-                        let damage = entities.create();
-                        let mut rng = rand::thread_rng();
-                        let typ = match rng.gen_range(1, 5) {
-                            1 => FlyingNumberType::Damage,
-                            2 => FlyingNumberType::Heal,
-                            3 => FlyingNumberType::Mana,
-                            _ => FlyingNumberType::Normal,
-                        };
-                        updater.insert(damage, FlyingNumberComponent::new(
-                            typ,
-                            rng.gen_range(1, 20000),
-                            Point2::new(char_pos.x, char_pos.y),
-                            system_vars.tick));
+                        char_comp.set_state(CharState::Idle, char_comp.dir());
+
+                        let damage_entity = entities.create();
+                        updater.insert(damage_entity, AttackComponent {
+                            src_entity: entity_id,
+                            dst_entity: target,
+                            typ: AttackType::Basic
+                        });
                     }
                 }
                 _ => {}
             }
 
-            if char_state.can_move(&system_vars.time) {
-                if let Some(target) = &char_state.target {
+            if char_comp.can_move(&system_vars.time) {
+                if let Some(target) = &char_comp.target {
                     if let EntityTarget::OtherEntity(target_entity) = target {
                         let target_pos = {
                             let physics_comp = physics_storage.get(*target_entity).unwrap();
@@ -111,14 +104,18 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         };
                         let target_pos = Point2::new(target_pos.x, target_pos.y);
                         let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
-                        if distance <= char_state.attack_range {
-                            let attack_anim_duration = ElapsedTime(1.0 / char_state.attack_speed);
+                        if distance <= char_comp.attack_range.multiply(2.0) {
+                            let attack_anim_duration = ElapsedTime(1.0 / char_comp.attack_speed.as_f32());
                             let attack_ends = system_vars.time.add(&attack_anim_duration);
-                            char_state.set_state(CharState::Attacking { attack_ends },
-                                                 CharacterControlSystem::determine_dir(&target_pos, &char_pos));
+                            let new_state = CharState::Attacking {
+                                attack_ends,
+                                target: *target_entity,
+                            };
+                            char_comp.set_state(new_state,
+                                                CharacterControlSystem::determine_dir(&target_pos, &char_pos));
                         } else {
                             // move closer
-                            char_state.set_state(
+                            char_comp.set_state(
                                 CharState::Walking(target_pos),
                                 CharacterControlSystem::determine_dir(&target_pos, &char_pos),
                             );
@@ -127,22 +124,22 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
                         if distance <= 0.2 {
                             // stop
-                            char_state.set_state(CharState::Idle, char_state.dir());
+                            char_comp.set_state(CharState::Idle, char_comp.dir());
                         } else {
                             // move closer
-                            char_state.set_state(
+                            char_comp.set_state(
                                 CharState::Walking(*target_pos),
                                 CharacterControlSystem::determine_dir(target_pos, &char_pos),
                             );
                         }
                     }
                 } else { // no target and no receieving damage, casting or attacking
-                    char_state.set_state(CharState::Idle, char_state.dir());
+                    char_comp.set_state(CharState::Idle, char_comp.dir());
                 }
 
-                if let CharState::Walking((target_pos)) = char_state.state() {
+                if let CharState::Walking((target_pos)) = char_comp.state() {
                     let dir = (target_pos - nalgebra::Point::from(char_pos)).normalize();
-                    let speed = dir * char_state.moving_speed * 0.01;
+                    let speed = dir * char_comp.moving_speed.multiply(600.0 * 0.01);
                     let force = speed;
                     let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
                     body.set_linear_velocity(body.velocity().linear + force);
@@ -153,17 +150,17 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             }
 
             // update sprite based on current state
-            if char_state.set_and_get_state_change() {
-                let state = char_state.state();
+            if char_comp.set_and_get_state_change() {
+                let state = char_comp.state();
                 sprite.descr.animation_started = system_vars.time;
                 sprite.descr.forced_duration = match state {
-                    CharState::Attacking { attack_ends } => Some(attack_ends.minus(&system_vars.time)),
+                    CharState::Attacking { attack_ends, target: _ } => Some(attack_ends.minus(&system_vars.time)),
                     CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.minus(&system_vars.time)),
                     _ => None
                 };
                 sprite.descr.action_index = state.get_sprite_index() as usize;
             }
-            sprite.descr.direction = char_state.dir();
+            sprite.descr.direction = char_comp.dir();
         }
     }
 }

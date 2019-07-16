@@ -4,9 +4,11 @@ use nalgebra::Vector2;
 use specs::prelude::*;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, CharState};
 use ncollide2d::query::Proximity;
-use crate::components::skill::PushBackWallSkill;
+use crate::components::skill::{PushBackWallSkill, Skills};
 use nphysics2d::object::{Body, BodyHandle, ColliderHandle, Collider};
 use ncollide2d::events::{ContactEvent, ContactEvents};
+use crate::components::{AttackComponent, AttackType};
+use crate::components::controller::WorldCoords;
 
 pub struct PhysicsSystem;
 
@@ -43,19 +45,23 @@ impl<'a> specs::System<'a> for FrictionSystem {
 
 impl<'a> specs::System<'a> for PhysicsSystem {
     type SystemData = (
+        specs::Entities<'a>,
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::Write<'a, LazyUpdate>,
     );
 
     fn run(&mut self, (
+        entities,
         mut physics_world,
         mut system_benchmark,
         mut char_storage,
         physics_storage,
         system_vars,
+        mut updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
@@ -106,11 +112,18 @@ impl<'a> specs::System<'a> for PhysicsSystem {
             if collide_with_skill {
                 let char_body = physics_world.collider(char_collider_handle).unwrap().body();
                 let body = physics_world.rigid_body_mut(char_body).unwrap();
-                let entity_id = body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
-                let char_state = char_storage.get_mut(*entity_id).unwrap();
+                let entity_id = *body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
+                let char_state = char_storage.get_mut(entity_id).unwrap();
                 char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
                 char_state.set_state(CharState::ReceivingDamage, char_state.dir());
                 body.set_linear_velocity(body.velocity().linear * -1.0);
+
+                let damage_entity = entities.create();
+                updater.insert(damage_entity, AttackComponent {
+                    src_entity: entity_id, // TODO: store the caster
+                    dst_entity: entity_id,
+                    typ: AttackType::Skill(Skills::TestSkill { pos: WorldCoords::new(0.0, 0.0) }),
+                });
             }
         }
     }
