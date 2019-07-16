@@ -58,6 +58,7 @@ use crate::components::controller::ControllerComponent;
 use crate::components::{BrowserClient, FlyingNumberComponent};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use crate::systems::skill_sys::SkillSystem;
+use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 
 mod common;
 mod cursor;
@@ -153,6 +154,8 @@ pub struct Shaders {
 // implement attack range check with proximity events
 //3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
 // tick helyett idő mértékgeységgel számolj
+// legyen egy központi abstract renderer, és neki külkdjenek a rendszerek
+//  render commandokat, ő pedig hatékonyan csoportositva rajzolja ki azokat
 
 
 pub struct RenderMatrices {
@@ -170,9 +173,27 @@ pub struct DeltaTime(pub f32);
 #[derive(Debug, Copy, Clone)]
 pub struct ElapsedTime(f32);
 
+impl PartialEq  for ElapsedTime {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 * 1000.0) as u32 == (other.0 * 1000.0) as u32
+    }
+}
+
+impl Eq for ElapsedTime {}
+
 impl ElapsedTime {
     pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
+    }
+
+    pub fn diff(&self, other: &ElapsedTime) -> ElapsedTime {
+        ElapsedTime(other.0 - self.0)
+    }
+
+    pub fn percentage_between(&self, from: &ElapsedTime, to: &ElapsedTime) -> f32 {
+        let current = self.0 - from.0;
+        let end = to.0 - from.0;
+        return current / end;
     }
 
     pub fn add(&self, other: &ElapsedTime) -> ElapsedTime {
@@ -311,10 +332,11 @@ fn main() {
         .with(FrictionSystem, "friction_sys", &[])
         .with(SkillSystem, "skill_sys", &[])
         .with(CharacterControlSystem, "char_control", &["friction_sys", "input_handler", "browser_input_processor"])
-        .with(PhysicsSystem, "physics", &["char_control"])
+        .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
+        .with(PhysicsSystem, "physics", &["char_state_update"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
-        .with_thread_local(RenderDesktopClientSystem)
+        .with_thread_local(RenderDesktopClientSystem::new())
         .with_thread_local(PhysicsDebugDrawingSystem::new())
         .with_thread_local(DamageRenderSystem::new())
         .with_thread_local(RenderUI::new())

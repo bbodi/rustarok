@@ -11,6 +11,7 @@ pub mod render;
 pub mod ui;
 pub mod control;
 pub mod skill_sys;
+pub mod char_state_sys;
 
 
 pub struct EffectSprites {
@@ -41,7 +42,7 @@ pub struct SystemVariables {
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,
     pub dt: DeltaTime,
-    pub time: ElapsedTime,
+    pub time: ElapsedTime, // extract from the struct?
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
 }

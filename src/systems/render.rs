@@ -57,7 +57,31 @@ impl<'a> specs::System<'a> for OpenGlInitializerFor3D {
     }
 }
 
-pub struct RenderDesktopClientSystem;
+pub struct RenderDesktopClientSystem {
+    rectangle_vao: VertexArray,
+}
+
+impl RenderDesktopClientSystem {
+    pub fn new() -> RenderDesktopClientSystem {
+        let s: Vec<[f32; 2]> = vec![
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [0.0, 0.0],
+            [1.0, 0.0]
+        ];
+
+        RenderDesktopClientSystem {
+            rectangle_vao: VertexArray::new(
+                gl::TRIANGLE_STRIP,
+                &s, 4, None, vec![
+                    VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }
+                ]),
+        }
+    }
+}
 
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
@@ -107,7 +131,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &sprites[animated_sprite.sex as usize][animated_sprite.head_index]
                 };
                 if system_vars.entity_below_cursor.filter(|it| *it == entity).is_some() {
-                    let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
+                    let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
                                                                          &animated_sprite.descr,
                                                                          body_res,
                                                                          &system_vars.matrices.view,
@@ -152,8 +176,37 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                           1.0,
                                                                           &[1.0, 1.0, 1.0, 1.0]);
 
-                char_state.bounding_rect = body_bounding_rect;
-                char_state.bounding_rect.merge(&head_bounding_rect);
+                char_state.bounding_rect_2d = body_bounding_rect;
+                char_state.bounding_rect_2d.merge(&head_bounding_rect);
+
+                // draw health bars etc
+                let shader = system_vars.shaders.trimesh2d_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.ortho);
+                let vao = self.rectangle_vao.bind();
+                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32;4]| {
+                    let mut matrix = Matrix4::<f32>::identity();
+                    let spr_x = char_state.bounding_rect_2d.bottom_left[0];
+                    let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
+                    let bar_x = spr_x as f32 + (spr_w as f32/2.0) - (130.0/2.0);
+                    let pos = Vector3::new(
+                        bar_x + x as f32,
+                        char_state.bounding_rect_2d.top_right[1] as f32 - 40.0 + y as f32,
+                        0.0,
+                    );
+                    matrix.prepend_translation_mut(&pos);
+                    shader.set_mat4("model", &matrix);
+                    shader.set_vec4("color", color);
+                    shader.set_vec2("size", &[w as f32, h as f32]);
+                    vao.draw();
+                };
+                draw_rect(0, 0, 130, 19, &[0.0, 0.0, 0.0, 1.0]); // black background
+                draw_rect(1, 1, 128, 17, &[0.44, 0.49, 0.56, 1.0]); // grey inner
+
+                draw_rect(2, 2, 126, 10, &[0.0, 0.0, 0.0, 1.0]); // black health background
+                draw_rect(3, 3, 124, 8, &[0.29, 0.80, 0.11, 1.0]); // green health bar
+
+                draw_rect(2, 12, 126, 5, &[0.0, 0.0, 0.0, 1.0]); // black mana background
+                draw_rect(3, 13, 100, 3, &[0.23, 0.79, 0.88, 1.0]); // blue mana bar
             }
             // Draw monsters
             for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
@@ -187,7 +240,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                 true,
                                                                 1.0,
                                                                 &[1.0, 1.0, 1.0, 1.0]);
-                char_state.bounding_rect = bounding_rect;
+                char_state.bounding_rect_2d = bounding_rect;
             }
 
             let physics = physics_storage.get(controller.char).unwrap();
@@ -231,10 +284,10 @@ pub fn render_sprite(system_vars: &SystemVariables,
                      size_multiplier: f32,
                      color: &[f32; 4],
 ) -> ([i32; 2], SpriteBoundingRect) {
-    system_vars.shaders.player_shader.gl_use();
-    system_vars.shaders.player_shader.set_mat4("projection", &system_vars.matrices.projection);
-    system_vars.shaders.player_shader.set_mat4("view", &view);
-    system_vars.shaders.player_shader.set_int("model_texture", 0);
+    let shader = system_vars.shaders.player_shader.gl_use();
+    shader.set_mat4("projection", &system_vars.matrices.projection);
+    shader.set_mat4("view", &view);
+    shader.set_int("model_texture", 0);
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
     // draw layer
@@ -265,7 +318,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
         let mut matrix = Matrix4::<f32>::identity();
         let pos = Vector3::new(pos.x, 0.0, pos.y); // y was 1.0
         matrix.prepend_translation_mut(&pos);
-        system_vars.shaders.player_shader.set_mat4("model", &matrix);
+        shader.set_mat4("model", &matrix);
         matrix
     };
     for layer in action_anim.layers.iter() {
@@ -294,18 +347,18 @@ pub fn render_sprite(system_vars: &SystemVariables,
             offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
             offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.5
         ];
-        system_vars.shaders.player_shader.set_vec2("offset", &offset);
+        shader.set_vec2("offset", &offset);
 
         width = width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
         width = if layer.is_mirror { -width } else { width };
         height = height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
-        system_vars.shaders.player_shader.set_vec2("size", &[width, height]);
+        shader.set_vec2("size", &[width, height]);
 
         let mut color = color.clone();
         for i in 0..4 {
             color[i] *= layer.color[i];
         }
-        system_vars.shaders.player_shader.set_vec4("color", &color);
+        shader.set_vec4("color", &color);
 
         binded_sprite_vertex_array.draw();
     }
@@ -373,18 +426,18 @@ fn render_client(char_pos: &Vector2<f32>,
 //    shaders.trimesh_shader.set_vec4("color", &[0.0, 0.0, 1.0, 0.5]);
 //    map_render_data.ground_walkability_mesh3.bind().draw();
 
-    shaders.model_shader.gl_use();
-    shaders.model_shader.set_mat4("projection", &projection_matrix);
-    shaders.model_shader.set_mat4("view", &view);
-    shaders.model_shader.set_mat3("normal_matrix", &normal_matrix);
-    shaders.model_shader.set_int("model_texture", 0);
+    let shader = shaders.model_shader.gl_use();
+    shader.set_mat4("projection", &projection_matrix);
+    shader.set_mat4("view", &view);
+    shader.set_mat3("normal_matrix", &normal_matrix);
+    shader.set_int("model_texture", 0);
 
-    shaders.model_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    shaders.model_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    shaders.model_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    shaders.model_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+    shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+    shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+    shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+    shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-    shaders.model_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
 
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
@@ -419,7 +472,7 @@ fn render_client(char_pos: &Vector2<f32>,
             {
                 continue;
             }
-            shaders.model_shader.set_mat4("model", &matrix);
+            shader.set_mat4("model", &matrix);
             let alpha = if
             ((max.x > cam_pos.x - 10.0 && max.x < cam_pos.x + 10.0) ||
                 (min.x > cam_pos.x - 10.0 && min.x < cam_pos.x + 10.0))
@@ -429,7 +482,7 @@ fn render_client(char_pos: &Vector2<f32>,
             } else {
                 model_render_data.alpha
             };
-            shaders.model_shader.set_f32("alpha", alpha);
+            shader.set_f32("alpha", alpha);
             for node_render_data in &model_render_data.model {
                 // TODO: optimize this
                 for face_render_data in node_render_data {
@@ -446,24 +499,24 @@ fn render_ground(shaders: &Shaders,
                  map_render_data: &MapRenderData,
                  model_view: &Matrix4<f32>,
                  normal_matrix: &Matrix3<f32>) {
-    shaders.ground_shader.gl_use();
-    shaders.ground_shader.set_mat4("projection", &projection_matrix);
-    shaders.ground_shader.set_mat4("model_view", &model_view);
-    shaders.ground_shader.set_mat3("normal_matrix", &normal_matrix);
-    shaders.ground_shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    shaders.ground_shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    shaders.ground_shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    shaders.ground_shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-    shaders.ground_shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
+    let shader = shaders.ground_shader.gl_use();
+    shader.set_mat4("projection", &projection_matrix);
+    shader.set_mat4("model_view", &model_view);
+    shader.set_mat3("normal_matrix", &normal_matrix);
+    shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+    shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+    shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+    shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+    shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
     map_render_data.texture_atlas.bind(gl::TEXTURE0);
-    shaders.ground_shader.set_int("gnd_texture_atlas", 0);
+    shader.set_int("gnd_texture_atlas", 0);
     map_render_data.tile_color_texture.bind(gl::TEXTURE1);
-    shaders.ground_shader.set_int("tile_color_texture", 1);
+    shader.set_int("tile_color_texture", 1);
     map_render_data.lightmap_texture.bind(gl::TEXTURE2);
-    shaders.ground_shader.set_int("lightmap_texture", 2);
-    shaders.ground_shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
-    shaders.ground_shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
-    shaders.ground_shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    shader.set_int("lightmap_texture", 2);
+    shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
+    shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
+    shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
     map_render_data.ground_vertex_array.bind().draw();
 }
 
@@ -530,12 +583,12 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
                 let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
                 matrix = matrix * rotation;
 
-                system_vars.shaders.trimesh_shader.gl_use();
-                system_vars.shaders.trimesh_shader.set_mat4("projection", &system_vars.matrices.projection);
-                system_vars.shaders.trimesh_shader.set_mat4("view", &system_vars.matrices.view);
-                system_vars.shaders.trimesh_shader.set_f32("alpha", 1.0);
-                system_vars.shaders.trimesh_shader.set_mat4("model", &matrix);
-                system_vars.shaders.trimesh_shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
+                let shader = system_vars.shaders.trimesh_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &system_vars.matrices.view);
+                shader.set_f32("alpha", 1.0);
+                shader.set_mat4("model", &matrix);
+                shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
                 self.capsule_vertex_arrays[&physics.radius].bind().draw();
             }
         }
@@ -652,7 +705,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                 ]);
 
             system_vars.sprites.numbers.bind(gl::TEXTURE0);
-            system_vars.shaders.sprite_shader.gl_use();
+            let shader = system_vars.shaders.sprite_shader.gl_use();
             let mut matrix = Matrix4::<f32>::identity();
             let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
@@ -660,17 +713,17 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
             pos.z -= 10.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
             pos.x += 10.0 * ((system_vars.tick.0 - number.start_tick.0) as f32 / number.duration as f32);
             matrix.prepend_translation_mut(&pos);
-            system_vars.shaders.sprite_shader.set_mat4("model", &matrix);
-            system_vars.shaders.sprite_shader.set_vec3("color", &number.color);
+            shader.set_mat4("model", &matrix);
+            shader.set_vec3("color", &number.color);
 
-            system_vars.shaders.sprite_shader.set_vec2("size", &[
+            shader.set_vec2("size", &[
                 1.0,
                 1.0
             ]);
-            system_vars.shaders.sprite_shader.set_mat4("projection", &system_vars.matrices.projection);
-            system_vars.shaders.sprite_shader.set_mat4("view", &system_vars.matrices.view);
-            system_vars.shaders.sprite_shader.set_int("model_texture", 0);
-            system_vars.shaders.sprite_shader.set_f32("alpha", 1.0);
+            shader.set_mat4("projection", &system_vars.matrices.projection);
+            shader.set_mat4("view", &system_vars.matrices.view);
+            shader.set_int("model_texture", 0);
+            shader.set_f32("alpha", 1.0);
 
             vertex_array.bind().draw();
 

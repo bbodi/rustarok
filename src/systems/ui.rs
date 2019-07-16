@@ -11,21 +11,36 @@ use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lin
 use crate::video::VertexAttribDefinition;
 use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, SpriteRenderDescriptor};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, SpriteRenderDescriptor, CharState};
 
 pub struct RenderUI {
-    cursor_anim_descr: SpriteRenderDescriptor
+    cursor_anim_descr: SpriteRenderDescriptor,
+    vao: VertexArray,
 }
 
 impl RenderUI {
     pub fn new() -> RenderUI {
+        let s: Vec<[f32; 2]> = vec![
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [0.0, 0.0],
+            [1.0, 0.0]
+        ];
         RenderUI {
             cursor_anim_descr: SpriteRenderDescriptor {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
-            }
+            },
+            vao: VertexArray::new(
+                gl::TRIANGLE_STRIP,
+                &s, 4, None, vec![
+                    VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }
+                ])
         }
     }
 }
@@ -48,13 +63,52 @@ impl<'a> specs::System<'a> for RenderUI {
         browser_client_storage,
         physics_storage,
         animated_sprite_storage,
-        ai_storage,
+        char_state_storage,
         system_vars,
         mut system_benchmark,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderUI");
         for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
-            let tick = system_vars.tick;
+            // Draw casting bar
+            let char_state = char_state_storage.get(controller.char).unwrap();
+            match char_state.state() {
+                CharState::CastingSkill {
+                    cast_started,
+                    cast_ends,
+                    can_move,
+                    skill
+                } => {
+                    // draw health bars etc
+                    let shader = system_vars.shaders.trimesh2d_shader.gl_use();
+                    shader.set_mat4("projection", &system_vars.matrices.ortho);
+                    let vao = self.vao.bind();
+                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32;4]| {
+                        let mut matrix = Matrix4::<f32>::identity();
+                        let bar_w = 540.0;
+                        let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
+                        let pos = Vector3::new(
+                            bar_x + x as f32,
+                            VIDEO_HEIGHT as f32 - 200.0 + y as f32,
+                            0.0,
+                        );
+                        matrix.prepend_translation_mut(&pos);
+                        shader.set_mat4("model", &matrix);
+                        shader.set_vec4("color", color);
+                        shader.set_vec2("size", &[w as f32, h as f32]);
+                        vao.draw();
+                    };
+                    draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
+                    draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
+                    let percentage = system_vars.time.percentage_between(
+                        &cast_started,
+                        &cast_ends,
+                    );
+                    draw_rect(3, 3, (percentage*543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
+                },
+                _ => {}
+            }
+
+            // Draw cursor
             let cursor = if let Some(entity_below_cursor) = system_vars.entity_below_cursor {
                 if entity_below_cursor == controller.char {
                     CURSOR_LOCK
@@ -112,18 +166,17 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         let width = width as f32;
         let width = if layer.is_mirror { -width } else { width };
 
-        system_vars.shaders.sprite2d_shader.gl_use();
-        system_vars.shaders.sprite2d_shader.set_mat4("projection", &system_vars.matrices.ortho);
-        system_vars.shaders.sprite2d_shader.set_int("model_texture", 0);
-        system_vars.shaders.sprite2d_shader.set_f32("alpha", 1.0);
-        system_vars.shaders.player_shader.set_mat4("model", &matrix);
-        system_vars.shaders.player_shader.set_vec2("offset", &offset);
-        system_vars.shaders.player_shader.set_vec3("size", &[
+        let shader = system_vars.shaders.sprite2d_shader.gl_use();
+        shader.set_mat4("projection", &system_vars.matrices.ortho);
+        shader.set_int("model_texture", 0);
+        shader.set_f32("alpha", 1.0);
+        shader.set_mat4("model", &matrix);
+        shader.set_vec2("offset", &offset);
+        shader.set_vec2("size", &[
             width,
-            -height as f32,
-            0.0
+            -height as f32
         ]);
-        system_vars.shaders.player_shader.set_f32("alpha", 1.0);
+        shader.set_f32("alpha", 1.0);
         system_vars.map_render_data.sprite_vertex_array.bind().draw();
     }
 }

@@ -3,7 +3,7 @@ use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
 use ncollide2d::world::CollisionGroups;
 use crate::{STATIC_MODELS_COLLISION_GROUP, LIVING_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWorld, ElapsedTime};
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector3, Point2};
 use crate::systems::SystemVariables;
 use std::sync::{Arc, Mutex};
 use crate::video::draw_lines_inefficiently;
@@ -55,6 +55,11 @@ impl SkillManifestationComponent {
 unsafe impl Sync for SkillManifestationComponent {}
 
 unsafe impl Send for SkillManifestationComponent {}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Skills {
+    Test(Point2<f32>)
+}
 
 pub struct PushBackWallSkill {
     pub collider_handle: ColliderHandle,
