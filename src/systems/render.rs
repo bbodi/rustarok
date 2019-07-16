@@ -323,7 +323,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
     time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
     let elapsed_time = system_vars.time.elapsed_since(&animation.animation_started);
     let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
-    let action_anim = &sprite_res.action.actions[idx].frames[frame_index];
+    let frame = &sprite_res.action.actions[idx].frames[frame_index];
 
     // TODO: refactor: ugly, valahol csak 1 layert kell irajzolni (player), valahol többet is (effektek)
     let mut width = 0.0;
@@ -336,10 +336,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
         shader.set_mat4("model", &matrix);
         matrix
     };
-    for layer in action_anim.layers.iter() {
-        if idx == 40 {
-            dbg!(layer.sprite_frame_index);
-        }
+    for layer in frame.layers.iter() {
         if layer.sprite_frame_index < 0 {
             continue;
         }
@@ -349,10 +346,10 @@ pub fn render_sprite(system_vars: &SystemVariables,
         height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
         sprite_texture.texture.bind(gl::TEXTURE0);
 
-        offset = if !action_anim.positions.is_empty() && !is_main {
+        offset = if !frame.positions.is_empty() && !is_main {
             [
-                (pos_offset[0] - action_anim.positions[0][0]) as f32,
-                (pos_offset[1] - action_anim.positions[0][1]) as f32
+                (pos_offset[0] - frame.positions[0][0]) as f32,
+                (pos_offset[1] - frame.positions[0][1]) as f32
             ]
         } else {
             [0.0, 0.0]
@@ -377,7 +374,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
         binded_sprite_vertex_array.draw();
     }
-    let anim_pos = action_anim.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
+    let anim_pos = frame.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
 
     let size = [width.abs(), height];
     let bb = project_to_screen(&size, &offset, view * matrix, &system_vars.matrices.projection);

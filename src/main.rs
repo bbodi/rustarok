@@ -186,8 +186,8 @@ impl ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
     }
 
-    pub fn diff(&self, other: &ElapsedTime) -> ElapsedTime {
-        ElapsedTime(other.0 - self.0)
+    pub fn minus(&self, other: &ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 - other.0)
     }
 
     pub fn percentage_between(&self, from: &ElapsedTime, to: &ElapsedTime) -> f32 {
@@ -445,7 +445,7 @@ fn main() {
             &mut ecs_world,
             Point2::new(250.0, -200.0),
             Sex::Male,
-            JobId::ROGUE,
+            JobId::CRUSADER,
             1,
             1,
         );
