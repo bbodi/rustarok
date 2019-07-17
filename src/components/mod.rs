@@ -6,13 +6,14 @@ use std::sync::Mutex;
 use nalgebra::{Point3, Vector3, Vector2, Point2};
 use std::collections::HashSet;
 use sdl2::keyboard::Scancode;
-use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex, PhysicsWorld, ElapsedTime};
+use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex, PhysicsWorld, ElapsedTime, StrEffect};
 use specs::prelude::*;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
 use rand::Rng;
 use crate::components::skill::Skills;
+use crate::components::controller::WorldCoords;
 
 pub mod char;
 pub mod controller;
@@ -33,6 +34,15 @@ pub struct FlyingNumberComponent {
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: f32,
+}
+
+#[derive(Component)]
+pub struct StrEffectComponent {
+    pub effect: StrEffect,
+    pub pos: WorldCoords,
+    pub start_time: ElapsedTime,
+    pub die_at: ElapsedTime,
+    pub duration: ElapsedTime,
 }
 
 pub enum FlyingNumberType {

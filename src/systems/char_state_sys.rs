@@ -65,7 +65,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     can_move,
                     skill
                 } => {
-                    if cast_ends.has_passed(&system_vars.time) {
+                    if cast_ends.has_passed(system_vars.time) {
                         let skill_entity_id = entities.create();
 
                         let manifestation = skill.lock().unwrap().create_manifestation(
@@ -81,7 +81,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     }
                 }
                 CharState::Attacking { attack_ends, target } => {
-                    if attack_ends.has_passed(&system_vars.time) {
+                    if attack_ends.has_passed(system_vars.time) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
 
                         let damage_entity = entities.create();
@@ -95,7 +95,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 _ => {}
             }
 
-            if char_comp.can_move(&system_vars.time) {
+            if char_comp.can_move(system_vars.time) {
                 if let Some(target) = &char_comp.target {
                     if let EntityTarget::OtherEntity(target_entity) = target {
                         let target_pos = {
@@ -106,7 +106,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
                         if distance <= char_comp.attack_range.multiply(2.0) {
                             let attack_anim_duration = ElapsedTime(1.0 / char_comp.attack_speed.as_f32());
-                            let attack_ends = system_vars.time.add(&attack_anim_duration);
+                            let attack_ends = system_vars.time.add(attack_anim_duration);
                             let new_state = CharState::Attacking {
                                 attack_ends,
                                 target: *target_entity,
@@ -154,8 +154,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 let state = char_comp.state();
                 sprite.descr.animation_started = system_vars.time;
                 sprite.descr.forced_duration = match state {
-                    CharState::Attacking { attack_ends, target: _ } => Some(attack_ends.minus(&system_vars.time)),
-                    CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.minus(&system_vars.time)),
+                    CharState::Attacking { attack_ends, target: _ } => Some(attack_ends.minus(system_vars.time)),
+                    CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.minus(system_vars.time)),
                     _ => None
                 };
                 sprite.descr.action_index = state.get_sprite_index() as usize;

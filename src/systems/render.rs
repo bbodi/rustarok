@@ -1,24 +1,26 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3, Vector4};
-use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray};
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime};
+use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime, StrEffect};
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
 use crate::components::controller::{ControllerComponent, SkillKey};
-use crate::components::{BrowserClient, FlyingNumberComponent};
+use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
+use crate::str::KeyFrameType;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
-pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = (1.0 / 175.0) * 5.0;
+// todo: Move it into GPU?
+pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0;
 
 pub struct OpenGlInitializerFor3D;
 
@@ -59,6 +61,7 @@ impl<'a> specs::System<'a> for OpenGlInitializerFor3D {
 
 pub struct RenderDesktopClientSystem {
     rectangle_vao: VertexArray,
+    str_effect_vao: DynamicVertexArray,
 }
 
 impl RenderDesktopClientSystem {
@@ -73,10 +76,31 @@ impl RenderDesktopClientSystem {
         RenderDesktopClientSystem {
             rectangle_vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
-                &s, 4, None, vec![
+                &s, 4, vec![
                     VertexAttribDefinition {
                         number_of_components: 2,
                         offset_of_first_element: 0,
+                    }
+                ]),
+            str_effect_vao: DynamicVertexArray::new(
+                gl::TRIANGLE_STRIP,
+                vec![
+                    1.0, 1.0, // xy
+                    0.0, 0.0, // uv
+                    1.0, 1.0,
+                    1.0, 0.0, // uv
+                    1.0, 1.0,
+                    0.0, 1.0, // uv
+                    1.0, 1.0,
+                    1.0, 1.0, // uv
+                ], 4, vec![
+                    VertexAttribDefinition { // xy
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    },
+                    VertexAttribDefinition { // uv
+                        number_of_components: 2,
+                        offset_of_first_element: 2,
                     }
                 ]),
         }
@@ -96,6 +120,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteStorage<'a, SkillManifestationComponent>, // TODO remove me
+        specs::ReadStorage<'a, StrEffectComponent>,
     );
 
     fn run(&mut self, (
@@ -110,6 +135,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         physics_world,
         mut system_benchmark,
         mut skill_storage,
+        str_effect_storage,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
@@ -137,15 +163,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 };
                 if controller.entity_below_cursor.filter(|it| *it == entity).is_some() {
                     let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
-                                                                         &animated_sprite.descr,
-                                                                         body_res,
-                                                                         &system_vars.matrices.view,
-                                                                         Some(controller.yaw),
-                                                                         &pos,
-                                                                         [0, 0],
-                                                                         true,
-                                                                         1.1,
-                                                                         &[0.0, 0.0, 1.0, 0.4]);
+                                                                          &animated_sprite.descr,
+                                                                          body_res,
+                                                                          &system_vars.matrices.view,
+                                                                          Some(controller.yaw),
+                                                                          &pos,
+                                                                          [0, 0],
+                                                                          true,
+                                                                          1.1,
+                                                                          &[0.0, 0.0, 1.0, 0.4]);
 
                     let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
                                                                                 &animated_sprite.descr,
@@ -188,11 +214,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let shader = system_vars.shaders.trimesh2d_shader.gl_use();
                 shader.set_mat4("projection", &system_vars.matrices.ortho);
                 let vao = self.rectangle_vao.bind();
-                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32;4]| {
+                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
                     let mut matrix = Matrix4::<f32>::identity();
                     let spr_x = char_state.bounding_rect_2d.bottom_left[0];
                     let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
-                    let bar_x = spr_x as f32 + (spr_w as f32/2.0) - (130.0/2.0);
+                    let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (130.0 / 2.0);
                     let pos = Vector3::new(
                         bar_x + x as f32,
                         char_state.bounding_rect_2d.top_right[1] as f32 - 40.0 + y as f32,
@@ -273,6 +299,10 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             for (skill) in (&skill_storage).join() {
                 skill.render(&system_vars);
             }
+
+            for (str_effect) in (&str_effect_storage).join() {
+                self.render_str(str_effect, &system_vars);
+            }
         }
     }
 }
@@ -322,7 +352,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
         sprite_res.action.actions[idx].delay as f32 / 1000.0
     };
     time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
-    let elapsed_time = system_vars.time.elapsed_since(&animation.animation_started);
+    let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
     let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
     let frame = &sprite_res.action.actions[idx].frames[frame_index];
 
@@ -345,7 +375,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
         width = sprite_texture.original_width as f32 * layer.scale[0] * size_multiplier;
         height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
-        sprite_texture.texture.bind(gl::TEXTURE0);
+        sprite_texture.texture.bind(TEXTURE_0);
 
         offset = if !frame.positions.is_empty() && !is_main {
             [
@@ -424,20 +454,9 @@ fn render_client(char_pos: &Vector2<f32>,
         m3x3.transpose()
     };
 
-    render_ground(shaders, projection_matrix, map_render_data, &model_view, &normal_matrix);
-
-//    shaders.trimesh_shader.gl_use();
-//    shaders.trimesh_shader.set_mat4("projection", &projection_matrix);
-//    shaders.trimesh_shader.set_mat4("view", view);
-//    shaders.trimesh_shader.set_vec4("color", &[0.0, 1.0, 0.0, 0.5]);
-//    shaders.trimesh_shader.set_mat4("model", &Matrix4::identity());
-//    map_render_data.ground_walkability_mesh.bind().draw();
-//
-//    shaders.trimesh_shader.set_vec4("color", &[1.0, 0.0, 0.0, 0.5]);
-//    map_render_data.ground_walkability_mesh2.bind().draw();
-//
-//    shaders.trimesh_shader.set_vec4("color", &[0.0, 0.0, 1.0, 0.5]);
-//    map_render_data.ground_walkability_mesh3.bind().draw();
+    if map_render_data.draw_ground {
+        render_ground(shaders, projection_matrix, map_render_data, &model_view, &normal_matrix);
+    }
 
     let shader = shaders.model_shader.gl_use();
     shader.set_mat4("projection", &projection_matrix);
@@ -499,7 +518,7 @@ fn render_client(char_pos: &Vector2<f32>,
             for node_render_data in &model_render_data.model {
                 // TODO: optimize this
                 for face_render_data in node_render_data {
-                    face_render_data.texture.bind(gl::TEXTURE0);
+                    face_render_data.texture.bind(TEXTURE_0);
                     face_render_data.vao.bind().draw();
                 }
             }
@@ -521,11 +540,11 @@ fn render_ground(shaders: &Shaders,
     shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
     shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
     shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
-    map_render_data.texture_atlas.bind(gl::TEXTURE0);
+    map_render_data.texture_atlas.bind(TEXTURE_0);
     shader.set_int("gnd_texture_atlas", 0);
-    map_render_data.tile_color_texture.bind(gl::TEXTURE1);
+    map_render_data.tile_color_texture.bind(TEXTURE_1);
     shader.set_int("tile_color_texture", 1);
-    map_render_data.lightmap_texture.bind(gl::TEXTURE2);
+    map_render_data.lightmap_texture.bind(TEXTURE_2);
     shader.set_int("lightmap_texture", 2);
     shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
     shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
@@ -551,7 +570,6 @@ impl PhysicsDebugDrawingSystem {
                 gl::LINE_LOOP,
                 coords,
                 coords.len(),
-                None,
                 vec![
                     VertexAttribDefinition {
                         number_of_components: 2,
@@ -707,7 +725,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
             });
             let vertex_array = VertexArray::new(
                 gl::TRIANGLES,
-                &vertices, vertices.len(), None, vec![
+                &vertices, vertices.len(), vec![
                     VertexAttribDefinition {
                         number_of_components: 2,
                         offset_of_first_element: 0,
@@ -717,12 +735,12 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                     }
                 ]);
 
-            system_vars.sprites.numbers.bind(gl::TEXTURE0);
+            system_vars.sprites.numbers.bind(TEXTURE_0);
             let shader = system_vars.shaders.sprite_shader.gl_use();
             let mut matrix = Matrix4::<f32>::identity();
             let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
-            let lifetime_perc = system_vars.time.elapsed_since(&number.start_time).div(number.duration as f32);
+            let lifetime_perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
             pos.y += 4.0 * lifetime_perc;
             pos.z -= 2.0 * lifetime_perc;
             pos.x += 2.0 * lifetime_perc;
@@ -741,9 +759,85 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
 
             vertex_array.bind().draw();
 
-            if number.die_at.has_passed(&system_vars.time) {
+            if number.die_at.has_passed(system_vars.time) {
                 updater.remove::<FlyingNumberComponent>(entity);
             }
+        }
+    }
+}
+
+impl RenderDesktopClientSystem {
+    pub fn render_str(
+        &mut self,
+        str_effect_comp: &StrEffectComponent,
+        system_vars: &SystemVariables,
+    ) {
+        let shader = system_vars.shaders.str_effect_shader.gl_use();
+        shader.set_mat4("projection", &system_vars.matrices.projection);
+        shader.set_mat4("view", &system_vars.matrices.view);
+        shader.set_int("model_texture", 0);
+
+        let str_file = &system_vars.map_render_data.str_effects[&str_effect_comp.effect];
+        let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
+        let max_key = str_file.max_key;
+        let key_index = system_vars.time.elapsed_since(str_effect_comp.start_time).div(seconds_needed_for_one_frame) as i32 % max_key as i32;
+
+        let mut from_id = 0;
+        let mut to_id = 0;
+        for layer in str_file.layers.iter() {
+            for (i, key_frame) in layer.key_frames.iter().enumerate() {
+                if key_frame.frame <= key_index {
+                    match key_frame.typ {
+                        KeyFrameType::Start => from_id = i,
+                        KeyFrameType::End => to_id = i,
+                    };
+                }
+            }
+            if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
+                continue;
+            }
+            let from_frame = &layer.key_frames[from_id];
+            let to_frame = &layer.key_frames[to_id];
+
+            let matrix = {
+                let mut matrix = Matrix4::<f32>::identity();
+                let pos = Vector3::new(str_effect_comp.pos.x, 0.0, str_effect_comp.pos.y);
+                matrix.prepend_translation_mut(&pos);
+                shader.set_mat4("model", &matrix);
+                matrix
+            };
+
+            let offset = [from_frame.pos[0], from_frame.pos[1]];
+
+            shader.set_vec2("offset", &offset);
+            shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
+            self.str_effect_vao[0] = from_frame.xy[0];
+            self.str_effect_vao[1] = from_frame.xy[4];
+            self.str_effect_vao[4] = from_frame.xy[1];
+            self.str_effect_vao[5] = from_frame.xy[5];
+            self.str_effect_vao[8] = from_frame.xy[3];
+            self.str_effect_vao[9] = from_frame.xy[7];
+            self.str_effect_vao[12] = from_frame.xy[2];
+            self.str_effect_vao[13] = from_frame.xy[6];
+
+//            self.str_effect_vao[0] = -300.0;
+//            self.str_effect_vao[1] = -300.0;
+//            self.str_effect_vao[2] = 0.0; // u
+//            self.str_effect_vao[3] = 0.0; // v
+//            self.str_effect_vao[4] = 300.0;
+//            self.str_effect_vao[5] = -300.0;
+//            self.str_effect_vao[6] = 1.0; // u
+//            self.str_effect_vao[7] = 0.0; // v
+//            self.str_effect_vao[8] = -300.0;
+//            self.str_effect_vao[9] = 300.0;
+//            self.str_effect_vao[10] = 0.0; // u
+//            self.str_effect_vao[11] = 1.0; // v
+//            self.str_effect_vao[12] = 300.0;
+//            self.str_effect_vao[13] = 300.0;
+//            self.str_effect_vao[14] = 1.0; // u
+//            self.str_effect_vao[15] = 1.0; // v
+            str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
+            self.str_effect_vao.bind().draw();
         }
     }
 }

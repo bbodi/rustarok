@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use specs::prelude::*;
 
-use crate::{MapRenderData, Shaders, SpriteResource, Tick, ElapsedTime};
+use crate::{ElapsedTime, MapRenderData, Shaders, SpriteResource, Tick, StrEffect};
 use crate::cam::Camera;
-use crate::cursor::{CURSOR_NORMAL, CURSOR_ATTACK, CURSOR_STOP, CURSOR_LOCK};
-use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::video::VertexAttribDefinition;
-use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent, MonsterSpriteComponent, SpriteRenderDescriptor, CharState};
+use crate::components::char::{CharacterStateComponent, CharState, MonsterSpriteComponent, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
+use crate::components::controller::ControllerComponent;
+use crate::cursor::{CURSOR_ATTACK, CURSOR_LOCK, CURSOR_NORMAL, CURSOR_STOP};
+use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, TEXTURE_0, TEXTURE_2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::VertexAttribDefinition;
 
 pub struct RenderUI {
     cursor_anim_descr: SpriteRenderDescriptor,
@@ -35,12 +35,12 @@ impl RenderUI {
             },
             vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
-                &s, 4, None, vec![
+                &s, 4, vec![
                     VertexAttribDefinition {
                         number_of_components: 2,
                         offset_of_first_element: 0,
                     }
-                ])
+                ]),
         }
     }
 }
@@ -82,7 +82,7 @@ impl<'a> specs::System<'a> for RenderUI {
                     let shader = system_vars.shaders.trimesh2d_shader.gl_use();
                     shader.set_mat4("projection", &system_vars.matrices.ortho);
                     let vao = self.vao.bind();
-                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32;4]| {
+                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
                         let mut matrix = Matrix4::<f32>::identity();
                         let bar_w = 540.0;
                         let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
@@ -100,11 +100,11 @@ impl<'a> specs::System<'a> for RenderUI {
                     draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
                     let percentage = system_vars.time.percentage_between(
-                        &cast_started,
-                        &cast_ends,
+                        *cast_started,
+                        *cast_ends,
                     );
-                    draw_rect(3, 3, (percentage*543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
-                },
+                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
+                }
                 _ => {}
             }
 
@@ -124,7 +124,29 @@ impl<'a> specs::System<'a> for RenderUI {
             render_sprite_2d(&system_vars,
                              &self.cursor_anim_descr,
                              &system_vars.sprites.cursors,
-                             &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32))
+                             &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32));
+
+            let str_file = &system_vars.map_render_data.str_effects[&StrEffect::StormGust];
+            let shader = system_vars.shaders.sprite2d_shader.gl_use();
+            shader.set_mat4("projection", &system_vars.matrices.ortho);
+            shader.set_int("model_texture", 0);
+            shader.set_f32("alpha", 1.0);
+            let mut x = 100.0;
+            for (i, texture) in str_file.textures.iter().enumerate() {
+                let mut matrix = Matrix4::<f32>::identity();
+                let mut pos = Vector3::new(x, 100.0, 0.0);
+                matrix.prepend_translation_mut(&pos);
+                shader.set_mat4("model", &matrix);
+                shader.set_vec2("offset", &[0.0, 0.0]);
+                shader.set_vec2("size", &[
+                    texture.width as f32,
+                    texture.height as f32
+                ]);
+                x += texture.width as f32;
+                shader.set_f32("alpha", 1.0);
+                texture.bind(TEXTURE_0);
+                system_vars.map_render_data.sprite_vertex_array.bind().draw();
+            }
         }
     }
 }
@@ -135,7 +157,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
                     pos: &Vector2<f32>,
 ) {
     // draw layer
-    let elapsed_time = system_vars.time.elapsed_since(&animated_sprite.animation_started);
+    let elapsed_time = system_vars.time.elapsed_since(animated_sprite.animation_started);
     let idx = animated_sprite.action_index;
 
     let delay = sprite_res.action.actions[idx].delay as f32 / 1000.0;
@@ -150,7 +172,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
 
         let width = texture.original_width as f32 * layer.scale[0];
         let height = texture.original_height as f32 * layer.scale[1];
-        texture.texture.bind(gl::TEXTURE0);
+        texture.texture.bind(TEXTURE_0);
 
         let mut offset = [0, 0];
         let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];

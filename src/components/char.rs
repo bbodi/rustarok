@@ -329,7 +329,7 @@ impl CharacterStateComponent {
         return ret;
     }
 
-    pub fn can_move(&self, sys_time: &ElapsedTime) -> bool {
+    pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
         let can_move_by_state = match self.state {
             CharState::CastingSkill { cast_started: _, cast_ends: _, can_move, skill: _ } => can_move,
             CharState::Idle => true,
@@ -342,7 +342,7 @@ impl CharacterStateComponent {
             CharState::Freeze => false,
             CharState::Dead => false,
         };
-        can_move_by_state && self.cannot_control_until.has_passed(&sys_time)
+        can_move_by_state && self.cannot_control_until.has_passed(sys_time)
     }
 
     pub fn state(&self) -> &CharState {
