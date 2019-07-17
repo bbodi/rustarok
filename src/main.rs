@@ -1,65 +1,66 @@
 extern crate byteorder;
-extern crate sdl2;
-extern crate gl;
-extern crate nalgebra;
 extern crate encoding;
+extern crate gl;
 #[macro_use]
 extern crate imgui;
-extern crate imgui_sdl2;
 extern crate imgui_opengl_renderer;
-extern crate websocket;
+extern crate imgui_sdl2;
 #[macro_use]
 extern crate log;
+extern crate nalgebra;
+extern crate sdl2;
 extern crate specs;
 #[macro_use]
 extern crate specs_derive;
+extern crate websocket;
 
-use strum::IntoEnumIterator;
-
+use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
-use crate::common::BinaryReader;
-use crate::rsw::Rsw;
-use crate::gnd::Gnd;
-use crate::gat::{Gat, CellType};
+use std::ops::{Bound, Div};
+use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime};
 
 use imgui::ImString;
-use nalgebra::{Vector3, Matrix4, Point3, Unit, Rotation3, Vector2, Point2, Isometry, Isometry2};
-use crate::video::{Shader, ShaderProgram, VertexArray, VertexAttribDefinition, GlTexture, Video, VIDEO_HEIGHT, VIDEO_WIDTH, ortho};
-use std::time::{Duration, SystemTime, Instant};
-use std::collections::{HashMap, HashSet};
-use crate::rsm::{Rsm, BoundingBox};
-use sdl2::keyboard::{Keycode, Scancode};
-use crate::act::ActionFile;
-use crate::spr::SpriteFile;
-use rand::Rng;
-use websocket::stream::sync::TcpStream;
-use websocket::{OwnedMessage, WebSocketError};
 use log::LevelFilter;
-use std::sync::Mutex;
+use nalgebra::{Isometry, Isometry2, Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
+use ncollide2d::shape::ShapeHandle;
+use ncollide2d::world::CollisionGroups;
+use nphysics2d::object::{BodyHandle, Collider, ColliderDesc};
+use nphysics2d::solver::SignoriniModel;
+use rand::prelude::ThreadRng;
+use rand::Rng;
+use sdl2::keyboard::{Keycode, Scancode};
 use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
-use std::path::Path;
-use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::systems::{SystemStopwatch, SystemVariables, SystemFrameDurations, EffectSprites, Sprites, Sex};
-use crate::systems::render::{PhysicsDebugDrawingSystem, OpenGlInitializerFor3D, RenderStreamingSystem, RenderDesktopClientSystem, DamageRenderSystem};
-use crate::systems::input::{InputConsumerSystem, BrowserInputProducerSystem};
-use crate::systems::phys::{PhysicsSystem, FrictionSystem};
-use rand::prelude::ThreadRng;
-use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{ColliderDesc, Collider, BodyHandle};
-use std::ops::{Bound, Div};
-use ncollide2d::world::CollisionGroups;
-use crate::systems::ui::RenderUI;
-use crate::systems::control_sys::CharacterControlSystem;
-use nphysics2d::solver::SignoriniModel;
-use crate::components::char::{PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, MonsterSpriteComponent, ComponentRadius, U16Float, Percentage, U8Float};
-use crate::components::controller::{ControllerComponent, CastMode};
-use crate::components::{BrowserClient, FlyingNumberComponent, AttackComponent};
+use strum::IntoEnumIterator;
+use websocket::{OwnedMessage, WebSocketError};
+use websocket::stream::sync::TcpStream;
+
+use crate::act::ActionFile;
+use crate::common::BinaryReader;
+use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::char::{CharacterStateComponent, ComponentRadius, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U16Float, U8Float};
+use crate::components::controller::{CastMode, ControllerComponent};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
-use crate::systems::skill_sys::SkillSystem;
-use crate::systems::char_state_sys::CharacterStateUpdateSystem;
+use crate::consts::{job_name_table, JobId, MonsterId};
+use crate::gat::{CellType, Gat};
+use crate::gnd::Gnd;
+use crate::rsm::{BoundingBox, Rsm};
+use crate::rsw::Rsw;
+use crate::spr::SpriteFile;
+use crate::str::StrFile;
+use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemStopwatch, SystemVariables};
 use crate::systems::atk_calc::AttackSystem;
+use crate::systems::char_state_sys::CharacterStateUpdateSystem;
+use crate::systems::control_sys::CharacterControlSystem;
+use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
+use crate::systems::phys::{FrictionSystem, PhysicsSystem};
+use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, PhysicsDebugDrawingSystem, RenderDesktopClientSystem, RenderStreamingSystem};
+use crate::systems::skill_sys::SkillSystem;
+use crate::systems::ui::RenderUI;
+use crate::video::{GlTexture, IndexedVertexArray, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
 
 mod common;
 mod cursor;
@@ -142,6 +143,7 @@ pub struct Shaders {
     pub model_shader: ShaderProgram,
     pub sprite_shader: ShaderProgram,
     pub player_shader: ShaderProgram,
+    pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
     pub trimesh2d_shader: ShaderProgram,
@@ -187,21 +189,21 @@ impl ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
     }
 
-    pub fn minus(&self, other: &ElapsedTime) -> ElapsedTime {
+    pub fn minus(&self, other: ElapsedTime) -> ElapsedTime {
         ElapsedTime(self.0 - other.0)
     }
 
-    pub fn percentage_between(&self, from: &ElapsedTime, to: &ElapsedTime) -> f32 {
+    pub fn percentage_between(&self, from: ElapsedTime, to: ElapsedTime) -> f32 {
         let current = self.0 - from.0;
         let end = to.0 - from.0;
         return current / end;
     }
 
-    pub fn add(&self, other: &ElapsedTime) -> ElapsedTime {
+    pub fn add(&self, other: ElapsedTime) -> ElapsedTime {
         ElapsedTime(self.0 + other.0)
     }
 
-    pub fn elapsed_since(&self, other: &ElapsedTime) -> ElapsedTime {
+    pub fn elapsed_since(&self, other: ElapsedTime) -> ElapsedTime {
         ElapsedTime(self.0 - other.0)
     }
 
@@ -209,15 +211,15 @@ impl ElapsedTime {
         self.0 / other
     }
 
-    pub fn run_at_least_until_seconds(&mut self, system_time: &ElapsedTime, seconds: i32) {
+    pub fn run_at_least_until_seconds(&mut self, system_time: ElapsedTime, seconds: i32) {
         self.0 = self.0.max(system_time.0 + seconds as f32);
     }
 
-    pub fn has_passed(&self, system_time: &ElapsedTime) -> bool {
+    pub fn has_passed(&self, system_time: ElapsedTime) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn has_not_passed(&self, system_time: &ElapsedTime) -> bool {
+    pub fn has_not_passed(&self, system_time: ElapsedTime) -> bool {
         self.0 > system_time.0
     }
 }
@@ -277,6 +279,18 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
+        str_effect_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/str_effect.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/str_effect.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
         sprite2d_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
@@ -324,6 +338,7 @@ fn main() {
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
     ecs_world.register::<AttackComponent>();
+    ecs_world.register::<StrEffectComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
 
@@ -457,6 +472,27 @@ fn main() {
             .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
             .build()
     };
+
+    ecs_world
+        .create_entity()
+        .with(StrEffectComponent {
+            effect: StrEffect::FireWall,
+            pos: Point2::new(250.0, -200.0),
+            start_time: ElapsedTime(0.0),
+            die_at: ElapsedTime(200.0),
+            duration: ElapsedTime(1.0),
+        })
+        .build();
+    ecs_world
+        .create_entity()
+        .with(StrEffectComponent {
+            effect: StrEffect::StormGust,
+            pos: Point2::new(220.0, -200.0),
+            start_time: ElapsedTime(0.0),
+            die_at: ElapsedTime(200.0),
+            duration: ElapsedTime(1.0),
+        })
+        .build();
 
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
     let mut last_tick_time: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -636,6 +672,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     map_render_data.use_lighting = map_render_data.use_lighting || map_render_data.use_lightmaps;
                 }
                 ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
+                ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
 
                 ui.slider_int(im_str!("Entities"), entity_count, 0, 20)
                     .build();
@@ -832,9 +869,11 @@ pub struct MapRenderData {
     pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
     pub draw_models: bool,
+    pub draw_ground: bool,
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
+    pub str_effects: HashMap<StrEffect, StrFile>,
 }
 
 pub struct ModelRenderData {
@@ -912,7 +951,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
     }).flatten().collect();
     let ground_walkability_mesh = VertexArray::new(
         gl::TRIANGLES,
-        &vertices, vertices.len(), None, vec![
+        &vertices, vertices.len(), vec![
             VertexAttribDefinition {
                 number_of_components: 3,
                 offset_of_first_element: 0,
@@ -920,7 +959,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
         ]);
     let ground_walkability_mesh2 = VertexArray::new(
         gl::TRIANGLES,
-        &vertices2, vertices2.len(), None, vec![
+        &vertices2, vertices2.len(), vec![
             VertexAttribDefinition {
                 number_of_components: 3,
                 offset_of_first_element: 0,
@@ -999,7 +1038,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
     ];
     let sprite_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
-        &s, 4, None, vec![
+        &s, 4, vec![
             VertexAttribDefinition {
                 number_of_components: 2,
                 offset_of_first_element: 0,
@@ -1011,7 +1050,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
 
     let ground_vertex_array = VertexArray::new(
         gl::TRIANGLES,
-        &ground.mesh, ground.mesh.len(), None, vec![
+        &ground.mesh, ground.mesh.len(), vec![
             VertexAttribDefinition {
                 number_of_components: 3,
                 offset_of_first_element: 0,
@@ -1068,12 +1107,20 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
     }).flatten().collect();
     let ground_walkability_mesh3 = VertexArray::new(
         gl::TRIANGLES,
-        &vertices, vertices.len(), None, vec![
+        &vertices, vertices.len(), vec![
             VertexAttribDefinition {
                 number_of_components: 3,
                 offset_of_first_element: 0,
             }
         ]);
+
+    let (elapsed, str_effects) = measure_time(|| {
+        let mut str_effects: HashMap<StrEffect, StrFile> = HashMap::new();
+        str_effects.insert(StrEffect::FireWall, StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\firewall.str"))));
+        str_effects.insert(StrEffect::StormGust, StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\stormgust.str"))));
+        str_effects
+    });
+    info!("str loaded: {}ms", elapsed.as_millis());
     (MapRenderData {
         gat,
         gnd: ground,
@@ -1089,9 +1136,17 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
         use_lightmaps: true,
         use_lighting: true,
         draw_models: true,
+        draw_ground: true,
         ground_walkability_mesh,
         ground_walkability_mesh2,
         ground_walkability_mesh3,
         light_wheight: [0f32; 3],
+        str_effects,
     }, physics_world)
+}
+
+#[derive(Eq, Hash, PartialEq, Debug)]
+pub enum StrEffect {
+    FireWall,
+    StormGust,
 }

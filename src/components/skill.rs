@@ -176,7 +176,7 @@ impl SkillManifestation for PushBackWallSkill {
               entities: &specs::Entities,
               physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
-        if self.die_at.has_passed(&system_vars.time) {
+        if self.die_at.has_passed(system_vars.time) {
             physics_world.remove_colliders(&[self.collider_handle]);
             updater.remove::<SkillManifestationComponent>(entity_id);
         }

@@ -33,7 +33,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
         let stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for (physics, char_state) in (&physics_storage, &char_storage).join() {
             let body = physics_world.rigid_body_mut(physics.body_handle).unwrap();
-            if char_state.cannot_control_until.has_passed(&system_vars.time) {
+            if char_state.cannot_control_until.has_passed(system_vars.time) {
                 body.set_linear_velocity(Vector2::zeros());
             } else {
                 let slowing_vector = body.velocity().linear - (body.velocity().linear * 0.1);
@@ -114,7 +114,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
                 let body = physics_world.rigid_body_mut(char_body).unwrap();
                 let entity_id = *body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
                 let char_state = char_storage.get_mut(entity_id).unwrap();
-                char_state.cannot_control_until.run_at_least_until_seconds(&system_vars.time, 1);
+                char_state.cannot_control_until.run_at_least_until_seconds(system_vars.time, 1);
                 char_state.set_state(CharState::ReceivingDamage, char_state.dir());
                 body.set_linear_velocity(body.velocity().linear * -1.0);
 
