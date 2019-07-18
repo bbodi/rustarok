@@ -64,6 +64,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                     &outcome,
                     &entities,
                     &mut updater,
+                    attacked_entity,
                     attacker_aspd,
                     &char_pos,
                     system_vars.time,
@@ -80,6 +81,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                     &outcome,
                     &entities,
                     &mut updater,
+                    attacked_entity,
                     attacker_aspd,
                     &char_pos,
                     system_vars.time,
@@ -146,6 +148,7 @@ impl AttackCalculation {
         outcome: &AttackOutcome,
         entities: &Entities,
         updater: &mut specs::Write<LazyUpdate>,
+        target_entity_id: Entity,
         aspd: U8Float,
         char_pos: &Vector2<f32>,
         sys_time: ElapsedTime,
@@ -162,6 +165,7 @@ impl AttackCalculation {
         updater.insert(damage_entity, FlyingNumberComponent::new(
             typ,
             value,
+            target_entity_id,
             (2.0 - aspd.as_f32()).max(1.0),
             Point2::new(char_pos.x, char_pos.y),
             sys_time));

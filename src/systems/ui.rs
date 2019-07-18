@@ -72,12 +72,7 @@ impl<'a> specs::System<'a> for RenderUI {
             // Draw casting bar
             let char_state = char_state_storage.get(controller.char).unwrap();
             match char_state.state() {
-                CharState::CastingSkill {
-                    cast_started,
-                    cast_ends,
-                    can_move,
-                    skill
-                } => {
+                CharState::CastingSkill(casting_info) => {
                     // draw health bars etc
                     let shader = system_vars.shaders.trimesh2d_shader.gl_use();
                     shader.set_mat4("projection", &system_vars.matrices.ortho);
@@ -100,8 +95,8 @@ impl<'a> specs::System<'a> for RenderUI {
                     draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
                     let percentage = system_vars.time.percentage_between(
-                        *cast_started,
-                        *cast_ends,
+                        casting_info.cast_started,
+                        casting_info.cast_ends,
                     );
                     draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
                 }
@@ -125,28 +120,6 @@ impl<'a> specs::System<'a> for RenderUI {
                              &self.cursor_anim_descr,
                              &system_vars.sprites.cursors,
                              &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32));
-
-            let str_file = &system_vars.map_render_data.str_effects[&StrEffect::StormGust];
-            let shader = system_vars.shaders.sprite2d_shader.gl_use();
-            shader.set_mat4("projection", &system_vars.matrices.ortho);
-            shader.set_int("model_texture", 0);
-            shader.set_f32("alpha", 1.0);
-            let mut x = 100.0;
-            for (i, texture) in str_file.textures.iter().enumerate() {
-                let mut matrix = Matrix4::<f32>::identity();
-                let mut pos = Vector3::new(x, 100.0, 0.0);
-                matrix.prepend_translation_mut(&pos);
-                shader.set_mat4("model", &matrix);
-                shader.set_vec2("offset", &[0.0, 0.0]);
-                shader.set_vec2("size", &[
-                    texture.width as f32,
-                    texture.height as f32
-                ]);
-                x += texture.width as f32;
-                shader.set_f32("alpha", 1.0);
-                texture.bind(TEXTURE_0);
-                system_vars.map_render_data.sprite_vertex_array.bind().draw();
-            }
         }
     }
 }

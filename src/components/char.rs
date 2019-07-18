@@ -11,6 +11,7 @@ use crate::components::skill::SkillDescriptor;
 use crate::systems::control_sys::CharacterControlSystem;
 use std::sync::{Mutex, Arc};
 use std::ops::Mul;
+use crate::components::controller::WorldCoords;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -126,6 +127,15 @@ impl PhysicsComponent {
 }
 
 #[derive(Clone)]
+pub struct CastingSkillData {
+    pub mouse_pos_when_casted: WorldCoords,
+    pub cast_started: ElapsedTime,
+    pub cast_ends: ElapsedTime,
+    pub can_move: bool,
+    pub skill: Arc<Mutex<Box<SkillDescriptor>>>,
+}
+
+#[derive(Clone)]
 pub enum CharState {
     Idle,
     Walking(Point2<f32>),
@@ -136,12 +146,7 @@ pub enum CharState {
     ReceivingDamage,
     Freeze,
     Dead,
-    CastingSkill {
-        cast_started: ElapsedTime,
-        cast_ends: ElapsedTime,
-        can_move: bool,
-        skill: Arc<Mutex<Box<SkillDescriptor>>>,
-    },
+    CastingSkill(CastingSkillData),
 }
 
 unsafe impl Sync for CharState {}
@@ -166,7 +171,7 @@ impl CharState {
 
     pub fn is_casting(&self) -> bool {
         match self {
-            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move: _, skill: _ } => true,
+            CharState::CastingSkill { .. } => true,
             _ => false
         }
     }
@@ -189,7 +194,7 @@ impl CharState {
             CharState::ReceivingDamage => ActionIndex::ReceivingDamage,
             CharState::Freeze => ActionIndex::Freeze1,
             CharState::Dead => ActionIndex::Dead,
-            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move: _, skill: _ } => ActionIndex::CastingSpell,
+            CharState::CastingSkill { .. } => ActionIndex::CastingSpell,
         }
     }
 }
@@ -318,7 +323,7 @@ impl CharacterStateComponent {
             bounding_rect_2d: SpriteBoundingRect::default(),
             cannot_control_until: ElapsedTime(0.0),
             max_hp: 2000,
-            hp: 2000
+            hp: 2000,
         }
     }
 
@@ -330,8 +335,8 @@ impl CharacterStateComponent {
     }
 
     pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
-        let can_move_by_state = match self.state {
-            CharState::CastingSkill { cast_started: _, cast_ends: _, can_move, skill: _ } => can_move,
+        let can_move_by_state = match &self.state {
+            CharState::CastingSkill(casting_info) => casting_info.can_move,
             CharState::Idle => true,
             CharState::Walking(_pos) => true,
             CharState::Sitting => true,
