@@ -422,10 +422,21 @@ fn main() {
               sprites.monster_sprites.len(), elapsed.as_millis());
 
     let mut map_name_filter = ImString::new("prontera");
+    let mut str_name_filter = ImString::new("fire");
     let mut filtered_map_names = vec![];
+    let mut filtered_str_names = vec![];
     let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
         let dir_entry = entry.unwrap();
         if dir_entry.file_name().into_string().unwrap().ends_with("rsw") {
+            let mut sstr = dir_entry.file_name().into_string().unwrap();
+            let len = sstr.len();
+            sstr.truncate(len - 4); // remove extension
+            Some(sstr)
+        } else { None }
+    }).filter_map(|x| x).collect::<Vec<String>>();
+    let all_str_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data\\texture\\effect").unwrap().map(|entry| {
+        let dir_entry = entry.unwrap();
+        if dir_entry.file_name().into_string().unwrap().ends_with("str") {
             let mut sstr = dir_entry.file_name().into_string().unwrap();
             let len = sstr.len();
             sstr.truncate(len - 4); // remove extension
@@ -472,27 +483,6 @@ fn main() {
             .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
             .build()
     };
-
-    ecs_world
-        .create_entity()
-        .with(StrEffectComponent {
-            effect: StrEffect::FireWall,
-            pos: Point2::new(250.0, -200.0),
-            start_time: ElapsedTime(0.0),
-            die_at: ElapsedTime(200.0),
-            duration: ElapsedTime(1.0),
-        })
-        .build();
-    ecs_world
-        .create_entity()
-        .with(StrEffectComponent {
-            effect: StrEffect::StormGust,
-            pos: Point2::new(220.0, -200.0),
-            start_time: ElapsedTime(0.0),
-            die_at: ElapsedTime(200.0),
-            duration: ElapsedTime(1.0),
-        })
-        .build();
 
     let mut next_second: SystemTime = std::time::SystemTime::now().checked_add(Duration::from_secs(1)).unwrap();
     let mut last_tick_time: u64 = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -553,7 +543,7 @@ fn main() {
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
-        if let Some(new_map_name) = imgui_frame(
+        let (new_map, new_str) = imgui_frame(
             desktop_client_entity,
             &mut video,
             &mut ecs_world,
@@ -563,9 +553,13 @@ fn main() {
             &mut map_name_filter,
             &all_map_names,
             &mut filtered_map_names,
+            &mut str_name_filter,
+            &all_str_names,
+            &mut filtered_str_names,
             fps,
             &mut other_entities,
-        ) {
+        );
+        if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
             let (map_render_data, physics_world) = load_map(&new_map_name);
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
@@ -585,6 +579,32 @@ fn main() {
                     .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
                     .build()
             };
+        }
+        if let Some(new_str_name) = new_str {
+            {
+                let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
+                if !map_render_data.str_effects.contains_key(&new_str_name) {
+                    let str_file = StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\{}.str", new_str_name)));
+                    map_render_data.str_effects.insert(new_str_name.clone(), str_file);
+                }
+            }
+            let hero_pos = {
+                let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+                let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
+                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let controller = storage.get(desktop_client_entity).unwrap();
+                phys_storage.get(controller.char).unwrap().pos(&physics_world)
+            };
+            ecs_world
+                .create_entity()
+                .with(StrEffectComponent {
+                    effect: new_str_name.clone(),
+                    pos: Point2::new(hero_pos.x, hero_pos.y),
+                    start_time: ElapsedTime(0.0),
+                    die_at: ElapsedTime(200.0),
+                    duration: ElapsedTime(1.0),
+                })
+                .build();
         }
 
         video.gl_swap_window();
@@ -627,19 +647,23 @@ fn imgui_frame(desktop_client_entity: Entity,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
                mut filtered_map_names: &mut Vec<String>,
+               mut str_name_filter: &mut ImString,
+               all_str_names: &Vec<String>,
+               mut filtered_str_names: &mut Vec<String>,
                fps: u64,
-               other_entities: &mut Vec<Entity>) -> Option<String> {
+               other_entities: &mut Vec<Entity>) -> (Option<String>, Option<String>) {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
                                     &video.event_pump.mouse_state());
     extern crate sublime_fuzzy;
-    let mut ret = None;
+    let mut ret = (None, None); // (map, str)
     { // IMGUI
         ui.window(im_str!("Graphic opsions"))
             .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
             .build(|| {
                 let map_name_filter_clone = map_name_filter.clone();
+                let str_name_filter_clone = str_name_filter.clone();
                 if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
                     .enter_returns_true(false)
                     .build() {
@@ -653,13 +677,29 @@ fn imgui_frame(desktop_client_entity: Entity,
                             })
                             .map(|it| it.to_owned())
                     );
-//                    if let Some(&map_name) = filtered_map_names.get(0) {
-//                        ret = Some(map_name.to_owned());
-//                    }
                 }
                 for map_name in filtered_map_names.iter() {
                     if ui.small_button(&ImString::new(map_name.as_str())) {
-                        ret = Some(map_name.to_owned());
+                        ret = (Some(map_name.to_owned()), None);
+                    }
+                }
+                if ui.input_text(im_str!("Load STR:"), &mut str_name_filter)
+                    .enter_returns_true(false)
+                    .build() {
+                    filtered_str_names.clear();
+                    filtered_str_names.extend(
+                        all_str_names
+                            .iter()
+                            .filter(|str_name| {
+                                let matc = sublime_fuzzy::best_match(str_name_filter_clone.to_str(), str_name);
+                                matc.is_some()
+                            })
+                            .map(|it| it.to_owned())
+                    );
+                }
+                for str_name in filtered_str_names.iter() {
+                    if ui.small_button(&ImString::new(str_name.as_str())) {
+                        ret = (None, Some(str_name.to_owned()));
                     }
                 }
 
@@ -873,7 +913,7 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub str_effects: HashMap<StrEffect, StrFile>,
+    pub str_effects: HashMap<String, StrFile>,
 }
 
 pub struct ModelRenderData {
@@ -1115,9 +1155,9 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
         ]);
 
     let (elapsed, str_effects) = measure_time(|| {
-        let mut str_effects: HashMap<StrEffect, StrFile> = HashMap::new();
-        str_effects.insert(StrEffect::FireWall, StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\firewall.str"))));
-        str_effects.insert(StrEffect::StormGust, StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\stormgust.str"))));
+        let mut str_effects: HashMap<String, StrFile> = HashMap::new();
+        str_effects.insert("StrEffect::FireWall".to_owned(), StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\firewall.str"))));
+        str_effects.insert("StrEffect::StormGust".to_owned(), StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\stormgust.str"))));
         str_effects
     });
     info!("str loaded: {}ms", elapsed.as_millis());

@@ -15,6 +15,7 @@ pub struct StrLayer {
     pub key_frames: Vec<StrKeyFrame>
 }
 
+#[derive(PartialEq, Eq)]
 pub enum KeyFrameType {
     Start,
     End,
@@ -52,6 +53,23 @@ impl StrFile {
         let layer_num = buf.next_u32();
         buf.skip(16);
 
+        let d3d_to_gl_blend = [
+            gl::ZERO, // 0
+            gl::ZERO,
+            gl::ONE,
+            gl::SRC_COLOR,
+            gl::ONE_MINUS_SRC_COLOR,
+            gl::SRC_ALPHA, // 5
+            gl::ONE_MINUS_SRC_ALPHA,
+            gl::DST_ALPHA,
+            gl::ONE_MINUS_DST_ALPHA,
+            gl::DST_COLOR,
+            gl::ONE_MINUS_DST_COLOR, // 10
+            gl::SRC_ALPHA_SATURATE,
+            gl::CONSTANT_COLOR,
+            gl::ONE_MINUS_CONSTANT_ALPHA, // 13
+        ];
+
         let mut texture_names_to_index: HashMap<String, usize> = HashMap::new();
         let mut textures: Vec<GlTexture> = Vec::new();
 
@@ -83,8 +101,8 @@ impl StrFile {
                     delay: buf.next_f32(),
                     angle: buf.next_f32() / (1024.0 / 360.0),
                     color: [buf.next_f32() / 255.0, buf.next_f32() / 255.0, buf.next_f32() / 255.0, buf.next_f32() / 255.0],
-                    src_alpha: buf.next_u32(),
-                    dst_alpha: buf.next_u32(),
+                    src_alpha: d3d_to_gl_blend[buf.next_u32() as usize],
+                    dst_alpha: d3d_to_gl_blend[buf.next_u32() as usize],
                     mtpreset: buf.next_u32(),
                 }
             }).collect();

@@ -15,10 +15,10 @@ out vec2 tex_coord;
 
 void main() {
     vec4 pos = vec4(vertex_pos.x * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                    vertex_pos.y * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                    -vertex_pos.y * ONE_SPRITE_PIXEL_SIZE_IN_3D,
                     0.0, 1.0);
     pos.x += offset.x * ONE_SPRITE_PIXEL_SIZE_IN_3D;
-    pos.y -= offset.y * ONE_SPRITE_PIXEL_SIZE_IN_3D - 10.0;
+    pos.y -= offset.y * ONE_SPRITE_PIXEL_SIZE_IN_3D;
     mat4 model_view = view * model;
     model_view[0][0] = 1.0;
     model_view[0][1] = 0.0;

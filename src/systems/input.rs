@@ -178,7 +178,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         mut system_vars,
     ): Self::SystemData) {
         for (controller) in (&mut controller_storage).join() {
-            // shitty IDE
+            // for autocompletion...
             let controller: &mut ControllerComponent = controller;
 
 

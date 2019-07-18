@@ -50,27 +50,25 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                                               &mut char_state_storage,
                                                               &mut sprite_storage,
                                                               &physics_storage).join() {
-            // shitty IntelliJ plugin
+            // for autocompletion...
             let char_comp: &mut CharacterStateComponent = char_state;
-            //
 
             let char_pos = {
                 let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
                 body.position().translation.vector
             };
             match char_comp.state().clone() {
-                CharState::CastingSkill {
-                    cast_started,
-                    cast_ends,
-                    can_move,
-                    skill
-                } => {
-                    if cast_ends.has_passed(system_vars.time) {
+                CharState::CastingSkill(casting_info) => {
+                    if casting_info.cast_ends.has_passed(system_vars.time) {
                         let skill_entity_id = entities.create();
 
-                        let manifestation = skill.lock().unwrap().create_manifestation(
+                        let manifestation = casting_info.skill.lock().unwrap().create_manifestation(
+                            &char_pos,
+                            &casting_info.mouse_pos_when_casted,
                             &mut physics_world,
                             &system_vars,
+                            &entities,
+                            &mut updater
                         );
                         updater.insert(skill_entity_id, SkillManifestationComponent::new(
                             skill_entity_id,
@@ -154,8 +152,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 let state = char_comp.state();
                 sprite.descr.animation_started = system_vars.time;
                 sprite.descr.forced_duration = match state {
-                    CharState::Attacking { attack_ends, target: _ } => Some(attack_ends.minus(system_vars.time)),
-                    CharState::CastingSkill { cast_started: _, cast_ends, can_move: _, skill: _ } => Some(cast_ends.minus(system_vars.time)),
+                    CharState::Attacking { attack_ends, .. } => Some(attack_ends.minus(system_vars.time)),
+                    CharState::CastingSkill(casting_info) => Some(casting_info.cast_ends.minus(system_vars.time)),
                     _ => None
                 };
                 sprite.descr.action_index = state.get_sprite_index() as usize;

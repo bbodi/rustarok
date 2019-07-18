@@ -7,9 +7,9 @@ use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PE
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
-use crate::components::controller::{ControllerComponent, SkillKey};
+use crate::components::controller::{ControllerComponent, SkillKey, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor, CharState};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
@@ -214,14 +214,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let shader = system_vars.shaders.trimesh2d_shader.gl_use();
                 shader.set_mat4("projection", &system_vars.matrices.ortho);
                 let vao = self.rectangle_vao.bind();
+                let bar_w = 100;
                 let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
                     let mut matrix = Matrix4::<f32>::identity();
                     let spr_x = char_state.bounding_rect_2d.bottom_left[0];
                     let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
-                    let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (130.0 / 2.0);
+                    let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
                     let pos = Vector3::new(
                         bar_x + x as f32,
-                        char_state.bounding_rect_2d.top_right[1] as f32 - 40.0 + y as f32,
+                        char_state.bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
                         0.0,
                     );
                     matrix.prepend_translation_mut(&pos);
@@ -230,15 +231,36 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     shader.set_vec2("size", &[w as f32, h as f32]);
                     vao.draw();
                 };
-                draw_rect(0, 0, 130, 19, &[0.0, 0.0, 0.0, 1.0]); // black background
-                draw_rect(1, 1, 128, 17, &[0.44, 0.49, 0.56, 1.0]); // grey inner
+                let draw_double_bordered_rect = |x: i32, y: i32, max_w: i32, h: i32, cur_w_percent: f32, color: &[f32; 4]| {
+                    draw_rect(x + 0, y + 0, max_w - 0, h - 0, &[0.00, 0.00, 0.00, 1.0]); // black health background
+                    draw_rect(x + 1, y + 1, max_w - 2, h - 2, &[0.44, 0.49, 0.56, 1.0]); // grey health background
+                    draw_rect(x + 2, y + 2, max_w - 4, h - 4, &[0.00, 0.00, 0.00, 1.0]); // black health background
+                    let inner_w = ((max_w - 6) as f32 * cur_w_percent) as i32;
+                    draw_rect(x + 3, y + 3, inner_w, h - 6, color); // green health bar
+                };
 
-                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32) * 124.0;
-                draw_rect(2, 2, 126, 10, &[0.0, 0.0, 0.0, 1.0]); // black health background
-                draw_rect(3, 3, hp_percentage as i32, 8, &[0.29, 0.80, 0.11, 1.0]); // green health bar
+                let draw_single_bordered_rect = |x: i32, y: i32, max_w: i32, h: i32, cur_w_percent: f32, color: &[f32; 4]| {
+                    draw_rect(x + 0, y + 0, max_w - 0, h - 0, &[0.44, 0.49, 0.56, 1.0]); // grey health background
+                    draw_rect(x + 1, y + 1, max_w - 2, h - 2, &[0.00, 0.00, 0.00, 1.0]); // black health background
+                    let inner_w = ((max_w - 4) as f32 * cur_w_percent) as i32;
+                    draw_rect(x + 2, y + 2, inner_w, h - 4, color); // green health bar
+                };
 
-                draw_rect(2, 12, 126, 5, &[0.0, 0.0, 0.0, 1.0]); // black mana background
-                draw_rect(3, 13, 100, 3, &[0.23, 0.79, 0.88, 1.0]); // blue mana bar
+                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32);
+                draw_double_bordered_rect(0, 0, bar_w - 0, 21, 1.0, &[0.0, 0.0, 0.0, 1.0]);
+                draw_single_bordered_rect(3, 3, bar_w - 6, 9, hp_percentage, &[0.29, 0.80, 0.11, 1.0]);
+                draw_single_bordered_rect(3, 12, bar_w - 6, 7, 0.7, &[0.23, 0.79, 0.88, 1.0]);
+//                let hp_height = 8;
+//                draw_rect(0, 0, 130, 19, &[0.0, 0.0, 0.0, 1.0]); // black background
+//                draw_rect(1, 1, 128, 17, &[0.44, 0.49, 0.56, 1.0]); // grey inner
+//
+//                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32) * 124.0;
+////                draw_rect(2, 2, 126, hp_height+2, &[0.0, 0.0, 0.0, 1.0]); // black health background
+////                draw_rect(3, 3, hp_percentage as i32, hp_height, &[0.29, 0.80, 0.11, 1.0]); // green health bar
+//                draw_double_bordered_rect(2, 2)
+//
+//                draw_rect(2, 12, 126, 5, &[0.0, 0.0, 0.0, 1.0]); // black mana background
+//                draw_rect(3, 13, 100, 3, &[0.23, 0.79, 0.88, 1.0]); // blue mana bar
             }
             // Draw monsters
             for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
@@ -288,9 +310,19 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
             if let Some(skill_key) = controller.is_casting_selection {
                 if skill_key == SkillKey::Q {
-                    Skills::TestSkill { pos: Point2::new(0.0, 0.0) }.render_target_selection(
+                    // TODO: why do we need 'Q' here?
+                    Skills::TestSkill.render_target_selection(
                         &char_pos,
                         &controller.mouse_world_pos,
+                        &system_vars,
+                    );
+                }
+            } else {
+                let char_state = char_state_storage.get(controller.char).unwrap();
+                if let CharState::CastingSkill(casting_info) = char_state.state() {
+                    casting_info.skill.lock().unwrap().render_casting(
+                        &char_pos,
+                        casting_info,
                         &system_vars,
                     );
                 }
@@ -301,7 +333,10 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             }
 
             for (str_effect) in (&str_effect_storage).join() {
-                self.render_str(str_effect, &system_vars);
+                self.render_str(&str_effect.effect,
+                                str_effect.start_time,
+                                &str_effect.pos,
+                                &system_vars);
             }
         }
     }
@@ -692,6 +727,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::ReadStorage<'a, FlyingNumberComponent>,
+        specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
@@ -699,6 +735,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
     fn run(&mut self, (
         entities,
         numbers,
+        controller_storage,
         system_vars,
         mut system_benchmark,
         updater,
@@ -708,59 +745,64 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
         }
         let stopwatch = system_benchmark.start_measurement("DamageRenderSystem");
 
-        for (entity, number) in (&entities, &numbers).join() {
-            let digits = DamageRenderSystem::get_digits(number.value);
-            // create vbo based on the numbers
-            let mut x = 0.0;
-            let mut vertices = vec![];
-            digits.iter().for_each(|&digit| {
-                let digit = digit as usize;
-                vertices.push([x - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
-                vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                vertices.push([x + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
-                x += 1.0;
-            });
-            let vertex_array = VertexArray::new(
-                gl::TRIANGLES,
-                &vertices, vertices.len(), vec![
-                    VertexAttribDefinition {
-                        number_of_components: 2,
-                        offset_of_first_element: 0,
-                    }, VertexAttribDefinition { // uv
-                        number_of_components: 2,
-                        offset_of_first_element: 2,
-                    }
+        for (controller) in (&controller_storage).join() {
+            // for autocompletion
+            let controller: &ControllerComponent = controller;
+
+            for (entity_id, number) in (&entities, &numbers).join() {
+                let digits = DamageRenderSystem::get_digits(number.value);
+                // create vbo based on the numbers
+                let mut x = 0.0;
+                let mut vertices = vec![];
+                digits.iter().for_each(|&digit| {
+                    let digit = digit as usize;
+                    vertices.push([x - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
+                    vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+                    vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+                    vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+                    vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+                    vertices.push([x + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
+                    x += 1.0;
+                });
+                let vertex_array = VertexArray::new(
+                    gl::TRIANGLES,
+                    &vertices, vertices.len(), vec![
+                        VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 0,
+                        }, VertexAttribDefinition { // uv
+                            number_of_components: 2,
+                            offset_of_first_element: 2,
+                        }
+                    ]);
+
+                system_vars.sprites.numbers.bind(TEXTURE_0);
+                let shader = system_vars.shaders.sprite_shader.gl_use();
+                let mut matrix = Matrix4::<f32>::identity();
+                let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+
+                let lifetime_perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
+                pos.y += 4.0 * lifetime_perc;
+                pos.z -= 2.0 * lifetime_perc;
+                pos.x += 2.0 * lifetime_perc;
+                matrix.prepend_translation_mut(&pos);
+                shader.set_mat4("model", &matrix);
+                shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
+
+                shader.set_vec2("size", &[
+                    1.0,
+                    1.0
                 ]);
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &system_vars.matrices.view);
+                shader.set_int("model_texture", 0);
+                shader.set_f32("alpha", 1.0);
 
-            system_vars.sprites.numbers.bind(TEXTURE_0);
-            let shader = system_vars.shaders.sprite_shader.gl_use();
-            let mut matrix = Matrix4::<f32>::identity();
-            let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+                vertex_array.bind().draw();
 
-            let lifetime_perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
-            pos.y += 4.0 * lifetime_perc;
-            pos.z -= 2.0 * lifetime_perc;
-            pos.x += 2.0 * lifetime_perc;
-            matrix.prepend_translation_mut(&pos);
-            shader.set_mat4("model", &matrix);
-            shader.set_vec3("color", &number.color);
-
-            shader.set_vec2("size", &[
-                1.0,
-                1.0
-            ]);
-            shader.set_mat4("projection", &system_vars.matrices.projection);
-            shader.set_mat4("view", &system_vars.matrices.view);
-            shader.set_int("model_texture", 0);
-            shader.set_f32("alpha", 1.0);
-
-            vertex_array.bind().draw();
-
-            if number.die_at.has_passed(system_vars.time) {
-                updater.remove::<FlyingNumberComponent>(entity);
+                if number.die_at.has_passed(system_vars.time) {
+                    updater.remove::<FlyingNumberComponent>(entity_id);
+                }
             }
         }
     }
@@ -769,21 +811,28 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
 impl RenderDesktopClientSystem {
     pub fn render_str(
         &mut self,
-        str_effect_comp: &StrEffectComponent,
+        effect_name: &str,
+        start_time: ElapsedTime,
+        world_pos: &WorldCoords,
         system_vars: &SystemVariables,
     ) {
+        unsafe {
+            gl::Disable(gl::DEPTH_TEST);
+        }
         let shader = system_vars.shaders.str_effect_shader.gl_use();
         shader.set_mat4("projection", &system_vars.matrices.projection);
         shader.set_mat4("view", &system_vars.matrices.view);
         shader.set_int("model_texture", 0);
 
-        let str_file = &system_vars.map_render_data.str_effects[&str_effect_comp.effect];
+        let str_file = &system_vars.map_render_data.str_effects[effect_name];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
-        let key_index = system_vars.time.elapsed_since(str_effect_comp.start_time).div(seconds_needed_for_one_frame) as i32 % max_key as i32;
+        let key_index = system_vars.time.elapsed_since(start_time).div(seconds_needed_for_one_frame) as i32 % max_key as i32;
 
         let mut from_id = 0;
         let mut to_id = 0;
+        let mut last_source_id = 0;
+        let mut last_frame_id = 0;
         for layer in str_file.layers.iter() {
             for (i, key_frame) in layer.key_frames.iter().enumerate() {
                 if key_frame.frame <= key_index {
@@ -792,52 +841,86 @@ impl RenderDesktopClientSystem {
                         KeyFrameType::End => to_id = i,
                     };
                 }
+                last_frame_id = last_frame_id.max(key_frame.frame);
+                if key_frame.typ == KeyFrameType::Start {
+                    last_source_id = last_source_id.max(key_frame.frame);
+                }
             }
             if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
+                continue;
+            }
+            if last_frame_id < key_index {
                 continue;
             }
             let from_frame = &layer.key_frames[from_id];
             let to_frame = &layer.key_frames[to_id];
 
+            let (color, pos, uv, xy, angle) = if to_id != from_id + 1 || to_frame.frame != from_frame.frame {
+                // no other source
+                if last_source_id <= from_frame.frame {
+                    continue;
+                }
+                (from_frame.color, from_frame.pos, from_frame.uv, from_frame.xy, from_frame.angle)
+            } else {
+                let delta = (key_index - from_frame.frame) as f32;
+                // morphing
+                let color = [
+                    from_frame.color[0] + to_frame.color[0] * delta,
+                    from_frame.color[1] + to_frame.color[1] * delta,
+                    from_frame.color[2] + to_frame.color[2] * delta,
+                    from_frame.color[3] + to_frame.color[3] * delta,
+                ];
+                let xy = [
+                    from_frame.xy[0] + to_frame.xy[0] * delta,
+                    from_frame.xy[1] + to_frame.xy[1] * delta,
+                    from_frame.xy[2] + to_frame.xy[2] * delta,
+                    from_frame.xy[3] + to_frame.xy[3] * delta,
+                    from_frame.xy[4] + to_frame.xy[4] * delta,
+                    from_frame.xy[5] + to_frame.xy[5] * delta,
+                    from_frame.xy[6] + to_frame.xy[6] * delta,
+                    from_frame.xy[7] + to_frame.xy[7] * delta,
+                ];
+                let angle = from_frame.angle + to_frame.angle * delta;
+                let pos = [
+                    from_frame.pos[0] + to_frame.pos[0] * delta,
+                    from_frame.pos[1] + to_frame.pos[1] * delta,
+                ];
+                (color, pos, from_frame.uv, xy, angle)
+            };
+
+
             let matrix = {
                 let mut matrix = Matrix4::<f32>::identity();
-                let pos = Vector3::new(str_effect_comp.pos.x, 0.0, str_effect_comp.pos.y);
+                let pos = Vector3::new(world_pos.x, 0.0, world_pos.y);
                 matrix.prepend_translation_mut(&pos);
+                let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::z()), -angle).to_homogeneous();
+                matrix = matrix * rotation;
                 shader.set_mat4("model", &matrix);
                 matrix
             };
 
-            let offset = [from_frame.pos[0], from_frame.pos[1]];
+            let offset = [pos[0] - 320.0, pos[1] - 320.0];
 
             shader.set_vec2("offset", &offset);
-            shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
-            self.str_effect_vao[0] = from_frame.xy[0];
-            self.str_effect_vao[1] = from_frame.xy[4];
-            self.str_effect_vao[4] = from_frame.xy[1];
-            self.str_effect_vao[5] = from_frame.xy[5];
-            self.str_effect_vao[8] = from_frame.xy[3];
-            self.str_effect_vao[9] = from_frame.xy[7];
-            self.str_effect_vao[12] = from_frame.xy[2];
-            self.str_effect_vao[13] = from_frame.xy[6];
+            shader.set_vec4("color", &color);
+            self.str_effect_vao[0] = xy[0];
+            self.str_effect_vao[1] = xy[4];
+            self.str_effect_vao[4] = xy[1];
+            self.str_effect_vao[5] = xy[5];
+            self.str_effect_vao[8] = xy[3];
+            self.str_effect_vao[9] = xy[7];
+            self.str_effect_vao[12] = xy[2];
+            self.str_effect_vao[13] = xy[6];
 
-//            self.str_effect_vao[0] = -300.0;
-//            self.str_effect_vao[1] = -300.0;
-//            self.str_effect_vao[2] = 0.0; // u
-//            self.str_effect_vao[3] = 0.0; // v
-//            self.str_effect_vao[4] = 300.0;
-//            self.str_effect_vao[5] = -300.0;
-//            self.str_effect_vao[6] = 1.0; // u
-//            self.str_effect_vao[7] = 0.0; // v
-//            self.str_effect_vao[8] = -300.0;
-//            self.str_effect_vao[9] = 300.0;
-//            self.str_effect_vao[10] = 0.0; // u
-//            self.str_effect_vao[11] = 1.0; // v
-//            self.str_effect_vao[12] = 300.0;
-//            self.str_effect_vao[13] = 300.0;
-//            self.str_effect_vao[14] = 1.0; // u
-//            self.str_effect_vao[15] = 1.0; // v
+            unsafe {
+                gl::BlendFunc(from_frame.src_alpha, from_frame.dst_alpha);
+            }
             str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
             self.str_effect_vao.bind().draw();
+        }
+        unsafe {
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::Enable(gl::DEPTH_TEST);
         }
     }
 }

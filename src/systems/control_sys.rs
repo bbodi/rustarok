@@ -12,7 +12,7 @@ use ncollide2d::query::point_internal::point_query::PointQuery;
 use specs::world::EntitiesRes;
 use specs::join::JoinIter;
 use crate::components::{FlyingNumberType, FlyingNumberComponent};
-use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, EntityTarget};
+use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, EntityTarget, CastingSkillData};
 use crate::components::controller::{ControllerComponent, ControllerAction, SkillKey};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
 use nphysics2d::object::Body;
@@ -47,7 +47,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
         let stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
         let mut rng = rand::thread_rng();
         for (controller) in (&controller_storage).join() {
-            // shitty IDE
+            // for autocompletion...
             let controller: &ControllerComponent = controller;
 
             let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
@@ -77,14 +77,15 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         };
                         let dir = CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos);
                         let casting_time_seconds = 1.0;
-                        let new_state = CharState::CastingSkill {
+                        let new_state = CharState::CastingSkill(CastingSkillData {
                             cast_started: system_vars.time,
                             cast_ends: system_vars.time.add_seconds(casting_time_seconds),
                             can_move: false,
-                            skill: Arc::new(Mutex::new(Box::new(
-                                Skills::TestSkill { pos: controller.mouse_world_pos }
+                            skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
+                                                                 Skills::TestSkill
                             ))),
-                        };
+                            mouse_pos_when_casted: controller.mouse_world_pos,
+                        });
                         char_state.set_state(new_state, dir);
                     }
                 }

@@ -122,7 +122,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
                 updater.insert(damage_entity, AttackComponent {
                     src_entity: entity_id, // TODO: store the caster
                     dst_entity: entity_id,
-                    typ: AttackType::Skill(Skills::TestSkill { pos: WorldCoords::new(0.0, 0.0) }),
+                    typ: AttackType::Skill(Skills::TestSkill),
                 });
             }
         }

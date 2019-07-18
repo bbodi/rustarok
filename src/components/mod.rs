@@ -29,7 +29,8 @@ pub struct BrowserClient {
 #[derive(Component)]
 pub struct FlyingNumberComponent {
     pub value: u32,
-    pub color: [f32; 3],
+    pub target_entity_id: Entity,
+    pub typ: FlyingNumberType,
     pub start_pos: Point2<f32>,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
@@ -38,7 +39,7 @@ pub struct FlyingNumberComponent {
 
 #[derive(Component)]
 pub struct StrEffectComponent {
-    pub effect: StrEffect,
+    pub effect: String /*StrEffect*/,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
@@ -53,21 +54,35 @@ pub enum FlyingNumberType {
     Crit,
 }
 
+impl FlyingNumberType {
+    pub fn color(&self, target_is_current_user: bool) -> [f32; 3] {
+        match self {
+            FlyingNumberType::Damage => {
+                if target_is_current_user {
+                    [1.0, 0.0, 0.0]
+                } else {
+                    [1.0, 1.0, 1.0]
+                }
+            }
+            FlyingNumberType::Heal => [0.0, 1.0, 0.0],
+            FlyingNumberType::Normal => [1.0, 1.0, 1.0],
+            FlyingNumberType::Mana => [0.0, 0.0, 1.0],
+            FlyingNumberType::Crit => [1.0, 1.0, 1.0]
+        }
+    }
+}
+
 impl FlyingNumberComponent {
     pub fn new(typ: FlyingNumberType,
                value: u32,
+               target_entity_id: Entity,
                duration: f32,
                start_pos: Point2<f32>,
                sys_time: ElapsedTime) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,
-            color: match typ {
-                FlyingNumberType::Damage => [1.0, 0.0, 0.0],
-                FlyingNumberType::Heal => [0.0, 1.0, 0.0],
-                FlyingNumberType::Normal => [1.0, 1.0, 1.0],
-                FlyingNumberType::Mana => [0.0, 0.0, 1.0],
-                FlyingNumberType::Crit => [1.0, 1.0, 1.0]
-            },
+            typ,
+            target_entity_id,
             start_pos,
             start_time: sys_time,
             die_at: sys_time.add_seconds(duration),
@@ -78,7 +93,7 @@ impl FlyingNumberComponent {
 
 pub enum AttackType {
     Basic,
-    Skill(Skills)
+    Skill(Skills),
 }
 
 #[derive(Component)]
