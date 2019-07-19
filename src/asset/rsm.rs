@@ -367,7 +367,13 @@ impl Rsm {
             let path = format!("data\\texture\\{}", texture_name);
             let surface = asset_loader.load_sdl_surface(&path);
             trace!("Surface loaded: {}", path);
-            let ret = GlTexture::from_surface(surface.unwrap());
+            let ret = GlTexture::from_surface(
+                surface
+                    .unwrap_or_else(|e| {
+                        warn!("Missing texture: {}, {}", path, e);
+                        asset_loader.backup_surface()
+                    })
+            );
             trace!("Texture was created loaded: {}", path);
             return ret;
         }).collect()
