@@ -145,7 +145,7 @@ impl ControllerComponent {
             camera,
             cast_mode: CastMode::Normal,
             inputs: vec![],
-            keys: ControllerComponent::shit(),
+            keys: ControllerComponent::init_keystates(),
             keys_released_in_prev_frame: vec![],
             keys_pressed_in_prev_frame: vec![],
             left_mouse_down: false,
@@ -195,7 +195,7 @@ impl ControllerComponent {
         self.keys[&key].just_pressed
     }
 
-    fn shit() -> HashMap<Scancode, KeyState> {
+    fn init_keystates() -> HashMap<Scancode, KeyState> {
         let mut key_map = HashMap::<Scancode, KeyState>::new();
         key_map.insert(Scancode::A, KeyState::default());
         key_map.insert(Scancode::B, KeyState::default());

@@ -2,10 +2,9 @@ use std::cmp::max;
 use std::fs::File;
 use std::path::Path;
 
-use crate::common::BinaryReader;
-
 use byteorder::{ReadBytesExt, LittleEndian};
 use byteorder::WriteBytesExt;
+use crate::asset::BinaryReader;
 
 pub enum CellType {
     None = 1 << 0,
@@ -56,7 +55,7 @@ pub struct BlockingRectangle {
 }
 
 impl Gat {
-    pub fn load(mut buf: BinaryReader, map_name: &str) -> Gat {
+    pub(super) fn load(mut buf: BinaryReader, map_name: &str) -> Self {
         let header = buf.string(4);
         if header != "GRAT" {
             panic!("Invalig GAT header: {}", header);
@@ -229,14 +228,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_shit2() {
+    fn test2() {
         assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 1, 0, 0, 1, 0], 6), (2, 0, 2, 1));
         assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 3, 2, 2, 3, 0], 6), (8, 1, 4, 2));
         assert_eq!(Gat::largest_rectangle_until_this_row(&[0, 0, 0, 0, 0, 0], 6), (0, 0, 0, 0));
     }
 
     #[test]
-    fn test_shit() {
+    fn test() {
         let walkable = false;
         let non_walkable = true;
         let input = [

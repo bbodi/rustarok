@@ -1,6 +1,6 @@
-use crate::common::BinaryReader;
 use sdl2::pixels::PixelFormatEnum;
 use crate::video::GlTexture;
+use crate::asset::BinaryReader;
 
 pub struct SpriteFile {
     pub frames: Vec<Frame>,
@@ -26,7 +26,7 @@ pub struct SpriteTexture {
 }
 
 impl SpriteFile {
-    pub fn load(mut buf: BinaryReader) -> SpriteFile {
+    pub(super) fn load(mut buf: BinaryReader) -> Self {
         let header = buf.string(2);
         let version = buf.next_u8() as f32 / 10.0 + buf.next_u8() as f32;
         if header != "SP" {

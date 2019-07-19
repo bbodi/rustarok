@@ -1,9 +1,9 @@
 use std::borrow::ToOwned;
-use crate::common::BinaryReader;
 use nalgebra::{Vector3};
 use std::collections::{HashMap, HashSet};
-use crate::rsm::Rsm;
+use crate::asset::rsm::Rsm;
 use crate::ModelName;
+use crate::asset::BinaryReader;
 
 #[derive(Debug)]
 pub struct GroundData {
@@ -97,18 +97,11 @@ pub struct MapSound {
 }
 
 impl Rsw {
-    pub fn load_models(model_names: HashSet<ModelName>) -> HashMap<ModelName, Rsm> {
-        return model_names.iter().map(|filename| {
-            let rsm = Rsm::load(&mut BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\model\\{}", filename.0)));
-            (filename.clone(), rsm)
-        }).collect();
-    }
-
-    pub fn load(mut buf: BinaryReader) -> Rsw {
+    pub(super) fn load(mut buf: BinaryReader) -> Self {
         let header = buf.string(4);
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         if header != "GRSW" {
-            // shit
+            panic!();
         }
 
         let file = FileData {

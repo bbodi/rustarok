@@ -13,6 +13,7 @@ use imgui_opengl_renderer::Renderer;
 use sdl2::event::{EventPollIterator, Event};
 use crate::systems::SystemVariables;
 use std::ops::{IndexMut, Index};
+use crate::asset::AssetLoader;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -211,24 +212,21 @@ impl GlTexture {
         GlTexture::from_surface(optimized_surf)
     }
 
-    pub fn from_surface(surface: Surface) -> GlTexture {
+    pub fn from_surface(mut surface: Surface) -> GlTexture {
+        let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
+            trace!("convert to RGBA");
+            let mut optimized_surf = sdl2::surface::Surface::new(
+                surface.width(),
+                surface.height(),
+                PixelFormatEnum::RGBA32).unwrap();
+            surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
+            surface.blit(None, &mut optimized_surf, None).unwrap();
+            optimized_surf
+        } else { surface };
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
-            let mode = if surface.pixel_format_enum().byte_size_per_pixel() == 4 {
-                if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
-                    gl::RGBA
-                } else {
-                    gl::BGRA
-                }
-            } else {
-                if surface.pixel_format_enum().into_masks().unwrap().rmask == 0x000000ff {
-                    gl::RGB
-                } else {
-                    gl::BGR
-                }
-            };
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0, // Pyramid level (for mip-mapping) - 0 is the top level
@@ -236,7 +234,7 @@ impl GlTexture {
                 surface.width() as i32,
                 surface.height() as i32,
                 0, // border
-                mode as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                gl::RGBA as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
             );
@@ -259,15 +257,14 @@ impl GlTexture {
             gl::GenTextures(1, &mut texture_id);
             debug!("Texture from_data {}", texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
-            let mode = gl::RGBA;
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0, // Pyramid level (for mip-mapping) - 0 is the top level
-                mode as i32, // Internal colour format to convert to
+                gl::RGBA as i32, // Internal colour format to convert to
                 width,
                 height,
                 0, // border
-                mode, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                gl::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 data.as_ptr() as *const gl::types::GLvoid,
             );

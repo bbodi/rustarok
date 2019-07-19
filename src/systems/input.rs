@@ -54,16 +54,17 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     let lower_byte = iter.next().unwrap();
                                     let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
                                     trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
-                                    let shit2 = (0 as u32,
-                                                 0 as i32,
-                                                 0 as i32);
-                                    let shit = unsafe { std::mem::transmute(shit2) };
+                                    let mousestate = {
+                                        unsafe { std::mem::transmute((0 as u32,
+                                                                      0 as i32,
+                                                                      0 as i32)) }
+                                    };
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseMotion {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
-                                            mousestate: shit,
+                                            mousestate,
                                             x: mouse_x as i32,
                                             y: mouse_y as i32,
                                             xrel: 0,
