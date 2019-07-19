@@ -78,6 +78,7 @@ mod components;
 mod systems;
 
 use serde::Deserialize;
+use std::str::FromStr;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -85,6 +86,7 @@ pub const TICKS_PER_SECOND: u64 = 1000 / 30;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
+    log_level: String,
     grf_paths: Vec<String>,
 }
 
@@ -214,12 +216,17 @@ impl ElapsedTime {
 }
 
 fn main() {
-    simple_logging::log_to_stderr(LevelFilter::Info);
-
     let config = AppConfig::new().expect("Could not load config file ('config.toml')");
-    let asset_loader = AssetLoader::new(config.grf_paths.as_slice())
-        .expect("Could not open asset files. Please configure them in 'config.toml'");
 
+    simple_logging::log_to_stderr(
+        LevelFilter::from_str(&config.log_level)
+            .expect("Unknown log level. Please set one of the following values for 'log_level' in 'config.toml': \"OFF\", \"ERROR\", \"WARN\", \"INFO\", \"DEBUG\", \"TRACE\"")
+    );
+    let (elapsed, asset_loader) = measure_time(|| {
+        AssetLoader::new(config.grf_paths.as_slice())
+            .expect("Could not open asset files. Please configure them in 'config.toml'")
+    });
+    info!("GRF loading: {}", elapsed.as_millis());
     let mut video = Video::init();
 
     let shaders = Shaders {
@@ -434,7 +441,7 @@ fn main() {
         .map(|mut file_name| {
             file_name.drain(..5); // remove "data\\" from the begining
             let len = file_name.len();
-            file_name.truncate(len-4); // and extension from the end
+            file_name.truncate(len - 4); // and extension from the end
             file_name
         }).collect::<Vec<String>>();
     let all_str_names = asset_loader.read_dir("data\\texture\\effect")
@@ -443,7 +450,7 @@ fn main() {
         .map(|mut file_name| {
             file_name.drain(.."data\\texture\\effect\\".len()); // remove dir from the beginning
             let len = file_name.len();
-            file_name.truncate(len-4);  // and extension from the end
+            file_name.truncate(len - 4);  // and extension from the end
             file_name
         }).collect::<Vec<String>>();
 
@@ -499,7 +506,6 @@ fn main() {
     websocket_server.set_nonblocking(true).unwrap();
 
     let mut other_entities: Vec<Entity> = vec![];
-    dbg!("asd");
     let mut entity_count = 0;
     'running: loop {
         match websocket_server.accept() {

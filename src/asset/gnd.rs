@@ -653,18 +653,16 @@ impl Gnd {
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names.iter().map(|texture_name| {
             let path = format!("data\\texture\\{}", texture_name);
             let surface = asset_loader.load_sdl_surface(&path);
-            surface.unwrap_or_else(|_| {
-                warn!("Missing: {}", path);
-                let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
-                missing_texture.fill_rect(None, Color::RGB(255, 0, 255)).unwrap();
-                missing_texture
+            surface.unwrap_or_else(|e| {
+                warn!("Missing: {}, {}", path, e);
+                asset_loader.backup_surface()
             })
         }).collect();
-        let surface_atlas = Gnd::create_texture_atlas(&texture_surfaces);
+        let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
         GlTexture::from_surface(surface_atlas)
     }
 
-    fn create_texture_atlas(texture_surfaces: &Vec<sdl2::surface::Surface>) -> sdl2::surface::Surface<'static> {
+    fn create_texture_atlas(texture_surfaces: Vec<sdl2::surface::Surface>) -> sdl2::surface::Surface<'static> {
         let _width = (texture_surfaces.len() as f32).sqrt().round() as i32;
         let width = ((_width * 258) as u32).next_power_of_two();
         let height = ((texture_surfaces.len() as f32).sqrt().ceil() as u32 * 258).next_power_of_two();

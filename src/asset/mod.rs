@@ -18,6 +18,7 @@ use libflate::zlib::Decoder;
 use std::ops::*;
 use sdl2::image::ImageRWops;
 use sdl2::pixels::PixelFormatEnum;
+use crate::video::GlTexture;
 
 pub mod gat;
 pub mod str;
@@ -114,6 +115,13 @@ impl AssetLoader {
                 })
             }
         };
+    }
+
+    /// Clones backup surfaces, quite inefficient to share one surface...
+    pub fn backup_surface(&self) -> sdl2::surface::Surface {
+        let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGBA8888).unwrap();
+        missing_texture.fill_rect(None, sdl2::pixels::Color::RGB(255, 20, 147)).unwrap();
+        missing_texture
     }
 
 
