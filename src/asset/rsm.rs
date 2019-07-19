@@ -1,9 +1,19 @@
-use crate::common::{BinaryReader, init_vec};
 use nalgebra::{Matrix3, Vector3, Matrix4, Rotation3, Unit, Quaternion, Vector4, UnitQuaternion, Point3};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use std::collections::HashMap;
 use crate::{SameTextureNodeFaces, DataForRenderingSingleNode};
+use crate::asset::{BinaryReader, AssetLoader};
 
+fn init_vec<T, F>(size: u32, def: T, mut init_func: F) -> Vec<T>
+    where T: Clone,
+          F: FnMut(&mut T) -> ()
+{
+    let mut vec: Vec<T> = vec![def; size as usize];
+    for i in 0..size as usize {
+        init_func(&mut vec[i]);
+    }
+    vec
+}
 
 #[derive(Debug)]
 pub struct Rsm {
@@ -101,7 +111,7 @@ pub struct RotKeyFrame {
 }
 
 impl RsmNode {
-    pub fn load(buf: &mut BinaryReader, rsm_version: f32) -> RsmNode {
+    fn load(buf: &mut BinaryReader, rsm_version: f32) -> Self {
         let name = buf.string(40);
         let parent_name = buf.string(40);
 
@@ -195,7 +205,7 @@ impl RsmNode {
 
 
 impl Rsm {
-    pub fn load(buf: &mut BinaryReader) -> Rsm {
+    pub(super) fn load(mut buf: BinaryReader) -> Self {
         let header = buf.string(4);
         if header != "GRSM" {
             panic!("Invalid RSM header: {}", header);
@@ -217,7 +227,7 @@ impl Rsm {
             let mut nodes = Vec::<RsmNode>::with_capacity(buf.next_u32() as usize);
             let mut main_node_index = None;
             for i in 0..nodes.capacity() {
-                let node = RsmNode::load(buf, version);
+                let node = RsmNode::load(&mut buf, version);
                 if node.name == main_node_name {
                     main_node_index = Some(i);
                 }
@@ -352,10 +362,14 @@ impl Rsm {
         return (full_model_rendering_data, real_bounding_box);
     }
 
-    pub fn load_textures(texture_names: &Vec<String>) -> Vec<GlTexture> {
+    pub fn load_textures(asset_loader: &AssetLoader, texture_names: &Vec<String>) -> Vec<GlTexture> {
         texture_names.iter().map(|texture_name| {
-            let path = format!("d:\\Games\\TalonRO\\grf\\data\\texture\\{}", texture_name);
-            GlTexture::from_file(path)
+            let path = format!("data\\texture\\{}", texture_name);
+            let surface = asset_loader.load_sdl_surface(&path);
+            trace!("Surface loaded: {}", path);
+            let ret = GlTexture::from_surface(surface.unwrap());
+            trace!("Texture was created loaded: {}", path);
+            return ret;
         }).collect()
     }
 

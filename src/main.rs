@@ -13,7 +13,12 @@ extern crate specs;
 #[macro_use]
 extern crate specs_derive;
 extern crate websocket;
+extern crate libflate;
+extern crate config;
+extern crate serde;
 
+
+use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::ops::{Bound, Div};
@@ -38,19 +43,11 @@ use strum::IntoEnumIterator;
 use websocket::{OwnedMessage, WebSocketError};
 use websocket::stream::sync::TcpStream;
 
-use crate::act::ActionFile;
-use crate::common::BinaryReader;
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{CharacterStateComponent, ComponentRadius, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U16Float, U8Float};
 use crate::components::controller::{CastMode, ControllerComponent};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::gat::{CellType, Gat};
-use crate::gnd::Gnd;
-use crate::rsm::{BoundingBox, Rsm};
-use crate::rsw::Rsw;
-use crate::spr::SpriteFile;
-use crate::str::StrFile;
 use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemStopwatch, SystemVariables};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -61,26 +58,43 @@ use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, Physics
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::ui::RenderUI;
 use crate::video::{GlTexture, IndexedVertexArray, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::asset::act::ActionFile;
+use crate::asset::spr::SpriteFile;
+use crate::asset::{AssetLoader, SpriteResource};
+use crate::asset::str::StrFile;
+use crate::asset::gat::{CellType, Gat};
+use crate::asset::rsw::Rsw;
+use crate::asset::gnd::Gnd;
+use crate::asset::rsm::{Rsm, BoundingBox};
+use encoding::DecoderTrap;
 
-mod common;
 mod cursor;
 mod cam;
 mod video;
-mod gat;
-mod str;
-mod rsw;
-mod gnd;
-mod rsm;
-mod act;
-mod spr;
+mod asset;
 mod consts;
 
 mod components;
 mod systems;
 
+use serde::Deserialize;
+
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
 pub const TICKS_PER_SECOND: u64 = 1000 / 30;
+
+#[derive(Debug, Deserialize)]
+pub struct AppConfig {
+    grf_paths: Vec<String>,
+}
+
+impl AppConfig {
+    pub fn new() -> Result<Self, config::ConfigError> {
+        let mut s = config::Config::new();
+        s.merge(config::File::with_name("config"))?;
+        return s.try_into();
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum ActionIndex {
@@ -111,31 +125,6 @@ pub enum MonsterActionIndex {
 const STATIC_MODELS_COLLISION_GROUP: usize = 1;
 const LIVING_COLLISION_GROUP: usize = 2;
 const SKILL_AREA_COLLISION_GROUP: usize = 3;
-
-#[derive(Clone)]
-pub struct SpriteResource {
-    action: ActionFile,
-    textures: Vec<spr::SpriteTexture>,
-}
-
-impl SpriteResource {
-    pub fn new(path: &str) -> SpriteResource {
-        trace!("Loading {}", path);
-        let frames: Vec<spr::SpriteTexture> = SpriteFile::load(
-            BinaryReader::new(format!("{}.spr", path))
-        ).frames
-            .into_iter()
-            .map(|frame| spr::SpriteTexture::from(frame))
-            .collect();
-        let action = ActionFile::load(
-            BinaryReader::new(format!("{}.act", path))
-        );
-        SpriteResource {
-            action,
-            textures: frames,
-        }
-    }
-}
 
 
 pub struct Shaders {
@@ -227,6 +216,9 @@ impl ElapsedTime {
 fn main() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
+    let config = AppConfig::new().expect("Could not load config file ('config.toml')");
+    let asset_loader = AssetLoader::new(config.grf_paths.as_slice())
+        .expect("Could not open asset files. Please configure them in 'config.toml'");
 
     let mut video = Video::init();
 
@@ -360,58 +352,69 @@ fn main() {
         .with_thread_local(RenderUI::new())
         .build();
 
-    fn grf(str: &str) -> String {
-        format!("d:\\Games\\TalonRO\\grf\\data\\{}", str)
-    }
-
     let mut rng = rand::thread_rng();
 
     let (elapsed, sprites) = measure_time(|| {
         let job_name_table = job_name_table();
         Sprites {
-            cursors: SpriteResource::new(&grf("sprite\\cursors")),
+            cursors: asset_loader.load_spr_and_act("data\\sprite\\cursors").unwrap(),
             numbers: GlTexture::from_file("damage.bmp"),
-            character_sprites: JobId::iter().take(25).map(|job_id| {
-                let job_file_name = &job_name_table[&job_id];
-                let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\") + &job_file_name + "_³²";
-                let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸öÅë\\¿©\\") + &job_file_name + "_¿©";
-                let (male, female) = if !Path::new(&(female_file_name.clone() + ".act")).exists() {
-                    let male = SpriteResource::new(&male_file_name);
-                    let female = male.clone();
-                    (male, female)
-                } else if !Path::new(&(male_file_name.clone() + ".act")).exists() {
-                    let female = SpriteResource::new(&female_file_name);
-                    let male = female.clone();
-                    (male, female)
-                } else {
-                    (SpriteResource::new(&male_file_name), SpriteResource::new(&female_file_name))
-                };
-                (job_id, [male, female])
-            }).collect::<HashMap<JobId, [SpriteResource; 2]>>(),
+            character_sprites: JobId::iter().take(25)
+                .filter(|job_id| *job_id != JobId::MARRIED)
+                .map(|job_id| {
+                    let job_file_name = &job_name_table[&job_id];
+                    let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
+                    let folder2 = encoding::all::WINDOWS_1252.decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict).unwrap();
+                    let male_file_name = format!("data\\sprite\\{}\\{}\\³²\\{}_³²", folder1, folder2, job_file_name);
+                    let female_file_name = format!("data\\sprite\\{}\\{}\\¿©\\{}_¿©", folder1, folder2, job_file_name);
+                    let (male, female) = if !asset_loader.exists(&format!("{}.act", female_file_name)) {
+                        let male = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        let female = male.clone();
+                        (male, female)
+                    } else if !asset_loader.exists(&format!("{}.act", male_file_name)) {
+                        let female = asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        let male = female.clone();
+                        (male, female)
+                    } else {
+                        (
+                            asset_loader
+                                .load_spr_and_act(&male_file_name)
+                                .expect(&format!("Failed loading {:?}", job_id)),
+                            asset_loader
+                                .load_spr_and_act(&female_file_name)
+                                .expect(&format!("Failed loading {:?}", job_id))
+                        )
+                    };
+                    (job_id, [male, female])
+                }).collect::<HashMap<JobId, [SpriteResource; 2]>>(),
             head_sprites: [
-                (1..=26).map(|i| {
-                    let male_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\") + &i.to_string() + "_³²";
-                    let male = if Path::new(&(male_file_name.clone() + ".act")).exists() {
-                        Some(SpriteResource::new(&male_file_name))
+                (1..=25).map(|i| {
+                    let male_file_name = format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²", i.to_string());
+                    let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
+                        Some(
+                            asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading head({})", i))
+                        )
                     } else { None };
                     male
                 }).filter_map(|it| it).collect::<Vec<SpriteResource>>(),
-                (1..=26).map(|i| {
-                    let female_file_name = grf("sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\") + &i.to_string() + "_¿©";
-                    let female = if Path::new(&(female_file_name.clone() + ".act")).exists() {
-                        Some(SpriteResource::new(&female_file_name))
+                (1..=25).map(|i| {
+                    let female_file_name = format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©", i.to_string());
+                    let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
+                        Some(
+                            asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading head({})", i))
+                        )
                     } else { None };
                     female
                 }).filter_map(|it| it).collect::<Vec<SpriteResource>>()
             ],
             monster_sprites: MonsterId::iter().map(|monster_id| {
-                let file_name = grf("sprite\\npc\\") + &monster_id.to_string().to_lowercase();
-                (monster_id, SpriteResource::new(&file_name))
+                let file_name = format!("data\\sprite\\npc\\{}", monster_id.to_string().to_lowercase());
+                (monster_id, asset_loader.load_spr_and_act(&file_name).unwrap())
             }).collect::<HashMap<MonsterId, SpriteResource>>(),
             effect_sprites: EffectSprites {
-                torch: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\torch_01")),
-                fire_wall: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\firewall")),
-                fire_ball: SpriteResource::new(&grf("sprite\\ÀÌÆÑÆ®\\fireball")),
+                torch: asset_loader.load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\torch_01").unwrap(),
+                fire_wall: asset_loader.load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\firewall").unwrap(),
+                fire_ball: asset_loader.load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\fireball").unwrap(),
             },
         }
     });
@@ -425,24 +428,24 @@ fn main() {
     let mut str_name_filter = ImString::new("fire");
     let mut filtered_map_names = vec![];
     let mut filtered_str_names = vec![];
-    let all_map_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data").unwrap().map(|entry| {
-        let dir_entry = entry.unwrap();
-        if dir_entry.file_name().into_string().unwrap().ends_with("rsw") {
-            let mut sstr = dir_entry.file_name().into_string().unwrap();
-            let len = sstr.len();
-            sstr.truncate(len - 4); // remove extension
-            Some(sstr)
-        } else { None }
-    }).filter_map(|x| x).collect::<Vec<String>>();
-    let all_str_names = std::fs::read_dir("d:\\Games\\TalonRO\\grf\\data\\texture\\effect").unwrap().map(|entry| {
-        let dir_entry = entry.unwrap();
-        if dir_entry.file_name().into_string().unwrap().ends_with("str") {
-            let mut sstr = dir_entry.file_name().into_string().unwrap();
-            let len = sstr.len();
-            sstr.truncate(len - 4); // remove extension
-            Some(sstr)
-        } else { None }
-    }).filter_map(|x| x).collect::<Vec<String>>();
+    let all_map_names = asset_loader.read_dir("data")
+        .into_iter()
+        .filter(|file_name| file_name.ends_with("rsw"))
+        .map(|mut file_name| {
+            file_name.drain(..5); // remove "data\\" from the begining
+            let len = file_name.len();
+            file_name.truncate(len-4); // and extension from the end
+            file_name
+        }).collect::<Vec<String>>();
+    let all_str_names = asset_loader.read_dir("data\\texture\\effect")
+        .into_iter()
+        .filter(|file_name| file_name.ends_with("str"))
+        .map(|mut file_name| {
+            file_name.drain(.."data\\texture\\effect\\".len()); // remove dir from the beginning
+            let len = file_name.len();
+            file_name.truncate(len-4);  // and extension from the end
+            file_name
+        }).collect::<Vec<String>>();
 
     let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(
@@ -456,7 +459,7 @@ fn main() {
     };
 
 
-    let (map_render_data, physics_world) = load_map("prontera");
+    let (map_render_data, physics_world) = load_map("prontera", &asset_loader);
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprites,
@@ -496,7 +499,7 @@ fn main() {
     websocket_server.set_nonblocking(true).unwrap();
 
     let mut other_entities: Vec<Entity> = vec![];
-
+    dbg!("asd");
     let mut entity_count = 0;
     'running: loop {
         match websocket_server.accept() {
@@ -561,7 +564,7 @@ fn main() {
         );
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
-            let (map_render_data, physics_world) = load_map(&new_map_name);
+            let (map_render_data, physics_world) = load_map(&new_map_name, &asset_loader);
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
@@ -584,7 +587,7 @@ fn main() {
             {
                 let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
                 if !map_render_data.str_effects.contains_key(&new_str_name) {
-                    let str_file = StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\{}.str", new_str_name)));
+                    let str_file = asset_loader.load_effect(&new_str_name).unwrap();
                     map_render_data.str_effects.insert(new_str_name.clone(), str_file);
                 }
             }
@@ -940,13 +943,13 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
+fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, PhysicsWorld) {
     let (elapsed, world) = measure_time(|| {
-        Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", map_name)))
+        asset_loader.load_map(&map_name).unwrap()
     });
     info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| {
-        Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", map_name)), map_name)
+        asset_loader.load_gat(map_name).unwrap()
     });
     let w = gat.width;
     let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
@@ -1007,20 +1010,26 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
         ]);
     info!("gat loaded: {}ms", elapsed.as_millis());
     let (elapsed, mut ground) = measure_time(|| {
-        Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", map_name)),
-                  world.water.level,
-                  world.water.wave_height)
+        asset_loader.load_gnd(
+            map_name,
+            world.water.level,
+            world.water.wave_height,
+        ).unwrap()
     });
     info!("gnd loaded: {}ms", elapsed.as_millis());
     let (elapsed, models) = measure_time(|| {
         let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
-        Rsw::load_models(model_names)
+        return model_names.iter().map(|filename| {
+            let rsm = asset_loader.load_model(filename).unwrap();
+            (filename.clone(), rsm)
+        }).collect::<Vec<(ModelName, Rsm)>>();
     });
     info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
 
     let (elapsed, model_render_datas) = measure_time(|| {
         models.iter().map(|(name, rsm)| {
-            let textures = Rsm::load_textures(&rsm.texture_names);
+            let textures = Rsm::load_textures(&asset_loader, &rsm.texture_names);
+            trace!("{} textures loaded for model {}", textures.len(), name.0);
             let (data_for_rendering_full_model, bbox): (Vec<DataForRenderingSingleNode>, BoundingBox) = Rsm::generate_meshes_by_texture_id(
                 &rsm.bounding_box,
                 rsm.shade_type,
@@ -1060,7 +1069,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
     }).collect();
 
     let (elapsed, texture_atlas) = measure_time(|| {
-        Gnd::create_gl_texture_atlas(&ground.texture_names)
+        Gnd::create_gl_texture_atlas(&asset_loader, &ground.texture_names)
     });
     info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
 
@@ -1123,7 +1132,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
         );
         let v = rot * Vector3::new(x, 0.0, y);
         let v2 = Vector2::new(v.x, v.z);
-        let shit = ColliderDesc::new(cuboid)
+        let cuboid = ColliderDesc::new(cuboid)
             .density(10.0)
             .translation(v2)
             .collision_groups(CollisionGroups::new()
@@ -1131,7 +1140,7 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
                 .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
             )
             .build(&mut physics_world);
-        (half_extents, shit.position_wrt_body().translation.vector)
+        (half_extents, cuboid.position_wrt_body().translation.vector)
     }).collect();
     let vertices: Vec<Point3<f32>> = colliders.iter().map(|(extents, pos)| {
         let x = pos.x - extents.x;
@@ -1156,8 +1165,9 @@ fn load_map(map_name: &str) -> (MapRenderData, PhysicsWorld) {
 
     let (elapsed, str_effects) = measure_time(|| {
         let mut str_effects: HashMap<String, StrFile> = HashMap::new();
-        str_effects.insert("StrEffect::FireWall".to_owned(), StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\firewall.str"))));
-        str_effects.insert("StrEffect::StormGust".to_owned(), StrFile::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\stormgust.str"))));
+
+        str_effects.insert("StrEffect::FireWall".to_owned(), asset_loader.load_effect("firewall").unwrap());
+        str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
         str_effects
     });
     info!("str loaded: {}ms", elapsed.as_millis());

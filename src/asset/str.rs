@@ -1,8 +1,8 @@
-use crate::common::BinaryReader;
 use sdl2::pixels::PixelFormatEnum;
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use std::collections::HashMap;
 use crate::systems::render::ONE_SPRITE_PIXEL_SIZE_IN_3D;
+use crate::asset::{BinaryReader, AssetLoader};
 
 pub struct StrFile {
     pub max_key: u32,
@@ -39,7 +39,7 @@ pub struct StrKeyFrame {
 
 
 impl StrFile {
-    pub fn load(mut buf: BinaryReader) -> StrFile {
+    pub(super) fn load(asset_loader: &AssetLoader, mut buf: BinaryReader) -> Self {
         let header = buf.string(4);
         if header != "STRM" {
             panic!("Invalig STR header: {}", header);
@@ -77,7 +77,8 @@ impl StrFile {
             let texture_names: Vec<String> = (0..buf.next_u32()).map(|_i| {
                 let texture_name = buf.string(128);
                 if !texture_names_to_index.contains_key(&texture_name) {
-                    let texture = GlTexture::from_file("d:\\Games\\TalonRO\\grf\\data\\texture\\effect\\".to_owned() + &texture_name);
+                    let surface = asset_loader.load_sdl_surface(&format!("data\\texture\\effect\\{}", texture_name));
+                    let texture = GlTexture::from_surface(surface.unwrap());
                     textures.push(texture);
                     let size = texture_names_to_index.len();
                     texture_names_to_index.insert(texture_name.clone(), size);

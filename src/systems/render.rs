@@ -13,7 +13,7 @@ use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSp
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
-use crate::str::KeyFrameType;
+use crate::asset::str::KeyFrameType;
 
 // the values that should be added to the sprite direction based on the camera
 // direction (the index is the camera direction, which is floor(angle/45)
@@ -719,7 +719,7 @@ impl DamageRenderSystem {
         }
         digits.push(n as u8);
         digits.reverse();
-        digits
+        return digits;
     }
 }
 

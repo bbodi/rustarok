@@ -2,8 +2,8 @@ use nalgebra::{Rotation3, Vector3};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
 
-use crate::common::BinaryReader;
 use crate::video::GlTexture;
+use crate::asset::{BinaryReader, AssetLoader};
 
 pub struct Gnd {
     pub version: f32,
@@ -66,7 +66,7 @@ pub struct WaterVertex {
 }
 
 impl Gnd {
-    pub fn load(mut buf: BinaryReader, water_level: f32, water_height: f32) -> Gnd {
+    pub(super) fn load(mut buf: BinaryReader, water_level: f32, water_height: f32) -> Self {
         let header = buf.string(4);
         if header != "GRGN" {
             panic!("Invalig Gnd header: {}", header);
@@ -649,11 +649,11 @@ impl Gnd {
         (texture_names, texture_indices)
     }
 
-    pub fn create_gl_texture_atlas(texture_names: &Vec<String>) -> GlTexture {
+    pub fn create_gl_texture_atlas(asset_loader: &AssetLoader, texture_names: &Vec<String>) -> GlTexture {
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names.iter().map(|texture_name| {
-            use sdl2::image::LoadSurface;
-            let path = format!("d:\\Games\\TalonRO\\grf\\data\\texture\\{}", texture_name);
-            sdl2::surface::Surface::from_file(path.clone()).unwrap_or_else(|_| {
+            let path = format!("data\\texture\\{}", texture_name);
+            let surface = asset_loader.load_sdl_surface(&path);
+            surface.unwrap_or_else(|_| {
                 warn!("Missing: {}", path);
                 let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGB888).unwrap();
                 missing_texture.fill_rect(None, Color::RGB(255, 0, 255)).unwrap();
@@ -683,44 +683,5 @@ impl Gnd {
             ).unwrap();
         }
         surface_atlas
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::File;
-    use std::io::Read;
-
-    use crate::common::BinaryReader;
-    use crate::gat::Gat;
-    use crate::gnd::Gnd;
-    use crate::rsw::Rsw;
-
-    #[test]
-    fn test_mesh_loading() {
-        let world = Rsw::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.rsw", "new_zone01")));
-        let _altitude = Gat::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gat", "new_zone01")), "new_zone01");
-        let ground = Gnd::load(BinaryReader::new(format!("d:\\Games\\TalonRO\\grf\\data\\{}.gnd", "new_zone01")),
-                               world.water.level,
-                               world.water.wave_height);
-
-        let mut content = String::with_capacity(8 * 1024 * 1024);
-        File::open("tests/mesh.bin").unwrap().read_to_string(&mut content).unwrap();
-        let expected_floats: Vec<f32> = content.split(",").map(|line| {
-            line.trim().parse::<f32>().unwrap()
-        }).collect();
-
-        let mesh_float_arrays: Vec<[f32; 12]> = unsafe {
-            std::mem::transmute(ground.mesh)
-        };
-
-        let mesh_floats: Vec<&f32> = mesh_float_arrays
-            .iter()
-            .flat_map(|array| array.iter())
-            .collect();
-        assert_eq!(expected_floats.len(), mesh_floats.len());
-        expected_floats.iter().zip(mesh_floats).enumerate().for_each(|(index, (a, b))| {
-            assert!(a - b < 0.000001, "{}.: {} != {}, ({} - {} = {})", index, a, b, a, b, *a - b);
-        })
     }
 }

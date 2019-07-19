@@ -23,6 +23,9 @@ specs = "0.14.3"
 specs-derive = "0.4.0"
 strum = "0.15.0" # for iterating over enums
 strum_macros = "0.15.0"
+libflate = "0.1.25"
+config = "0.9.3"
+serde = {version = "1.0.97", features = ["derive"]}
 
 [dependencies.sdl2]
 version = "0.32.1"

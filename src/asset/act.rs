@@ -1,4 +1,4 @@
-use crate::common::BinaryReader;
+use crate::asset::BinaryReader;
 
 #[derive(Debug, Clone)]
 pub struct ActionFile {
@@ -35,7 +35,7 @@ pub struct Layer {
 
 
 impl ActionFile {
-    pub fn load(mut buf: BinaryReader) -> ActionFile {
+    pub(super) fn load(mut buf: BinaryReader) -> Self {
         let header = buf.string(2);
         if header != "AC" {
             panic!("Invalig Action header: {}", header);
