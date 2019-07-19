@@ -358,7 +358,7 @@ fn main() {
         let job_name_table = job_name_table();
         Sprites {
             cursors: asset_loader.load_spr_and_act("data\\sprite\\cursors").unwrap(),
-            numbers: GlTexture::from_file("damage.bmp"),
+            numbers: GlTexture::from_file("assets\\damage.bmp"),
             character_sprites: JobId::iter().take(25)
                 .filter(|job_id| *job_id != JobId::MARRIED)
                 .map(|job_id| {
