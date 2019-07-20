@@ -1,4 +1,5 @@
 use crate::asset::BinaryReader;
+use std::ops::RangeBounds;
 
 #[derive(Debug, Clone)]
 pub struct ActionFile {
@@ -35,6 +36,13 @@ pub struct Layer {
 
 
 impl ActionFile {
+
+    pub fn remove_frames_in_every_direction<R>(&mut self, action_index: usize, range: R) where R: RangeBounds<usize> + Clone {
+        for i in 0..8 {
+            self.actions[action_index + i].frames.drain(range.clone());
+        }
+    }
+
     pub(super) fn load(mut buf: BinaryReader) -> Self {
         let header = buf.string(2);
         if header != "AC" {

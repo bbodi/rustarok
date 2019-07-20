@@ -234,9 +234,7 @@ impl AssetLoader {
             .map(|frame| SpriteTexture::from(frame))
             .collect();
         let content = self.get_content(&format!("{}.act", path))?;
-        let action = ActionFile::load(
-            BinaryReader::from_vec(content)
-        );
+        let action = ActionFile::load(BinaryReader::from_vec(content));
 
         return Ok(SpriteResource {
             action,

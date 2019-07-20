@@ -45,10 +45,10 @@ use websocket::stream::sync::TcpStream;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{CharacterStateComponent, ComponentRadius, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U16Float, U8Float};
-use crate::components::controller::{CastMode, ControllerComponent};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
+use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
+use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemStopwatch, SystemVariables};
+use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemStopwatch, SystemVariables, CollisionsFromPrevFrame};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
@@ -99,7 +99,7 @@ impl AppConfig {
 }
 
 #[derive(Clone, Copy)]
-pub enum ActionIndex {
+pub enum CharActionIndex {
     Idle = 0,
     Walking = 8,
     Sitting = 16,
@@ -202,8 +202,8 @@ impl ElapsedTime {
         self.0 / other
     }
 
-    pub fn run_at_least_until_seconds(&mut self, system_time: ElapsedTime, seconds: i32) {
-        self.0 = self.0.max(system_time.0 + seconds as f32);
+    pub fn run_at_least_until_seconds(&mut self, system_time: ElapsedTime, seconds: f32) {
+        self.0 = self.0.max(system_time.0 + seconds);
     }
 
     pub fn has_passed(&self, system_time: ElapsedTime) -> bool {
@@ -375,22 +375,29 @@ fn main() {
                     let male_file_name = format!("data\\sprite\\{}\\{}\\³²\\{}_³²", folder1, folder2, job_file_name);
                     let female_file_name = format!("data\\sprite\\{}\\{}\\¿©\\{}_¿©", folder1, folder2, job_file_name);
                     let (male, female) = if !asset_loader.exists(&format!("{}.act", female_file_name)) {
-                        let male = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        let mut male = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        male.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                         let female = male.clone();
                         (male, female)
                     } else if !asset_loader.exists(&format!("{}.act", male_file_name)) {
-                        let female = asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        let mut female = asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading {:?}", job_id));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        female.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                         let male = female.clone();
                         (male, female)
                     } else {
-                        (
-                            asset_loader
-                                .load_spr_and_act(&male_file_name)
-                                .expect(&format!("Failed loading {:?}", job_id)),
-                            asset_loader
-                                .load_spr_and_act(&female_file_name)
-                                .expect(&format!("Failed loading {:?}", job_id))
-                        )
+                        let mut male = asset_loader
+                            .load_spr_and_act(&male_file_name)
+                            .expect(&format!("Failed loading {:?}", job_id));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        male.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                        let mut female = asset_loader
+                            .load_spr_and_act(&female_file_name)
+                            .expect(&format!("Failed loading {:?}", job_id));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        female.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                        (male, female)
                     };
                     (job_id, [male, female])
                 }).collect::<HashMap<JobId, [SpriteResource; 2]>>(),
@@ -398,18 +405,20 @@ fn main() {
                 (1..=25).map(|i| {
                     let male_file_name = format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²", i.to_string());
                     let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
-                        Some(
-                            asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading head({})", i))
-                        )
+                        let mut head = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading head({})", i));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        head.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                        Some(head)
                     } else { None };
                     male
                 }).filter_map(|it| it).collect::<Vec<SpriteResource>>(),
                 (1..=25).map(|i| {
                     let female_file_name = format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©", i.to_string());
                     let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
-                        Some(
-                            asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading head({})", i))
-                        )
+                        let mut head = asset_loader.load_spr_and_act(&female_file_name).expect(&format!("Failed loading head({})", i));
+                        // for Idle action, character sprites contains head rotating animations, we don't need them
+                        head.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                        Some(head)
                     } else { None };
                     female
                 }).filter_map(|it| it).collect::<Vec<SpriteResource>>()
@@ -477,6 +486,10 @@ fn main() {
         map_render_data,
     });
 
+    ecs_world.add_resource(CollisionsFromPrevFrame {
+        collisions: vec![],
+    });
+
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
     let mut desktop_client_entity = {
@@ -488,9 +501,12 @@ fn main() {
             1,
             1,
         );
+        let mut player = ControllerComponent::new(desktop_client_char, 250.0, -180.0);
+        player.assign_skill(SkillKey::Q, Skills::TestSkill);
+        player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
         ecs_world
             .create_entity()
-            .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
+            .with(player)
             .build()
     };
 
@@ -598,11 +614,11 @@ fn main() {
                 }
             }
             let hero_pos = {
-                let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-                let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
                 let controller = storage.get(desktop_client_entity).unwrap();
-                phys_storage.get(controller.char).unwrap().pos(&physics_world)
+                let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                char_state.pos()
             };
             ecs_world
                 .create_entity()
@@ -811,11 +827,11 @@ fn imgui_frame(desktop_client_entity: Entity,
             for _i in 0..count_to_add / 2 {
                 let pos = {
                     let hero_pos = {
-                        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-                        let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
                         let mut storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_entity).unwrap();
-                        phys_storage.get(controller.char).unwrap().pos(&physics_world)
+                        let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                        let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        char_state.pos()
                     };
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let (x, y) = loop {
@@ -840,7 +856,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     sex,
                     JobId::SWORDMAN,
                     rng.gen::<usize>() % head_count,
-                    rng.gen_range(1, 5),
+                    rng.gen_range(1, 3),
                 );
 
                 other_entities.push(entity_id);
@@ -851,11 +867,11 @@ fn imgui_frame(desktop_client_entity: Entity,
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
                     let hero_pos = {
-                        let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-                        let mut phys_storage = &mut ecs_world.read_storage::<PhysicsComponent>();
                         let mut storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_entity).unwrap();
-                        phys_storage.get(controller.char).unwrap().pos(&physics_world)
+                        let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                        let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        char_state.pos()
                     };
                     let (x, y) = loop {
                         let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
@@ -874,8 +890,8 @@ fn imgui_frame(desktop_client_entity: Entity,
                 let entity_id = components::char::create_monster(
                     &mut ecs_world,
                     pos2d,
-                    MonsterId::Poring,
-                    rng.gen_range(1, 5),
+                    MonsterId::Baphomet,
+                    rng.gen_range(1, 3),
                 );
                 other_entities.push(entity_id);
             }
@@ -885,11 +901,13 @@ fn imgui_frame(desktop_client_entity: Entity,
             let body_handles: Vec<BodyHandle> = {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
                 entity_ids.iter().map(|entity| {
-                    physic_storage.get(*entity).unwrap().body_handle
-                }).collect()
+                    physic_storage.get(*entity).map(|it| it.body_handle)
+                })
+                    .filter(|it| it.is_some())
+                    .map(|it| it.unwrap())
+                    .collect()
             };
             ecs_world.delete_entities(entity_ids.as_slice());
-
             // remove rigid bodies from the physic simulation
             let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
             physics_world.remove_bodies(body_handles.as_slice());
@@ -1174,6 +1192,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
 
         str_effects.insert("StrEffect::FireWall".to_owned(), asset_loader.load_effect("firewall").unwrap());
         str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
+        str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
         str_effects
     });
     info!("str loaded: {}ms", elapsed.as_millis());

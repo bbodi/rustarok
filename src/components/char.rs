@@ -1,8 +1,8 @@
 use ncollide2d::shape::ShapeHandle;
-use nalgebra::{Vector2, Point2};
+use nalgebra::{Vector2, Point2, Vector};
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
-use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, ActionIndex, ElapsedTime};
+use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, CharActionIndex, ElapsedTime, MonsterActionIndex};
 use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
@@ -22,7 +22,7 @@ pub fn create_char(
     radius: i32,
 ) -> Entity {
     let entity_id = {
-        let mut char_comp = CharacterStateComponent::new();
+        let mut char_comp = CharacterStateComponent::new(CharType::Player);
         char_comp.armor = U8Float::new(Percentage::new(10.0));
         let mut entity_builder = ecs_world.create_entity()
             .with(char_comp);
@@ -32,7 +32,7 @@ pub fn create_char(
             head_index,
             sex,
             descr: SpriteRenderDescriptor {
-                action_index: ActionIndex::Idle as usize,
+                action_index: CharActionIndex::Idle as usize,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
@@ -55,12 +55,12 @@ pub fn create_monster(
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity()
-            .with(CharacterStateComponent::new());
+            .with(CharacterStateComponent::new(CharType::Minion));
         let entity_id = entity_builder.entity;
         entity_builder = entity_builder.with(MonsterSpriteComponent {
             monster_id,
             descr: SpriteRenderDescriptor {
-                action_index: 8,
+                action_index: CharActionIndex::Idle as usize,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
@@ -118,11 +118,6 @@ impl PhysicsComponent {
             radius: radius,
             body_handle: handle,
         }
-    }
-
-    pub fn pos(&self, physics_world: &PhysicsWorld) -> Vector2<f32> {
-        let body = physics_world.rigid_body(self.body_handle).unwrap();
-        body.position().translation.vector
     }
 }
 
@@ -183,18 +178,44 @@ impl CharState {
         }
     }
 
-    pub fn get_sprite_index(&self) -> ActionIndex {
+    pub fn is_live(&self) -> bool {
         match self {
-            CharState::Idle => ActionIndex::Idle,
-            CharState::Walking(_pos) => ActionIndex::Walking,
-            CharState::Sitting => ActionIndex::Sitting,
-            CharState::PickingItem => ActionIndex::PickingItem,
-            CharState::StandBy => ActionIndex::StandBy,
-            CharState::Attacking { attack_ends: _, target: _ } => ActionIndex::Attacking1,
-            CharState::ReceivingDamage => ActionIndex::ReceivingDamage,
-            CharState::Freeze => ActionIndex::Freeze1,
-            CharState::Dead => ActionIndex::Dead,
-            CharState::CastingSkill { .. } => ActionIndex::CastingSpell,
+            CharState::Dead => false,
+            _ => true
+        }
+    }
+
+    pub fn is_dead(&self) -> bool {
+        match self {
+            CharState::Dead => true,
+            _ => false
+        }
+    }
+
+    pub fn get_sprite_index(&self, is_monster: bool) -> usize {
+        match (self, is_monster) {
+            (CharState::Idle, false) => CharActionIndex::Idle as usize,
+            (CharState::Walking(_pos), false) => CharActionIndex::Walking as usize,
+            (CharState::Sitting, false) => CharActionIndex::Sitting as usize,
+            (CharState::PickingItem, false) => CharActionIndex::PickingItem as usize,
+            (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
+            (CharState::Attacking { attack_ends: _, target: _ }, false) => CharActionIndex::Attacking1 as usize,
+            (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
+            (CharState::Freeze, false) => CharActionIndex::Freeze1 as usize,
+            (CharState::Dead, false) => CharActionIndex::Dead as usize,
+            (CharState::CastingSkill { .. }, false) => CharActionIndex::CastingSpell as usize,
+
+            // monster
+            (CharState::Idle, true) => MonsterActionIndex::Idle as usize,
+            (CharState::Walking(_pos), true) => MonsterActionIndex::Walking as usize,
+            (CharState::Sitting, true) => MonsterActionIndex::Idle as usize,
+            (CharState::PickingItem, true) => MonsterActionIndex::Idle as usize,
+            (CharState::StandBy, true) => MonsterActionIndex::Idle as usize,
+            (CharState::Attacking { attack_ends: _, target: _ }, true) => MonsterActionIndex::Attack as usize,
+            (CharState::ReceivingDamage, true) => MonsterActionIndex::ReceivingDamage as usize,
+            (CharState::Freeze, true) => MonsterActionIndex::Idle as usize,
+            (CharState::Dead, true) => MonsterActionIndex::Die as usize, // TODO: if you want corpses, render the last frame of die
+            (CharState::CastingSkill { .. }, true) => MonsterActionIndex::Attack as usize,
         }
     }
 }
@@ -286,9 +307,19 @@ impl U8Float {
     }
 }
 
+#[derive(Eq, PartialEq)]
+pub enum CharType {
+    Player,
+    Minion,
+    Mercenary,
+    Boss,
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
+    pos: WorldCoords,
     pub target: Option<EntityTarget>,
+    pub typ: CharType,
     state: CharState,
     prev_state: CharState,
     // attack count per seconds
@@ -308,8 +339,10 @@ pub struct CharacterStateComponent {
 }
 
 impl CharacterStateComponent {
-    pub fn new() -> CharacterStateComponent {
+    pub fn new(typ: CharType) -> CharacterStateComponent {
         CharacterStateComponent {
+            pos: Point2::new(0.0, 0.0),
+            typ,
             target: None,
             moving_speed: U8Float::new(Percentage::new(100.0)),
             attack_range: U8Float::new(Percentage::new(100.0)),
@@ -325,6 +358,14 @@ impl CharacterStateComponent {
             max_hp: 2000,
             hp: 2000,
         }
+    }
+
+    pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {
+        self.pos = pos;
+    }
+
+    pub fn pos(&self) -> WorldCoords {
+        self.pos
     }
 
     pub fn set_and_get_state_change(&mut self) -> bool {
@@ -360,16 +401,9 @@ impl CharacterStateComponent {
 
     pub fn set_state(&mut self,
                      state: CharState,
-                     dir: usize,
-                     /*anim_sprite: &mut SpriteRenderDescriptor,
-                     animation_started: ElapsedTime,
-                     animation_duration: Option<ElapsedTime>*/) {
+                     dir: usize) {
         self.state = state;
         self.dir = dir;
-//        anim_sprite.direction = dir;
-//        anim_sprite.animation_started = animation_started;
-//        anim_sprite.forced_duration = animation_duration;
-//        anim_sprite.action_index = state.get_sprite_index() as usize;
     }
 
     pub fn set_dir(&mut self, dir: usize) {

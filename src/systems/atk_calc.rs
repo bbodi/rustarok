@@ -41,53 +41,59 @@ impl<'a> specs::System<'a> for AttackSystem {
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
 
-        for (entity_id, attack) in (&entities, &mut attack_storage).join() {
-            let (src_outcomes, dst_outcomes) = {
-                let src_char_state = char_state_storage.get(attack.src_entity).unwrap();
-                let dst_char_state = char_state_storage.get(attack.dst_entity).unwrap();
-                match &attack.typ {
-                    AttackType::Basic => AttackCalculation::attack(src_char_state, dst_char_state),
-                    AttackType::Skill(skill) => {
-                        AttackCalculation::skill_attack(src_char_state, dst_char_state, &skill)
-                    }
+        for (attack_entity_id, attack) in (&entities, &mut attack_storage).join() {
+            // TODO: char_state.cannot_control_until should be defined by this code
+            // TODO: enemies can cause damages over a period of time, while they can die and be removed,
+            // so src data (or an attack specific data structure) must be copied
+            let outcome = char_state_storage.get(attack.src_entity).and_then(|src_char_state| {
+                char_state_storage.get(attack.dst_entity)
+                    .filter(|it| it.state().is_live())
+                    .and_then(|dst_char_state| {
+                        Some(match &attack.typ {
+                            AttackType::Basic => AttackCalculation::attack(src_char_state, dst_char_state),
+                            AttackType::Skill(skill) => {
+                                AttackCalculation::skill_attack(src_char_state, dst_char_state, &skill)
+                            }
+                        })
+                    })
+            });
+            if let Some((src_outcomes, dst_outcomes)) = outcome {
+                for outcome in src_outcomes.into_iter() {
+                    let attacker_aspd = char_state_storage.get_mut(attack.dst_entity).unwrap().attack_speed;
+                    let attacked_entity = attack.src_entity;
+                    let src_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
+                    AttackCalculation::apply_damage(src_char_state, &outcome);
+
+                    let char_pos = src_char_state.pos();
+                    AttackCalculation::add_damage(
+                        &outcome,
+                        &entities,
+                        &mut updater,
+                        attacked_entity,
+                        attacker_aspd,
+                        &char_pos.coords,
+                        system_vars.time,
+                    );
                 }
-            };
+                for outcome in dst_outcomes.into_iter() {
+                    let attacker_aspd = char_state_storage.get_mut(attack.src_entity).unwrap().attack_speed;
+                    let attacked_entity = attack.dst_entity;
+                    let dst_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
+                    AttackCalculation::apply_damage(dst_char_state, &outcome);
 
-            for outcome in src_outcomes.into_iter() {
-                let attacker_aspd = char_state_storage.get_mut(attack.dst_entity).unwrap().attack_speed;
-                let attacked_entity = attack.src_entity;
-                let src_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                AttackCalculation::apply_damage(src_char_state, &outcome);
-
-                let char_pos = physics_storage.get(attacked_entity).unwrap().pos(&physics_world);
-                AttackCalculation::add_damage(
-                    &outcome,
-                    &entities,
-                    &mut updater,
-                    attacked_entity,
-                    attacker_aspd,
-                    &char_pos,
-                    system_vars.time,
-                );
+                    let char_pos = dst_char_state.pos();
+                    AttackCalculation::add_damage(
+                        &outcome,
+                        &entities,
+                        &mut updater,
+                        attacked_entity,
+                        attacker_aspd,
+                        &char_pos.coords,
+                        system_vars.time,
+                    );
+                }
             }
-            for outcome in dst_outcomes.into_iter() {
-                let attacker_aspd = char_state_storage.get_mut(attack.src_entity).unwrap().attack_speed;
-                let attacked_entity = attack.dst_entity;
-                let dst_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                AttackCalculation::apply_damage(dst_char_state, &outcome);
-
-                let char_pos = physics_storage.get(attacked_entity).unwrap().pos(&physics_world);
-                AttackCalculation::add_damage(
-                    &outcome,
-                    &entities,
-                    &mut updater,
-                    attacked_entity,
-                    attacker_aspd,
-                    &char_pos,
-                    system_vars.time,
-                );
-            }
-            updater.remove::<AttackComponent>(entity_id);
+            updater.remove::<AttackComponent>(attack_entity_id);
         }
     }
 }

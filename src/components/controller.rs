@@ -4,6 +4,7 @@ use std::collections::{HashSet, HashMap};
 use sdl2::keyboard::Scancode;
 use nalgebra::{Point3, Point2};
 use specs::prelude::*;
+use crate::components::skill::Skills;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -58,7 +59,8 @@ impl SkillKey {
     }
 }
 
-pub const ALL_SKILL_KEYS: [SkillKey; 8] = [SkillKey::Q,
+pub const ALL_SKILL_KEYS: [SkillKey; 8] = [
+    SkillKey::Q,
     SkillKey::W,
     SkillKey::E,
     SkillKey::R,
@@ -100,6 +102,7 @@ pub struct ControllerComponent {
     pub next_action: Option<ControllerAction>,
     pub last_action: Option<ControllerAction>,
     pub is_casting_selection: Option<SkillKey>,
+    skills_for_keys: [Option<Skills>; 8],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
@@ -120,6 +123,15 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
+
+    pub fn get_skill_for_key(&self, skill_key: SkillKey) -> Option<Skills> {
+        self.skills_for_keys[skill_key as usize]
+    }
+
+    pub fn assign_skill(&mut self, skill_key: SkillKey, skill: Skills) {
+        self.skills_for_keys[skill_key as usize] = Some(skill);
+    }
+
     pub fn mouse_pos(&self) -> ScreenCoords {
         Point2::new(self.last_mouse_x, self.last_mouse_x)
     }
@@ -145,6 +157,7 @@ impl ControllerComponent {
             camera,
             cast_mode: CastMode::Normal,
             inputs: vec![],
+            skills_for_keys: Default::default(),
             keys: ControllerComponent::init_keystates(),
             keys_released_in_prev_frame: vec![],
             keys_pressed_in_prev_frame: vec![],

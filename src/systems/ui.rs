@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use specs::prelude::*;
 
-use crate::{ElapsedTime, MapRenderData, Shaders, SpriteResource, Tick, StrEffect};
+use crate::{ElapsedTime, MapRenderData, Shaders, SpriteResource, Tick, StrEffect, CharActionIndex};
 use crate::cam::Camera;
 use crate::components::BrowserClient;
 use crate::components::char::{CharacterStateComponent, CharState, MonsterSpriteComponent, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
@@ -28,7 +28,7 @@ impl RenderUI {
         ];
         RenderUI {
             cursor_anim_descr: SpriteRenderDescriptor {
-                action_index: 0,
+                action_index: CharActionIndex::Idle as usize,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
