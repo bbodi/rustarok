@@ -5,7 +5,7 @@ use rand::Rng;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use sdl2::keyboard::Scancode;
-use crate::{ActionIndex, RenderMatrices, PhysicsWorld, TICKS_PER_SECOND, Tick, ElapsedTime};
+use crate::{CharActionIndex, RenderMatrices, PhysicsWorld, TICKS_PER_SECOND, Tick, ElapsedTime};
 use crate::cam::Camera;
 use ncollide2d::shape::{Cuboid, Ball};
 use ncollide2d::query::point_internal::point_query::PointQuery;
@@ -17,6 +17,7 @@ use crate::components::controller::{ControllerComponent, ControllerAction, Skill
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
 use nphysics2d::object::Body;
 use std::sync::{Arc, Mutex};
+use crate::components::skill::SkillDescriptor;
 
 pub struct CharacterControlSystem;
 
@@ -70,24 +71,21 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 Some(ControllerAction::CastingSelectTarget(_)) => {}
                 Some(ControllerAction::CancelCastingSelectTarget) => {}
                 Some(ControllerAction::Casting(skill_key)) => {
-                    if skill_key == SkillKey::Q {
-                        let char_pos = {
-                            let physics_comp = physics_storage.get(controller.char).unwrap();
-                            physics_comp.pos(&physics_world)
-                        };
-                        let dir = CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos);
-                        let casting_time_seconds = 1.0;
-                        let new_state = CharState::CastingSkill(CastingSkillData {
-                            cast_started: system_vars.time,
-                            cast_ends: system_vars.time.add_seconds(casting_time_seconds),
-                            can_move: false,
-                            skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
-                                                                 Skills::TestSkill
-                            ))),
-                            mouse_pos_when_casted: controller.mouse_world_pos,
-                        });
-                        char_state.set_state(new_state, dir);
-                    }
+                    let char_pos = char_state.pos();
+                    let dir = CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords);
+                    // at this point it is sure that there is a skill for that key, so unwrap is ok
+                    let skill = controller.get_skill_for_key(skill_key).unwrap();
+                    let casting_time_seconds = skill.get_casting_time();
+                    let new_state = CharState::CastingSkill(CastingSkillData {
+                        cast_started: system_vars.time,
+                        cast_ends: system_vars.time.add(casting_time_seconds),
+                        can_move: false,
+                        skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
+                                                             skill
+                        ))),
+                        mouse_pos_when_casted: controller.mouse_world_pos,
+                    });
+                    char_state.set_state(new_state, dir);
                 }
                 Some(ControllerAction::LeftClick) => {}
                 None => {}

@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use nalgebra::{Point3, Vector3, Vector2, Point2};
 use std::collections::HashSet;
 use sdl2::keyboard::Scancode;
-use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, ActionIndex, PhysicsWorld, ElapsedTime, StrEffect};
+use crate::{Tick, LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, CharActionIndex, PhysicsWorld, ElapsedTime, StrEffect};
 use specs::prelude::*;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};

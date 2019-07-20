@@ -1,15 +1,15 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3, Vector4};
-use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray};
+use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray, ShaderProgram};
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime, StrEffect};
+use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime, StrEffect, CharActionIndex};
 use std::collections::HashMap;
 use crate::cam::Camera;
 use std::cmp::max;
 use crate::components::controller::{ControllerComponent, SkillKey, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor, CharState};
+use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor, CharState, CharType};
 use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
 use ncollide2d::shape::Shape;
 use crate::consts::{JobId, MonsterId};
@@ -117,7 +117,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, MonsterSpriteComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
@@ -132,7 +131,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         monster_sprite_storage,
         mut char_state_storage,
         system_vars,
-        physics_world,
         mut system_benchmark,
         mut skill_storage,
         str_effect_storage,
@@ -145,13 +143,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             // for autocompletion
             let controller: &ControllerComponent = controller;
             // Draw players
-            for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
-                                                                   &player_sprite_storage,
-                                                                   &mut char_state_storage).join() {
+            for (entity_id, animated_sprite, char_state) in (&entities,
+                                                             &player_sprite_storage,
+                                                             &mut char_state_storage).join() {
                 // for autocompletion
                 let char_state: &mut CharacterStateComponent = char_state;
 
-                let pos = physics.pos(&physics_world);
+                let pos = char_state.pos();
                 let tick = system_vars.tick;
                 let body_res = {
                     let sprites = &system_vars.sprites.character_sprites;
@@ -161,27 +159,30 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     let sprites = &system_vars.sprites.head_sprites;
                     &sprites[animated_sprite.sex as usize][animated_sprite.head_index]
                 };
-                if controller.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                let is_dead = char_state.state().is_dead();
+                if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
                     let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
                                                                           &animated_sprite.descr,
                                                                           body_res,
                                                                           &system_vars.matrices.view,
-                                                                          Some(controller.yaw),
-                                                                          &pos,
+                                                                          controller.yaw,
+                                                                          &pos.coords,
                                                                           [0, 0],
                                                                           true,
                                                                           1.1,
+                                                                          is_dead,
                                                                           &[0.0, 0.0, 1.0, 0.4]);
 
                     let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
                                                                                 &animated_sprite.descr,
                                                                                 head_res,
                                                                                 &system_vars.matrices.view,
-                                                                                Some(controller.yaw),
-                                                                                &pos,
+                                                                                controller.yaw,
+                                                                                &pos.coords,
                                                                                 pos_offset,
                                                                                 false,
                                                                                 1.1,
+                                                                                is_dead,
                                                                                 &[0.0, 0.0, 1.0, 0.5]);
                 }
 
@@ -190,117 +191,89 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                      &animated_sprite.descr,
                                                                      body_res,
                                                                      &system_vars.matrices.view,
-                                                                     Some(controller.yaw),
-                                                                     &pos,
+                                                                     controller.yaw,
+                                                                     &pos.coords,
                                                                      [0, 0],
                                                                      true,
                                                                      1.0,
+                                                                     is_dead,
                                                                      &[1.0, 1.0, 1.0, 1.0]);
                 let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
                                                                           &animated_sprite.descr,
                                                                           head_res,
                                                                           &system_vars.matrices.view,
-                                                                          Some(controller.yaw),
-                                                                          &pos,
+                                                                          controller.yaw,
+                                                                          &pos.coords,
                                                                           pos_offset,
                                                                           false,
                                                                           1.0,
+                                                                          is_dead,
                                                                           &[1.0, 1.0, 1.0, 1.0]);
 
                 char_state.bounding_rect_2d = body_bounding_rect;
                 char_state.bounding_rect_2d.merge(&head_bounding_rect);
 
-                // draw health bars etc
-                let shader = system_vars.shaders.trimesh2d_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.ortho);
-                let vao = self.rectangle_vao.bind();
-                let bar_w = 100;
-                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-                    let mut matrix = Matrix4::<f32>::identity();
-                    let spr_x = char_state.bounding_rect_2d.bottom_left[0];
-                    let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
-                    let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
-                    let pos = Vector3::new(
-                        bar_x + x as f32,
-                        char_state.bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
-                        0.0,
+                if char_state.state().is_live() {
+                    draw_health_bar(
+                        &system_vars.shaders.trimesh2d_shader,
+                        &self.rectangle_vao,
+                        &system_vars.matrices.ortho,
+                        controller.char == entity_id,
+                        &char_state,
                     );
-                    matrix.prepend_translation_mut(&pos);
-                    shader.set_mat4("model", &matrix);
-                    shader.set_vec4("color", color);
-                    shader.set_vec2("size", &[w as f32, h as f32]);
-                    vao.draw();
-                };
-                let draw_double_bordered_rect = |x: i32, y: i32, max_w: i32, h: i32, cur_w_percent: f32, color: &[f32; 4]| {
-                    draw_rect(x + 0, y + 0, max_w - 0, h - 0, &[0.00, 0.00, 0.00, 1.0]); // black health background
-                    draw_rect(x + 1, y + 1, max_w - 2, h - 2, &[0.44, 0.49, 0.56, 1.0]); // grey health background
-                    draw_rect(x + 2, y + 2, max_w - 4, h - 4, &[0.00, 0.00, 0.00, 1.0]); // black health background
-                    let inner_w = ((max_w - 6) as f32 * cur_w_percent) as i32;
-                    draw_rect(x + 3, y + 3, inner_w, h - 6, color); // green health bar
-                };
-
-                let draw_single_bordered_rect = |x: i32, y: i32, max_w: i32, h: i32, cur_w_percent: f32, color: &[f32; 4]| {
-                    draw_rect(x + 0, y + 0, max_w - 0, h - 0, &[0.44, 0.49, 0.56, 1.0]); // grey health background
-                    draw_rect(x + 1, y + 1, max_w - 2, h - 2, &[0.00, 0.00, 0.00, 1.0]); // black health background
-                    let inner_w = ((max_w - 4) as f32 * cur_w_percent) as i32;
-                    draw_rect(x + 2, y + 2, inner_w, h - 4, color); // green health bar
-                };
-
-                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32);
-                draw_double_bordered_rect(0, 0, bar_w - 0, 21, 1.0, &[0.0, 0.0, 0.0, 1.0]);
-                draw_single_bordered_rect(3, 3, bar_w - 6, 9, hp_percentage, &[0.29, 0.80, 0.11, 1.0]);
-                draw_single_bordered_rect(3, 12, bar_w - 6, 7, 0.7, &[0.23, 0.79, 0.88, 1.0]);
-//                let hp_height = 8;
-//                draw_rect(0, 0, 130, 19, &[0.0, 0.0, 0.0, 1.0]); // black background
-//                draw_rect(1, 1, 128, 17, &[0.44, 0.49, 0.56, 1.0]); // grey inner
-//
-//                let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32) * 124.0;
-////                draw_rect(2, 2, 126, hp_height+2, &[0.0, 0.0, 0.0, 1.0]); // black health background
-////                draw_rect(3, 3, hp_percentage as i32, hp_height, &[0.29, 0.80, 0.11, 1.0]); // green health bar
-//                draw_double_bordered_rect(2, 2)
-//
-//                draw_rect(2, 12, 126, 5, &[0.0, 0.0, 0.0, 1.0]); // black mana background
-//                draw_rect(3, 13, 100, 3, &[0.23, 0.79, 0.88, 1.0]); // blue mana bar
+                }
             }
             // Draw monsters
-            for (entity, physics, animated_sprite, char_state) in (&entities, &physics_storage,
-                                                                   &monster_sprite_storage,
-                                                                   &mut char_state_storage).join() {
-                let pos = physics.pos(&physics_world);
+            for (entity_id, animated_sprite, monster_state) in (&entities,
+                                                                &monster_sprite_storage,
+                                                                &mut char_state_storage).join() {
+                let pos = monster_state.pos();
                 let tick = system_vars.tick;
                 let body_res = {
                     let sprites = &system_vars.sprites.monster_sprites;
                     &sprites[&animated_sprite.monster_id]
                 };
-                if controller.entity_below_cursor.filter(|it| *it == entity).is_some() {
+                let is_dead = monster_state.state().is_dead();
+                if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
                     let (pos_offset, bounding_rect) = render_sprite(&system_vars,
                                                                     &animated_sprite.descr,
                                                                     body_res,
                                                                     &system_vars.matrices.view,
-                                                                    Some(controller.yaw),
-                                                                    &pos,
+                                                                    controller.yaw,
+                                                                    &pos.coords,
                                                                     [0, 0],
                                                                     true,
                                                                     1.1,
+                                                                    is_dead,
                                                                     &[0.0, 0.0, 1.0, 0.5]);
                 }
                 let (pos_offset, bounding_rect) = render_sprite(&system_vars,
                                                                 &animated_sprite.descr,
                                                                 body_res,
                                                                 &system_vars.matrices.view,
-                                                                Some(controller.yaw),
-                                                                &pos,
+                                                                controller.yaw,
+                                                                &pos.coords,
                                                                 [0, 0],
                                                                 true,
                                                                 1.0,
+                                                                is_dead,
                                                                 &[1.0, 1.0, 1.0, 1.0]);
-                char_state.bounding_rect_2d = bounding_rect;
+                monster_state.bounding_rect_2d = bounding_rect;
+
+                if monster_state.state().is_live() {
+                    draw_health_bar(
+                        &system_vars.shaders.trimesh2d_shader,
+                        &self.rectangle_vao,
+                        &system_vars.matrices.ortho,
+                        controller.char == entity_id,
+                        &monster_state,
+                    );
+                }
             }
 
-            let physics = physics_storage.get(controller.char).unwrap();
-            let char_pos = physics.pos(&physics_world);
+            let char_pos = char_state_storage.get(controller.char).unwrap().pos();
             render_client(
-                &char_pos,
+                &char_pos.coords,
                 &controller.camera,
                 &system_vars.matrices.view,
                 &system_vars.shaders,
@@ -309,10 +282,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             );
 
             if let Some(skill_key) = controller.is_casting_selection {
-                if skill_key == SkillKey::Q {
-                    // TODO: why do we need 'Q' here?
-                    Skills::TestSkill.render_target_selection(
-                        &char_pos,
+                if let Some(skill) = controller.get_skill_for_key(skill_key) {
+                    skill.render_target_selection(
+                        &char_pos.coords,
                         &controller.mouse_world_pos,
                         &system_vars,
                     );
@@ -321,7 +293,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let char_state = char_state_storage.get(controller.char).unwrap();
                 if let CharState::CastingSkill(casting_info) = char_state.state() {
                     casting_info.skill.lock().unwrap().render_casting(
-                        &char_pos,
+                        &char_pos.coords,
                         casting_info,
                         &system_vars,
                     );
@@ -342,6 +314,63 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     }
 }
 
+fn draw_health_bar(
+    shader: &ShaderProgram,
+    vao: &VertexArray,
+    ortho: &Matrix4<f32>,
+    is_self: bool,
+    char_state: &CharacterStateComponent,
+) {
+    let shader = shader.gl_use();
+    shader.set_mat4("projection", &ortho);
+    let vao = vao.bind();
+    let bar_w = match char_state.typ {
+        CharType::Player => 80,
+        CharType::Minion => 70,
+        _ => 100
+    };
+    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+        let mut matrix = Matrix4::<f32>::identity();
+        let spr_x = char_state.bounding_rect_2d.bottom_left[0];
+        let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
+        let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
+        let pos = Vector3::new(
+            bar_x + x as f32,
+            char_state.bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
+            0.0,
+        );
+        matrix.prepend_translation_mut(&pos);
+        shader.set_mat4("model", &matrix);
+        shader.set_vec4("color", color);
+        shader.set_vec2("size", &[w as f32, h as f32]);
+        vao.draw();
+    };
+
+
+    let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32);
+    let health_color = if is_self {
+        [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
+    } else {
+        [0.79, 0.00, 0.21, 1.0] // for enemies, red
+        // [0.2, 0.46, 0.9] // for friends, blue
+    };
+    let mana_color = [0.23, 0.79, 0.88, 1.0];
+    match char_state.typ {
+        CharType::Player => {
+            draw_rect(0, 0, bar_w, 9, &[0.0, 0.0, 0.0, 1.0]); // black border
+            draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // center separator
+            let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
+            draw_rect(1, 1, inner_w, 4, &health_color);
+            draw_rect(1, 6, bar_w - 2, 2, &mana_color);
+        }
+        _ => {
+            draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // black border
+            let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
+            draw_rect(1, 1, inner_w, 3, &health_color);
+        }
+    }
+}
+
 fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
     model_view[0] = 1.0;
     model_view[1] = 0.0;
@@ -358,11 +387,12 @@ pub fn render_sprite(system_vars: &SystemVariables,
                      animation: &SpriteRenderDescriptor,
                      sprite_res: &SpriteResource,
                      view: &Matrix4<f32>,
-                     yaw: Option<f32>,
+                     camera_yaw: f32,
                      pos: &Vector2<f32>,
                      pos_offset: [i32; 2],
                      is_main: bool,
                      size_multiplier: f32,
+                     is_dead: bool,
                      color: &[f32; 4],
 ) -> ([i32; 2], SpriteBoundingRect) {
     let shader = system_vars.shaders.player_shader.gl_use();
@@ -371,25 +401,30 @@ pub fn render_sprite(system_vars: &SystemVariables,
     shader.set_int("model_texture", 0);
     let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
 
-    // draw layer
-
-    let idx = if let Some(yaw) = yaw {
-        let cam_dir = (((yaw / 45.0) + 0.5) as usize) % 8;
+    let idx = {
+        let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
         animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
-    } else {
-        0
     };
 
-    let frame_count = sprite_res.action.actions[idx].frames.len();
-    let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
-        duration.div(frame_count as f32)
+    // TODO: if debug
+    let action = sprite_res.action.actions.get(idx).or_else(|| {
+        error!("Invalid action action index: {} idx: {}", animation.action_index, idx);
+        Some(&sprite_res.action.actions[0])
+    }).unwrap();
+    let frame_index = if is_dead {
+        action.frames.len() - 1
     } else {
-        sprite_res.action.actions[idx].delay as f32 / 1000.0
+        let frame_count = action.frames.len();
+        let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
+            duration.div(frame_count as f32)
+        } else {
+            action.delay as f32 / 1000.0
+        };
+        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
+        let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
+        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
     };
-    time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
-    let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
-    let frame_index = ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize;
-    let frame = &sprite_res.action.actions[idx].frames[frame_index];
+    let frame = &action.frames[frame_index];
 
     // TODO: refactor: ugly, valahol csak 1 layert kell irajzolni (player), valahol többet is (effektek)
     let mut width = 0.0;
@@ -397,7 +432,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
     let mut offset = [0.0, 0.0];
     let matrix = {
         let mut matrix = Matrix4::<f32>::identity();
-        let pos = Vector3::new(pos.x, 0.0, pos.y); // y was 1.0
+        let pos = Vector3::new(pos.x, 0.0, pos.y);
         matrix.prepend_translation_mut(&pos);
         shader.set_mat4("model", &matrix);
         matrix
@@ -643,7 +678,11 @@ impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
         for (controller, _not_browser) in (&controller_storage, !&browser_client_storage).join() {
             for physics in (&physics_storage).join() {
                 let mut matrix = Matrix4::<f32>::identity();
-                let pos = physics.pos(&physics_world);
+                let body = physics_world.rigid_body(physics.body_handle);
+                if body.is_none() {
+                    continue;
+                }
+                let pos = body.unwrap().position().translation.vector;
                 let pos = Vector3::new(pos.x, 1.0, pos.y);
                 matrix.prepend_translation_mut(&pos);
                 let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
@@ -790,8 +829,8 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                 shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
 
                 shader.set_vec2("size", &[
-                    1.0,
-                    1.0
+                    0.3,
+                    0.3
                 ]);
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &system_vars.matrices.view);

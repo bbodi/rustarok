@@ -5,6 +5,7 @@ use crate::video::GlTexture;
 use specs::Entity;
 use crate::consts::{JobId, MonsterId};
 use crate::components::controller::WorldCoords;
+use nphysics2d::object::ColliderHandle;
 
 pub mod input;
 pub mod phys;
@@ -45,6 +46,15 @@ pub struct SystemVariables {
     pub time: ElapsedTime, // extract from the struct?
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
+}
+
+pub struct Collision {
+    pub character_coll_handle: ColliderHandle,
+    pub other_coll_handle: ColliderHandle,
+}
+
+pub struct CollisionsFromPrevFrame {
+    pub collisions: Vec<Collision>,
 }
 
 pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);

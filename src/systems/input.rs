@@ -386,7 +386,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 let bb = &other_char_state.bounding_rect_2d;
                 let mx = controller.last_mouse_x as i32;
                 let my = controller.last_mouse_y as i32;
-                if mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
+                if other_char_state.state().is_live() && mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
                     my <= bb.bottom_left[1] && my >= bb.top_right[1] {
                     entity_below_cursor = Some(entity);
                     break;
