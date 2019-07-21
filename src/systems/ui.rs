@@ -5,7 +5,7 @@ use crate::{ElapsedTime, SpriteResource};
 use crate::components::BrowserClient;
 use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
 use crate::components::controller::ControllerComponent;
-use crate::cursor::{CURSOR_ATTACK, CURSOR_LOCK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
+use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
@@ -139,7 +139,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
 
     let frame_index = {
         let frame_count = action.frames.len();
-        let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 2.0;
+        let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 4.0;
         let elapsed_time = system_vars.time.elapsed_since(animated_sprite.animation_started);
         ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
     };

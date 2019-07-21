@@ -12,7 +12,6 @@ use crate::cam::Camera;
 use crate::RenderMatrices;
 use nalgebra::{Point2, Vector3, Vector4};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
-use crate::components::skill::SkillDescriptor;
 
 pub struct BrowserInputProducerSystem;
 
@@ -236,26 +235,26 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         // SDL generates only one event when the mouse touches the edge of the screen,
                         // so I put this pseudo key into the controller in that case, which will
                         // indicate screen movement
-                        if x == 0 {
-                            controller.key_pressed(Scancode::Left);
-                            controller.camera.move_along_x(-camera_speed);
-                        } else if x == (VIDEO_WIDTH as i32) - 1 {
-                            controller.key_pressed(Scancode::Right);
-                            controller.camera.move_along_x(camera_speed);
-                        } else {
-                            controller.key_released(Scancode::Left);
-                            controller.key_released(Scancode::Right);
-                        }
-                        if y == 0 {
-                            controller.key_pressed(Scancode::Up);
-                            controller.camera.move_along_z(-camera_speed);
-                        } else if y == (VIDEO_HEIGHT as i32) - 1 {
-                            controller.key_pressed(Scancode::Down);
-                            controller.camera.move_along_z(camera_speed);
-                        } else {
-                            controller.key_released(Scancode::Up);
-                            controller.key_released(Scancode::Down);
-                        }
+//                        if x == 0 {
+//                            controller.key_pressed(Scancode::Left);
+//                            controller.camera.move_along_x(-camera_speed);
+//                        } else if x == (VIDEO_WIDTH as i32) - 1 {
+//                            controller.key_pressed(Scancode::Right);
+//                            controller.camera.move_along_x(camera_speed);
+//                        } else {
+//                            controller.key_released(Scancode::Left);
+//                            controller.key_released(Scancode::Right);
+//                        }
+//                        if y == 0 {
+//                            controller.key_pressed(Scancode::Up);
+//                            controller.camera.move_along_z(-camera_speed);
+//                        } else if y == (VIDEO_HEIGHT as i32) - 1 {
+//                            controller.key_pressed(Scancode::Down);
+//                            controller.camera.move_along_z(camera_speed);
+//                        } else {
+//                            controller.key_released(Scancode::Up);
+//                            controller.key_released(Scancode::Down);
+//                        }
                         // free look
 //                        if controller.mouse_down {
 //                            let x_offset = x - controller.last_mouse_x as i32;
@@ -282,7 +281,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         y,
                         ..
                     } => {
-                        controller.camera.move_forward(y as f32);
+                        controller.camera.move_forward(y as f32 * 2.0);
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if let Some(scancode) = scancode {

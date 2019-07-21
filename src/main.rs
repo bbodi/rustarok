@@ -31,14 +31,14 @@ use nphysics2d::object::{BodyHandle, ColliderDesc};
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
 use rand::Rng;
-use sdl2::keyboard::{Keycode};
+use sdl2::keyboard::Keycode;
 use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{CharacterStateComponent, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent,U8Float};
+use crate::components::char::{CharacterStateComponent, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U8Float};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::skill::{SkillManifestationComponent, Skills};
 use crate::consts::{job_name_table, JobId, MonsterId};
@@ -436,8 +436,8 @@ fn main() {
 
     let mut map_name_filter = ImString::new("prontera");
     let mut str_name_filter = ImString::new("fire");
-    let mut filtered_map_names = vec![];
-    let mut filtered_str_names = vec![];
+    let mut filtered_map_names: Vec<String> = vec![];
+    let mut filtered_str_names: Vec<String> = vec![];
     let all_map_names = asset_loader.read_dir("data")
         .into_iter()
         .filter(|file_name| file_name.ends_with("rsw"))
@@ -457,10 +457,12 @@ fn main() {
             file_name
         }).collect::<Vec<String>>();
 
+    let mut fov = 0.638;
+    let mut cam_angle = -60.0;
     let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(
-            std::f32::consts::FRAC_PI_4,
             VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+            fov,
             0.1f32,
             1000.0f32,
         ),
@@ -564,7 +566,7 @@ fn main() {
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
-        let (new_map, new_str) = imgui_frame(
+        let (new_map, new_str, show_cursor) = imgui_frame(
             desktop_client_entity,
             &mut video,
             &mut ecs_world,
@@ -579,7 +581,10 @@ fn main() {
             &mut filtered_str_names,
             fps,
             &mut other_entities,
+            &mut fov,
+            &mut cam_angle,
         );
+        video.sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
             let (map_render_data, physics_world) = load_map(&new_map_name, &asset_loader);
@@ -672,17 +677,21 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                all_str_names: &Vec<String>,
                filtered_str_names: &mut Vec<String>,
                fps: u64,
-               other_entities: &mut Vec<Entity>) -> (Option<String>, Option<String>) {
+               other_entities: &mut Vec<Entity>,
+               fov: &mut f32,
+               cam_angle: &mut f32,
+) -> (Option<String>, Option<String>, bool) {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
                                     &video.event_pump.mouse_state());
     extern crate sublime_fuzzy;
-    let mut ret = (None, None); // (map, str)
+    let mut ret = (None, None, false); // (map, str, show_cursor)
     { // IMGUI
         ui.window(im_str!("Graphic opsions"))
             .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
             .build(|| {
+                ret.2 = ui.is_window_hovered();
                 let map_name_filter_clone = map_name_filter.clone();
                 let str_name_filter_clone = str_name_filter.clone();
                 if ui.input_text(im_str!("Map name:"), &mut map_name_filter)
@@ -701,7 +710,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 }
                 for map_name in filtered_map_names.iter() {
                     if ui.small_button(&ImString::new(map_name.as_str())) {
-                        ret = (Some(map_name.to_owned()), None);
+                        ret.0 = Some(map_name.to_owned());
                     }
                 }
                 if ui.input_text(im_str!("Load STR:"), &mut str_name_filter)
@@ -720,8 +729,25 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 }
                 for str_name in filtered_str_names.iter() {
                     if ui.small_button(&ImString::new(str_name.as_str())) {
-                        ret = (None, Some(str_name.to_owned()));
+                        ret.1 = Some(str_name.to_owned());
                     }
+                }
+
+                if ui.slider_float(im_str!("Perspective"), fov, 0.1, std::f32::consts::PI)
+                    .build() {
+                    ecs_world.write_resource::<SystemVariables>().matrices.projection = Matrix4::new_perspective(
+                        VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+                        *fov,
+                        0.1f32,
+                        1000.0f32,
+                    );
+                }
+
+                if ui.slider_float(im_str!("Camera"), cam_angle, -120.0, 120.0)
+                    .build() {
+                    let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                    let controller = storage.get_mut(desktop_client_controller_entity).unwrap();
+                    controller.camera.rotate(*cam_angle, 270.0);
                 }
 
                 let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
@@ -904,7 +930,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                     .map(|it| it.unwrap())
                     .collect()
             };
-            let _= ecs_world.delete_entities(entity_ids.as_slice());
+            let _ = ecs_world.delete_entities(entity_ids.as_slice());
             // remove rigid bodies from the physic simulation
             let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
             physics_world.remove_bodies(body_handles.as_slice());

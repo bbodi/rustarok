@@ -1,11 +1,11 @@
-use crate::components::char::{CharacterStateComponent, PhysicsComponent, U8Float, CharState};
+use crate::components::char::{CharacterStateComponent, PhysicsComponent, CharState};
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
 use crate::components::{AttackComponent, FlyingNumberType, FlyingNumberComponent, AttackType};
 use specs::prelude::*;
-use nalgebra::{Vector2, Point2};
-use crate::components::skill::Skills;
+use nalgebra::{Vector2};
+use crate::components::skill::{Skills, v2_to_p2};
 
 pub enum AttackOutcome {
     Damage(u32),
@@ -59,35 +59,31 @@ impl<'a> specs::System<'a> for AttackSystem {
             });
             if let Some((src_outcomes, dst_outcomes)) = outcome {
                 for outcome in src_outcomes.into_iter() {
-                    let attacker_aspd = char_state_storage.get_mut(attack.dst_entity).unwrap().attack_speed;
                     let attacked_entity = attack.src_entity;
                     let src_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
                     AttackCalculation::apply_damage(src_char_state, &outcome, system_vars.time);
 
                     let char_pos = src_char_state.pos();
-                    AttackCalculation::add_damage(
+                    AttackCalculation::add_flying_damage_entity(
                         &outcome,
                         &entities,
                         &mut updater,
                         attacked_entity,
-                        attacker_aspd,
                         &char_pos.coords,
                         system_vars.time,
                     );
                 }
                 for outcome in dst_outcomes.into_iter() {
-                    let attacker_aspd = char_state_storage.get_mut(attack.src_entity).unwrap().attack_speed;
                     let attacked_entity = attack.dst_entity;
                     let dst_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
                     AttackCalculation::apply_damage(dst_char_state, &outcome, system_vars.time);
 
                     let char_pos = dst_char_state.pos();
-                    AttackCalculation::add_damage(
+                    AttackCalculation::add_flying_damage_entity(
                         &outcome,
                         &entities,
                         &mut updater,
                         attacked_entity,
-                        attacker_aspd,
                         &char_pos.coords,
                         system_vars.time,
                     );
@@ -174,12 +170,11 @@ impl AttackCalculation {
         }
     }
 
-    pub fn add_damage(
+    pub fn add_flying_damage_entity(
         outcome: &AttackOutcome,
         entities: &Entities,
         updater: &mut specs::Write<LazyUpdate>,
         target_entity_id: Entity,
-        aspd: U8Float,
         char_pos: &Vector2<f32>,
         sys_time: ElapsedTime,
     ) {
@@ -195,8 +190,8 @@ impl AttackCalculation {
             typ,
             value,
             target_entity_id,
-            (2.0 - aspd.as_f32()).max(1.0),
-            Point2::new(char_pos.x, char_pos.y),
+            3.0,
+            v2_to_p2(&char_pos),
             sys_time));
     }
 }

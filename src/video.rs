@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use sdl2::{Sdl, EventPump};
 use sdl2::video::{Window, GLContext};
-use imgui::ImGui;
+use imgui::{ImGui};
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
 use std::ops::{IndexMut, Index};
@@ -24,8 +24,8 @@ pub struct Video {
 //    _gl: *const (),
 }
 
-pub const VIDEO_WIDTH: u32 = 900;
-pub const VIDEO_HEIGHT: u32 = 700;
+pub const VIDEO_WIDTH: u32 = 1024;
+pub const VIDEO_HEIGHT: u32 = 768;
 
 impl Video {
     pub fn init() -> Video {
@@ -40,7 +40,6 @@ impl Video {
             .opengl()
             .allow_highdpi()
 //            .resizable()
-            .input_grabbed()
             .build()
             .unwrap();
         // these two variables must be in scope, so don't remove their variables
@@ -60,7 +59,6 @@ impl Video {
         let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
         let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
-        sdl_context.mouse().show_cursor(false);
         Video {
             sdl_context,
             window,

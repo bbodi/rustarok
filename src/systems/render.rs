@@ -739,6 +739,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::ReadStorage<'a, FlyingNumberComponent>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -747,6 +748,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
     fn run(&mut self, (
         entities,
         numbers,
+        char_state_storage,
         controller_storage,
         system_vars,
         mut system_benchmark,
@@ -764,18 +766,19 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
             for (entity_id, number) in (&entities, &numbers).join() {
                 let digits = DamageRenderSystem::get_digits(number.value);
                 // create vbo based on the numbers
-                let mut x = 0.0;
+                let mut width = 0.0;
                 let mut vertices = vec![];
                 digits.iter().for_each(|&digit| {
                     let digit = digit as usize;
-                    vertices.push([x - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
-                    vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                    vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                    vertices.push([x + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                    vertices.push([x - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                    vertices.push([x + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
-                    x += 1.0;
+                    vertices.push([width - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
+                    vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+                    vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+                    vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+                    vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+                    vertices.push([width + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
+                    width += 1.0;
                 });
+                let width = width;
                 let vertex_array = VertexArray::new(
                     gl::TRIANGLES,
                     &vertices, vertices.len(), vec![
@@ -789,37 +792,54 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                     ]);
 
                 system_vars.sprites.numbers.bind(TEXTURE_0);
-                let shader = system_vars.shaders.sprite_shader.gl_use();
                 let mut matrix = Matrix4::<f32>::identity();
                 let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
-                let lifetime_perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
-                match number.typ {
+                let perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
+                let size = match number.typ {
                     FlyingNumberType::Heal => {
-                        // going upwards only
-                        pos.y += 4.0 * lifetime_perc;
-                        shader.set_vec2("size", &[
-                            0.5,
-                            0.5
-                        ]);
+                        // follow the target
+                        let real_pos = char_state_storage
+                            .get(number.target_entity_id)
+                            .map(|it| it.pos())
+                            .unwrap_or(number.start_pos);
+                        pos.x = real_pos.x;
+                        pos.z = real_pos.y;
+                        let size = ((1.0 - perc * 3.0) * 1.5).max(0.4);
+                        pos.x -= width * size / 2.0;
+                        let y_offset = if perc < 0.3 { 0.0 } else { (perc - 0.3) * 3.0 };
+                        pos.y += 2.0 + y_offset;
+                        // a small hack to mitigate the distortion effect of perspective projection
+                        // at the edge of the screens
+                        pos.z -= y_offset;
+                        size
+                    }
+                    FlyingNumberType::Damage => {
+                        pos.x += perc * 6.0;
+                        pos.z -= perc * 4.0;
+                        pos.y += 2.0 +
+                            (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5))).sin() * 5.0;
+                        (1.0 - perc) * 1.0
                     }
                     _ => {
-                        pos.y += 4.0 * lifetime_perc;
-                        pos.z -= 2.0 * lifetime_perc;
-                        pos.x += 2.0 * lifetime_perc;
-                        shader.set_vec2("size", &[
-                            0.6,
-                            0.6
-                        ]);
+                        pos.y += 4.0 * perc;
+                        pos.z -= 2.0 * perc;
+                        pos.x += 2.0 * perc;
+                        (1.0 - perc) * 4.0
                     }
-                }
+                };
                 matrix.prepend_translation_mut(&pos);
+                let shader = system_vars.shaders.sprite_shader.gl_use();
+                shader.set_vec2("size", &[
+                    size,
+                    size
+                ]);
                 shader.set_mat4("model", &matrix);
                 shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &system_vars.matrices.view);
                 shader.set_int("model_texture", 0);
-                shader.set_f32("alpha", 1.0);
+                shader.set_f32("alpha", 1.3 - (perc + 0.3 * perc));
 
                 vertex_array.bind().draw();
 
