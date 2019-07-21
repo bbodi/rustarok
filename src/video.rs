@@ -10,10 +10,7 @@ use sdl2::video::{Window, GLContext};
 use imgui::ImGui;
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
-use sdl2::event::{EventPollIterator, Event};
-use crate::systems::SystemVariables;
 use std::ops::{IndexMut, Index};
-use crate::asset::AssetLoader;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -38,7 +35,7 @@ impl Video {
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(4, 5);
-        let mut window = video
+        let window = video
             .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
             .opengl()
             .allow_highdpi()
@@ -56,10 +53,11 @@ impl Video {
             gl::DepthFunc(gl::LEQUAL);
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            gl::LineWidth(2.0);
         }
         let mut imgui = imgui::ImGui::init();
         imgui.set_ini_filename(None);
-        let mut imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
+        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
         let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
         sdl_context.mouse().show_cursor(false);
@@ -143,7 +141,7 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
     matrix = matrix * rotation;
     shader.set_mat4("model", &matrix);
-    let mut capsule_mesh = ncollide2d::procedural::circle(
+    let capsule_mesh = ncollide2d::procedural::circle(
         &(r * 2.0),
         32,
     );

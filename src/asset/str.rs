@@ -1,7 +1,5 @@
-use sdl2::pixels::PixelFormatEnum;
-use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
+use crate::video::{GlTexture};
 use std::collections::HashMap;
-use crate::systems::render::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::asset::{BinaryReader, AssetLoader};
 
 pub struct StrFile {
@@ -39,7 +37,7 @@ pub struct StrKeyFrame {
 
 
 impl StrFile {
-    pub(super) fn load(asset_loader: &AssetLoader, mut buf: BinaryReader) -> Self {
+    pub(super) fn load(asset_loader: &AssetLoader, mut buf: BinaryReader, str_name: &str) -> Self {
         let header = buf.string(4);
         if header != "STRM" {
             panic!("Invalig STR header: {}", header);
@@ -77,8 +75,13 @@ impl StrFile {
             let texture_names: Vec<String> = (0..buf.next_u32()).map(|_i| {
                 let texture_name = buf.string(128);
                 if !texture_names_to_index.contains_key(&texture_name) {
-                    let surface = asset_loader.load_sdl_surface(&format!("data\\texture\\effect\\{}", texture_name));
-                    let texture = GlTexture::from_surface(surface.unwrap());
+                    let path = format!("data\\texture\\effect\\{}", texture_name);
+                    let surface = asset_loader.load_sdl_surface(&path);
+                    let texture = GlTexture::from_surface(surface
+                        .unwrap_or_else(|e| {
+                            warn!("Missing texture when loading {}, path: {}, {}", str_name, path, e);
+                            asset_loader.backup_surface()
+                        }));
                     textures.push(texture);
                     let size = texture_names_to_index.len();
                     texture_names_to_index.insert(texture_name.clone(), size);

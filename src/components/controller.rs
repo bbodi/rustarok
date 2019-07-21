@@ -1,6 +1,6 @@
 use specs::Entity;
 use crate::cam::Camera;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap};
 use sdl2::keyboard::Scancode;
 use nalgebra::{Point3, Point2};
 use specs::prelude::*;
@@ -76,9 +76,9 @@ pub enum ControllerAction {
     MoveOrAttackTo(ScreenCoords),
     /// Move to the coordination, attack any enemy on the way.
     AttackTo(ScreenCoords),
-    CastingSelectTarget(SkillKey),
+    CastingSelectTarget(SkillKey, Skills),
     CancelCastingSelectTarget,
-    Casting(SkillKey),
+    Casting(Skills),
     LeftClick,
 }
 
@@ -101,7 +101,6 @@ pub struct ControllerComponent {
     pub inputs: Vec<sdl2::event::Event>,
     pub next_action: Option<ControllerAction>,
     pub last_action: Option<ControllerAction>,
-    pub is_casting_selection: Option<SkillKey>,
     skills_for_keys: [Option<Skills>; 8],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
@@ -123,29 +122,6 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
-
-    pub fn get_skill_for_key(&self, skill_key: SkillKey) -> Option<Skills> {
-        self.skills_for_keys[skill_key as usize]
-    }
-
-    pub fn assign_skill(&mut self, skill_key: SkillKey, skill: Skills) {
-        self.skills_for_keys[skill_key as usize] = Some(skill);
-    }
-
-    pub fn mouse_pos(&self) -> ScreenCoords {
-        Point2::new(self.last_mouse_x, self.last_mouse_x)
-    }
-
-    pub fn cleanup_released_keys(&mut self) {
-        for key in self.keys_released_in_prev_frame.drain(..) {
-            self.keys.get_mut(&key).unwrap().just_released = false;
-        }
-        for key in self.keys_pressed_in_prev_frame.drain(..) {
-            self.keys.get_mut(&key).unwrap().just_pressed = false;
-        }
-    }
-
-
     pub fn new(char: Entity, x: f32, z: f32) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
@@ -175,8 +151,40 @@ impl ControllerComponent {
             last_action: None,
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
-            is_casting_selection: None,
-            mouse_world_pos: Point2::new(0.0, 0.0)
+            mouse_world_pos: Point2::new(0.0, 0.0),
+        }
+    }
+
+
+    pub fn is_selecting_target(&self) -> Option<(SkillKey, Skills)> {
+        match self.next_action {
+            Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
+            None /*there is no new action*/ => match self.last_action {
+                Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
+                _ => None,
+            },
+            _ => None
+        }
+    }
+
+    pub fn get_skill_for_key(&self, skill_key: SkillKey) -> Option<Skills> {
+        self.skills_for_keys[skill_key as usize]
+    }
+
+    pub fn assign_skill(&mut self, skill_key: SkillKey, skill: Skills) {
+        self.skills_for_keys[skill_key as usize] = Some(skill);
+    }
+
+    pub fn mouse_pos(&self) -> ScreenCoords {
+        Point2::new(self.last_mouse_x, self.last_mouse_x)
+    }
+
+    pub fn cleanup_released_keys(&mut self) {
+        for key in self.keys_released_in_prev_frame.drain(..) {
+            self.keys.get_mut(&key).unwrap().just_released = false;
+        }
+        for key in self.keys_pressed_in_prev_frame.drain(..) {
+            self.keys.get_mut(&key).unwrap().just_pressed = false;
         }
     }
 

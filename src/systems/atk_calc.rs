@@ -1,4 +1,4 @@
-use crate::components::char::{CharacterStateComponent, PhysicsComponent, U8Float};
+use crate::components::char::{CharacterStateComponent, PhysicsComponent, U8Float, CharState};
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
@@ -62,7 +62,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                     let attacker_aspd = char_state_storage.get_mut(attack.dst_entity).unwrap().attack_speed;
                     let attacked_entity = attack.src_entity;
                     let src_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                    AttackCalculation::apply_damage(src_char_state, &outcome);
+                    AttackCalculation::apply_damage(src_char_state, &outcome, system_vars.time);
 
                     let char_pos = src_char_state.pos();
                     AttackCalculation::add_damage(
@@ -79,7 +79,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                     let attacker_aspd = char_state_storage.get_mut(attack.src_entity).unwrap().attack_speed;
                     let attacked_entity = attack.dst_entity;
                     let dst_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                    AttackCalculation::apply_damage(dst_char_state, &outcome);
+                    AttackCalculation::apply_damage(dst_char_state, &outcome, system_vars.time);
 
                     let char_pos = dst_char_state.pos();
                     AttackCalculation::add_damage(
@@ -118,33 +118,57 @@ impl AttackCalculation {
     pub fn skill_attack(src: &CharacterStateComponent, dst: &CharacterStateComponent, skill: &Skills) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
         let mut src_outcomes = vec![];
         let mut dst_outcomes = vec![];
-        let atk = 600.0;
-        let atk = dst.armor.subtract_me_from_as_percentage(atk) as u32;
-        let outcome = if atk == 0 {
-            AttackOutcome::Block
-        } else {
-            AttackOutcome::Damage(atk)
+        let atk = match skill {
+            Skills::TestSkill => 600.0,
+            Skills::BrutalTestSkill => 600.0,
+            Skills::Lightning => 120.0,
+            Skills::Heal => 0.0,
         };
-        dst_outcomes.push(outcome);
+        match skill {
+            // attacking skills
+            Skills::Lightning |
+            Skills::TestSkill |
+            Skills::BrutalTestSkill=> {
+                let atk = dst.armor.subtract_me_from_as_percentage(atk) as u32;
+                let outcome = if atk == 0 {
+                    AttackOutcome::Block
+                } else {
+                    AttackOutcome::Damage(atk)
+                };
+                dst_outcomes.push(outcome);
+            },
+            // healing skills
+            Skills::Heal => {
+                dst_outcomes.push(AttackOutcome::Heal(200));
+            }
+        };
         return (src_outcomes, dst_outcomes);
     }
 
 
     pub fn apply_attack_state(src: &mut CharacterStateComponent, dst: &mut CharacterStateComponent) {}
 
-    pub fn apply_damage(char_comp: &mut CharacterStateComponent, outcome: &AttackOutcome) {
+    pub fn apply_damage(
+        char_comp: &mut CharacterStateComponent,
+        outcome: &AttackOutcome,
+        now: ElapsedTime,
+    ) {
         match outcome {
             AttackOutcome::Heal(val) => {
-                char_comp.hp += *val as i32;
+                char_comp.hp = char_comp.max_hp.min(char_comp.hp + *val as i32);
             }
             AttackOutcome::Block => {}
             AttackOutcome::Damage(val) => {
-                char_comp.hp -= *val as i32;
+                char_comp.cannot_control_until.run_at_least_until_seconds(now, 0.1);
+                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
+                char_comp.hp -= dbg!(*val) as i32;
             }
             AttackOutcome::Poison(val) => {
                 char_comp.hp -= *val as i32;
             }
             AttackOutcome::Crit(val) => {
+                char_comp.cannot_control_until.run_at_least_until_seconds(now, 0.1);
+                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
                 char_comp.hp -= *val as i32;
             }
         }
@@ -160,7 +184,6 @@ impl AttackCalculation {
         sys_time: ElapsedTime,
     ) {
         let damage_entity = entities.create();
-        let mut rng = rand::thread_rng();
         let (typ, value) = match outcome {
             AttackOutcome::Damage(value) => (FlyingNumberType::Damage, *value),
             AttackOutcome::Poison(_) => (FlyingNumberType::Damage, 0),

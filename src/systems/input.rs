@@ -12,6 +12,7 @@ use crate::cam::Camera;
 use crate::RenderMatrices;
 use nalgebra::{Point2, Vector3, Vector4};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use crate::components::skill::SkillDescriptor;
 
 pub struct BrowserInputProducerSystem;
 
@@ -55,9 +56,11 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
                                     trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
                                     let mousestate = {
-                                        unsafe { std::mem::transmute((0 as u32,
-                                                                      0 as i32,
-                                                                      0 as i32)) }
+                                        unsafe {
+                                            std::mem::transmute((0 as u32,
+                                                                 0 as i32,
+                                                                 0 as i32))
+                                        }
                                     };
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseMotion {
@@ -176,9 +179,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         physics_storage,
         char_state_storage,
         mut controller_storage,
-        mut system_vars,
+        system_vars,
     ): Self::SystemData) {
-        for (controller) in (&mut controller_storage).join() {
+        for controller in (&mut controller_storage).join() {
             // for autocompletion...
             let controller: &mut ControllerComponent = controller;
 
@@ -327,22 +330,31 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     controller.is_key_just_released(key.scancode())
                 }).take(1).map(|it| *it).collect::<Vec<SkillKey>>().pop();
 
-            if controller.next_action.is_some() {
+            if controller.next_action.is_some() { // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
-                ;
             }
-            controller.next_action = if let Some(casting_skill_key) = controller.is_casting_selection {
+            controller.next_action = if let Some((casting_skill_key, skill)) = controller.is_selecting_target() {
                 match controller.cast_mode {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
-                            Some(ControllerAction::Casting(casting_skill_key))
+                            Some(ControllerAction::Casting(skill))
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
+                        } else if let Some((skill_key, skill)) = just_pressed_skill_key
+                            .and_then(|skill_key| {
+                                controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
+                            }) {
+                            Some(ControllerAction::CastingSelectTarget(skill_key, skill))
                         } else { None }
                     }
                     CastMode::OnKeyRelease => {
                         if controller.is_key_just_released(casting_skill_key.scancode()) {
-                            Some(ControllerAction::Casting(casting_skill_key))
+                            Some(
+                                ControllerAction::Casting(
+                                    controller.get_skill_for_key(casting_skill_key)
+                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! ")
+                                )
+                            )
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
                         } else { None }
@@ -352,13 +364,16 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         None
                     }
                 }
-            } else if let Some(skill_key) = just_pressed_skill_key {
+            } else if let Some((skill_key, skill)) = just_pressed_skill_key
+                .and_then(|skill_key| {
+                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
+                }) {
                 match controller.cast_mode {
                     CastMode::Normal | CastMode::OnKeyRelease => {
-                        Some(ControllerAction::CastingSelectTarget(skill_key))
+                        Some(ControllerAction::CastingSelectTarget(skill_key, skill))
                     }
                     CastMode::OnKeyPress => {
-                        Some(ControllerAction::Casting(skill_key))
+                        Some(ControllerAction::Casting(skill))
                     }
                 }
             } else if controller.right_mouse_pressed {
@@ -371,28 +386,25 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             } else {
                 None
             };
-            controller.is_casting_selection = match controller.next_action {
-                Some(ControllerAction::CastingSelectTarget(skill_key)) => Some(skill_key),
-                None => controller.is_casting_selection,
-                _ => None,
-            };
 
             let mouse_world_pos = InputConsumerSystem::picking_2d_3d(controller.last_mouse_x,
                                                                      controller.last_mouse_y,
                                                                      &controller.camera,
                                                                      &system_vars.matrices);
-            let mut entity_below_cursor: Option<Entity> = None;
-            for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
-                let bb = &other_char_state.bounding_rect_2d;
-                let mx = controller.last_mouse_x as i32;
-                let my = controller.last_mouse_y as i32;
-                if other_char_state.state().is_live() && mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
-                    my <= bb.bottom_left[1] && my >= bb.top_right[1] {
-                    entity_below_cursor = Some(entity);
-                    break;
+            controller.entity_below_cursor = {
+                let mut entity_below_cursor: Option<Entity> = None;
+                for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
+                    let bb = &other_char_state.bounding_rect_2d;
+                    let mx = controller.last_mouse_x as i32;
+                    let my = controller.last_mouse_y as i32;
+                    if other_char_state.state().is_live() && mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
+                        my <= bb.bottom_left[1] && my >= bb.top_right[1] {
+                        entity_below_cursor = Some(entity);
+                        break;
+                    }
                 }
-            }
-            controller.entity_below_cursor = entity_below_cursor;
+                entity_below_cursor
+            };
             // TODO: thread '<unnamed>' panicked at 'attempt to add with overflow', src\gat.rs:35:24
             controller.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
                 mouse_world_pos.x as usize,

@@ -2,9 +2,7 @@ use std::time::Instant;
 use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime, ElapsedTime};
 use std::collections::HashMap;
 use crate::video::GlTexture;
-use specs::Entity;
 use crate::consts::{JobId, MonsterId};
-use crate::components::controller::WorldCoords;
 use nphysics2d::object::ColliderHandle;
 
 pub mod input;
@@ -42,7 +40,7 @@ pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub tick: Tick,
-    pub dt: DeltaTime,
+    pub dt: DeltaTime, // seconds the last frame required
     pub time: ElapsedTime, // extract from the struct?
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,

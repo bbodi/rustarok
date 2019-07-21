@@ -18,7 +18,6 @@ use libflate::zlib::Decoder;
 use std::ops::*;
 use sdl2::image::ImageRWops;
 use sdl2::pixels::PixelFormatEnum;
-use crate::video::GlTexture;
 
 pub mod gat;
 pub mod str;
@@ -178,7 +177,7 @@ impl AssetLoader {
     pub fn load_effect(&self, effect_name: &str) -> Result<StrFile, String> {
         let file_name = format!("data\\texture\\effect\\{}.str", effect_name);
         let content = self.get_content(&file_name)?;
-        return Ok(StrFile::load(&self, BinaryReader::from_vec(content)));
+        return Ok(StrFile::load(&self, BinaryReader::from_vec(content), effect_name));
     }
 
     pub fn load_map(&self, map_name: &str) -> Result<Rsw, String> {

@@ -1,5 +1,5 @@
 use nalgebra::{Rotation3, Vector3};
-use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::pixels::{PixelFormatEnum};
 use sdl2::rect::Rect;
 
 use crate::video::GlTexture;

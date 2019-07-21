@@ -1,25 +1,14 @@
-use nalgebra::{Isometry2, Matrix4, Perspective3, Point2, Point3, Vector2, Vector3, Vector4};
-use ncollide2d::query::point_internal::point_query::PointQuery;
-use ncollide2d::shape::{Ball, Cuboid};
-use nphysics2d::object::Body;
-use rand::Rng;
-use sdl2::keyboard::Scancode;
-use specs::join::JoinIter;
 use specs::prelude::*;
-use specs::world::EntitiesRes;
 
-use crate::{CharActionIndex, ElapsedTime, PhysicsWorld, RenderMatrices, Tick, TICKS_PER_SECOND};
-use crate::cam::Camera;
-use crate::components::{FlyingNumberComponent, FlyingNumberType, AttackComponent, AttackType};
+use crate::{ElapsedTime, PhysicsWorld};
+use crate::components::{AttackComponent, AttackType};
 use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, EntityTarget, MonsterSpriteComponent};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent};
+use crate::components::skill::{SkillManifestationComponent};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::systems::render::DIRECTION_TABLE;
-use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::systems::control_sys::CharacterControlSystem;
-use crate::systems::atk_calc::{AttackCalculation, AttackOutcome};
 use std::collections::HashMap;
 use crate::components::controller::WorldCoords;
+use nalgebra::Vector2;
 
 pub struct CharacterStateUpdateSystem;
 
@@ -77,21 +66,23 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             match char_comp.state().clone() {
                 CharState::CastingSkill(casting_info) => {
                     if casting_info.cast_ends.has_passed(system_vars.time) {
-                        let skill_entity_id = entities.create();
-
-                        let manifestation = casting_info.skill.lock().unwrap().create_manifestation(
+                        let manifestation = casting_info.skill.lock().unwrap().finish_cast(
                             char_entity_id,
                             &char_pos,
                             &casting_info.mouse_pos_when_casted,
+                            casting_info.target_entity,
                             &mut physics_world,
                             &system_vars,
                             &entities,
                             &mut updater,
                         );
-                        updater.insert(skill_entity_id, SkillManifestationComponent::new(
-                            skill_entity_id,
-                            manifestation),
-                        );
+                        if let Some(manifestation) = manifestation {
+                            let skill_entity_id = entities.create();
+                            updater.insert(skill_entity_id, SkillManifestationComponent::new(
+                                skill_entity_id,
+                                manifestation),
+                            );
+                        }
 
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                     }
@@ -160,7 +151,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
         for (char_comp, physics_comp) in (&mut char_state_storage,
                                           &physics_storage).join() {
-            if let CharState::Walking((target_pos)) = char_comp.state() {
+            if let CharState::Walking(target_pos) = char_comp.state() {
                 let dir = (target_pos - char_comp.pos()).normalize();
                 let speed = dir * char_comp.moving_speed.multiply(600.0 * 0.01);
                 let force = speed;

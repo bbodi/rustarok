@@ -20,46 +20,38 @@ extern crate serde;
 
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
-use std::io::ErrorKind;
-use std::ops::{Bound, Div};
-use std::path::Path;
-use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 
 use imgui::ImString;
 use log::LevelFilter;
-use nalgebra::{Isometry, Isometry2, Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
+use nalgebra::{Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
 use ncollide2d::world::CollisionGroups;
-use nphysics2d::object::{BodyHandle, Collider, ColliderDesc};
+use nphysics2d::object::{BodyHandle, ColliderDesc};
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
 use rand::Rng;
-use sdl2::keyboard::{Keycode, Scancode};
+use sdl2::keyboard::{Keycode};
 use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
-use websocket::{OwnedMessage, WebSocketError};
-use websocket::stream::sync::TcpStream;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{CharacterStateComponent, ComponentRadius, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U16Float, U8Float};
+use crate::components::char::{CharacterStateComponent, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent,U8Float};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
+use crate::components::skill::{SkillManifestationComponent, Skills};
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemStopwatch, SystemVariables, CollisionsFromPrevFrame};
+use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysicsSystem};
-use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, PhysicsDebugDrawingSystem, RenderDesktopClientSystem, RenderStreamingSystem};
+use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, RenderDesktopClientSystem, RenderStreamingSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::ui::RenderUI;
-use crate::video::{GlTexture, IndexedVertexArray, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::asset::act::ActionFile;
-use crate::asset::spr::SpriteFile;
+use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::asset::str::StrFile;
 use crate::asset::gat::{CellType, Gat};
@@ -74,6 +66,7 @@ mod video;
 mod asset;
 mod consts;
 
+#[macro_use]
 mod components;
 mod systems;
 
@@ -82,7 +75,9 @@ use std::str::FromStr;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
-pub const TICKS_PER_SECOND: u64 = 1000 / 30;
+// simulations per second
+pub const SIMULATION_FREQ: u64 = 30;
+pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
@@ -354,12 +349,11 @@ fn main() {
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(PhysicsDebugDrawingSystem::new())
         .with_thread_local(DamageRenderSystem::new())
         .with_thread_local(RenderUI::new())
         .build();
 
-    let mut rng = rand::thread_rng();
+    let rng = rand::thread_rng();
 
     let (elapsed, sprites) = measure_time(|| {
         let job_name_table = job_name_table();
@@ -503,6 +497,8 @@ fn main() {
         );
         let mut player = ControllerComponent::new(desktop_client_char, 250.0, -180.0);
         player.assign_skill(SkillKey::Q, Skills::TestSkill);
+        player.assign_skill(SkillKey::W, Skills::Lightning);
+        player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
         ecs_world
             .create_entity()
@@ -607,17 +603,17 @@ fn main() {
         }
         if let Some(new_str_name) = new_str {
             {
-                let mut map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
+                let map_render_data = &mut ecs_world.write_resource::<SystemVariables>().map_render_data;
                 if !map_render_data.str_effects.contains_key(&new_str_name) {
                     let str_file = asset_loader.load_effect(&new_str_name).unwrap();
                     map_render_data.str_effects.insert(new_str_name.clone(), str_file);
                 }
             }
             let hero_pos = {
-                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let storage = ecs_world.write_storage::<ControllerComponent>();
                 let controller = storage.get(desktop_client_entity).unwrap();
                 let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                let char_state = char_state_storage.get_mut(controller.char).unwrap();
                 char_state.pos()
             };
             ecs_world
@@ -659,11 +655,11 @@ fn main() {
         fps_counter += 1;
         ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
         ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
-        ecs_world.write_resource::<SystemVariables>().time.0 += dt;
+        ecs_world.write_resource::<SystemVariables>().time.0 += dt.max(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
     }
 }
 
-fn imgui_frame(desktop_client_entity: Entity,
+fn imgui_frame(desktop_client_controller_entity: Entity,
                video: &mut Video,
                mut ecs_world: &mut specs::world::World,
                mut rng: ThreadRng,
@@ -671,10 +667,10 @@ fn imgui_frame(desktop_client_entity: Entity,
                entity_count: &mut i32,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
-               mut filtered_map_names: &mut Vec<String>,
+               filtered_map_names: &mut Vec<String>,
                mut str_name_filter: &mut ImString,
                all_str_names: &Vec<String>,
-               mut filtered_str_names: &mut Vec<String>,
+               filtered_str_names: &mut Vec<String>,
                fps: u64,
                other_entities: &mut Vec<Entity>) -> (Option<String>, Option<String>) {
     let ui = video.imgui_sdl2.frame(&video.window,
@@ -745,7 +741,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
 
                 {
-                    let controller = storage.get_mut(desktop_client_entity).unwrap();
+                    let controller = storage.get_mut(desktop_client_controller_entity).unwrap();
                     let mut cast_mode = match controller.cast_mode {
                         CastMode::Normal => 0,
                         CastMode::OnKeyPress => 1,
@@ -761,9 +757,10 @@ fn imgui_frame(desktop_client_entity: Entity,
                             _ => CastMode::OnKeyRelease,
                         };
                     }
+                    ui.text(im_str!("Mouse world pos: {}", controller.mouse_world_pos));
                 }
 
-                let controller = storage.get(desktop_client_entity).unwrap();
+                let controller = storage.get(desktop_client_controller_entity).unwrap();
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
@@ -789,7 +786,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                 ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
                 ui.text(im_str!("yaw: {}, pitch: {}", controller.yaw, controller.pitch));
                 ui.text(im_str!("FPS: {}", fps));
-                let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
+                let (_traffic, _unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
                 } else if sent_bytes_per_second > 1024 {
                     (sent_bytes_per_second / 1024, "Kb")
@@ -827,10 +824,10 @@ fn imgui_frame(desktop_client_entity: Entity,
             for _i in 0..count_to_add / 2 {
                 let pos = {
                     let hero_pos = {
-                        let mut storage = ecs_world.write_storage::<ControllerComponent>();
-                        let controller = storage.get(desktop_client_entity).unwrap();
+                        let storage = ecs_world.write_storage::<ControllerComponent>();
+                        let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
                         char_state.pos()
                     };
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
@@ -867,10 +864,10 @@ fn imgui_frame(desktop_client_entity: Entity,
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
                     let hero_pos = {
-                        let mut storage = ecs_world.write_storage::<ControllerComponent>();
-                        let controller = storage.get(desktop_client_entity).unwrap();
+                        let storage = ecs_world.write_storage::<ControllerComponent>();
+                        let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
                         char_state.pos()
                     };
                     let (x, y) = loop {
@@ -907,7 +904,7 @@ fn imgui_frame(desktop_client_entity: Entity,
                     .map(|it| it.unwrap())
                     .collect()
             };
-            ecs_world.delete_entities(entity_ids.as_slice());
+            let _= ecs_world.delete_entities(entity_ids.as_slice());
             // remove rigid bodies from the physic simulation
             let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
             physics_world.remove_bodies(body_handles.as_slice());
@@ -1193,6 +1190,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("StrEffect::FireWall".to_owned(), asset_loader.load_effect("firewall").unwrap());
         str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
         str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
+        str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
         str_effects
     });
     info!("str loaded: {}ms", elapsed.as_millis());

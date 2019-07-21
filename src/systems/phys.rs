@@ -1,14 +1,10 @@
 use crate::systems::{SystemVariables, SystemFrameDurations, CollisionsFromPrevFrame, Collision};
-use crate::{PhysicsWorld, ElapsedTime, SKILL_AREA_COLLISION_GROUP};
+use crate::{PhysicsWorld};
 use nalgebra::{Vector2, Point2};
 use specs::prelude::*;
-use crate::components::char::{PhysicsComponent, CharacterStateComponent, CharState};
+use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use ncollide2d::query::Proximity;
-use crate::components::skill::{PushBackWallSkill, Skills};
-use nphysics2d::object::{Body, BodyHandle, ColliderHandle, Collider};
-use ncollide2d::events::{ContactEvent, ContactEvents};
-use crate::components::{AttackComponent, AttackType};
-use crate::components::controller::WorldCoords;
+use ncollide2d::events::{ContactEvent};
 
 pub struct PhysicsSystem;
 
@@ -26,7 +22,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
     fn run(&mut self, (
         mut physics_world,
         mut system_benchmark,
-        mut physics_storage,
+        physics_storage,
         mut char_storage,
         system_vars,
     ): Self::SystemData) {
@@ -61,11 +57,11 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         entities,
         mut physics_world,
         mut system_benchmark,
-        mut char_storage,
+        char_storage,
         physics_storage,
         system_vars,
         mut collisions_resource,
-        mut updater,
+        updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 

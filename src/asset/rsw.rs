@@ -1,7 +1,5 @@
 use std::borrow::ToOwned;
 use nalgebra::{Vector3};
-use std::collections::{HashMap, HashSet};
-use crate::asset::rsm::Rsm;
 use crate::ModelName;
 use crate::asset::BinaryReader;
 

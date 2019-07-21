@@ -1,6 +1,4 @@
-use std::cmp::max;
 use std::fs::File;
-use std::path::Path;
 
 use byteorder::{ReadBytesExt, LittleEndian};
 use byteorder::WriteBytesExt;
@@ -94,11 +92,11 @@ impl Gat {
             let rectangles = Gat::merge_cells_into_convex_rectangles(&cells, width as usize, height as usize);
             let mut cache_file = File::create(map_name.to_owned() + ".cel").unwrap();
             for rectangle in rectangles.iter() {
-                cache_file.write_u32::<LittleEndian>(rectangle.area as u32);
-                cache_file.write_u16::<LittleEndian>(rectangle.start_x as u16);
-                cache_file.write_u16::<LittleEndian>(rectangle.bottom as u16);
-                cache_file.write_u16::<LittleEndian>(rectangle.width as u16);
-                cache_file.write_u16::<LittleEndian>(rectangle.height as u16);
+                cache_file.write_u32::<LittleEndian>(rectangle.area as u32).unwrap();
+                cache_file.write_u16::<LittleEndian>(rectangle.start_x as u16).unwrap();
+                cache_file.write_u16::<LittleEndian>(rectangle.bottom as u16).unwrap();
+                cache_file.write_u16::<LittleEndian>(rectangle.width as u16).unwrap();
+                cache_file.write_u16::<LittleEndian>(rectangle.height as u16).unwrap();
             }
             rectangles
         };

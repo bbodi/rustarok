@@ -1,16 +1,14 @@
 use ncollide2d::shape::ShapeHandle;
-use nalgebra::{Vector2, Point2, Vector};
+use nalgebra::{Vector2, Point2};
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use ncollide2d::world::CollisionGroups;
-use crate::{LIVING_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP, PhysicsWorld, Tick, CharActionIndex, ElapsedTime, MonsterActionIndex};
+use crate::{LIVING_COLLISION_GROUP, PhysicsWorld, CharActionIndex, ElapsedTime, MonsterActionIndex};
 use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
 use crate::systems::Sex;
 use crate::components::skill::SkillDescriptor;
-use crate::systems::control_sys::CharacterControlSystem;
 use std::sync::{Mutex, Arc};
-use std::ops::Mul;
 use crate::components::controller::WorldCoords;
 
 pub fn create_char(
@@ -41,7 +39,7 @@ pub fn create_char(
         entity_builder.build()
     };
     let mut storage = ecs_world.write_storage();
-    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+    let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
     let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
@@ -69,7 +67,7 @@ pub fn create_monster(
         entity_builder.build()
     };
     let mut storage = ecs_world.write_storage();
-    let mut physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+    let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
     let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
@@ -100,13 +98,13 @@ impl PhysicsComponent {
         entity_id: Entity,
     ) -> PhysicsComponent {
         let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
-        let mut collider_desc = ColliderDesc::new(capsule)
+        let collider_desc = ColliderDesc::new(capsule)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[LIVING_COLLISION_GROUP])
                 .with_blacklist(&[])
             )
             .density(radius.0 as f32 * 5.0);
-        let mut rb_desc = RigidBodyDesc::new()
+        let rb_desc = RigidBodyDesc::new()
             .user_data(entity_id)
             .collider(&collider_desc);
         let handle = rb_desc
@@ -124,6 +122,7 @@ impl PhysicsComponent {
 #[derive(Clone)]
 pub struct CastingSkillData {
     pub mouse_pos_when_casted: WorldCoords,
+    pub target_entity: Option<Entity>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
     pub can_move: bool,
@@ -328,7 +327,7 @@ pub struct CharacterStateComponent {
     dir: usize,
     pub cannot_control_until: ElapsedTime,
 
-    pub max_hp: u32,
+    pub max_hp: i32,
     pub hp: i32,
     pub moving_speed: U8Float,
     pub attack_range: U8Float,

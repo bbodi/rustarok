@@ -1,18 +1,15 @@
-use nalgebra::{Matrix4, Vector3, Rotation3, Point3, Vector2, Point2, Matrix3, Vector4};
-use crate::video::{VertexArray, draw_lines_inefficiently, draw_circle_inefficiently, draw_lines_inefficiently2, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray, ShaderProgram};
+use nalgebra::{Matrix4, Vector3, Rotation3, Vector2, Matrix3, Vector4};
+use crate::video::{VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray, ShaderProgram, draw_circle_inefficiently};
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, Tick, PhysicsWorld, TICKS_PER_SECOND, ElapsedTime, StrEffect, CharActionIndex};
+use crate::{Shaders, MapRenderData, SpriteResource, PhysicsWorld, ElapsedTime};
 use std::collections::HashMap;
 use crate::cam::Camera;
-use std::cmp::max;
-use crate::components::controller::{ControllerComponent, SkillKey, WorldCoords};
-use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::controller::{ControllerComponent, WorldCoords};
+use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
 use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor, CharState, CharType};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, SkillDescriptor, Skills};
-use ncollide2d::shape::Shape;
-use crate::consts::{JobId, MonsterId};
+use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType};
 use crate::asset::str::KeyFrameType;
 
 // the values that should be added to the sprite direction based on the camera
@@ -62,6 +59,7 @@ impl<'a> specs::System<'a> for OpenGlInitializerFor3D {
 pub struct RenderDesktopClientSystem {
     rectangle_vao: VertexArray,
     str_effect_vao: DynamicVertexArray,
+    capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray>, // radius to vertexArray
 }
 
 impl RenderDesktopClientSystem {
@@ -73,7 +71,28 @@ impl RenderDesktopClientSystem {
             [1.0, 0.0]
         ];
 
+        let capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray> = [1, 2, 3, 4].iter().map(|radius| {
+            let capsule_mesh = ncollide2d::procedural::circle(
+                &(*radius as f32 * 0.5 * 2.0),
+                32,
+            );
+
+            let coords = capsule_mesh.coords();
+            (ComponentRadius(*radius), VertexArray::new(
+                gl::LINE_LOOP,
+                coords,
+                coords.len(),
+                vec![
+                    VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }
+                ])
+            )
+        }).collect();
+
         RenderDesktopClientSystem {
+            capsule_vertex_arrays,
             rectangle_vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
                 &s, 4, vec![
@@ -118,8 +137,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::WriteStorage<'a, SkillManifestationComponent>, // TODO remove me
+        specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
+        specs::ReadExpect<'a, PhysicsWorld>,
     );
 
     fn run(&mut self, (
@@ -132,8 +152,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         mut char_state_storage,
         system_vars,
         mut system_benchmark,
-        mut skill_storage,
+        skill_storage,
         str_effect_storage,
+        physics_world,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
@@ -142,6 +163,29 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         for (controller, _not_browser) in (&controller_storage, !&browser_client_storage).join() {
             // for autocompletion
             let controller: &ControllerComponent = controller;
+
+            // Draw physics colliders
+            for physics in (&physics_storage).join() {
+                let mut matrix = Matrix4::<f32>::identity();
+                let body = physics_world.rigid_body(physics.body_handle);
+                if body.is_none() {
+                    continue;
+                }
+                let pos = body.unwrap().position().translation.vector;
+                let pos = v3!(pos.x, 0.05, pos.y);
+                matrix.prepend_translation_mut(&pos);
+                let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
+                matrix = matrix * rotation;
+
+                let shader = system_vars.shaders.trimesh_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &system_vars.matrices.view);
+                shader.set_f32("alpha", 1.0);
+                shader.set_mat4("model", &matrix);
+                shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
+                self.capsule_vertex_arrays[&physics.radius].bind().draw();
+            }
+
             // Draw players
             for (entity_id, animated_sprite, char_state) in (&entities,
                                                              &player_sprite_storage,
@@ -281,8 +325,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &system_vars.map_render_data,
             );
 
-            if let Some(skill_key) = controller.is_casting_selection {
-                if let Some(skill) = controller.get_skill_for_key(skill_key) {
+            if let Some((skill_key, skill)) = controller.is_selecting_target() {
+                let char_state = char_state_storage.get(controller.char).unwrap();
+                draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
+                                          &system_vars.matrices.projection,
+                                          &system_vars.matrices.view,
+                                          &Vector3::new(char_state.pos().x, 0.0, char_state.pos().y),
+                                          skill.get_casting_range(),
+                                          &[0.0, 1.0, 0.0, 1.0]);
+                if skill.get_skill_target_type() == SkillTargetType::Area {
                     skill.render_target_selection(
                         &char_pos.coords,
                         &controller.mouse_world_pos,
@@ -292,7 +343,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             } else {
                 let char_state = char_state_storage.get(controller.char).unwrap();
                 if let CharState::CastingSkill(casting_info) = char_state.state() {
-                    casting_info.skill.lock().unwrap().render_casting(
+                    let skill = casting_info.skill.lock().unwrap();
+                    skill.render_casting(
                         &char_pos.coords,
                         casting_info,
                         &system_vars,
@@ -300,11 +352,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 }
             }
 
-            for (skill) in (&skill_storage).join() {
+            for skill in (&skill_storage).join() {
                 skill.render(&system_vars);
             }
 
-            for (str_effect) in (&str_effect_storage).join() {
+            for str_effect in (&str_effect_storage).join() {
                 self.render_str(&str_effect.effect,
                                 str_effect.start_time,
                                 &str_effect.pos,
@@ -347,7 +399,7 @@ fn draw_health_bar(
     };
 
 
-    let hp_percentage = (char_state.hp as f32 / char_state.max_hp as f32);
+    let hp_percentage = char_state.hp as f32 / char_state.max_hp as f32;
     let health_color = if is_self {
         [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
     } else {
@@ -432,7 +484,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
     let mut offset = [0.0, 0.0];
     let matrix = {
         let mut matrix = Matrix4::<f32>::identity();
-        let pos = Vector3::new(pos.x, 0.0, pos.y);
+        let pos = v2_to_v3(&pos);
         matrix.prepend_translation_mut(&pos);
         shader.set_mat4("model", &matrix);
         matrix
@@ -458,7 +510,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
         offset = [layer.pos[0] as f32 + offset[0], layer.pos[1] as f32 + offset[1]];
         offset = [
             offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.5
+            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.1
         ];
         shader.set_vec2("offset", &offset);
 
@@ -622,85 +674,6 @@ fn render_ground(shaders: &Shaders,
     map_render_data.ground_vertex_array.bind().draw();
 }
 
-
-pub struct PhysicsDebugDrawingSystem {
-    capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray>, // radius to vertexArray
-}
-
-impl PhysicsDebugDrawingSystem {
-    pub fn new() -> PhysicsDebugDrawingSystem {
-        let capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray> = [1, 2, 3, 4].iter().map(|radius| {
-            let mut capsule_mesh = ncollide2d::procedural::circle(
-                &(*radius as f32 * 0.5 * 2.0),
-                32,
-            );
-
-            let coords = capsule_mesh.coords();
-            (ComponentRadius(*radius), VertexArray::new(
-                gl::LINE_LOOP,
-                coords,
-                coords.len(),
-                vec![
-                    VertexAttribDefinition {
-                        number_of_components: 2,
-                        offset_of_first_element: 0,
-                    }
-                ])
-            )
-        }).collect();
-        PhysicsDebugDrawingSystem {
-            capsule_vertex_arrays,
-        }
-    }
-}
-
-impl<'a> specs::System<'a> for PhysicsDebugDrawingSystem {
-    type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, ControllerComponent>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, PhysicsWorld>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-    );
-
-    fn run(&mut self, (
-        entities,
-        controller_storage,
-        browser_client_storage,
-        physics_storage,
-        system_vars,
-        physics_world,
-        mut system_benchmark,
-    ): Self::SystemData) {
-        let stopwatch = system_benchmark.start_measurement("PhysicsDebugDrawingSystem");
-        for (controller, _not_browser) in (&controller_storage, !&browser_client_storage).join() {
-            for physics in (&physics_storage).join() {
-                let mut matrix = Matrix4::<f32>::identity();
-                let body = physics_world.rigid_body(physics.body_handle);
-                if body.is_none() {
-                    continue;
-                }
-                let pos = body.unwrap().position().translation.vector;
-                let pos = Vector3::new(pos.x, 1.0, pos.y);
-                matrix.prepend_translation_mut(&pos);
-                let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
-                matrix = matrix * rotation;
-
-                let shader = system_vars.shaders.trimesh_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &system_vars.matrices.view);
-                shader.set_f32("alpha", 1.0);
-                shader.set_mat4("model", &matrix);
-                shader.set_vec4("color", &[1.0, 0.0, 1.0, 1.0]);
-                self.capsule_vertex_arrays[&physics.radius].bind().draw();
-            }
-        }
-    }
-}
-
-
 pub struct RenderStreamingSystem;
 
 impl<'a> specs::System<'a> for RenderStreamingSystem {
@@ -784,7 +757,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
         }
         let stopwatch = system_benchmark.start_measurement("DamageRenderSystem");
 
-        for (controller) in (&controller_storage).join() {
+        for controller in (&controller_storage).join() {
             // for autocompletion
             let controller: &ControllerComponent = controller;
 
@@ -821,17 +794,28 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                 let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
                 let lifetime_perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
-                pos.y += 4.0 * lifetime_perc;
-                pos.z -= 2.0 * lifetime_perc;
-                pos.x += 2.0 * lifetime_perc;
+                match number.typ {
+                    FlyingNumberType::Heal => {
+                        // going upwards only
+                        pos.y += 4.0 * lifetime_perc;
+                        shader.set_vec2("size", &[
+                            0.5,
+                            0.5
+                        ]);
+                    }
+                    _ => {
+                        pos.y += 4.0 * lifetime_perc;
+                        pos.z -= 2.0 * lifetime_perc;
+                        pos.x += 2.0 * lifetime_perc;
+                        shader.set_vec2("size", &[
+                            0.6,
+                            0.6
+                        ]);
+                    }
+                }
                 matrix.prepend_translation_mut(&pos);
                 shader.set_mat4("model", &matrix);
                 shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
-
-                shader.set_vec2("size", &[
-                    0.3,
-                    0.3
-                ]);
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &system_vars.matrices.view);
                 shader.set_int("model_texture", 0);

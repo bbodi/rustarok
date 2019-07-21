@@ -1,21 +1,10 @@
-use nalgebra::{Point3, Point2, Vector2, Vector3, Perspective3, Vector4, Matrix4, Isometry2};
+use nalgebra::{Point2, Vector2};
 use crate::systems::render::DIRECTION_TABLE;
 use specs::prelude::*;
-use rand::Rng;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
-use sdl2::keyboard::Scancode;
-use crate::{CharActionIndex, RenderMatrices, PhysicsWorld, TICKS_PER_SECOND, Tick, ElapsedTime};
-use crate::cam::Camera;
-use ncollide2d::shape::{Cuboid, Ball};
-use ncollide2d::query::point_internal::point_query::PointQuery;
-use specs::world::EntitiesRes;
-use specs::join::JoinIter;
-use crate::components::{FlyingNumberType, FlyingNumberComponent};
+use crate::PhysicsWorld;
 use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, EntityTarget, CastingSkillData};
-use crate::components::controller::{ControllerComponent, ControllerAction, SkillKey};
-use crate::components::skill::{PushBackWallSkill, SkillManifestationComponent, Skills};
-use nphysics2d::object::Body;
+use crate::components::controller::{ControllerComponent, ControllerAction};
 use std::sync::{Arc, Mutex};
 use crate::components::skill::SkillDescriptor;
 
@@ -47,7 +36,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
         let mut rng = rand::thread_rng();
-        for (controller) in (&controller_storage).join() {
+        for controller in (&controller_storage).join() {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
 
@@ -61,31 +50,42 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                             None
                         }
                     } else {
-                        Some(EntityTarget::Pos(dbg!(controller.mouse_world_pos)))
+                        Some(EntityTarget::Pos(controller.mouse_world_pos))
                     };
                 }
                 Some(ControllerAction::MoveTowardsMouse(pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(dbg!(controller.mouse_world_pos)));
+                    char_state.target = Some(EntityTarget::Pos(controller.mouse_world_pos));
                 }
                 Some(ControllerAction::AttackTo(_)) => {}
-                Some(ControllerAction::CastingSelectTarget(_)) => {}
+                Some(ControllerAction::CastingSelectTarget(..)) => {}
                 Some(ControllerAction::CancelCastingSelectTarget) => {}
-                Some(ControllerAction::Casting(skill_key)) => {
-                    let char_pos = char_state.pos();
-                    let dir = CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords);
-                    // at this point it is sure that there is a skill for that key, so unwrap is ok
-                    let skill = controller.get_skill_for_key(skill_key).unwrap();
-                    let casting_time_seconds = skill.get_casting_time();
-                    let new_state = CharState::CastingSkill(CastingSkillData {
-                        cast_started: system_vars.time,
-                        cast_ends: system_vars.time.add(casting_time_seconds),
-                        can_move: false,
-                        skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
-                                                             skill
-                        ))),
-                        mouse_pos_when_casted: controller.mouse_world_pos,
-                    });
-                    char_state.set_state(new_state, dir);
+                Some(ControllerAction::Casting(skill)) => {
+                    let distance = (char_state.pos().coords - controller.mouse_world_pos.coords).magnitude();
+                    let allowed = skill.is_casting_allowed(
+                        controller.char,
+                        controller.entity_below_cursor,
+                        distance,
+                    );
+                    if allowed && char_state.can_move(system_vars.time) {
+                        let char_pos = char_state.pos();
+                        let casting_time_seconds = skill.get_casting_time();
+                        let new_state = CharState::CastingSkill(CastingSkillData {
+                            target_entity: controller.entity_below_cursor,
+                            cast_started: system_vars.time,
+                            cast_ends: system_vars.time.add(casting_time_seconds),
+                            can_move: false,
+                            skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
+                                                                 skill
+                            ))),
+                            mouse_pos_when_casted: controller.mouse_world_pos,
+                        });
+                        let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction
+                            char_state.dir()
+                        } else {
+                            CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords)
+                        };
+                        char_state.set_state(new_state, dir);
+                    }
                 }
                 Some(ControllerAction::LeftClick) => {}
                 None => {}
@@ -116,10 +116,10 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
 impl CharacterControlSystem {
     pub fn determine_dir(&target_pos: &Point2<f32>, pos: &Vector2<f32>) -> usize {
         let dir_vec = target_pos - pos;
-// "- 90.0"
-// The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,
-// this calculation gives a different result which is shifted 90 degrees clockwise,
-// so it is 90 at [1;0].
+        // "- 90.0"
+        // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,
+        // this calculation gives a different result which is shifted 90 degrees clockwise,
+        // so it is 90 at [1;0].
         let dd = dir_vec.x.atan2(dir_vec.y).to_degrees() - 90.0;
         let dd = if dd < 0.0 { dd + 360.0 } else if dd > 360.0 { dd - 360.0 } else { dd };
         let dir_index = (dd / 45.0 + 0.5) as usize % 8;

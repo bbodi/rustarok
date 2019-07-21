@@ -1,17 +1,16 @@
-use std::collections::HashMap;
-
-use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Matrix4, Vector2, Vector3};
 use specs::prelude::*;
 
-use crate::{ElapsedTime, MapRenderData, Shaders, SpriteResource, Tick, StrEffect, CharActionIndex};
-use crate::cam::Camera;
+use crate::{ElapsedTime, SpriteResource};
 use crate::components::BrowserClient;
-use crate::components::char::{CharacterStateComponent, CharState, MonsterSpriteComponent, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
+use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
 use crate::components::controller::ControllerComponent;
-use crate::cursor::{CURSOR_ATTACK, CURSOR_LOCK, CURSOR_NORMAL, CURSOR_STOP};
+use crate::cursor::{CURSOR_ATTACK, CURSOR_LOCK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{draw_circle_inefficiently, draw_lines_inefficiently, draw_lines_inefficiently2, TEXTURE_0, TEXTURE_2, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::video::VertexAttribDefinition;
+use crate::components::skill::SkillTargetType;
+use crate::components::skill::SkillDescriptor;
 
 pub struct RenderUI {
     cursor_anim_descr: SpriteRenderDescriptor,
@@ -28,7 +27,7 @@ impl RenderUI {
         ];
         RenderUI {
             cursor_anim_descr: SpriteRenderDescriptor {
-                action_index: CharActionIndex::Idle as usize,
+                action_index: 0,
                 animation_started: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
@@ -104,9 +103,15 @@ impl<'a> specs::System<'a> for RenderUI {
             }
 
             // Draw cursor
-            let cursor = if let Some(entity_below_cursor) = controller.entity_below_cursor {
-                if entity_below_cursor == controller.char {
-                    CURSOR_LOCK
+            let cursor = if let Some((skill_key, skill)) = controller.is_selecting_target() {
+                if skill.get_skill_target_type() != SkillTargetType::Area {
+                    CURSOR_TARGET
+                } else {
+                    CURSOR_CLICK
+                }
+            } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
+                if entity_below_cursor == controller.char { // self
+                    CURSOR_NORMAL
                 } else {
                     CURSOR_ATTACK
                 }
@@ -129,14 +134,16 @@ fn render_sprite_2d(system_vars: &SystemVariables,
                     sprite_res: &SpriteResource,
                     pos: &Vector2<f32>,
 ) {
-    // draw layer
-    let elapsed_time = system_vars.time.elapsed_since(animated_sprite.animation_started);
     let idx = animated_sprite.action_index;
+    let action = &sprite_res.action.actions[idx];
 
-    let delay = sprite_res.action.actions[idx].delay as f32 / 1000.0;
-    let frame_count = sprite_res.action.actions[idx].frames.len();
-    let frame_index = ((elapsed_time.div(delay) as usize) % frame_count as usize) as usize;
-    let animation = &sprite_res.action.actions[idx].frames[frame_index];
+    let frame_index = {
+        let frame_count = action.frames.len();
+        let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 2.0;
+        let elapsed_time = system_vars.time.elapsed_since(animated_sprite.animation_started);
+        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
+    };
+    let animation = &action.frames[frame_index];
     for layer in &animation.layers {
         if layer.sprite_frame_index < 0 {
             continue;
