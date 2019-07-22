@@ -632,7 +632,7 @@ fn render_client(char_pos: &Vector2<f32>,
                 (min.x > cam_pos.x - 10.0 && min.x < cam_pos.x + 10.0))
                 && char_pos.y <= max.z // character is behind
                 && min.y > 5.0 {
-                0.3
+                1.0 //0.3
             } else {
                 model_render_data.alpha
             };

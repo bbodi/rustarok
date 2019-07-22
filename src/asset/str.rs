@@ -1,4 +1,4 @@
-use crate::video::{GlTexture};
+use crate::video::GlTexture;
 use std::collections::HashMap;
 use crate::asset::{BinaryReader, AssetLoader};
 
@@ -77,11 +77,11 @@ impl StrFile {
                 if !texture_names_to_index.contains_key(&texture_name) {
                     let path = format!("data\\texture\\effect\\{}", texture_name);
                     let surface = asset_loader.load_sdl_surface(&path);
-                    let texture = GlTexture::from_surface(surface
-                        .unwrap_or_else(|e| {
-                            warn!("Missing texture when loading {}, path: {}, {}", str_name, path, e);
-                            asset_loader.backup_surface()
-                        }));
+                    let surface = surface.unwrap_or_else(|e| {
+                        warn!("Missing texture when loading {}, path: {}, {}", str_name, path, e);
+                        asset_loader.backup_surface()
+                    });
+                    let texture = GlTexture::from_surface(surface, gl::NEAREST);
                     textures.push(texture);
                     let size = texture_names_to_index.len();
                     texture_names_to_index.insert(texture_name.clone(), size);

@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use sdl2::{Sdl, EventPump};
 use sdl2::video::{Window, GLContext};
-use imgui::{ImGui};
+use imgui::ImGui;
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
 use std::ops::{IndexMut, Index};
@@ -205,10 +205,10 @@ impl GlTexture {
         surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
         trace!("Texture from file --> {}", &path);
-        GlTexture::from_surface(optimized_surf)
+        GlTexture::from_surface(optimized_surf, gl::NEAREST)
     }
 
-    pub fn from_surface(mut surface: Surface) -> GlTexture {
+    pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
         let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
             trace!("convert to RGBA");
             let mut optimized_surf = sdl2::surface::Surface::new(
@@ -234,8 +234,9 @@ impl GlTexture {
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
             );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min_mag as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, min_mag as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
             gl::GenerateMipmap(gl::TEXTURE_2D);

@@ -163,7 +163,7 @@ impl SpriteTexture {
         SpriteTexture {
             original_width: frame.width,
             original_height: frame.height,
-            texture: GlTexture::from_surface(opengl_surface),
+            texture: GlTexture::from_surface(opengl_surface, gl::NEAREST),
         }
     }
 }

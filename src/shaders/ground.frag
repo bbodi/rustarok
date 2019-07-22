@@ -26,20 +26,17 @@ void main() {
         texture    *= texture2D(tile_color_texture, vTileColorCoord.st);
     }
 
+    vec3 Ambient    = light_ambient * light_opacity;
+    vec3 Diffuse    = light_diffuse * vLightWeighting;
     if (use_lightmap) {
-        vec3 Ambient    = light_ambient * light_opacity;
-        vec3 Diffuse    = light_diffuse * vLightWeighting;
         vec4 lightmap   = texture2D(lightmap_texture, vLightmapCoord.st);
         vec4 LightColor = vec4((Ambient + Diffuse) * lightmap.a, 1.0);
         vec4 ColorMap   = vec4(lightmap.rgb, 0.0);
         Color = texture * clamp(LightColor, 0.0, 1.0) + ColorMap;
     } else if (use_lighting) {
-        vec3 Ambient    = light_ambient * light_opacity;
-        vec3 Diffuse    = light_diffuse * vLightWeighting;
         vec4 LightColor = vec4((Ambient + Diffuse), 1.0);
         Color = texture * clamp(LightColor, 0.0, 1.0);
     } else {
         Color = texture;
     }
-    Color = vec4(Color.rgb, 1.0);
 }

@@ -374,7 +374,7 @@ impl Gnd {
             tiles_color_buffer,
             width, height,
             4 * width,
-            PixelFormatEnum::RGBA8888,
+            PixelFormatEnum::BGRA32,
         ).unwrap();
 
         let scaled_w = (width as u32).next_power_of_two();
@@ -383,7 +383,7 @@ impl Gnd {
         let mut scaled_tiles_color_surface = sdl2::surface::Surface::new(
             scaled_w,
             scaled_h,
-            PixelFormatEnum::RGBA8888,
+            PixelFormatEnum::BGRA32,
         ).unwrap().convert(&tile_color_surface.pixel_format()).unwrap();
         tile_color_surface.blit_scaled(
             None,
@@ -391,7 +391,7 @@ impl Gnd {
             Rect::new(0, 0, scaled_w, scaled_h),
         ).unwrap();
 
-        GlTexture::from_surface(scaled_tiles_color_surface)
+        GlTexture::from_surface(scaled_tiles_color_surface, gl::LINEAR)
     }
 
     fn lightmap_atlas(i: u16,
@@ -659,7 +659,7 @@ impl Gnd {
             })
         }).collect();
         let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
-        GlTexture::from_surface(surface_atlas)
+        GlTexture::from_surface(surface_atlas, gl::NEAREST)
     }
 
     fn create_texture_atlas(texture_surfaces: Vec<sdl2::surface::Surface>) -> sdl2::surface::Surface<'static> {
