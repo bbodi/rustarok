@@ -898,7 +898,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 other_players.push(entity_id);
             }
         } else if current_player_count - 1 > *player_count { // -1 is the entity of the controller
-            let to_remove = (current_player_count - *player_count) as usize;
+            let to_remove = (current_player_count - *player_count - 1) as usize;
             let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
             let body_handles: Vec<BodyHandle> = {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
@@ -952,7 +952,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 let entity_id = components::char::create_monster(
                     &mut ecs_world,
                     pos2d,
-                    MonsterId::Poring,
+                    MonsterId::Baphomet,
                     rng.gen_range(1, 3),
                 );
                 other_monsters.push(entity_id);

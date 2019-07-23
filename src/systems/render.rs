@@ -791,6 +791,7 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                 let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
                 let perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
+                // TODO: don't render more than 1 damage in a single frame for the same target
                 let size = match number.typ {
                     FlyingNumberType::Heal => {
                         // follow the target
