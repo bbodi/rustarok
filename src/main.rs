@@ -952,7 +952,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 let entity_id = components::char::create_monster(
                     &mut ecs_world,
                     pos2d,
-                    MonsterId::Baphomet,
+                    MonsterId::Poring,
                     rng.gen_range(1, 3),
                 );
                 other_monsters.push(entity_id);
