@@ -2,8 +2,8 @@ use specs::prelude::*;
 
 use crate::{ElapsedTime, PhysicsWorld};
 use crate::components::{AttackComponent, AttackType};
-use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, EntityTarget, MonsterSpriteComponent};
-use crate::components::skill::{SkillManifestationComponent};
+use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, EntityTarget, SpriteRenderDescriptorComponent, CharOutlook};
+use crate::components::skill::SkillManifestationComponent;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::control_sys::CharacterControlSystem;
 use std::collections::HashMap;
@@ -17,8 +17,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, PlayerSpriteComponent>,
-        specs::WriteStorage<'a, MonsterSpriteComponent>,
+        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -30,7 +29,6 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         mut physics_storage,
         mut char_state_storage,
         mut sprite_storage,
-        mut monster_sprite_storage,
         mut system_vars,
         mut physics_world,
         mut system_benchmark,
@@ -162,32 +160,42 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 body.set_linear_velocity(Vector2::new(0.0, 0.0));
             }
         }
-        // update animations based on current state
+
         for (char_comp, sprite) in (&mut char_state_storage, &mut sprite_storage).join() {
-            if char_comp.set_and_get_state_change() {
-                let state = char_comp.state();
-                sprite.descr.animation_started = system_vars.time;
-                sprite.descr.forced_duration = match state {
+            let sprite: &mut SpriteRenderDescriptorComponent = sprite;
+            // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage let
+            //   ReceivingDamage animation play till to the end
+            let state = char_comp.state().clone();
+            let state_is_idle_but_prev_animation_has_ended = state == CharState::Idle &&
+                sprite.animation_ends_at.has_passed(system_vars.time);
+            if (char_comp.set_and_get_state_change() && state != CharState::Idle)
+            || state_is_idle_but_prev_animation_has_ended {
+                sprite.animation_started = system_vars.time;
+                let forced_duration = match &state {
                     CharState::Attacking { attack_ends, .. } => Some(attack_ends.minus(system_vars.time)),
                     CharState::CastingSkill(casting_info) => Some(casting_info.cast_ends.minus(system_vars.time)),
                     _ => None
                 };
-                sprite.descr.action_index = state.get_sprite_index(false) as usize;
-            }
-            sprite.descr.direction = char_comp.dir();
-        }
-        for (char_comp, sprite) in (&mut char_state_storage, &mut monster_sprite_storage).join() {
-            if char_comp.set_and_get_state_change() {
-                let state = char_comp.state();
-                sprite.descr.animation_started = system_vars.time;
-                sprite.descr.forced_duration = match state {
-                    CharState::Attacking { attack_ends, .. } => Some(attack_ends.minus(system_vars.time)),
-                    CharState::CastingSkill(casting_info) => Some(casting_info.cast_ends.minus(system_vars.time)),
-                    _ => None
+                sprite.forced_duration = forced_duration;
+                let (sprite_res, action_index) = match char_comp.outlook {
+                    CharOutlook::Player { job_id, head_index, sex } => {
+                        let sprites = &system_vars.sprites.character_sprites;
+                        (&sprites[&job_id][sex as usize], state.get_sprite_index(false))
+                    }
+                    CharOutlook::Monster(monster_id) => {
+                        (&system_vars.sprites.monster_sprites[&monster_id], state.get_sprite_index(true))
+                    }
                 };
-                sprite.descr.action_index = state.get_sprite_index(true);
+                sprite.action_index = action_index;
+                let duration = sprite_res
+                    .action
+                    .actions[action_index]
+                    .duration;
+                sprite.animation_ends_at = forced_duration.unwrap_or(
+                    system_vars.time.add_seconds(duration)
+                );
             }
-            sprite.descr.direction = char_comp.dir();
+            sprite.direction = char_comp.dir();
         }
     }
 }

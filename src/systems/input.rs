@@ -53,7 +53,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     let upper_byte = iter.next().unwrap();
                                     let lower_byte = iter.next().unwrap();
                                     let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
-                                    trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
+                                    log::trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
                                     let mousestate = {
                                         unsafe {
                                             std::mem::transmute((0 as u32,
@@ -75,7 +75,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     );
                                 }
                                 2 => {
-                                    trace!("Message arrived: MouseDown");
+                                    log::trace!("Message arrived: MouseDown");
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonDown {
                                             timestamp: 0,
@@ -89,7 +89,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     );
                                 }
                                 3 => {
-                                    trace!("Message arrived: MouseUp");
+                                    log::trace!("Message arrived: MouseUp");
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonUp {
                                             timestamp: 0,
@@ -106,7 +106,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     let upper_byte = *iter.next().unwrap();
                                     let lower_byte = *iter.next().unwrap();
                                     let input_char: u16 = ((upper_byte as u16) << 8) | lower_byte as u16;
-                                    trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
+                                    log::trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::KeyDown {
                                             timestamp: 0,
@@ -128,7 +128,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 5 => {
                                     let scancode = *iter.next().unwrap();
-                                    trace!("Message arrived: KeyUp({})", scancode);
+                                    log::trace!("Message arrived: KeyUp({})", scancode);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::KeyUp {
                                             timestamp: 0,
@@ -140,21 +140,21 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         });
                                 }
                                 _ => {
-                                    warn!("Unknown header: {}", header);
+                                    log::warn!("Unknown header: {}", header);
                                     entities.delete(entity).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
-                        warn!("Unknown msg: {:?}", msg);
+                        log::warn!("Unknown msg: {:?}", msg);
                         entities.delete(entity).unwrap();
                     }
                 }
             } else if let Err(WebSocketError::IoError(e)) = sh {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
-                    info!("Client has disconnected");
+                    log::info!("Client has disconnected");
                     entities.delete(entity).unwrap();
                 }
             }

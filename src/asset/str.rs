@@ -78,7 +78,7 @@ impl StrFile {
                     let path = format!("data\\texture\\effect\\{}", texture_name);
                     let surface = asset_loader.load_sdl_surface(&path);
                     let surface = surface.unwrap_or_else(|e| {
-                        warn!("Missing texture when loading {}, path: {}, {}", str_name, path, e);
+                        log::warn!("Missing texture when loading {}, path: {}, {}", str_name, path, e);
                         asset_loader.backup_surface()
                     });
                     let texture = GlTexture::from_surface(surface, gl::NEAREST);

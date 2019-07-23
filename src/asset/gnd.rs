@@ -654,7 +654,7 @@ impl Gnd {
             let path = format!("data\\texture\\{}", texture_name);
             let surface = asset_loader.load_sdl_surface(&path);
             surface.unwrap_or_else(|e| {
-                warn!("Missing: {}, {}", path, e);
+                log::warn!("Missing: {}, {}", path, e);
                 asset_loader.backup_surface()
             })
         }).collect();

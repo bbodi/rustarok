@@ -2,8 +2,7 @@ use nalgebra::{Point2, Vector2};
 use crate::systems::render::DIRECTION_TABLE;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::PhysicsWorld;
-use crate::components::char::{CharState, PhysicsComponent, CharacterStateComponent, PlayerSpriteComponent, EntityTarget, CastingSkillData};
+use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, CastingSkillData};
 use crate::components::controller::{ControllerComponent, ControllerAction};
 use std::sync::{Arc, Mutex};
 use crate::components::skill::SkillDescriptor;
@@ -13,24 +12,18 @@ pub struct CharacterControlSystem;
 impl<'a> specs::System<'a> for CharacterControlSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, PlayerSpriteComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
     );
 
     fn run(&mut self, (
         entities,
-        mut physics_storage,
         mut char_state_storage,
-        mut sprite_storage,
         controller_storage,
         mut system_vars,
-        mut physics_world,
         mut system_benchmark,
         mut updater,
     ): Self::SystemData) {
@@ -90,24 +83,6 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 Some(ControllerAction::LeftClick) => {}
                 None => {}
             }
-
-            //
-//            let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
-//            if !char_state.can_move(&system_vars.time) {
-//                continue;
-//            }
-//
-//            let mut sprite = sprite_storage.get_mut(controller.char).unwrap();
-//
-//            if controller.is_key_just_pressed(Scancode::Q) {
-//
-//            } else if controller.is_key_just_pressed(Scancode::R) {
-//                let physics_comp = physics_storage.get(controller.char).unwrap();
-//                let mut body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
-//                let mut new_pos = Isometry2::identity();
-//                new_pos.translation.vector = mouse_world_pos.coords;
-//                body.set_position(new_pos);
-//            }
         }
     }
 }

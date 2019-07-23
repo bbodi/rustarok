@@ -5,7 +5,6 @@ extern crate gl;
 extern crate imgui;
 extern crate imgui_opengl_renderer;
 extern crate imgui_sdl2;
-#[macro_use]
 extern crate log;
 extern crate nalgebra;
 extern crate sdl2;
@@ -38,9 +37,9 @@ use specs::prelude::*;
 use strum::IntoEnumIterator;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{CharacterStateComponent, MonsterSpriteComponent, Percentage, PhysicsComponent, PlayerSpriteComponent, U8Float};
+use crate::components::char::{CharacterStateComponent, Percentage, PhysicsComponent, U8Float, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::skill::{SkillManifestationComponent, Skills};
+use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame};
 use crate::systems::atk_calc::AttackSystem;
@@ -221,7 +220,7 @@ fn main() {
         AssetLoader::new(config.grf_paths.as_slice())
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
-    info!("GRF loading: {}", elapsed.as_millis());
+    log::info!("GRF loading: {}", elapsed.as_millis());
     let mut video = Video::init();
 
     let shaders = Shaders {
@@ -326,8 +325,7 @@ fn main() {
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<ControllerComponent>();
-    ecs_world.register::<PlayerSpriteComponent>();
-    ecs_world.register::<MonsterSpriteComponent>();
+    ecs_world.register::<SpriteRenderDescriptorComponent>();
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
@@ -429,7 +427,7 @@ fn main() {
         }
     });
 
-    info!("act and spr files loaded[{}]: {}ms",
+    log::info!("act and spr files loaded[{}]: {}ms",
           (sprites.character_sprites.len() * 2) +
               sprites.head_sprites[0].len() + sprites.head_sprites[1].len() +
               sprites.monster_sprites.len(), elapsed.as_millis());
@@ -519,14 +517,16 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
-    let mut other_entities: Vec<Entity> = vec![];
-    let mut entity_count = 0;
+    let mut other_players: Vec<Entity> = vec![];
+    let mut other_monsters: Vec<Entity> = vec![];
+    let mut player_count = 0;
+    let mut monster_count = 0;
     'running: loop {
         match websocket_server.accept() {
             Ok(wsupgrade) => {
                 let browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
-                info!("Client connected");
+                log::info!("Client connected");
 //                ecs_world
 //                    .create_entity()
 //                    .with(ControllerComponent::new(250.0, -180.0))
@@ -545,7 +545,7 @@ fn main() {
             let inputs = storage.get_mut(desktop_client_entity).unwrap();
 
             for event in video.event_pump.poll_iter() {
-                trace!("SDL event: {:?}", event);
+                log::trace!("SDL event: {:?}", event);
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
                 match event {
                     sdl2::event::Event::Quit { .. } | sdl2::event::Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -572,7 +572,8 @@ fn main() {
             &mut ecs_world,
             rng.clone(),
             sent_bytes_per_second,
-            &mut entity_count,
+            &mut player_count,
+            &mut monster_count,
             &mut map_name_filter,
             &all_map_names,
             &mut filtered_map_names,
@@ -580,7 +581,8 @@ fn main() {
             &all_str_names,
             &mut filtered_str_names,
             fps,
-            &mut other_entities,
+            &mut other_players,
+            &mut other_monsters,
             &mut fov,
             &mut cam_angle,
         );
@@ -669,7 +671,8 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                mut ecs_world: &mut specs::world::World,
                mut rng: ThreadRng,
                sent_bytes_per_second: usize,
-               entity_count: &mut i32,
+               player_count: &mut i32,
+               monster_count: &mut i32,
                mut map_name_filter: &mut ImString,
                all_map_names: &Vec<String>,
                filtered_map_names: &mut Vec<String>,
@@ -677,7 +680,8 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                all_str_names: &Vec<String>,
                filtered_str_names: &mut Vec<String>,
                fps: u64,
-               other_entities: &mut Vec<Entity>,
+               other_players: &mut Vec<Entity>,
+               other_monsters: &mut Vec<Entity>,
                fov: &mut f32,
                cam_angle: &mut f32,
 ) -> (Option<String>, Option<String>, bool) {
@@ -761,7 +765,9 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
                 ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
 
-                ui.slider_int(im_str!("Entities"), entity_count, 0, 20)
+                ui.slider_int(im_str!("Players"), player_count, 0, 20)
+                    .build();
+                ui.slider_int(im_str!("Monsters"), monster_count, 0, 20)
                     .build();
 
                 let mut storage = ecs_world.write_storage::<ControllerComponent>();
@@ -844,10 +850,17 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
             });
     }
     {
-        let current_entity_count = ecs_world.read_storage::<PlayerSpriteComponent>().join().count() as i32;
-        if current_entity_count < *entity_count {
-            let count_to_add = *entity_count - current_entity_count;
-            for _i in 0..count_to_add / 2 {
+        ;
+        let current_player_count = ecs_world.read_storage::<CharacterStateComponent>()
+            .join()
+            .filter(|it| match it.outlook {
+                CharOutlook::Player {..} => true,
+                _ => false
+            })
+            .count() as i32;
+        if current_player_count < *player_count {
+            let count_to_add = *player_count - current_player_count;
+            for _i in 0..count_to_add {
                 let pos = {
                     let hero_pos = {
                         let storage = ecs_world.write_storage::<ControllerComponent>();
@@ -866,9 +879,9 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                             break (x, y);
                         }
                     };
-                    Point3::<f32>::new(x, 0.5, -y)
+                    p3!(x, 0.5, -y)
                 };
-                let pos2d = Point2::new(pos.x, pos.z);
+                let pos2d = p3_to_p2(&pos);
                 let mut rng = rand::thread_rng();
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.character_sprites.len();
                 let sex = if rng.gen::<usize>() % 2 == 0 { Sex::Male } else { Sex::Female };
@@ -882,10 +895,36 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                     rng.gen_range(1, 3),
                 );
 
-                other_entities.push(entity_id);
+                other_players.push(entity_id);
             }
-            // add monsters
-            for _i in 0..count_to_add / 2 {
+        } else if current_player_count - 1 > *player_count { // -1 is the entity of the controller
+            let to_remove = (current_player_count - *player_count) as usize;
+            let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
+            let body_handles: Vec<BodyHandle> = {
+                let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                entity_ids.iter().map(|entity| {
+                    physic_storage.get(*entity).map(|it| it.body_handle)
+                })
+                    .filter(|it| it.is_some())
+                    .map(|it| it.unwrap())
+                    .collect()
+            };
+            let _ = ecs_world.delete_entities(entity_ids.as_slice());
+            // remove rigid bodies from the physic simulation
+            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
+            physics_world.remove_bodies(body_handles.as_slice());
+        }
+        // add monsters
+        let current_monster_count = ecs_world.read_storage::<CharacterStateComponent>()
+            .join()
+            .filter(|it| match it.outlook {
+                CharOutlook::Monster(_) => true,
+                _ => false
+            })
+            .count() as i32;
+        if current_monster_count < *monster_count {
+            let count_to_add = *monster_count - current_monster_count;
+            for _i in 0..count_to_add {
                 let pos = {
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     // TODO: extract it
@@ -905,9 +944,9 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                             break (x, y);
                         }
                     };
-                    Point3::<f32>::new(x, 0.5, -y)
+                    p3!(x, 0.5, -y)
                 };
-                let pos2d = Point2::new(pos.x, pos.z);
+                let pos2d = p3_to_p2(&pos);
                 let mut rng = rand::thread_rng();
                 let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.monster_sprites.len();
                 let entity_id = components::char::create_monster(
@@ -916,11 +955,11 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                     MonsterId::Baphomet,
                     rng.gen_range(1, 3),
                 );
-                other_entities.push(entity_id);
+                other_monsters.push(entity_id);
             }
-        } else if current_entity_count - 1 > *entity_count { // -1 is the entity of the controller
-            let to_remove = (current_entity_count - *entity_count) as usize;
-            let entity_ids: Vec<Entity> = other_entities.drain(0..to_remove).collect();
+        } else if current_monster_count > *monster_count {
+            let to_remove = (current_monster_count - *monster_count) as usize;
+            let entity_ids: Vec<Entity> = other_monsters.drain(0..to_remove).collect();
             let body_handles: Vec<BodyHandle> = {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
                 entity_ids.iter().map(|entity| {
@@ -994,7 +1033,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     let (elapsed, world) = measure_time(|| {
         asset_loader.load_map(&map_name).unwrap()
     });
-    info!("rsw loaded: {}ms", elapsed.as_millis());
+    log::info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| {
         asset_loader.load_gat(map_name).unwrap()
     });
@@ -1055,7 +1094,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
                 offset_of_first_element: 0,
             }
         ]);
-    info!("gat loaded: {}ms", elapsed.as_millis());
+    log::info!("gat loaded: {}ms", elapsed.as_millis());
     let (elapsed, mut ground) = measure_time(|| {
         asset_loader.load_gnd(
             map_name,
@@ -1063,7 +1102,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
             world.water.wave_height,
         ).unwrap()
     });
-    info!("gnd loaded: {}ms", elapsed.as_millis());
+    log::info!("gnd loaded: {}ms", elapsed.as_millis());
     let (elapsed, models) = measure_time(|| {
         let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
         return model_names.iter().map(|filename| {
@@ -1071,12 +1110,12 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
             (filename.clone(), rsm)
         }).collect::<Vec<(ModelName, Rsm)>>();
     });
-    info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
+    log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
 
     let (elapsed, model_render_datas) = measure_time(|| {
         models.iter().map(|(name, rsm)| {
             let textures = Rsm::load_textures(&asset_loader, &rsm.texture_names);
-            trace!("{} textures loaded for model {}", textures.len(), name.0);
+            log::trace!("{} textures loaded for model {}", textures.len(), name.0);
             let (data_for_rendering_full_model, bbox): (Vec<DataForRenderingSingleNode>, BoundingBox) = Rsm::generate_meshes_by_texture_id(
                 &rsm.bounding_box,
                 rsm.shade_type,
@@ -1091,7 +1130,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
             })
         }).collect::<HashMap<ModelName, ModelRenderData>>()
     });
-    info!("model_render_datas loaded: {}ms", elapsed.as_millis());
+    log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
     let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
         let mut instance_matrix = Matrix4::<f32>::identity();
@@ -1118,7 +1157,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     let (elapsed, texture_atlas) = measure_time(|| {
         Gnd::create_gl_texture_atlas(&asset_loader, &ground.texture_names)
     });
-    info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
+    log::info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
 
     let tile_color_texture = Gnd::create_tile_color_texture(
         &mut ground.tiles_color_image,
@@ -1219,7 +1258,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
         str_effects
     });
-    info!("str loaded: {}ms", elapsed.as_millis());
+    log::info!("str loaded: {}ms", elapsed.as_millis());
     (MapRenderData {
         gat,
         gnd: ground,

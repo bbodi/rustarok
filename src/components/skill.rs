@@ -10,7 +10,7 @@ use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::{StrEffectComponent, AttackComponent, AttackType};
-use ncollide2d::query::{PointQuery, Proximity};
+use ncollide2d::query::{Proximity};
 
 #[macro_export]
 macro_rules! v2 {

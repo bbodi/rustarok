@@ -20,21 +20,24 @@ pub fn create_char(
     radius: i32,
 ) -> Entity {
     let entity_id = {
-        let mut char_comp = CharacterStateComponent::new(CharType::Player);
+        let mut char_comp = CharacterStateComponent::new(
+            CharType::Player,
+            CharOutlook::Player {
+                job_id,
+                head_index,
+                sex,
+            },
+        );
         char_comp.armor = U8Float::new(Percentage::new(10.0));
         let mut entity_builder = ecs_world.create_entity()
             .with(char_comp);
         let entity_id = entity_builder.entity;
-        entity_builder = entity_builder.with(PlayerSpriteComponent {
-            job_id,
-            head_index,
-            sex,
-            descr: SpriteRenderDescriptor {
-                action_index: CharActionIndex::Idle as usize,
-                animation_started: ElapsedTime(0.0),
-                forced_duration: None,
-                direction: 0,
-            },
+        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
+            action_index: CharActionIndex::Idle as usize,
+            animation_started: ElapsedTime(0.0),
+            animation_ends_at: ElapsedTime(0.0),
+            forced_duration: None,
+            direction: 0,
         });
         entity_builder.build()
     };
@@ -53,16 +56,15 @@ pub fn create_monster(
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity()
-            .with(CharacterStateComponent::new(CharType::Minion));
+            .with(CharacterStateComponent::new(CharType::Minion,
+                                               CharOutlook::Monster(monster_id)));
         let entity_id = entity_builder.entity;
-        entity_builder = entity_builder.with(MonsterSpriteComponent {
-            monster_id,
-            descr: SpriteRenderDescriptor {
-                action_index: CharActionIndex::Idle as usize,
-                animation_started: ElapsedTime(0.0),
-                forced_duration: None,
-                direction: 0,
-            },
+        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
+            action_index: CharActionIndex::Idle as usize,
+            animation_started: ElapsedTime(0.0),
+            animation_ends_at: ElapsedTime(0.0),
+            forced_duration: None,
+            direction: 0,
         });
         entity_builder.build()
     };
@@ -213,7 +215,7 @@ impl CharState {
             (CharState::Attacking { attack_ends: _, target: _ }, true) => MonsterActionIndex::Attack as usize,
             (CharState::ReceivingDamage, true) => MonsterActionIndex::ReceivingDamage as usize,
             (CharState::Freeze, true) => MonsterActionIndex::Idle as usize,
-            (CharState::Dead, true) => MonsterActionIndex::Die as usize, // TODO: if you want corpses, render the last frame of die
+            (CharState::Dead, true) => MonsterActionIndex::Die as usize,
             (CharState::CastingSkill { .. }, true) => MonsterActionIndex::Attack as usize,
         }
     }
@@ -314,6 +316,15 @@ pub enum CharType {
     Boss,
 }
 
+pub enum CharOutlook {
+    Monster(MonsterId),
+    Player {
+        job_id: JobId,
+        head_index: usize,
+        sex: Sex,
+    },
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pos: WorldCoords,
@@ -326,6 +337,7 @@ pub struct CharacterStateComponent {
     // attacks per second
     dir: usize,
     pub cannot_control_until: ElapsedTime,
+    pub outlook: CharOutlook,
 
     pub max_hp: i32,
     pub hp: i32,
@@ -338,10 +350,11 @@ pub struct CharacterStateComponent {
 }
 
 impl CharacterStateComponent {
-    pub fn new(typ: CharType) -> CharacterStateComponent {
+    pub fn new(typ: CharType, outlook: CharOutlook) -> CharacterStateComponent {
         CharacterStateComponent {
             pos: Point2::new(0.0, 0.0),
             typ,
+            outlook,
             target: None,
             moving_speed: U8Float::new(Percentage::new(100.0)),
             attack_range: U8Float::new(Percentage::new(100.0)),
@@ -411,22 +424,11 @@ impl CharacterStateComponent {
 }
 
 #[derive(Component)]
-pub struct PlayerSpriteComponent {
-    pub job_id: JobId,
-    pub head_index: usize,
-    pub sex: Sex,
-    pub descr: SpriteRenderDescriptor,
-}
-
-#[derive(Component)]
-pub struct MonsterSpriteComponent {
-    pub monster_id: MonsterId,
-    pub descr: SpriteRenderDescriptor,
-}
-
-pub struct SpriteRenderDescriptor {
+pub struct SpriteRenderDescriptorComponent {
     pub action_index: usize,
     pub animation_started: ElapsedTime,
     pub forced_duration: Option<ElapsedTime>,
     pub direction: usize,
+    /// duration of the current animation
+    pub animation_ends_at: ElapsedTime,
 }

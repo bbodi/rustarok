@@ -3,7 +3,7 @@ use specs::prelude::*;
 
 use crate::{ElapsedTime, SpriteResource};
 use crate::components::BrowserClient;
-use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, PlayerSpriteComponent, SpriteRenderDescriptor};
+use crate::components::char::{CharacterStateComponent, CharState, SpriteRenderDescriptorComponent};
 use crate::components::controller::ControllerComponent;
 use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -13,7 +13,7 @@ use crate::components::skill::SkillTargetType;
 use crate::components::skill::SkillDescriptor;
 
 pub struct RenderUI {
-    cursor_anim_descr: SpriteRenderDescriptor,
+    cursor_anim_descr: SpriteRenderDescriptorComponent,
     vao: VertexArray,
 }
 
@@ -26,9 +26,10 @@ impl RenderUI {
             [1.0, 0.0]
         ];
         RenderUI {
-            cursor_anim_descr: SpriteRenderDescriptor {
+            cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
             },
@@ -49,8 +50,6 @@ impl<'a> specs::System<'a> for RenderUI {
         specs::Entities<'a>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, PlayerSpriteComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -60,8 +59,6 @@ impl<'a> specs::System<'a> for RenderUI {
         entities,
         input_storage,
         browser_client_storage,
-        physics_storage,
-        animated_sprite_storage,
         char_state_storage,
         system_vars,
         mut system_benchmark,
@@ -130,7 +127,7 @@ impl<'a> specs::System<'a> for RenderUI {
 }
 
 fn render_sprite_2d(system_vars: &SystemVariables,
-                    animated_sprite: &SpriteRenderDescriptor,
+                    animated_sprite: &SpriteRenderDescriptorComponent,
                     sprite_res: &SpriteResource,
                     pos: &Vector2<f32>,
 ) {

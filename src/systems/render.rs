@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::cam::Camera;
 use crate::components::controller::{ControllerComponent, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, MonsterSpriteComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptor, CharState, CharType};
+use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
 use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType};
 use crate::asset::str::KeyFrameType;
 
@@ -132,8 +132,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, PlayerSpriteComponent>,
-        specs::ReadStorage<'a, MonsterSpriteComponent>,
+        specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -147,8 +146,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         controller_storage,
         browser_client_storage,
         physics_storage,
-        player_sprite_storage,
-        monster_sprite_storage,
+        sprite_storage,
         mut char_state_storage,
         system_vars,
         mut system_benchmark,
@@ -188,130 +186,127 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
             // Draw players
             for (entity_id, animated_sprite, char_state) in (&entities,
-                                                             &player_sprite_storage,
+                                                             &sprite_storage,
                                                              &mut char_state_storage).join() {
                 // for autocompletion
                 let char_state: &mut CharacterStateComponent = char_state;
 
                 let pos = char_state.pos();
-                let tick = system_vars.tick;
-                let body_res = {
-                    let sprites = &system_vars.sprites.character_sprites;
-                    &sprites[&animated_sprite.job_id][animated_sprite.sex as usize]
-                };
-                let head_res = {
-                    let sprites = &system_vars.sprites.head_sprites;
-                    &sprites[animated_sprite.sex as usize][animated_sprite.head_index]
-                };
                 let is_dead = char_state.state().is_dead();
-                if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
-                    let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
-                                                                          &animated_sprite.descr,
-                                                                          body_res,
-                                                                          &system_vars.matrices.view,
-                                                                          controller.yaw,
-                                                                          &pos.coords,
-                                                                          [0, 0],
-                                                                          true,
-                                                                          1.1,
-                                                                          is_dead,
-                                                                          &[0.0, 0.0, 1.0, 0.4]);
+                match char_state.outlook {
+                    CharOutlook::Player {job_id, head_index, sex} => {
+                        let body_res = {
+                            let sprites = &system_vars.sprites.character_sprites;
+                            &sprites[&job_id][sex as usize]
+                        };
+                        let head_res = {
+                            let sprites = &system_vars.sprites.head_sprites;
+                            &sprites[sex as usize][head_index]
+                        };
+                        if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
+                            let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
+                                                                                  &animated_sprite,
+                                                                                  body_res,
+                                                                                  &system_vars.matrices.view,
+                                                                                  controller.yaw,
+                                                                                  &pos.coords,
+                                                                                  [0, 0],
+                                                                                  true,
+                                                                                  1.1,
+                                                                                  is_dead,
+                                                                                  &[0.0, 0.0, 1.0, 0.4]);
 
-                    let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
-                                                                                &animated_sprite.descr,
-                                                                                head_res,
-                                                                                &system_vars.matrices.view,
-                                                                                controller.yaw,
-                                                                                &pos.coords,
-                                                                                pos_offset,
-                                                                                false,
-                                                                                1.1,
-                                                                                is_dead,
-                                                                                &[0.0, 0.0, 1.0, 0.5]);
-                }
+                            let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
+                                                                                        &animated_sprite,
+                                                                                        head_res,
+                                                                                        &system_vars.matrices.view,
+                                                                                        controller.yaw,
+                                                                                        &pos.coords,
+                                                                                        pos_offset,
+                                                                                        false,
+                                                                                        1.1,
+                                                                                        is_dead,
+                                                                                        &[0.0, 0.0, 1.0, 0.5]);
+                        }
 
-                // todo: kell a pos_offset még mindig? (bounding rect)
-                let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
-                                                                     &animated_sprite.descr,
-                                                                     body_res,
-                                                                     &system_vars.matrices.view,
-                                                                     controller.yaw,
-                                                                     &pos.coords,
-                                                                     [0, 0],
-                                                                     true,
-                                                                     1.0,
-                                                                     is_dead,
-                                                                     &[1.0, 1.0, 1.0, 1.0]);
-                let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
-                                                                          &animated_sprite.descr,
-                                                                          head_res,
-                                                                          &system_vars.matrices.view,
-                                                                          controller.yaw,
-                                                                          &pos.coords,
-                                                                          pos_offset,
-                                                                          false,
-                                                                          1.0,
-                                                                          is_dead,
-                                                                          &[1.0, 1.0, 1.0, 1.0]);
+                        // todo: kell a pos_offset még mindig? (bounding rect)
+                        let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
+                                                                             &animated_sprite,
+                                                                             body_res,
+                                                                             &system_vars.matrices.view,
+                                                                             controller.yaw,
+                                                                             &pos.coords,
+                                                                             [0, 0],
+                                                                             true,
+                                                                             1.0,
+                                                                             is_dead,
+                                                                             &[1.0, 1.0, 1.0, 1.0]);
+                        let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
+                                                                                  &animated_sprite,
+                                                                                  head_res,
+                                                                                  &system_vars.matrices.view,
+                                                                                  controller.yaw,
+                                                                                  &pos.coords,
+                                                                                  pos_offset,
+                                                                                  false,
+                                                                                  1.0,
+                                                                                  is_dead,
+                                                                                  &[1.0, 1.0, 1.0, 1.0]);
 
-                char_state.bounding_rect_2d = body_bounding_rect;
-                char_state.bounding_rect_2d.merge(&head_bounding_rect);
+                        char_state.bounding_rect_2d = body_bounding_rect;
+                        char_state.bounding_rect_2d.merge(&head_bounding_rect);
 
-                if char_state.state().is_live() {
-                    draw_health_bar(
-                        &system_vars.shaders.trimesh2d_shader,
-                        &self.rectangle_vao,
-                        &system_vars.matrices.ortho,
-                        controller.char == entity_id,
-                        &char_state,
-                    );
-                }
-            }
-            // Draw monsters
-            for (entity_id, animated_sprite, monster_state) in (&entities,
-                                                                &monster_sprite_storage,
-                                                                &mut char_state_storage).join() {
-                let pos = monster_state.pos();
-                let tick = system_vars.tick;
-                let body_res = {
-                    let sprites = &system_vars.sprites.monster_sprites;
-                    &sprites[&animated_sprite.monster_id]
-                };
-                let is_dead = monster_state.state().is_dead();
-                if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
-                    let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                    &animated_sprite.descr,
-                                                                    body_res,
-                                                                    &system_vars.matrices.view,
-                                                                    controller.yaw,
-                                                                    &pos.coords,
-                                                                    [0, 0],
-                                                                    true,
-                                                                    1.1,
-                                                                    is_dead,
-                                                                    &[0.0, 0.0, 1.0, 0.5]);
-                }
-                let (pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                &animated_sprite.descr,
-                                                                body_res,
-                                                                &system_vars.matrices.view,
-                                                                controller.yaw,
-                                                                &pos.coords,
-                                                                [0, 0],
-                                                                true,
-                                                                1.0,
-                                                                is_dead,
-                                                                &[1.0, 1.0, 1.0, 1.0]);
-                monster_state.bounding_rect_2d = bounding_rect;
+                        if !is_dead {
+                            draw_health_bar(
+                                &system_vars.shaders.trimesh2d_shader,
+                                &self.rectangle_vao,
+                                &system_vars.matrices.ortho,
+                                controller.char == entity_id,
+                                &char_state,
+                            );
+                        }
+                    }
+                    CharOutlook::Monster(monster_id) => {
+                        let body_res = {
+                            let sprites = &system_vars.sprites.monster_sprites;
+                            &sprites[&monster_id]
+                        };
+                        if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
+                            let (_pos_offset, bounding_rect) = render_sprite(&system_vars,
+                                                                             &animated_sprite,
+                                                                             body_res,
+                                                                             &system_vars.matrices.view,
+                                                                             controller.yaw,
+                                                                             &pos.coords,
+                                                                             [0, 0],
+                                                                             true,
+                                                                             1.1,
+                                                                             is_dead,
+                                                                             &[0.0, 0.0, 1.0, 0.5]);
+                        }
+                        let (_pos_offset, bounding_rect) = render_sprite(&system_vars,
+                                                                         &animated_sprite,
+                                                                         body_res,
+                                                                         &system_vars.matrices.view,
+                                                                         controller.yaw,
+                                                                         &pos.coords,
+                                                                         [0, 0],
+                                                                         true,
+                                                                         1.0,
+                                                                         is_dead,
+                                                                         &[1.0, 1.0, 1.0, 1.0]);
+                        char_state.bounding_rect_2d = bounding_rect;
 
-                if monster_state.state().is_live() {
-                    draw_health_bar(
-                        &system_vars.shaders.trimesh2d_shader,
-                        &self.rectangle_vao,
-                        &system_vars.matrices.ortho,
-                        controller.char == entity_id,
-                        &monster_state,
-                    );
+                        if !is_dead {
+                            draw_health_bar(
+                                &system_vars.shaders.trimesh2d_shader,
+                                &self.rectangle_vao,
+                                &system_vars.matrices.ortho,
+                                controller.char == entity_id,
+                                &char_state,
+                            );
+                        }
+                    }
                 }
             }
 
@@ -436,7 +431,7 @@ fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
 }
 
 pub fn render_sprite(system_vars: &SystemVariables,
-                     animation: &SpriteRenderDescriptor,
+                     animation: &SpriteRenderDescriptorComponent,
                      sprite_res: &SpriteResource,
                      view: &Matrix4<f32>,
                      camera_yaw: f32,
@@ -460,7 +455,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
     // TODO: if debug
     let action = sprite_res.action.actions.get(idx).or_else(|| {
-        error!("Invalid action action index: {} idx: {}", animation.action_index, idx);
+        log::error!("Invalid action action index: {} idx: {}", animation.action_index, idx);
         Some(&sprite_res.action.actions[0])
     }).unwrap();
     let frame_index = if is_dead {
@@ -688,7 +683,7 @@ impl<'a> specs::System<'a> for RenderStreamingSystem {
             let message = websocket::Message::binary(browser.offscreen.as_slice());
 //                sent_bytes_per_second_counter += client.offscreen.len();
             // it is ok if it fails, the client might have disconnected but
-            // ecs_world.maintain has not executed yet to remove it from the world
+            // ecs_world.maintain has not been executed yet to remove it from the world
             let _result = browser.websocket.lock().unwrap().send_message(&message);
         }
     }

@@ -4,7 +4,7 @@ use crate::{PhysicsWorld};
 use crate::systems::{SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame};
 use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
-use crate::components::char::{PhysicsComponent, PlayerSpriteComponent, CharacterStateComponent};
+use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use crate::components::skill::SkillManifestationComponent;
 
 pub struct SkillSystem;
@@ -16,7 +16,6 @@ impl<'a> specs::System<'a> for SkillSystem {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadStorage<'a, PlayerSpriteComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -31,7 +30,6 @@ impl<'a> specs::System<'a> for SkillSystem {
         input_storage,
         browser_client_storage,
         physics_storage,
-        animated_sprite_storage,
         system_vars,
         collisions_resource,
         mut system_benchmark,

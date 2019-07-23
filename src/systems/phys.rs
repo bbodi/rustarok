@@ -72,7 +72,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
 
         collisions_resource.collisions.extend(
             physics_world.proximity_events().iter().map(|event| {
-                trace!("{:?}", event);
+                log::trace!("{:?}", event);
                 if event.new_status == Proximity::Intersecting {
                     let collision = {
                         let collider1 = physics_world.collider(event.collider1).unwrap();
@@ -97,7 +97,7 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         );
         collisions_resource.collisions.extend(
             physics_world.contact_events().iter().map(|event| {
-                trace!("{:?}", event);
+                log::trace!("{:?}", event);
                 if let ContactEvent::Started(handle1, handle2) = event {
                     let collision = {
                         let collider1 = physics_world.collider(*handle1).unwrap();

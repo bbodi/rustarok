@@ -204,13 +204,13 @@ impl GlTexture {
             PixelFormatEnum::RGBA32).unwrap();
         surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
-        trace!("Texture from file --> {}", &path);
+        log::trace!("Texture from file --> {}", &path);
         GlTexture::from_surface(optimized_surf, gl::NEAREST)
     }
 
     pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
         let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
-            trace!("convert to RGBA");
+            log::trace!("convert to RGBA");
             let mut optimized_surf = sdl2::surface::Surface::new(
                 surface.width(),
                 surface.height(),
@@ -252,7 +252,7 @@ impl GlTexture {
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
-            debug!("Texture from_data {}", texture_id);
+            log::debug!("Texture from_data {}", texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
