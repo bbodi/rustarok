@@ -1,0 +1,33 @@
+- [ ] Statuses (frozen, buffs, poison, stun, sleep, etc)
+  - [ ] rendering their icons (above the char head as well?)
+- [ ] Mouse grabbing, Moving the camera at the edge of the screen
+- [ ] Camera should follow the player character (optionable)
+- [ ] Casting bar?
+- [ ] Huge rendering refactor (project_to_screen is problematic)
+  - [ ] Font rendering
+- [ ] Rendering casting aura, target
+- [ ] Console (autocompletion everywhere)
+  - [ ] spawning ally/enemy monster/player
+  - [ ] spawning effects
+  - [ ] changing map
+  - [ ] assigning a skill to a key
+- [ ] Unit testing
+- [ ] Rendering skill icons
+- [ ] Mounts
+- [ ] Rendering minimap
+- [ ] Fog of war
+- [ ] Structures
+- [ ] Ranged attack
+- [ ] Minion AI
+- [ ] Path finding
+- [ ] Optimizing map loading
+- [ ] Experimenting with streaming performance
+- [ ] Complicated skills
+  - [ ] For 6 secs you get 50% atk, when it ends, heal the amount of damage you did
+  - [ ] Push enemies away, if they hit a wall, they will be stunned
+  - [ ] Give a shield to a target, blocks any attack, at the end heals 50% of the blocked damages
+  - [ ] Jump over walls
+  - [ ] Pull a target to you
+  - [ ] Gazlow, AoE, damages +10%for every enemy target (after +30%, it shows crit damages)
+  - [ ] Every 3rd attack to the same target damages +50%
+  - [ ] Mediv's teleport
