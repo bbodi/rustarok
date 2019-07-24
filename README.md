@@ -34,6 +34,9 @@ You will need Ragnarok Online asset files to run the game.
 - Spawn entities with the "Players" and "Monsters" sliders in the window
 - Move the camera with the cursor keys
 
+## Design decisions
+- [Statuses](https://github.com/bbodi/rustarok/issues/1)
+
 ## Current Status & Gallery
 
 Currently the project is in a very early stage. Nothing is set in stone yet, I mostly prototyping ideas and techniques.
