@@ -4,16 +4,15 @@ use nphysics2d::object::{ColliderDesc, ColliderHandle};
 use ncollide2d::world::CollisionGroups;
 use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWorld, ElapsedTime};
 use nalgebra::{Vector2, Vector3, Point2, Matrix4, Rotation3, Point3, Isometry2};
-use crate::systems::{SystemVariables, Collision, Sex, Sprites};
+use crate::systems::{SystemVariables, Collision};
 use std::sync::{Arc, Mutex};
 use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
-use crate::components::char::{CastingSkillData, CharacterStateComponent, CharAttributes};
+use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent};
 use ncollide2d::query::Proximity;
-use crate::components::status::{ApplyStatusComponent, MainStatus, Status, StatusUpdateResult};
-use crate::consts::JobId;
-use crate::asset::SpriteResource;
+use crate::components::status::{ApplyStatusComponent, MainStatus, Status};
+use strum_macros::EnumIter;
 
 #[macro_export]
 macro_rules! v2 {
@@ -140,7 +139,7 @@ pub trait SkillDescriptor {
     );
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
     TestSkill,
     BrutalTestSkill,

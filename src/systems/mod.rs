@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use crate::video::GlTexture;
 use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
+use crate::components::skill::Skills;
+use crate::components::controller::SkillKey;
 
 pub mod input;
 pub mod phys;
@@ -37,6 +39,11 @@ pub struct Sprites {
     pub effect_sprites: EffectSprites,
 }
 
+pub struct Texts {
+    pub skill_name_texts: HashMap<Skills, GlTexture>,
+    pub skill_key_texts: HashMap<SkillKey, GlTexture>,
+}
+
 pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
@@ -45,6 +52,7 @@ pub struct SystemVariables {
     pub time: ElapsedTime, // extract from the struct?
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
+    pub texts: Texts,
 }
 
 pub struct Collision {

@@ -8,7 +8,6 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::control_sys::CharacterControlSystem;
 use std::collections::HashMap;
 use crate::components::controller::WorldCoords;
-use nalgebra::Vector2;
 use crate::components::skill::SkillDescriptor;
 
 pub struct CharacterStateUpdateSystem;

@@ -11,6 +11,8 @@ use imgui::ImGui;
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
 use std::ops::{IndexMut, Index};
+use sdl2::ttf::Sdl2TtfContext;
+use sdl2::render::BlendMode;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -21,7 +23,6 @@ pub struct Video {
     pub event_pump: EventPump,
     // these two variables must be in scope, so don't remove their variables
     _gl_context: GLContext,
-//    _gl: *const (),
 }
 
 pub const VIDEO_WIDTH: u32 = 1024;
@@ -76,6 +77,38 @@ impl Video {
 
     pub fn set_title(&mut self, title: &str) {
         self.window.set_title(title).unwrap();
+    }
+
+    //    ttf_context,let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+//    fonts: HashMap::new(),
+//    ttf_context: Sdl2TtfContext,
+//    fonts: HashMap<FontId, sdl2::ttf::Font<'a,'b>>
+    pub fn load_font<'a, 'b>(ttf_context: &'a Sdl2TtfContext, font_path: &str, size: u16) -> Result<sdl2::ttf::Font<'a, 'b>, String> {
+        ttf_context.load_font(font_path, size)
+    }
+
+    pub fn create_text_texture<'a, 'b>(font: &sdl2::ttf::Font<'a, 'b>, text: &str) -> GlTexture {
+        let surface = font.render(text)
+            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        return GlTexture::from_surface(surface, gl::NEAREST);
+    }
+
+    pub fn create_outline_text_texture<'a, 'b>(
+        font: &sdl2::ttf::Font<'a, 'b>,
+        outline_font: &sdl2::ttf::Font<'a, 'b>,
+        text: &str,
+    ) -> GlTexture {
+        let mut bg_surface = outline_font.render(text)
+            .blended(Color::RGBA(0, 0, 0, 255)).unwrap();
+        let mut fg_surface = font.render(text)
+            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        fg_surface.set_blend_mode(BlendMode::Blend);
+        fg_surface.blit(
+            None,
+            &mut bg_surface,
+            sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height())
+        );
+        return GlTexture::from_surface(bg_surface, gl::NEAREST);
     }
 }
 

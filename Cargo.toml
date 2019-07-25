@@ -28,6 +28,6 @@ config = "0.9.3"
 serde = {version = "1.0.97", features = ["derive"]}
 
 [dependencies.sdl2]
-version = "0.32.1"
+version = "0.32.2"
 default-features = false
-features = ["image"]
+features = ["image", "ttf"]

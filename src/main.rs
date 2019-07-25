@@ -42,7 +42,7 @@ use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteR
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame};
+use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame, Texts};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
@@ -363,7 +363,7 @@ fn main() {
         Sprites {
             cursors: asset_loader.load_spr_and_act("data\\sprite\\cursors").unwrap(),
             numbers: GlTexture::from_file("assets\\damage.bmp"),
-            mounted_character_sprites : {
+            mounted_character_sprites: {
                 let mut mounted_sprites = HashMap::new();
                 let mounted_file_name = &job_name_table[&JobId::CRUSADER2];
                 let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
@@ -488,6 +488,40 @@ fn main() {
 
 
     let (map_render_data, physics_world) = load_map("prontera", &asset_loader);
+    let mut texts = Texts {
+        skill_name_texts: HashMap::new(),
+        skill_key_texts: HashMap::new(),
+    };
+
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+    let mut skill_name_font = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        32
+    ).unwrap();
+    let mut skill_name_font_outline = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        32
+    ).unwrap();
+    skill_name_font_outline.set_outline_width(2);
+
+    for skill in Skills::iter() {
+        let texture = Video::create_outline_text_texture(
+            &skill_name_font,
+            &skill_name_font_outline,
+            &format!("{:?}", skill)
+        );
+        texts.skill_name_texts.insert(skill, texture);
+    }
+    for skill_key in SkillKey::iter() {
+        let texture = Video::create_outline_text_texture(
+            &skill_name_font,
+            &skill_name_font_outline,
+            &format!("{:?}", skill_key)
+        );
+        texts.skill_key_texts.insert(skill_key, texture);
+    }
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprites,
@@ -496,6 +530,7 @@ fn main() {
         time: ElapsedTime(0.0),
         matrices: render_matrices,
         map_render_data,
+        texts,
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
@@ -517,7 +552,7 @@ fn main() {
             desktop_client_char,
             250.0,
             -180.0,
-            &ecs_world.read_resource::<SystemVariables>().matrices.projection
+            &ecs_world.read_resource::<SystemVariables>().matrices.projection,
         );
         player.assign_skill(SkillKey::Q, Skills::TestSkill);
         player.assign_skill(SkillKey::W, Skills::Lightning);
@@ -633,7 +668,7 @@ fn main() {
                         desktop_client_char,
                         250.0,
                         -180.0,
-                        &projection_mat
+                        &projection_mat,
                     ))
                     .build()
             };

@@ -7,7 +7,7 @@ use crate::components::char::{CharacterStateComponent, CharState, SpriteRenderDe
 use crate::components::controller::ControllerComponent;
 use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, GlTexture};
 use crate::video::VertexAttribDefinition;
 use crate::components::skill::SkillTargetType;
 use crate::components::skill::SkillDescriptor;
@@ -102,6 +102,14 @@ impl<'a> specs::System<'a> for RenderUI {
 
             // Draw cursor
             let cursor = if let Some((skill_key, skill)) = controller.is_selecting_target() {
+                render_texture_2d(
+                    &system_vars,
+                    &system_vars.texts.skill_name_texts[&skill],
+                    &Vector2::new(
+                        controller.last_mouse_x as f32,
+                        controller.last_mouse_y as f32 + 32.0,
+                    ),
+                );
                 if skill.get_skill_target_type() != SkillTargetType::Area {
                     CURSOR_TARGET
                 } else {
@@ -179,4 +187,30 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         shader.set_f32("alpha", 1.0);
         system_vars.map_render_data.sprite_vertex_array.bind().draw();
     }
+}
+
+fn render_texture_2d(system_vars: &SystemVariables,
+                     texture: &GlTexture,
+                     pos: &Vector2<f32>,
+) {
+    let width = texture.width as f32;
+    let height = texture.height as f32;
+    texture.bind(TEXTURE_0);
+
+    let mut matrix = Matrix4::<f32>::identity();
+    let pos = Vector3::new(pos.x, pos.y, 0.0);
+    matrix.prepend_translation_mut(&pos);
+
+    let shader = system_vars.shaders.sprite2d_shader.gl_use();
+    shader.set_mat4("projection", &system_vars.matrices.ortho);
+    shader.set_int("model_texture", 0);
+    shader.set_f32("alpha", 1.0);
+    shader.set_mat4("model", &matrix);
+    shader.set_vec2("offset", &[0.0, 0.0]);
+    shader.set_vec2("size", &[
+        width,
+        -height as f32
+    ]);
+    shader.set_f32("alpha", 1.0);
+    system_vars.map_render_data.sprite_vertex_array.bind().draw();
 }
