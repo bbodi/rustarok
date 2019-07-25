@@ -2,7 +2,7 @@
 
 A project whose primary goals are to have fun developing it and experiment with interesting technical problems from the world of game development.
 
-It is intended to be a multiplayer, fast-pace Moba style game. Check [Background story](background-story) for details.
+It is intended to be a multiplayer, fast-paced Moba style game. Check [Background story](#background-story) for details.
 
 ## Building
 
@@ -33,6 +33,10 @@ You will need Ragnarok Online asset files to run the game.
 - Cast skills with Q (fire wall), W (lightning), E (heal), R (huge boom) keys
 - Spawn entities with the "Players" and "Monsters" sliders in the window
 - Move the camera with the cursor keys
+
+## Design decisions
+- [Statuses](https://github.com/bbodi/rustarok/issues/1)
+- [Rendering system](https://github.com/bbodi/rustarok/issues/4)
 
 ## Current Status & Gallery
 
