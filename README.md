@@ -36,6 +36,7 @@ You will need Ragnarok Online asset files to run the game.
 
 ## Design decisions
 - [Statuses](https://github.com/bbodi/rustarok/issues/1)
+- [Rendering system](https://github.com/bbodi/rustarok/issues/4)
 
 ## Current Status & Gallery
 
