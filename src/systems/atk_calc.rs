@@ -2,7 +2,7 @@ use crate::components::char::{CharacterStateComponent, PhysicsComponent, CharSta
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
-use crate::components::{AttackComponent, FlyingNumberType, FlyingNumberComponent, AttackType};
+use crate::components::{AttackComponent, FlyingNumberType, FlyingNumberComponent, AttackType, ApplyForceComponent};
 use specs::prelude::*;
 use nalgebra::{Vector2};
 use crate::components::skill::{Skills, v2_to_p2};
@@ -21,10 +21,11 @@ impl<'a> specs::System<'a> for AttackSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::WriteStorage<'a, AttackComponent>,
+        specs::ReadStorage<'a, ApplyForceComponent>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, PhysicsWorld>,
+        specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
     );
@@ -32,6 +33,7 @@ impl<'a> specs::System<'a> for AttackSystem {
     fn run(&mut self, (
         entities,
         mut attack_storage,
+        apply_force_storage,
         mut physics_storage,
         mut char_state_storage,
         mut system_vars,
@@ -40,6 +42,15 @@ impl<'a> specs::System<'a> for AttackSystem {
         mut updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
+
+        for (force_entity_id, apply_force) in (&entities, &apply_force_storage).join() {
+            if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
+                char_body.set_linear_velocity(apply_force.force);
+                let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
+                char_state.cannot_control_until.run_at_least_until_seconds(system_vars.time, apply_force.duration);
+            }
+            updater.remove::<ApplyForceComponent>(force_entity_id);
+        }
 
         // TODO: group attacks by entities, so we have to calculate entity attributes only once.
         for (attack_entity_id, attack) in (&entities, &mut attack_storage).join() {

@@ -2,11 +2,12 @@ extern crate rand;
 
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
-use nalgebra::{Point2};
+use nalgebra::{Point2, Vector2};
 use crate::{ElapsedTime};
 use specs::prelude::*;
 use crate::components::skill::Skills;
 use crate::components::controller::WorldCoords;
+use nphysics2d::object::BodyHandle;
 
 pub mod char;
 pub mod controller;
@@ -97,4 +98,13 @@ pub struct AttackComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
     pub typ: AttackType,
+}
+
+#[derive(Component)]
+pub struct ApplyForceComponent {
+    pub src_entity: Entity,
+    pub dst_entity: Entity,
+    pub force: Vector2<f32>,
+    pub body_handle: BodyHandle,
+    pub duration: f32,
 }

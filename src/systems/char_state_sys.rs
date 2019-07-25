@@ -135,12 +135,14 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             }
                         } else {
                             char_comp.set_state(CharState::Idle, char_comp.dir());
+                            char_comp.target = None;
                         }
                     } else if let EntityTarget::Pos(target_pos) = target {
                         let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
                         if distance <= 0.2 {
                             // stop
                             char_comp.set_state(CharState::Idle, char_comp.dir());
+                            char_comp.target = None;
                         } else {
                             // move closer
                             char_comp.set_state(
@@ -163,9 +165,6 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 let force = speed;
                 let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
                 body.set_linear_velocity(body.velocity().linear + force);
-            } else {
-                let body = physics_world.rigid_body_mut(physics_comp.body_handle).unwrap();
-                body.set_linear_velocity(Vector2::new(0.0, 0.0));
             }
         }
 
@@ -195,8 +194,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 sprite.animation_started = system_vars.time;
                 let forced_duration = match &state {
                     CharState::Attacking { attack_ends, .. } => Some(attack_ends.minus(system_vars.time)),
+                    // HACK: '100.0', so the first frame is rendered during casting :)
                     CharState::CastingSkill(casting_info) => Some(casting_info.cast_ends.add_seconds(100.0)),
-//                    CharState::CastingSkill(casting_info) => Some(casting_info.cast_ends.minus(system_vars.time)),
                     _ => None
                 };
                 sprite.forced_duration = forced_duration;

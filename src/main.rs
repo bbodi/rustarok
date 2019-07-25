@@ -37,7 +37,7 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 
-use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent, ApplyForceComponent};
 use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
@@ -222,7 +222,7 @@ fn main() {
         AssetLoader::new(config.grf_paths.as_slice())
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
-    log::info!("GRF loading: {}", elapsed.as_millis());
+    log::info!("GRF loading: {}ms", elapsed.as_millis());
     let mut video = Video::init();
 
     let shaders = Shaders {
@@ -334,6 +334,7 @@ fn main() {
     ecs_world.register::<AttackComponent>();
     ecs_world.register::<StrEffectComponent>();
     ecs_world.register::<ApplyStatusComponent>();
+    ecs_world.register::<ApplyForceComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
 

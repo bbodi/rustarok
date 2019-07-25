@@ -4,14 +4,16 @@ use nphysics2d::object::{ColliderDesc, ColliderHandle};
 use ncollide2d::world::CollisionGroups;
 use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWorld, ElapsedTime};
 use nalgebra::{Vector2, Vector3, Point2, Matrix4, Rotation3, Point3, Isometry2};
-use crate::systems::{SystemVariables, Collision};
+use crate::systems::{SystemVariables, Collision, Sex, Sprites};
 use std::sync::{Arc, Mutex};
 use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
-use crate::components::char::{CastingSkillData, CharacterStateComponent};
+use crate::components::char::{CastingSkillData, CharacterStateComponent, CharAttributes};
 use crate::components::controller::WorldCoords;
-use crate::components::{StrEffectComponent, AttackComponent, AttackType};
+use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent};
 use ncollide2d::query::Proximity;
-use crate::components::status::{ApplyStatusComponent, MainStatus};
+use crate::components::status::{ApplyStatusComponent, MainStatus, Status, StatusUpdateResult};
+use crate::consts::JobId;
+use crate::asset::SpriteResource;
 
 #[macro_export]
 macro_rules! v2 {
@@ -41,7 +43,7 @@ pub trait SkillManifestation {
         all_collisions_in_world: &Vec<Collision>,
         system_vars: &SystemVariables,
         entities: &specs::Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     );
@@ -73,7 +75,7 @@ impl SkillManifestationComponent {
         all_collisions_in_world: &Vec<Collision>,
         system_vars: &SystemVariables,
         entities: &specs::Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
@@ -150,7 +152,7 @@ pub enum Skills {
 impl Skills {
     pub fn damage_chars(
         entities: &Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         updater: &mut specs::Write<LazyUpdate>,
         skill_shape: impl ncollide2d::shape::Shape<f32>,
         skill_isom: Isometry2<f32>,
@@ -562,10 +564,8 @@ impl PushBackWallSkill {
             ncollide2d::shape::Cuboid::new(half_extents)
         );
         let collider_handle = ColliderDesc::new(cuboid)
-            .density(1000.0)
             .translation(*skill_center)
             .rotation(rot_angle_in_rad.to_degrees())
-//            .user_data(entity_id)
             .collision_groups(CollisionGroups::new()
                 .with_membership(&[SKILL_AREA_COLLISION_GROUP])
                 .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
@@ -592,7 +592,7 @@ impl SkillManifestation for PushBackWallSkill {
               all_collisions_in_world: &Vec<Collision>,
               system_vars: &SystemVariables,
               entities: &specs::Entities,
-              char_storage: &specs::ReadStorage<CharacterStateComponent>,
+              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.die_at.has_passed(system_vars.time) {
@@ -607,16 +607,26 @@ impl SkillManifestation for PushBackWallSkill {
                 let char_body_handle = physics_world.collider(coll.character_coll_handle).unwrap().body();
                 let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
                 let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
-                // TODO: the phys system already stops the char before this collision would have been processed,
-                // so remove the rigid body from the skill and push the player without it
-                char_body.set_linear_velocity(char_body.velocity().linear * -1.0);
-
-                let damage_entity = entities.create();
-                updater.insert(damage_entity, AttackComponent {
-                    src_entity: self.caster_entity_id,
-                    dst_entity: char_entity_id,
-                    typ: AttackType::Skill(Skills::TestSkill),
-                });
+                if let Some(char_state) = char_storage.get_mut(char_entity_id) {
+                    let push_dir = self.pos - char_state.pos().coords;
+                    let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
+                        v2!(1, 0) // "random"
+                    } else {
+                        -push_dir.normalize()
+                    };
+                    updater.insert(entities.create(), AttackComponent {
+                        src_entity: self.caster_entity_id,
+                        dst_entity: char_entity_id,
+                        typ: AttackType::Skill(Skills::TestSkill),
+                    });
+                    updater.insert(entities.create(), ApplyForceComponent {
+                        src_entity: self.caster_entity_id,
+                        dst_entity: char_entity_id,
+                        force: push_dir * 20.0,
+                        body_handle: char_body_handle,
+                        duration: 1.0,
+                    });
+                }
             }
         }
     }
@@ -699,7 +709,7 @@ impl SkillManifestation for BrutalSkillManifest {
               all_collisions_in_world: &Vec<Collision>,
               system_vars: &SystemVariables,
               entities: &specs::Entities,
-              char_storage: &specs::ReadStorage<CharacterStateComponent>,
+              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               _physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.die_at.has_passed(system_vars.time) {
@@ -775,7 +785,7 @@ impl SkillManifestation for LightningManifest {
               _all_collisions_in_world: &Vec<Collision>,
               system_vars: &SystemVariables,
               entities: &specs::Entities,
-              char_storage: &specs::ReadStorage<CharacterStateComponent>,
+              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.created_at.add_seconds(12.0).has_passed(system_vars.time) {
