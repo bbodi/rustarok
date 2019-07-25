@@ -101,8 +101,8 @@ impl AttackCalculation {
     pub fn attack(src: &CharacterStateComponent, dst: &CharacterStateComponent) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
         let mut src_outcomes = vec![];
         let mut dst_outcomes = vec![];
-        let atk = src.calculated_attribs.attack_damage as f32;
-        let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
+        let atk = src.attack_damage_bonus.add_me_to_as_percentage(src.attack_damage as f32);
+        let atk = dst.armor.subtract_me_from_as_percentage(atk) as u32;
         let outcome = if atk == 0 {
             AttackOutcome::Block
         } else {
@@ -120,14 +120,13 @@ impl AttackCalculation {
             Skills::BrutalTestSkill => 600.0,
             Skills::Lightning => 120.0,
             Skills::Heal => 0.0,
-            Skills::Mounting => 0.0, // TODO: it should not be listed here
         };
         match skill {
             // attacking skills
             Skills::Lightning |
             Skills::TestSkill |
             Skills::BrutalTestSkill=> {
-                let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
+                let atk = dst.armor.subtract_me_from_as_percentage(atk) as u32;
                 let outcome = if atk == 0 {
                     AttackOutcome::Block
                 } else {
@@ -139,7 +138,6 @@ impl AttackCalculation {
             Skills::Heal => {
                 dst_outcomes.push(AttackOutcome::Heal(200));
             }
-            Skills::Mounting => {}// TODO: it should not be listed here
         };
         return (src_outcomes, dst_outcomes);
     }
@@ -154,10 +152,7 @@ impl AttackCalculation {
     ) {
         match outcome {
             AttackOutcome::Heal(val) => {
-                char_comp.hp = char_comp
-                    .calculated_attribs
-                    .max_hp
-                    .min(char_comp.hp + *val as i32);
+                char_comp.hp = char_comp.max_hp.min(char_comp.hp + *val as i32);
             }
             AttackOutcome::Block => {}
             AttackOutcome::Damage(val) => {

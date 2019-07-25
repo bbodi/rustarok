@@ -11,7 +11,6 @@ use crate::components::controller::{ControllerComponent, CastMode, ControllerAct
 use nalgebra::{Point2, Vector3, Vector4, Matrix4, Point3};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use strum::IntoEnumIterator;
-use crate::components::skill::{SkillTargetType, Skills, SkillDescriptor};
 
 pub struct BrowserInputProducerSystem;
 
@@ -347,7 +346,6 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 match controller.cast_mode {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
-                            log::debug!("Player wants to cast {:?}", skill);
                             Some(ControllerAction::Casting(skill))
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
@@ -355,13 +353,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             .and_then(|skill_key| {
                                 controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
                             }) {
-                            log::debug!("Player select target for casting {:?}", skill);
-                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                            Some(ControllerAction::CastingSelectTarget(skill_key, skill))
                         } else { None }
                     }
                     CastMode::OnKeyRelease => {
                         if controller.is_key_just_released(casting_skill_key.scancode()) {
-                            log::debug!("Player wants to cast {:?}", skill);
                             Some(
                                 ControllerAction::Casting(
                                     controller.get_skill_for_key(casting_skill_key)
@@ -383,11 +379,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }) {
                 match controller.cast_mode {
                     CastMode::Normal | CastMode::OnKeyRelease => {
-                        log::debug!("Player select target for casting {:?}", skill);
-                        Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                        Some(ControllerAction::CastingSelectTarget(skill_key, skill))
                     }
                     CastMode::OnKeyPress => {
-                        log::debug!("Player wants to cast {:?}", skill);
                         Some(ControllerAction::Casting(skill))
                     }
                 }
@@ -445,17 +439,6 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-
-    pub fn target_selection_or_casting(skill_key: SkillKey, skill: Skills) -> ControllerAction {
-        // NoTarget skills have to be casted immediately without selecting target
-        if skill.get_skill_target_type() == SkillTargetType::NoTarget {
-            log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            ControllerAction::Casting(skill)
-        } else {
-            ControllerAction::CastingSelectTarget(skill_key, skill)
-        }
-    }
-
     pub fn picking_2d_3d(x2d: u16, y2d: u16, camera_pos: &Point3<f32>,
                          projection: &Matrix4<f32>, view: &Matrix4<f32>) -> WorldCoords {
         let screen_point = Point2::new(x2d as f32, y2d as f32);

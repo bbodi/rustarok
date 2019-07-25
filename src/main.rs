@@ -38,7 +38,7 @@ use specs::Join;
 use specs::prelude::*;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent, CharOutlook};
+use crate::components::char::{CharacterStateComponent, Percentage, PhysicsComponent, U8Float, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
 use crate::consts::{job_name_table, JobId, MonsterId};
@@ -72,7 +72,6 @@ mod systems;
 
 use serde::Deserialize;
 use std::str::FromStr;
-use crate::components::status::{ApplyStatusComponent, ApplyStatusSystem};
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -333,7 +332,6 @@ fn main() {
     ecs_world.register::<FlyingNumberComponent>();
     ecs_world.register::<AttackComponent>();
     ecs_world.register::<StrEffectComponent>();
-    ecs_world.register::<ApplyStatusComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
 
@@ -347,7 +345,6 @@ fn main() {
         .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
         .with(PhysicsSystem, "physics", &["char_state_update"])
         .with(AttackSystem, "attack_sys", &["physics"])
-        .with(ApplyStatusSystem, "apply_status", &["attack_sys"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
@@ -362,19 +359,6 @@ fn main() {
         Sprites {
             cursors: asset_loader.load_spr_and_act("data\\sprite\\cursors").unwrap(),
             numbers: GlTexture::from_file("assets\\damage.bmp"),
-            mounted_character_sprites : {
-                let mut mounted_sprites = HashMap::new();
-                let mounted_file_name = &job_name_table[&JobId::CRUSADER2];
-                let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
-                let folder2 = encoding::all::WINDOWS_1252.decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict).unwrap();
-                let male_file_name = format!("data\\sprite\\{}\\{}\\³²\\{}_³²", folder1, folder2, mounted_file_name);
-                let mut male = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading {:?}", JobId::CRUSADER2));
-                // for Idle action, character sprites contains head rotating animations, we don't need them
-                male.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
-                let female = male.clone();
-                mounted_sprites.insert(JobId::CRUSADER, [male, female]);
-                mounted_sprites
-            },
             character_sprites: JobId::iter().take(25)
                 .filter(|job_id| *job_id != JobId::MARRIED)
                 .map(|job_id| {
@@ -508,7 +492,7 @@ fn main() {
             &mut ecs_world,
             Point2::new(250.0, -200.0),
             Sex::Male,
-            JobId::CRUSADER,
+            JobId::CRUSADER2,
             1,
             1,
         );
@@ -522,7 +506,7 @@ fn main() {
         player.assign_skill(SkillKey::W, Skills::Lightning);
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-        player.assign_skill(SkillKey::Y, Skills::Mounting);
+//        player.assign_skill(SkillKey::Y, Skills::Mounting);
         ecs_world
             .create_entity()
             .with(player)
@@ -824,12 +808,11 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 let controller = storage.get(desktop_client_controller_entity).unwrap();
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_state_storage.get_mut(controller.char).unwrap();
-                    let mut aspd: f32 = char_state.calculated_attribs.attack_speed.as_f32();
+                    let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+                    let mut aspd: f32 = char_state.attack_speed.as_f32();
                     ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
                         .build();
-                    // TODO:
-//                    char_state.base_attribs.attack_speed = U8Float::new(Percentage::from_f32(aspd));
+                    char_state.attack_speed = U8Float::new(Percentage::from_f32(aspd));
                 }
 
                 ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
@@ -913,6 +896,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 };
                 let pos2d = p3_to_p2(&pos);
                 let mut rng = rand::thread_rng();
+                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.character_sprites.len();
                 let sex = if rng.gen::<usize>() % 2 == 0 { Sex::Male } else { Sex::Female };
                 let head_count = ecs_world.read_resource::<SystemVariables>().sprites.head_sprites[Sex::Male as usize].len();
                 let entity_id = components::char::create_char(
@@ -1284,8 +1268,6 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
         str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
         str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
-        str_effects.insert("StrEffect::Concentration".to_owned(), asset_loader.load_effect("concentration").unwrap());
-        str_effects.insert("StrEffect::Yunta2".to_owned(), asset_loader.load_effect("yunta_2").unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());

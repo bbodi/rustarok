@@ -33,7 +33,7 @@ impl KeyState {
 pub type ScreenCoords = Point2<u16>;
 pub type WorldCoords = Point2<f32>;
 
-#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, EnumIter)]
 pub enum SkillKey {
     Q,
     W,

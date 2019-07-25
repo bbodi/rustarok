@@ -13,7 +13,7 @@ pub struct StrLayer {
     pub key_frames: Vec<StrKeyFrame>
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq)]
 pub enum KeyFrameType {
     Start,
     End,
@@ -88,16 +88,15 @@ impl StrFile {
                 }
                 texture_name
             }).collect();
-            // TODO: skip layers where key_frames.is_empty()
             let key_frames: Vec<StrKeyFrame> = (0..buf.next_u32()).map(|_i| {
                 let frame = buf.next_i32();
-                let typ = if buf.next_u32() == 0 { KeyFrameType::Start } else { KeyFrameType::End };
+                let typ = buf.next_u32();
                 let pos = [buf.next_f32(), buf.next_f32()];
                 let uv = [buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32()];
                 let xy = [buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32()];
                 StrKeyFrame {
                     frame,
-                    typ,
+                    typ: if typ == 0 { KeyFrameType::Start } else { KeyFrameType::End },
                     pos,
                     uv,
                     xy,

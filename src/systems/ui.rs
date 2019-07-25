@@ -32,7 +32,6 @@ impl RenderUI {
                 animation_ends_at: ElapsedTime(0.0),
                 forced_duration: None,
                 direction: 0,
-                fps_multiplier: 1.0,
             },
             vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
@@ -152,7 +151,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         let height = texture.original_height as f32 * layer.scale[1];
         texture.texture.bind(TEXTURE_0);
 
-        let offset = [0, 0];
+        let mut offset = [0, 0];
         let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
         let offset = [
             offset[0] as f32,
@@ -160,7 +159,7 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         ];
 
         let mut matrix = Matrix4::<f32>::identity();
-        let pos = Vector3::new(pos.x, pos.y, 0.0);
+        let mut pos = Vector3::new(pos.x, pos.y, 0.0);
         matrix.prepend_translation_mut(&pos);
 
         let width = width as f32;
