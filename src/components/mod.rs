@@ -10,6 +10,7 @@ use crate::components::controller::WorldCoords;
 
 pub mod char;
 pub mod controller;
+pub mod status;
 
 #[macro_use]
 pub mod skill;

@@ -4,8 +4,8 @@ use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, CastingSkillData};
 use crate::components::controller::{ControllerComponent, ControllerAction};
-use std::sync::{Arc, Mutex};
-use crate::components::skill::SkillDescriptor;
+use crate::components::skill::{SkillDescriptor, Skills};
+use crate::ElapsedTime;
 
 pub struct CharacterControlSystem;
 
@@ -14,21 +14,20 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::Write<'a, LazyUpdate>,
     );
 
+    // TODO: it is not obvious what is the difference between this, input sys and char_state_sys
     fn run(&mut self, (
         entities,
         mut char_state_storage,
         controller_storage,
-        mut system_vars,
+        system_vars,
         mut system_benchmark,
-        mut updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
-        let mut rng = rand::thread_rng();
+        let rng = rand::thread_rng();
         for controller in (&controller_storage).join() {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
@@ -53,32 +52,12 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 Some(ControllerAction::CastingSelectTarget(..)) => {}
                 Some(ControllerAction::CancelCastingSelectTarget) => {}
                 Some(ControllerAction::Casting(skill)) => {
-                    let distance = (char_state.pos().coords - controller.mouse_world_pos.coords).magnitude();
-                    let allowed = skill.is_casting_allowed(
-                        controller.char,
-                        controller.entity_below_cursor,
-                        distance,
+                    CharacterControlSystem::try_cast_skill(
+                        skill,
+                        system_vars.time,
+                        char_state,
+                        controller
                     );
-                    if allowed && char_state.can_move(system_vars.time) {
-                        let char_pos = char_state.pos();
-                        let casting_time_seconds = skill.get_casting_time();
-                        let new_state = CharState::CastingSkill(CastingSkillData {
-                            target_entity: controller.entity_below_cursor,
-                            cast_started: system_vars.time,
-                            cast_ends: system_vars.time.add(casting_time_seconds),
-                            can_move: false,
-                            skill: Arc::new(Mutex::new(Box::new( // TODO: do we still need Arc?
-                                                                 skill
-                            ))),
-                            mouse_pos_when_casted: controller.mouse_world_pos,
-                        });
-                        let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction
-                            char_state.dir()
-                        } else {
-                            CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords)
-                        };
-                        char_state.set_state(new_state, dir);
-                    }
                 }
                 Some(ControllerAction::LeftClick) => {}
                 None => {}
@@ -89,6 +68,43 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
 
 
 impl CharacterControlSystem {
+    pub fn try_cast_skill(
+        skill: Skills,
+        now: ElapsedTime,
+        char_state: &mut CharacterStateComponent,
+        controller: &ControllerComponent,
+    ) {
+        let distance = (char_state.pos().coords - controller.mouse_world_pos.coords).magnitude();
+        let allowed = skill.is_casting_allowed(
+            controller.char,
+            controller.entity_below_cursor,
+            distance,
+        );
+        let can_move = char_state.can_move(now);
+        if allowed && can_move {
+            log::debug!("Casting request for '{:?}' was allowed", skill);
+            let casting_time_seconds = skill.get_casting_time(&char_state);
+            let new_state = CharState::CastingSkill(CastingSkillData {
+                target_entity: controller.entity_below_cursor,
+                cast_started: now,
+                cast_ends: now.add(casting_time_seconds),
+                can_move: false,
+                skill,
+                mouse_pos_when_casted: controller.mouse_world_pos,
+            });
+            let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction
+                char_state.dir()
+            } else {
+                let char_pos = char_state.pos();
+                CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords)
+            };
+            char_state.set_state(new_state, dir);
+        } else {
+            log::debug!("Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
+                         skill, allowed, can_move);
+        }
+    }
+
     pub fn determine_dir(&target_pos: &Point2<f32>, pos: &Vector2<f32>) -> usize {
         let dir_vec = target_pos - pos;
         // "- 90.0"

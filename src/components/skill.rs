@@ -10,7 +10,8 @@ use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::{StrEffectComponent, AttackComponent, AttackType};
-use ncollide2d::query::{Proximity};
+use ncollide2d::query::Proximity;
+use crate::components::status::{ApplyStatusComponent, MainStatus};
 
 #[macro_export]
 macro_rules! v2 {
@@ -52,13 +53,13 @@ pub trait SkillManifestation {
 #[derive(Component)]
 pub struct SkillManifestationComponent {
     pub entity_id: Entity,
-    pub skill: Arc<Mutex<Box<SkillManifestation>>>,
+    pub skill: Arc<Mutex<Box<dyn SkillManifestation>>>,
 }
 
 impl SkillManifestationComponent {
     pub fn new(
         entity_id: Entity,
-        skill: Box<SkillManifestation>,
+        skill: Box<dyn SkillManifestation>,
     ) -> SkillManifestationComponent {
         SkillManifestationComponent {
             entity_id,
@@ -109,9 +110,9 @@ pub trait SkillDescriptor {
         system_vars: &SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
-    ) -> Option<Box<SkillManifestation>>;
+    ) -> Option<Box<dyn SkillManifestation>>;
 
-    fn get_casting_time(&self) -> ElapsedTime;
+    fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime;
     fn get_casting_range(&self) -> f32;
 
     fn get_skill_target_type(&self) -> SkillTargetType;
@@ -137,13 +138,13 @@ pub trait SkillDescriptor {
     );
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Skills {
     TestSkill,
     BrutalTestSkill,
     Lightning,
     Heal,
-//    Mounting,
+    Mounting,
 }
 
 impl Skills {
@@ -162,7 +163,7 @@ impl Skills {
             let coll_result = ncollide2d::query::proximity(
                 &skill_isom, &skill_shape,
                 &Isometry2::new(char_state.pos().coords, 0.0), &ncollide2d::shape::Ball::new(1.0),
-                0.0
+                0.0,
             );
             if coll_result == Proximity::Intersecting {
                 let damage_entity = entities.create();
@@ -330,16 +331,32 @@ impl SkillDescriptor for Skills {
                 });
                 None
             }
+            Skills::Mounting => {
+                updater.insert(entities.create(), ApplyStatusComponent::from_main_status(
+                    caster_entity_id,
+                    MainStatus::Mounted,
+                ));
+                updater.insert(entities.create(), StrEffectComponent {
+                    effect: "StrEffect::Concentration".to_owned(),
+                    pos: v2_to_p2(&char_pos),
+                    start_time: system_vars.time,
+                    die_at: system_vars.time.add_seconds(0.7),
+                    duration: ElapsedTime(0.7),
+                });
+                None
+            }
         }
     }
 
-    fn get_casting_time(&self) -> ElapsedTime {
-        match self {
-            Skills::TestSkill => ElapsedTime(0.3),
-            Skills::BrutalTestSkill => ElapsedTime(1.0),
-            Skills::Lightning => ElapsedTime(0.7),
-            Skills::Heal => { ElapsedTime(0.3) }
-        }
+    fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
+        let t = match self {
+            Skills::TestSkill => 0.3,
+            Skills::BrutalTestSkill => 1.0,
+            Skills::Lightning => 0.7,
+            Skills::Heal => 0.3,
+            Skills::Mounting => if char_state.statuses.is_mounted() {0.0} else {2.0},
+        };
+        return ElapsedTime(t);
     }
 
     fn get_casting_range(&self) -> f32 {
@@ -347,7 +364,8 @@ impl SkillDescriptor for Skills {
             Skills::TestSkill => 10.0,
             Skills::BrutalTestSkill => 20.,
             Skills::Lightning => 7.0,
-            Skills::Heal => { 10.0 }
+            Skills::Heal => 10.0,
+            Skills::Mounting => 0.0,
         }
     }
 
@@ -357,6 +375,7 @@ impl SkillDescriptor for Skills {
             Skills::BrutalTestSkill => SkillTargetType::Area,
             Skills::Lightning => SkillTargetType::Area,
             Skills::Heal => SkillTargetType::OnlyAllyAndSelf,
+            Skills::Mounting => SkillTargetType::NoTarget
         }
     }
 
@@ -368,6 +387,7 @@ impl SkillDescriptor for Skills {
     ) {
         match self {
             _ => {
+                // "StrEffect::Yunta2"
                 self.render_target_selection(
                     char_pos,
                     &casting_state.mouse_pos_when_casted,
@@ -383,15 +403,23 @@ impl SkillDescriptor for Skills {
         target_entity: Option<Entity>,
         target_distance: f32,
     ) -> bool {
-        let close_enough = self.get_casting_range() >= target_distance;
-        close_enough && match self.get_skill_target_type() {
+        match self.get_skill_target_type() {
             SkillTargetType::Area => true,
             SkillTargetType::NoTarget => true,
-            SkillTargetType::AnyEntity => target_entity.is_some(),
-            SkillTargetType::OnlyAllyButNoSelf => target_entity.map(|it| it != caster_id).unwrap_or(false),
-            SkillTargetType::OnlyAllyAndSelf => target_entity.is_some(),
-            SkillTargetType::OnlyEnemy => target_entity.is_some(),
-            SkillTargetType::OnlySelf => target_entity.map(|it| it == caster_id).unwrap_or(false),
+            SkillTargetType::AnyEntity => target_entity.is_some() && self.get_casting_range() >= target_distance,
+            SkillTargetType::OnlyAllyButNoSelf => {
+                target_entity.map(|it| it != caster_id).unwrap_or(false) &&
+                    self.get_casting_range() >= target_distance
+            }
+            SkillTargetType::OnlyAllyAndSelf => {
+                target_entity.is_some() && self.get_casting_range() >= target_distance
+            }
+            SkillTargetType::OnlyEnemy => {
+                target_entity.is_some() && self.get_casting_range() >= target_distance
+            },
+            SkillTargetType::OnlySelf => {
+                target_entity.map(|it| it == caster_id).unwrap_or(false)
+            },
         }
     }
 
@@ -430,6 +458,7 @@ impl SkillDescriptor for Skills {
                 }
             }
             Skills::Heal => {}
+            Skills::Mounting => {}
         }
     }
 }
@@ -760,7 +789,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&self.pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }
@@ -770,7 +799,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }
@@ -780,7 +809,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }
@@ -790,7 +819,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }
@@ -800,7 +829,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }
@@ -809,7 +838,7 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
                             pos: v3_to_p2(&self.pos),
-                            start_time: system_vars.time,
+                            start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
                         }

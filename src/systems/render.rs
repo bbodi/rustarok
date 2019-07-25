@@ -9,7 +9,7 @@ use crate::cam::Camera;
 use crate::components::controller::{ControllerComponent, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
-use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType};
+use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType, p2_to_v3};
 use crate::asset::str::KeyFrameType;
 
 /// The values that should be added to the sprite direction based on the camera
@@ -139,6 +139,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
         specs::ReadExpect<'a, PhysicsWorld>,
+        specs::Write<'a, LazyUpdate>,
     );
 
     fn run(&mut self, (
@@ -153,6 +154,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         skill_storage,
         str_effect_storage,
         physics_world,
+        updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
@@ -194,11 +196,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 let pos = char_state.pos();
                 let is_dead = char_state.state().is_dead();
                 match char_state.outlook {
-                    CharOutlook::Player {job_id, head_index, sex} => {
-                        let body_res = {
-                            let sprites = &system_vars.sprites.character_sprites;
-                            &sprites[&job_id][sex as usize]
-                        };
+                    CharOutlook::Player { job_id, head_index, sex } => {
+                        let body_sprite = char_state.statuses.calc_render_sprite(
+                            job_id,
+                            head_index,
+                            sex,
+                            &system_vars.sprites,
+                        );
                         let head_res = {
                             let sprites = &system_vars.sprites.head_sprites;
                             &sprites[sex as usize][head_index]
@@ -206,7 +210,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                         if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
                             let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
                                                                                   &animated_sprite,
-                                                                                  body_res,
+                                                                                  body_sprite,
                                                                                   &system_vars.matrices.view,
                                                                                   controller.yaw,
                                                                                   &pos.coords,
@@ -232,7 +236,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                         // todo: kell a pos_offset még mindig? (bounding rect)
                         let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
                                                                              &animated_sprite,
-                                                                             body_res,
+                                                                             body_sprite,
                                                                              &system_vars.matrices.view,
                                                                              controller.yaw,
                                                                              &pos.coords,
@@ -338,7 +342,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             } else {
                 let char_state = char_state_storage.get(controller.char).unwrap();
                 if let CharState::CastingSkill(casting_info) = char_state.state() {
-                    let skill = casting_info.skill.lock().unwrap();
+                    let skill = casting_info.skill;
                     skill.render_casting(
                         &char_pos.coords,
                         casting_info,
@@ -351,11 +355,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 skill.render(&system_vars);
             }
 
-            for str_effect in (&str_effect_storage).join() {
-                self.render_str(&str_effect.effect,
-                                str_effect.start_time,
-                                &str_effect.pos,
-                                &system_vars);
+            for (entity_id, str_effect) in (&entities, &str_effect_storage).join() {
+                if str_effect.die_at.has_passed(system_vars.time) {
+                    updater.remove::<StrEffectComponent>(entity_id);
+                } else {
+                    self.render_str(&str_effect.effect,
+                                    str_effect.start_time,
+                                    &str_effect.pos,
+                                    &system_vars);
+                }
             }
         }
     }
@@ -394,7 +402,7 @@ fn draw_health_bar(
     };
 
 
-    let hp_percentage = char_state.hp as f32 / char_state.max_hp as f32;
+    let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs.max_hp as f32;
     let health_color = if is_self {
         [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
     } else {
@@ -465,7 +473,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
         let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
             duration.div(frame_count as f32)
         } else {
-            action.delay as f32 / 1000.0
+            action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
         };
         time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
         let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
@@ -868,16 +876,16 @@ impl RenderDesktopClientSystem {
         let max_key = str_file.max_key;
         let key_index = system_vars.time.elapsed_since(start_time).div(seconds_needed_for_one_frame) as i32 % max_key as i32;
 
-        let mut from_id = 0;
-        let mut to_id = 0;
+        let mut from_id = None;
+        let mut to_id = None;
         let mut last_source_id = 0;
         let mut last_frame_id = 0;
         for layer in str_file.layers.iter() {
             for (i, key_frame) in layer.key_frames.iter().enumerate() {
                 if key_frame.frame <= key_index {
                     match key_frame.typ {
-                        KeyFrameType::Start => from_id = i,
-                        KeyFrameType::End => to_id = i,
+                        KeyFrameType::Start => from_id = Some(i),
+                        KeyFrameType::End => to_id = Some(i),
                     };
                 }
                 last_frame_id = last_frame_id.max(key_frame.frame);
@@ -885,10 +893,12 @@ impl RenderDesktopClientSystem {
                     last_source_id = last_source_id.max(key_frame.frame);
                 }
             }
-            if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
+            if from_id.is_none() || to_id.is_none() || last_frame_id < key_index {
                 continue;
             }
-            if last_frame_id < key_index {
+            let from_id = from_id.unwrap();
+            let to_id = to_id.unwrap();
+            if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
                 continue;
             }
             let from_frame = &layer.key_frames[from_id];
@@ -930,7 +940,7 @@ impl RenderDesktopClientSystem {
 
             let matrix = {
                 let mut matrix = Matrix4::<f32>::identity();
-                let pos = Vector3::new(world_pos.x, 0.0, world_pos.y);
+                let pos = p2_to_v3(world_pos);
                 matrix.prepend_translation_mut(&pos);
                 let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::z()), -angle).to_homogeneous();
                 matrix = matrix * rotation;
