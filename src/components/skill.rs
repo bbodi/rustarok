@@ -143,6 +143,7 @@ pub enum Skills {
     BrutalTestSkill,
     Lightning,
     Heal,
+//    Mounting,
 }
 
 impl Skills {
@@ -252,8 +253,8 @@ impl Skills {
 
 #[derive(Eq, PartialEq)]
 pub enum SkillTargetType {
+    /// casts immediately
     NoTarget,
-    // casts immediately
     Area,
     AnyEntity,
     OnlyAllyButNoSelf,
@@ -273,7 +274,7 @@ impl SkillDescriptor for Skills {
         system_vars: &SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
-    ) -> Option<Box<SkillManifestation>> {
+    ) -> Option<Box<dyn SkillManifestation>> {
         match self {
             Skills::TestSkill => {
                 let angle_in_rad = (mouse_pos.coords - char_pos).angle(&Vector2::y());
@@ -296,7 +297,6 @@ impl SkillDescriptor for Skills {
                 Some(Box::new(
                     BrutalSkillManifest::new(
                         caster_entity_id,
-                        physics_world,
                         &mouse_pos.coords,
                         angle_in_rad,
                         system_vars.time,
@@ -314,12 +314,10 @@ impl SkillDescriptor for Skills {
                 Some(Box::new(
                     LightningManifest::new(
                         caster_entity_id,
-                        physics_world,
                         skill_3d_pos,
                         dir_vector,
                         system_vars.time,
                         entities,
-                        updater,
                     )
                 ))
             }
@@ -580,8 +578,6 @@ impl SkillManifestation for PushBackWallSkill {
                 let char_body_handle = physics_world.collider(coll.character_coll_handle).unwrap().body();
                 let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
                 let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
-                let char_state = char_storage.get(char_entity_id).unwrap();
-                // TODO: put it into atk calc code
                 // TODO: the phys system already stops the char before this collision would have been processed,
                 // so remove the rigid body from the skill and push the player without it
                 char_body.set_linear_velocity(char_body.velocity().linear * -1.0);
@@ -620,7 +616,6 @@ pub struct BrutalSkillManifest {
 impl BrutalSkillManifest {
     pub fn new(
         caster_entity_id: Entity,
-        physics_world: &mut PhysicsWorld,
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,
@@ -676,7 +671,7 @@ impl SkillManifestation for BrutalSkillManifest {
               system_vars: &SystemVariables,
               entities: &specs::Entities,
               char_storage: &specs::ReadStorage<CharacterStateComponent>,
-              physics_world: &mut PhysicsWorld,
+              _physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.die_at.has_passed(system_vars.time) {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
@@ -725,12 +720,10 @@ pub struct LightningManifest {
 impl LightningManifest {
     pub fn new(
         caster_entity_id: Entity,
-        physics_world: &mut PhysicsWorld,
         skill_center: Vector3<f32>,
         dir_vector: Vector3<f32>,
         now: ElapsedTime,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
     ) -> LightningManifest {
         LightningManifest {
             caster_entity_id,
@@ -750,7 +743,7 @@ impl LightningManifest {
 impl SkillManifestation for LightningManifest {
     fn update(&mut self,
               self_entity_id: Entity,
-              all_collisions_in_world: &Vec<Collision>,
+              _all_collisions_in_world: &Vec<Collision>,
               system_vars: &SystemVariables,
               entities: &specs::Entities,
               char_storage: &specs::ReadStorage<CharacterStateComponent>,

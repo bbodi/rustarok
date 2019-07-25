@@ -15,8 +15,10 @@ extern crate websocket;
 extern crate libflate;
 extern crate config;
 extern crate serde;
+extern crate strum;
+extern crate strum_macros;
 
-
+use strum::IntoEnumIterator;
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime};
@@ -34,7 +36,6 @@ use sdl2::keyboard::Keycode;
 use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
-use strum::IntoEnumIterator;
 
 use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{CharacterStateComponent, Percentage, PhysicsComponent, U8Float, SpriteRenderDescriptorComponent, CharOutlook};
@@ -491,15 +492,21 @@ fn main() {
             &mut ecs_world,
             Point2::new(250.0, -200.0),
             Sex::Male,
-            JobId::CRUSADER,
+            JobId::CRUSADER2,
             1,
             1,
         );
-        let mut player = ControllerComponent::new(desktop_client_char, 250.0, -180.0);
+        let mut player = ControllerComponent::new(
+            desktop_client_char,
+            250.0,
+            -180.0,
+            &ecs_world.read_resource::<SystemVariables>().matrices.projection
+        );
         player.assign_skill(SkillKey::Q, Skills::TestSkill);
         player.assign_skill(SkillKey::W, Skills::Lightning);
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+//        player.assign_skill(SkillKey::Y, Skills::Mounting);
         ecs_world
             .create_entity()
             .with(player)
@@ -602,9 +609,15 @@ fn main() {
                     1,
                     1,
                 );
+                let projection_mat = ecs_world.read_resource::<SystemVariables>().matrices.projection;
                 ecs_world
                     .create_entity()
-                    .with(ControllerComponent::new(desktop_client_char, 250.0, -180.0))
+                    .with(ControllerComponent::new(
+                        desktop_client_char,
+                        250.0,
+                        -180.0,
+                        &projection_mat
+                    ))
                     .build()
             };
         }
@@ -662,7 +675,7 @@ fn main() {
         fps_counter += 1;
         ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
         ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
-        ecs_world.write_resource::<SystemVariables>().time.0 += dt.max(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        ecs_world.write_resource::<SystemVariables>().time.0 += dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
     }
 }
 
@@ -854,7 +867,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
         let current_player_count = ecs_world.read_storage::<CharacterStateComponent>()
             .join()
             .filter(|it| match it.outlook {
-                CharOutlook::Player {..} => true,
+                CharOutlook::Player { .. } => true,
                 _ => false
             })
             .count() as i32;
@@ -948,7 +961,6 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 };
                 let pos2d = p3_to_p2(&pos);
                 let mut rng = rand::thread_rng();
-                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.monster_sprites.len();
                 let entity_id = components::char::create_monster(
                     &mut ecs_world,
                     pos2d,

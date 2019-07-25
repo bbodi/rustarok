@@ -145,7 +145,7 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     );
 
     let coords = capsule_mesh.coords();
-    let capsule_vertex_array = VertexArray::new(
+    VertexArray::new(
         gl::LINE_LOOP,
         coords,
         coords.len(),

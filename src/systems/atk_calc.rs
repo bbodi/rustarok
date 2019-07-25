@@ -41,6 +41,7 @@ impl<'a> specs::System<'a> for AttackSystem {
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
 
+        // TODO: group attacks by entities, so we have to calculate entity attributes only once.
         for (attack_entity_id, attack) in (&entities, &mut attack_storage).join() {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,

@@ -1,10 +1,11 @@
 use specs::Entity;
 use crate::cam::Camera;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use sdl2::keyboard::Scancode;
-use nalgebra::{Point3, Point2};
+use nalgebra::{Point3, Point2, Matrix4};
 use specs::prelude::*;
 use crate::components::skill::Skills;
+use strum_macros::EnumIter;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -32,13 +33,14 @@ impl KeyState {
 pub type ScreenCoords = Point2<u16>;
 pub type WorldCoords = Point2<f32>;
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone, EnumIter)]
 pub enum SkillKey {
     Q,
     W,
     E,
     R,
     D,
+    Y,
     Num1,
     Num2,
     Num3,
@@ -52,23 +54,13 @@ impl SkillKey {
             SkillKey::E => Scancode::E,
             SkillKey::R => Scancode::R,
             SkillKey::D => Scancode::D,
+            SkillKey::Y => Scancode::Y,
             SkillKey::Num1 => Scancode::Num1,
             SkillKey::Num2 => Scancode::Num2,
             SkillKey::Num3 => Scancode::Num3,
         }
     }
 }
-
-pub const ALL_SKILL_KEYS: [SkillKey; 8] = [
-    SkillKey::Q,
-    SkillKey::W,
-    SkillKey::E,
-    SkillKey::R,
-    SkillKey::D,
-    SkillKey::Num1,
-    SkillKey::Num2,
-    SkillKey::Num3
-];
 
 pub enum ControllerAction {
     MoveTowardsMouse(ScreenCoords),
@@ -106,6 +98,7 @@ pub struct ControllerComponent {
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
     keys_pressed_in_prev_frame: Vec<Scancode>,
+    pub camera_follows_char: bool,
     pub left_mouse_down: bool,
     pub right_mouse_down: bool,
     pub left_mouse_pressed: bool,
@@ -122,18 +115,22 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
-    pub fn new(char: Entity, x: f32, z: f32) -> ControllerComponent {
+    pub fn new(char: Entity,
+               x: f32,
+               z: f32,
+               projection: &Matrix4<f32>) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
         let mut camera = Camera::new(Point3::new(x, 40.0, z));
-
         camera.rotate(pitch, yaw);
+        camera.update_visible_z_range(projection);
         ControllerComponent {
             char,
             camera,
             cast_mode: CastMode::Normal,
             inputs: vec![],
             skills_for_keys: Default::default(),
+            camera_follows_char: true,
             keys: ControllerComponent::init_keystates(),
             keys_released_in_prev_frame: vec![],
             keys_pressed_in_prev_frame: vec![],

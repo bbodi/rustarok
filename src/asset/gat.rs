@@ -62,7 +62,7 @@ impl Gat {
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         let width = buf.next_u32();
         let height = buf.next_u32();
-        let cells: Vec<GatCell> = (0..width * height).map(|i| {
+        let cells: Vec<GatCell> = (0..width * height).map(|_i| {
             GatCell {
                 cells: [buf.next_f32() * 0.2,
                     buf.next_f32() * 0.2,
@@ -137,8 +137,8 @@ impl Gat {
             let area = largest_rect.area;
             rectangles.push(largest_rect);
             if area == 1 {
-                // all  the rectangles are a unit tile
-                for (i, non_walkable) in non_walkable_cells.iter().enumerate().filter(|(_i, &non_walkable)| non_walkable) {
+                // all the rectangles are a unit tile
+                for (i, _non_walkable) in non_walkable_cells.iter().enumerate().filter(|(_i, &non_walkable)| non_walkable) {
                     let x = i % width;
                     let y = i / width;
                     rectangles.push(BlockingRectangle {
@@ -161,7 +161,7 @@ impl Gat {
     fn calc_area_of_continous_convex_cells(cells: &[bool], width: usize, height: usize) -> Vec<BlockingRectangle> {
         let mut heights = vec![0; (width * height) as usize];
         let mut row_heights = Vec::<BlockingRectangle>::with_capacity(height);
-        for (i, cell) in cells.iter().enumerate() {
+        for (i, _cell) in cells.iter().enumerate() {
             let x = i % width;
             let y = i / width;
             let prev_y: i32 = (i / width) as i32 - 1;

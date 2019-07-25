@@ -31,7 +31,7 @@ pub fn create_char(
         char_comp.armor = U8Float::new(Percentage::new(10.0));
         let mut entity_builder = ecs_world.create_entity()
             .with(char_comp);
-        let entity_id = entity_builder.entity;
+
         entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: ElapsedTime(0.0),
@@ -58,7 +58,6 @@ pub fn create_monster(
         let mut entity_builder = ecs_world.create_entity()
             .with(CharacterStateComponent::new(CharType::Minion,
                                                CharOutlook::Monster(monster_id)));
-        let entity_id = entity_builder.entity;
         entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: ElapsedTime(0.0),

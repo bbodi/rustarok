@@ -7,11 +7,10 @@ use specs::prelude::*;
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
 use sdl2::mouse::MouseButton;
-use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, ALL_SKILL_KEYS, WorldCoords};
-use crate::cam::Camera;
-use crate::RenderMatrices;
-use nalgebra::{Point2, Vector3, Vector4};
+use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
+use nalgebra::{Point2, Vector3, Vector4, Matrix4, Point3};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use strum::IntoEnumIterator;
 
 pub struct BrowserInputProducerSystem;
 
@@ -282,6 +281,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         ..
                     } => {
                         controller.camera.move_forward(y as f32 * 2.0);
+                        controller.camera.update_visible_z_range(
+                            &system_vars.matrices.projection
+                        );
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if let Some(scancode) = scancode {
@@ -316,18 +318,26 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             } else if controller.camera.pos().z < -(system_vars.map_render_data.gnd.height as f32 * 2.0) {
                 controller.camera.set_z(-(system_vars.map_render_data.gnd.height as f32 * 2.0));
             }
-            // setup next action baed on input
+            if controller.is_key_just_released(Scancode::L) {
+                controller.camera_follows_char = !controller.camera_follows_char;
+            }
+            if controller.camera_follows_char {
+                let char_state = char_state_storage.get(controller.char).unwrap();
+                let pos = char_state.pos();
+                controller.camera.set_x(pos.x);
+                let z_range = controller.camera.visible_z_range;
+                controller.camera.set_z(pos.y + z_range);
+            }
+            // setup next action based on input
             // TODO: optimize
-            let just_pressed_skill_key = ALL_SKILL_KEYS
-                .iter()
+            let just_pressed_skill_key = SkillKey::iter()
                 .filter(|key| {
                     controller.is_key_just_pressed(key.scancode())
-                }).take(1).map(|it| *it).collect::<Vec<SkillKey>>().pop();
-            let just_released_skill_key = ALL_SKILL_KEYS
-                .iter()
+                }).take(1).collect::<Vec<SkillKey>>().pop();
+            let just_released_skill_key = SkillKey::iter()
                 .filter(|key| {
                     controller.is_key_just_released(key.scancode())
-                }).take(1).map(|it| *it).collect::<Vec<SkillKey>>().pop();
+                }).take(1).collect::<Vec<SkillKey>>().pop();
 
             if controller.next_action.is_some() { // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
@@ -386,10 +396,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 None
             };
 
-            let mouse_world_pos = InputConsumerSystem::picking_2d_3d(controller.last_mouse_x,
-                                                                     controller.last_mouse_y,
-                                                                     &controller.camera,
-                                                                     &system_vars.matrices);
+            let mouse_world_pos = InputConsumerSystem::picking_2d_3d(
+                controller.last_mouse_x,
+                controller.last_mouse_y,
+                &controller.camera.pos(),
+                &system_vars.matrices.projection,
+                &system_vars.matrices.view,
+            );
             controller.entity_below_cursor = {
                 let mut entity_below_cursor: Option<Entity> = None;
                 for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
@@ -404,9 +417,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
                 entity_below_cursor
             };
-            // TODO: thread '<unnamed>' panicked at 'attempt to add with overflow', src\gat.rs:35:24
             controller.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
-                mouse_world_pos.x as usize,
+                mouse_world_pos.x.max(0.0) as usize,
                 mouse_world_pos.y.abs() as usize,
             );
             controller.mouse_world_pos = mouse_world_pos;
@@ -427,19 +439,20 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-    pub fn picking_2d_3d(x2d: u16, y2d: u16, camera: &Camera, matrices: &RenderMatrices) -> WorldCoords {
+    pub fn picking_2d_3d(x2d: u16, y2d: u16, camera_pos: &Point3<f32>,
+                         projection: &Matrix4<f32>, view: &Matrix4<f32>) -> WorldCoords {
         let screen_point = Point2::new(x2d as f32, y2d as f32);
 
         let ray_clip = Vector4::new(2.0 * screen_point.x as f32 / VIDEO_WIDTH as f32 - 1.0,
                                     1.0 - (2.0 * screen_point.y as f32) / VIDEO_HEIGHT as f32,
                                     -1.0,
                                     1.0);
-        let ray_eye = matrices.projection.try_inverse().unwrap() * ray_clip;
+        let ray_eye = projection.try_inverse().unwrap() * ray_clip;
         let ray_eye = Vector4::new(ray_eye.x, ray_eye.y, -1.0, 0.0);
-        let ray_world = matrices.view.try_inverse().unwrap() * ray_eye;
+        let ray_world = view.try_inverse().unwrap() * ray_eye;
         let ray_world = Vector3::new(ray_world.x, ray_world.y, ray_world.z).normalize();
 
-        let line_location = camera.pos();
+        let line_location = camera_pos;
         let line_direction: Vector3<f32> = ray_world;
         let plane_normal = Vector3::new(0.0, 1.0, 0.0);
         let plane_point = Vector3::new(0.0, 0.0, 0.0);

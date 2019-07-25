@@ -12,8 +12,8 @@ use crate::components::char::{PhysicsComponent, CharacterStateComponent, Compone
 use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType};
 use crate::asset::str::KeyFrameType;
 
-// the values that should be added to the sprite direction based on the camera
-// direction (the index is the camera direction, which is floor(angle/45)
+/// The values that should be added to the sprite direction based on the camera
+/// direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
 // todo: Move it into GPU?

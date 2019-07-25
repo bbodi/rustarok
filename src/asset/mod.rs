@@ -54,7 +54,7 @@ pub struct GrfEntry {
 
 impl AssetLoader {
     pub fn new<P: AsRef<Path> + Clone>(paths: &[P]) -> Result<AssetLoader, std::io::Error> {
-        let readers: Result<Vec<BinaryReader>, std::io::Error> = paths.iter().enumerate().map(|(i, path)| {
+        let readers: Result<Vec<BinaryReader>, std::io::Error> = paths.iter().enumerate().map(|(_i, path)| {
             BinaryReader::new(path.clone())
         }).collect();
         return match readers {
@@ -65,7 +65,7 @@ impl AssetLoader {
                     .enumerate()
                     .map(|(file_index, mut buf)| {
                         let signature = buf.string(15);
-                        let key = buf.string(15);
+                        let _key = buf.string(15);
                         let file_table_offset = buf.next_u32();
                         let skip = buf.next_u32();
                         let file_count = buf.next_u32() - (skip + 7);
