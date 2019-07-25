@@ -31,6 +31,7 @@ pub struct Sprites {
     pub cursors: SpriteResource,
     pub numbers: GlTexture,
     pub character_sprites: HashMap<JobId, [SpriteResource; 2]>,
+    pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],
     pub monster_sprites: HashMap<MonsterId, SpriteResource>,
     pub effect_sprites: EffectSprites,

@@ -26,7 +26,7 @@ impl<'a> specs::System<'a> for SkillSystem {
 
     fn run(&mut self, (
         entities,
-        mut char_storage,
+        char_storage,
         input_storage,
         browser_client_storage,
         physics_storage,
