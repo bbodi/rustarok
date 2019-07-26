@@ -57,6 +57,7 @@ pub struct SystemVariables {
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
     pub texts: Texts,
+    pub skill_icons: HashMap<Skills, GlTexture>,
     pub attacks: Vec<AttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub status_changes: Vec<ApplyStatusComponent>,

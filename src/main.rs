@@ -131,6 +131,7 @@ pub struct Shaders {
     pub player_shader: ShaderProgram,
     pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
+    pub rectangle_2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
     pub trimesh2d_shader: ShaderProgram,
 }
@@ -293,6 +294,18 @@ fn main() {
                 ).unwrap(),
                 Shader::from_source(
                     include_str!("shaders/sprite2d.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap() ,
+        rectangle_2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/rectangle_2d.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/rectangle_2d.frag"),
                     gl::FRAGMENT_SHADER,
                 ).unwrap()
             ]
@@ -501,6 +514,7 @@ fn main() {
     ).unwrap();
     skill_name_font_outline.set_outline_width(2);
 
+    let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
         let texture = Video::create_outline_text_texture(
             &skill_name_font,
@@ -508,11 +522,26 @@ fn main() {
             &format!("{:?}", skill)
         );
         texts.skill_name_texts.insert(skill, texture);
+
+        let skill_icon = asset_loader.load_sdl_surface(skill.get_icon_path()).unwrap();
+        skill_icons.insert(skill, GlTexture::from_surface(skill_icon, gl::NEAREST));
     }
+
+    let skill_key_font = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20
+    ).unwrap();
+    let mut skill_key_font_outline = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20
+    ).unwrap();
+    skill_key_font_outline.set_outline_width(2);
     for skill_key in SkillKey::iter() {
         let texture = Video::create_outline_text_texture(
-            &skill_name_font,
-            &skill_name_font_outline,
+            &skill_key_font,
+            &skill_key_font_outline,
             &format!("{:?}", skill_key)
         );
         texts.skill_key_texts.insert(skill_key, texture);
@@ -528,7 +557,8 @@ fn main() {
         texts,
         attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
-        status_changes: Vec::with_capacity(128)
+        status_changes: Vec::with_capacity(128),
+        skill_icons
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
@@ -552,7 +582,7 @@ fn main() {
             -180.0,
             &ecs_world.read_resource::<SystemVariables>().matrices.projection,
         );
-        player.assign_skill(SkillKey::Q, Skills::TestSkill);
+        player.assign_skill(SkillKey::Q, Skills::FireWall);
         player.assign_skill(SkillKey::W, Skills::Lightning);
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
@@ -1053,7 +1083,9 @@ pub struct MapRenderData {
     pub use_lightmaps: bool,
     pub use_lighting: bool,
     pub ground_vertex_array: VertexArray,
+    pub centered_sprite_vertex_array: VertexArray,
     pub sprite_vertex_array: VertexArray,
+    pub rectangle_vertex_array: VertexArray,
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
@@ -1233,6 +1265,23 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         [-0.5, -0.5, 0.0, 1.0],
         [0.5, -0.5, 1.0, 1.0]
     ];
+    let centered_sprite_vertex_array = VertexArray::new(
+        gl::TRIANGLE_STRIP,
+        &s, 4, vec![
+            VertexAttribDefinition {
+                number_of_components: 2,
+                offset_of_first_element: 0,
+            }, VertexAttribDefinition { // uv
+                number_of_components: 2,
+                offset_of_first_element: 2,
+            }
+        ]);
+    let s: Vec<[f32; 4]> = vec![
+        [0.0, 0.0, 0.0, 0.0],
+        [1.0, 0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0]
+    ];
     let sprite_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
         &s, 4, vec![
@@ -1242,6 +1291,20 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
             }, VertexAttribDefinition { // uv
                 number_of_components: 2,
                 offset_of_first_element: 2,
+            }
+        ]);
+    let s: Vec<[f32; 2]> = vec![
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0]
+    ];
+    let rectangle_vertex_array = VertexArray::new(
+        gl::TRIANGLE_STRIP,
+        &s, 4, vec![
+            VertexAttribDefinition {
+                number_of_components: 2,
+                offset_of_first_element: 0,
             }
         ]);
 
@@ -1333,7 +1396,9 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         tile_color_texture,
         lightmap_texture,
         model_instances,
+        centered_sprite_vertex_array,
         sprite_vertex_array,
+        rectangle_vertex_array,
         use_tile_colors: true,
         use_lightmaps: true,
         use_lighting: true,

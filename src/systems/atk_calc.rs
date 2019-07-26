@@ -143,7 +143,7 @@ impl AttackCalculation {
         let mut src_outcomes = vec![];
         let mut dst_outcomes = vec![];
         let atk = match skill {
-            Skills::TestSkill => 600.0,
+            Skills::FireWall => 600.0,
             Skills::BrutalTestSkill => 600.0,
             Skills::Lightning => 120.0,
             Skills::Heal => 0.0,
@@ -152,7 +152,7 @@ impl AttackCalculation {
         match skill {
             // attacking skills
             Skills::Lightning |
-            Skills::TestSkill |
+            Skills::FireWall |
             Skills::BrutalTestSkill => {
                 let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
                 let outcome = if atk == 0 {

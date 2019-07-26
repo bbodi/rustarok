@@ -454,7 +454,7 @@ pub fn render_sprite(system_vars: &SystemVariables,
     shader.set_mat4("projection", &system_vars.matrices.projection);
     shader.set_mat4("view", &view);
     shader.set_int("model_texture", 0);
-    let binded_sprite_vertex_array = system_vars.map_render_data.sprite_vertex_array.bind();
+    let binded_sprite_vertex_array = system_vars.map_render_data.centered_sprite_vertex_array.bind();
 
     let idx = {
         let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;

@@ -4,7 +4,7 @@ use specs::prelude::*;
 use crate::{ElapsedTime, SpriteResource};
 use crate::components::BrowserClient;
 use crate::components::char::{CharacterStateComponent, CharState, SpriteRenderDescriptorComponent};
-use crate::components::controller::ControllerComponent;
+use crate::components::controller::{ControllerComponent, SkillKey};
 use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, GlTexture};
@@ -101,14 +101,17 @@ impl<'a> specs::System<'a> for RenderUI {
             }
 
             // Draw cursor
-            let cursor = if let Some((skill_key, skill)) = controller.is_selecting_target() {
+            let selecting_target = controller.is_selecting_target();
+            let cursor = if let Some((skill_key, skill)) = selecting_target {
+                let texture = &system_vars.texts.skill_name_texts[&skill];
                 render_texture_2d(
                     &system_vars,
-                    &system_vars.texts.skill_name_texts[&skill],
+                    texture,
                     &Vector2::new(
-                        controller.last_mouse_x as f32,
+                        controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
                         controller.last_mouse_y as f32 + 32.0,
                     ),
+                    1.0,
                 );
                 if skill.get_skill_target_type() != SkillTargetType::Area {
                     CURSOR_TARGET
@@ -126,6 +129,92 @@ impl<'a> specs::System<'a> for RenderUI {
             } else {
                 CURSOR_NORMAL
             };
+            // draw skill bar
+            let single_icon_size = 48;
+            let inner_border = 3;
+            let outer_border = 6;
+            let space = 4;
+            let skill_bar_width = (outer_border * 2) +
+                4 * single_icon_size +
+                inner_border * 4 * 2 +
+                3 * space;
+            let start_x = VIDEO_WIDTH / 2 - skill_bar_width / 2;
+            let y = VIDEO_HEIGHT - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
+
+            // blueish background
+            render_rect(
+                &system_vars,
+                &Vector2::new(start_x as f32, y as f32),
+                &[
+                    skill_bar_width as f32,
+                    single_icon_size as f32 + (outer_border*2 + inner_border*2) as f32
+                ],
+                &[0.11, 0.25, 0.48, 1.0],
+            );
+
+            let mut x = start_x + outer_border;
+            for (i, skill_key) in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R]
+                .iter().enumerate() {
+                if let Some(skill) = controller.get_skill_for_key(*skill_key) {
+                    // inner border
+                    let border_color = selecting_target
+                        .filter(|it| it.0 == *skill_key)
+                        .map(|_it| [0.0, 1.0, 0.0, 1.0])
+                        .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+                    render_rect(
+                        &system_vars,
+                        &Vector2::new(
+                            x as f32,
+                            (y + outer_border) as f32,
+                        ),
+                        &[
+                            (single_icon_size + inner_border * 2) as f32,
+                            (single_icon_size + inner_border * 2) as f32
+                        ],
+                        &border_color,
+                    );
+
+                    x += inner_border;
+                    let icon_y = (y + outer_border + inner_border) as f32;
+                    // blueish background
+                    render_rect(
+                        &system_vars,
+                        &Vector2::new(
+                            x as f32,
+                            icon_y,
+                        ),
+                        &[
+                            (single_icon_size) as f32,
+                            (single_icon_size) as f32
+                        ],
+                        &[0.11, 0.25, 0.48, 1.0],
+                    );
+                    let texture = &system_vars.skill_icons[&skill];
+                    render_texture_2d(
+                        &system_vars,
+                        texture,
+                        &Vector2::new(
+                            x as f32,
+                            icon_y,
+                        ),
+                        2.0,
+                    );
+                    let skill_key_texture = &system_vars.texts.skill_key_texts[&skill_key];
+                    let center_x = -2.0 + x as f32 + single_icon_size as f32 - skill_key_texture.width as f32;
+                    let center_y = -2.0 + icon_y + single_icon_size as f32 - skill_key_texture.height as f32;
+                    render_texture_2d(
+                        &system_vars,
+                        skill_key_texture,
+                        &Vector2::new(
+                            center_x,
+                            center_y,
+                        ),
+                        1.0,
+                    );
+                    x += single_icon_size + inner_border + space;
+                }
+            }
+
             self.cursor_anim_descr.action_index = cursor.1;
             render_sprite_2d(&system_vars,
                              &self.cursor_anim_descr,
@@ -177,21 +266,38 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         let shader = system_vars.shaders.sprite2d_shader.gl_use();
         shader.set_mat4("projection", &system_vars.matrices.ortho);
         shader.set_int("model_texture", 0);
-        shader.set_f32("alpha", 1.0);
         shader.set_mat4("model", &matrix);
         shader.set_vec2("offset", &offset);
         shader.set_vec2("size", &[
             width,
-            -height as f32
+            height as f32
         ]);
         shader.set_f32("alpha", 1.0);
         system_vars.map_render_data.sprite_vertex_array.bind().draw();
     }
 }
 
+fn render_rect(system_vars: &SystemVariables,
+               pos: &Vector2<f32>,
+               size: &[f32; 2],
+               color: &[f32; 4],
+) {
+    let mut matrix = Matrix4::<f32>::identity();
+    let pos = Vector3::new(pos.x, pos.y, 0.0);
+    matrix.prepend_translation_mut(&pos);
+
+    let shader = system_vars.shaders.rectangle_2d_shader.gl_use();
+    shader.set_mat4("projection", &system_vars.matrices.ortho);
+    shader.set_mat4("model", &matrix);
+    shader.set_vec4("color", color);
+    shader.set_vec2("size", size);
+    system_vars.map_render_data.rectangle_vertex_array.bind().draw();
+}
+
 fn render_texture_2d(system_vars: &SystemVariables,
                      texture: &GlTexture,
                      pos: &Vector2<f32>,
+                     size: f32,
 ) {
     let width = texture.width as f32;
     let height = texture.height as f32;
@@ -204,12 +310,11 @@ fn render_texture_2d(system_vars: &SystemVariables,
     let shader = system_vars.shaders.sprite2d_shader.gl_use();
     shader.set_mat4("projection", &system_vars.matrices.ortho);
     shader.set_int("model_texture", 0);
-    shader.set_f32("alpha", 1.0);
     shader.set_mat4("model", &matrix);
     shader.set_vec2("offset", &[0.0, 0.0]);
     shader.set_vec2("size", &[
-        width,
-        -height as f32
+        width * size,
+        height as f32 * size
     ]);
     shader.set_f32("alpha", 1.0);
     system_vars.map_render_data.sprite_vertex_array.bind().draw();

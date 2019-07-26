@@ -141,7 +141,7 @@ pub trait SkillDescriptor {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
-    TestSkill,
+    FireWall,
     BrutalTestSkill,
     Lightning,
     Heal,
@@ -149,6 +149,17 @@ pub enum Skills {
 }
 
 impl Skills {
+
+    pub fn get_icon_path(&self) -> &'static str {
+        match self {
+            Skills::FireWall => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mg_firewall.bmp",
+            Skills::BrutalTestSkill => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wz_meteor.bmp",
+            Skills::Lightning => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp",
+            Skills::Heal => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp",
+            Skills::Mounting => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\su_pickypeck.bmp",
+        }
+    }
+
     pub fn damage_chars(
         entities: &Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
@@ -279,7 +290,7 @@ impl SkillDescriptor for Skills {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
-            Skills::TestSkill => {
+            Skills::FireWall => {
                 let angle_in_rad = (mouse_pos.coords - char_pos).angle(&Vector2::y());
                 let angle_in_rad = if mouse_pos.x > char_pos.x { angle_in_rad } else { -angle_in_rad };
                 Some(Box::new(
@@ -355,7 +366,7 @@ impl SkillDescriptor for Skills {
 
     fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
         let t = match self {
-            Skills::TestSkill => 0.3,
+            Skills::FireWall => 0.3,
             Skills::BrutalTestSkill => 1.0,
             Skills::Lightning => 0.7,
             Skills::Heal => 0.3,
@@ -366,7 +377,7 @@ impl SkillDescriptor for Skills {
 
     fn get_casting_range(&self) -> f32 {
         match self {
-            Skills::TestSkill => 10.0,
+            Skills::FireWall => 10.0,
             Skills::BrutalTestSkill => 20.,
             Skills::Lightning => 7.0,
             Skills::Heal => 10.0,
@@ -376,7 +387,7 @@ impl SkillDescriptor for Skills {
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         match self {
-            Skills::TestSkill => SkillTargetType::Area,
+            Skills::FireWall => SkillTargetType::Area,
             Skills::BrutalTestSkill => SkillTargetType::Area,
             Skills::Lightning => SkillTargetType::Area,
             Skills::Heal => SkillTargetType::OnlyAllyAndSelf,
@@ -435,7 +446,7 @@ impl SkillDescriptor for Skills {
         system_vars: &SystemVariables,
     ) {
         match self {
-            Skills::TestSkill => {
+            Skills::FireWall => {
                 Skills::render_casting_box(
                     &v2!(3.0, 1.0),
                     mouse_pos,
@@ -621,7 +632,7 @@ impl SkillManifestation for PushBackWallSkill {
                         AttackComponent {
                             src_entity: self.caster_entity_id,
                             dst_entity: char_entity_id,
-                            typ: AttackType::Skill(Skills::TestSkill),
+                            typ: AttackType::Skill(Skills::FireWall),
                         }
                     );
                     system_vars.pushes.push(
