@@ -37,7 +37,7 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 
-use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent, ApplyForceComponent};
+use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
@@ -72,7 +72,6 @@ mod systems;
 
 use serde::Deserialize;
 use std::str::FromStr;
-use crate::components::status::{ApplyStatusComponent, ApplyStatusSystem};
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -331,10 +330,7 @@ fn main() {
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
-    ecs_world.register::<AttackComponent>();
     ecs_world.register::<StrEffectComponent>();
-    ecs_world.register::<ApplyStatusComponent>();
-    ecs_world.register::<ApplyForceComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
 
@@ -348,7 +344,6 @@ fn main() {
         .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
         .with(PhysicsSystem, "physics", &["char_state_update"])
         .with(AttackSystem, "attack_sys", &["physics"])
-        .with(ApplyStatusSystem, "apply_status", &["attack_sys"])
         .with_thread_local(OpenGlInitializerFor3D)
         .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
@@ -494,7 +489,7 @@ fn main() {
     };
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
-    let mut skill_name_font = Video::load_font(
+    let skill_name_font = Video::load_font(
         &ttf_context,
         "assets/fonts/UbuntuMono-B.ttf",
         32
@@ -531,6 +526,9 @@ fn main() {
         matrices: render_matrices,
         map_render_data,
         texts,
+        attacks: Vec::with_capacity(128),
+        pushes: Vec::with_capacity(128),
+        status_changes: Vec::with_capacity(128)
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {

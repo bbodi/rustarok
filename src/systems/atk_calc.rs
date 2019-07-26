@@ -2,10 +2,11 @@ use crate::components::char::{CharacterStateComponent, PhysicsComponent, CharSta
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
-use crate::components::{AttackComponent, FlyingNumberType, FlyingNumberComponent, AttackType, ApplyForceComponent};
+use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType};
 use specs::prelude::*;
-use nalgebra::{Vector2};
+use nalgebra::Vector2;
 use crate::components::skill::{Skills, v2_to_p2};
+use crate::components::status::ApplyStatusComponentPayload;
 
 pub enum AttackOutcome {
     Damage(u32),
@@ -20,11 +21,9 @@ pub struct AttackSystem;
 impl<'a> specs::System<'a> for AttackSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, AttackComponent>,
-        specs::ReadStorage<'a, ApplyForceComponent>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
@@ -32,8 +31,6 @@ impl<'a> specs::System<'a> for AttackSystem {
 
     fn run(&mut self, (
         entities,
-        mut attack_storage,
-        apply_force_storage,
         mut physics_storage,
         mut char_state_storage,
         mut system_vars,
@@ -43,17 +40,16 @@ impl<'a> specs::System<'a> for AttackSystem {
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
 
-        for (force_entity_id, apply_force) in (&entities, &apply_force_storage).join() {
+        for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
                 char_body.set_linear_velocity(apply_force.force);
                 let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
                 char_state.cannot_control_until.run_at_least_until_seconds(system_vars.time, apply_force.duration);
             }
-            updater.remove::<ApplyForceComponent>(force_entity_id);
         }
+        system_vars.pushes.clear();
 
-        // TODO: group attacks by entities, so we have to calculate entity attributes only once.
-        for (attack_entity_id, attack) in (&entities, &mut attack_storage).join() {
+        for attack in &system_vars.attacks {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,
             // so src data (or an attack specific data structure) must be copied
@@ -101,8 +97,28 @@ impl<'a> specs::System<'a> for AttackSystem {
                     );
                 }
             }
-            updater.remove::<AttackComponent>(attack_entity_id);
         }
+        system_vars.attacks.clear();
+
+        for status in &system_vars.status_changes {
+            if let Some(target_char) = char_state_storage.get_mut(status.target_entity_id) {
+                match &status.status {
+                    ApplyStatusComponentPayload::MainStatus(status_name) => {
+                        log::debug!("Applying state '{:?}' on {:?}", status_name, status.target_entity_id);
+                        match status_name {
+                            _ => {
+                                target_char.statuses.switch_mounted();
+                            }
+                        }
+                    }
+                    ApplyStatusComponentPayload::SecondaryStatus(box_status) => {}
+                }
+                target_char.calculated_attribs = target_char
+                    .statuses
+                    .calc_attribs(&target_char.outlook);
+            }
+        }
+        system_vars.status_changes.clear();
     }
 }
 
@@ -137,7 +153,7 @@ impl AttackCalculation {
             // attacking skills
             Skills::Lightning |
             Skills::TestSkill |
-            Skills::BrutalTestSkill=> {
+            Skills::BrutalTestSkill => {
                 let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
                 let outcome = if atk == 0 {
                     AttackOutcome::Block
@@ -145,7 +161,7 @@ impl AttackCalculation {
                     AttackOutcome::Damage(atk)
                 };
                 dst_outcomes.push(outcome);
-            },
+            }
             // healing skills
             Skills::Heal => {
                 dst_outcomes.push(AttackOutcome::Heal(200));

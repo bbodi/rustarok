@@ -6,6 +6,8 @@ use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
 use crate::components::skill::Skills;
 use crate::components::controller::SkillKey;
+use crate::components::{AttackComponent, ApplyForceComponent};
+use crate::components::status::ApplyStatusComponent;
 
 pub mod input;
 pub mod phys;
@@ -26,7 +28,7 @@ pub struct EffectSprites {
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum Sex {
     Male,
-    Female
+    Female,
 }
 
 pub struct Sprites {
@@ -48,11 +50,16 @@ pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub tick: Tick,
-    pub dt: DeltaTime, // seconds the last frame required
-    pub time: ElapsedTime, // extract from the struct?
+    /// seconds the last frame required
+    pub dt: DeltaTime,
+    /// extract from the struct?
+    pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
     pub texts: Texts,
+    pub attacks: Vec<AttackComponent>,
+    pub pushes: Vec<ApplyForceComponent>,
+    pub status_changes: Vec<ApplyStatusComponent>,
 }
 
 pub struct Collision {

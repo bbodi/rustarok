@@ -40,7 +40,7 @@ pub trait SkillManifestation {
         &mut self,
         entity_id: Entity,
         all_collisions_in_world: &Vec<Collision>,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
@@ -72,7 +72,7 @@ impl SkillManifestationComponent {
         &mut self,
         self_entity_id: Entity,
         all_collisions_in_world: &Vec<Collision>,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
@@ -108,7 +108,7 @@ pub trait SkillDescriptor {
         mouse_pos: &WorldCoords,
         target_entity: Option<Entity>,
         physics_world: &mut PhysicsWorld,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> Option<Box<dyn SkillManifestation>>;
@@ -152,7 +152,7 @@ impl Skills {
     pub fn damage_chars(
         entities: &Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        updater: &mut specs::Write<LazyUpdate>,
+        system_vars: &mut SystemVariables,
         skill_shape: impl ncollide2d::shape::Shape<f32>,
         skill_isom: Isometry2<f32>,
         caster_entity_id: Entity,
@@ -167,12 +167,13 @@ impl Skills {
                 0.0,
             );
             if coll_result == Proximity::Intersecting {
-                let damage_entity = entities.create();
-                updater.insert(damage_entity, AttackComponent {
-                    src_entity: caster_entity_id,
-                    dst_entity: target_entity_id,
-                    typ: AttackType::Skill(skill),
-                });
+                system_vars.attacks.push(
+                    AttackComponent {
+                        src_entity: caster_entity_id,
+                        dst_entity: target_entity_id,
+                        typ: AttackType::Skill(skill),
+                    }
+                );
             }
         }
     }
@@ -273,7 +274,7 @@ impl SkillDescriptor for Skills {
         mouse_pos: &WorldCoords,
         target_entity: Option<Entity>,
         physics_world: &mut PhysicsWorld,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -324,19 +325,22 @@ impl SkillDescriptor for Skills {
                 ))
             }
             Skills::Heal => {
-                let damage_entity = entities.create();
-                updater.insert(damage_entity, AttackComponent {
-                    src_entity: caster_entity_id,
-                    dst_entity: target_entity.unwrap(),
-                    typ: AttackType::Skill(Skills::Heal),
-                });
+                system_vars.attacks.push(
+                    AttackComponent {
+                        src_entity: caster_entity_id,
+                        dst_entity: target_entity.unwrap(),
+                        typ: AttackType::Skill(Skills::Heal),
+                    }
+                );
                 None
             }
             Skills::Mounting => {
-                updater.insert(entities.create(), ApplyStatusComponent::from_main_status(
-                    caster_entity_id,
-                    MainStatus::Mounted,
-                ));
+                system_vars.status_changes.push(
+                    ApplyStatusComponent::from_main_status(
+                        caster_entity_id,
+                        MainStatus::Mounted,
+                    )
+                );
                 updater.insert(entities.create(), StrEffectComponent {
                     effect: "StrEffect::Concentration".to_owned(),
                     pos: v2_to_p2(&char_pos),
@@ -355,7 +359,7 @@ impl SkillDescriptor for Skills {
             Skills::BrutalTestSkill => 1.0,
             Skills::Lightning => 0.7,
             Skills::Heal => 0.3,
-            Skills::Mounting => if char_state.statuses.is_mounted() {0.0} else {2.0},
+            Skills::Mounting => if char_state.statuses.is_mounted() { 0.0 } else { 2.0 },
         };
         return ElapsedTime(t);
     }
@@ -417,10 +421,10 @@ impl SkillDescriptor for Skills {
             }
             SkillTargetType::OnlyEnemy => {
                 target_entity.is_some() && self.get_casting_range() >= target_distance
-            },
+            }
             SkillTargetType::OnlySelf => {
                 target_entity.map(|it| it == caster_id).unwrap_or(false)
-            },
+            }
         }
     }
 
@@ -589,7 +593,7 @@ impl SkillManifestation for PushBackWallSkill {
     fn update(&mut self,
               self_entity_id: Entity,
               all_collisions_in_world: &Vec<Collision>,
-              system_vars: &SystemVariables,
+              system_vars: &mut SystemVariables,
               entities: &specs::Entities,
               char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
@@ -613,18 +617,22 @@ impl SkillManifestation for PushBackWallSkill {
                     } else {
                         -push_dir.normalize()
                     };
-                    updater.insert(entities.create(), AttackComponent {
-                        src_entity: self.caster_entity_id,
-                        dst_entity: char_entity_id,
-                        typ: AttackType::Skill(Skills::TestSkill),
-                    });
-                    updater.insert(entities.create(), ApplyForceComponent {
-                        src_entity: self.caster_entity_id,
-                        dst_entity: char_entity_id,
-                        force: push_dir * 20.0,
-                        body_handle: char_body_handle,
-                        duration: 1.0,
-                    });
+                    system_vars.attacks.push(
+                        AttackComponent {
+                            src_entity: self.caster_entity_id,
+                            dst_entity: char_entity_id,
+                            typ: AttackType::Skill(Skills::TestSkill),
+                        }
+                    );
+                    system_vars.pushes.push(
+                        ApplyForceComponent {
+                            src_entity: self.caster_entity_id,
+                            dst_entity: char_entity_id,
+                            force: push_dir * 20.0,
+                            body_handle: char_body_handle,
+                            duration: 1.0,
+                        }
+                    );
                 }
             }
         }
@@ -706,7 +714,7 @@ impl SkillManifestation for BrutalSkillManifest {
     fn update(&mut self,
               self_entity_id: Entity,
               all_collisions_in_world: &Vec<Collision>,
-              system_vars: &SystemVariables,
+              system_vars: &mut SystemVariables,
               entities: &specs::Entities,
               char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               _physics_world: &mut PhysicsWorld,
@@ -724,7 +732,7 @@ impl SkillManifestation for BrutalSkillManifest {
             Skills::damage_chars(
                 entities,
                 char_storage,
-                updater,
+                system_vars,
                 ncollide2d::shape::Cuboid::new(self.half_extents),
                 Isometry2::new(self.pos, self.rot_angle_in_rad),
                 self.caster_entity_id,
@@ -782,7 +790,7 @@ impl SkillManifestation for LightningManifest {
     fn update(&mut self,
               self_entity_id: Entity,
               _all_collisions_in_world: &Vec<Collision>,
-              system_vars: &SystemVariables,
+              system_vars: &mut SystemVariables,
               entities: &specs::Entities,
               char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
@@ -866,7 +874,7 @@ impl SkillManifestation for LightningManifest {
                 Skills::damage_chars(
                     entities,
                     char_storage,
-                    updater,
+                    system_vars,
                     ncollide2d::shape::Ball::new(1.0),
                     Isometry2::new(self.last_skill_pos, 0.0),
                     self.caster_entity_id,

@@ -2,7 +2,7 @@ use specs::prelude::*;
 use crate::ElapsedTime;
 use crate::components::char::{CharAttributes, Percentage, CharacterStateComponent, CharOutlook, U8Float};
 use std::sync::{Arc, Mutex};
-use specs::{Entity, LazyUpdate};
+use specs::{Entity};
 use crate::consts::JobId;
 use crate::systems::{Sex, Sprites};
 use crate::asset::SpriteResource;
@@ -187,15 +187,14 @@ impl Status for MountedStatus {
     }
 }
 
-enum ApplyStatusComponentPayload {
+pub enum ApplyStatusComponentPayload {
     MainStatus(MainStatus),
     SecondaryStatus(Arc<Mutex<Box<dyn Status>>>),
 }
 
-#[derive(Component)]
 pub struct ApplyStatusComponent {
-    target_entity_id: Entity,
-    status: ApplyStatusComponentPayload,
+    pub target_entity_id: Entity,
+    pub status: ApplyStatusComponentPayload,
 }
 
 unsafe impl Sync for ApplyStatusComponent {}
@@ -214,46 +213,6 @@ impl ApplyStatusComponent {
         ApplyStatusComponent {
             target_entity_id,
             status: ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status))),
-        }
-    }
-}
-
-pub struct ApplyStatusSystem;
-
-impl<'a> specs::System<'a> for ApplyStatusSystem {
-    type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, ApplyStatusComponent>,
-        specs::Write<'a, LazyUpdate>,
-    );
-
-    fn run(&mut self, (
-        entities,
-        mut char_state_storage,
-        mut statuses,
-        mut updater,
-    ): Self::SystemData) {
-        for (status_entity_id, status) in (&entities,
-                                           &mut statuses).join() {
-            let status: &ApplyStatusComponent = status;
-            if let Some(target_char) = char_state_storage.get_mut(status.target_entity_id) {
-                match &status.status {
-                    ApplyStatusComponentPayload::MainStatus(status_name) => {
-                        log::debug!("Applying state '{:?}' on {:?}", status_name, status.target_entity_id);
-                        match status_name {
-                            _ => {
-                                target_char.statuses.switch_mounted();
-                            }
-                        }
-                    }
-                    ApplyStatusComponentPayload::SecondaryStatus(box_status) => {}
-                }
-                target_char.calculated_attribs = target_char
-                    .statuses
-                    .calc_attribs(&target_char.outlook);
-            }
-            updater.remove::<ApplyStatusComponent>(status_entity_id);
         }
     }
 }

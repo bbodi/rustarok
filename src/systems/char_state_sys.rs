@@ -18,7 +18,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
@@ -29,7 +29,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         mut physics_storage,
         mut char_state_storage,
         mut sprite_storage,
-        system_vars,
+        mut system_vars,
         mut physics_world,
         mut system_benchmark,
         mut updater,
@@ -78,7 +78,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             &casting_info.mouse_pos_when_casted,
                             casting_info.target_entity,
                             &mut physics_world,
-                            &system_vars,
+                            &mut system_vars,
                             &entities,
                             &mut updater,
                         );
@@ -96,12 +96,13 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 CharState::Attacking { attack_ends, target } => {
                     if attack_ends.has_passed(system_vars.time) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
-                        let damage_entity = entities.create();
-                        updater.insert(damage_entity, AttackComponent {
-                            src_entity: char_entity_id,
-                            dst_entity: target,
-                            typ: AttackType::Basic,
-                        });
+                        system_vars.attacks.push(
+                            AttackComponent {
+                                src_entity: char_entity_id,
+                                dst_entity: target,
+                                typ: AttackType::Basic,
+                            }
+                        );
                     }
                 }
                 _ => {}

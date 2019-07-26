@@ -93,14 +93,12 @@ pub enum AttackType {
     Skill(Skills),
 }
 
-#[derive(Component)]
 pub struct AttackComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
     pub typ: AttackType,
 }
 
-#[derive(Component)]
 pub struct ApplyForceComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,

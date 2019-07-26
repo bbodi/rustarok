@@ -102,12 +102,12 @@ impl Video {
             .blended(Color::RGBA(0, 0, 0, 255)).unwrap();
         let mut fg_surface = font.render(text)
             .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
-        fg_surface.set_blend_mode(BlendMode::Blend);
+        fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
         fg_surface.blit(
             None,
             &mut bg_surface,
             sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height())
-        );
+        ).unwrap();
         return GlTexture::from_surface(bg_surface, gl::NEAREST);
     }
 }
