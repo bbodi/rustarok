@@ -5,7 +5,7 @@ use crate::components::skills::skill::{Skills, SkillManifestation, SkillManifest
 use specs::{Entity, LazyUpdate};
 use crate::{ElapsedTime, PhysicsWorld};
 use crate::components::char::CharacterStateComponent;
-use crate::components::StrEffectComponent;
+use crate::components::{StrEffectComponent, AreaAttackComponent, AttackType};
 
 pub struct LightningSkill;
 
@@ -68,7 +68,7 @@ impl SkillManifestation for LightningManifest {
               _all_collisions_in_world: &Vec<Collision>,
               system_vars: &mut SystemVariables,
               entities: &specs::Entities,
-              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+              char_storage: &specs::ReadStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.created_at.add_seconds(12.0).has_passed(system_vars.time) {
@@ -147,14 +147,13 @@ impl SkillManifestation for LightningManifest {
                 self.next_damage_at = system_vars.time.add_seconds(1.0);
             }
             if self.next_damage_at.has_passed(system_vars.time) {
-                Skills::damage_chars(
-                    entities,
-                    char_storage,
-                    system_vars,
-                    ncollide2d::shape::Ball::new(1.0),
-                    Isometry2::new(self.last_skill_pos, 0.0),
-                    self.caster_entity_id,
-                    Skills::Lightning,
+                system_vars.area_attacks.push(
+                    AreaAttackComponent {
+                        area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
+                        area_isom: Isometry2::new(self.last_skill_pos, 0.0),
+                        source_entity_id: self.caster_entity_id,
+                        typ: AttackType::Skill(Skills::Lightning)
+                    }
                 );
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);
             }

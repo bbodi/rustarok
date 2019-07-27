@@ -1,7 +1,7 @@
 use crate::ElapsedTime;
 use crate::components::char::{CharAttributes, Percentage, CharOutlook, U8Float};
 use std::sync::{Arc, Mutex};
-use specs::Entity;
+use specs::{Entity, LazyUpdate};
 use crate::consts::JobId;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::asset::SpriteResource;
@@ -10,11 +10,12 @@ use crate::components::{AttackComponent, AttackType};
 use crate::components::skills::skill::Skills;
 use crate::components::controller::WorldCoords;
 use std::any::Any;
+use strum_macros::EnumCount;
 
 pub trait Status: Any {
     fn can_target_move(&self) -> bool;
+    fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
-    //    fn get_render_effect(&self) ->;
     fn get_render_color(&self) -> [f32; 4];
     fn get_render_size(&self) -> f32;
     fn calc_attribs(&self, attributes: &mut CharAttributes);
@@ -30,6 +31,8 @@ pub trait Status: Any {
         self_char_id: Entity,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult;
 
     fn render(
@@ -37,11 +40,11 @@ pub trait Status: Any {
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
     );
-    fn get_duration_percent_for_rendering(&self, now: ElapsedTime) -> Option<f32>;
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32>;
 }
 
-// TODO: should 'Died' be a status?
-#[derive(Debug)]
+// TODO: should 'Dead' be a status?
+#[derive(Debug, EnumCount, Clone, Copy)]
 pub enum MainStatuses {
     Mounted,
     Stun,
@@ -59,6 +62,7 @@ struct PoisonStatus {
 
 pub struct Statuses {
     statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; 32],
+    first_free_index: usize,
 }
 
 unsafe impl Sync for Statuses {}
@@ -68,7 +72,8 @@ unsafe impl Send for Statuses {}
 impl Statuses {
     pub fn new() -> Statuses {
         Statuses {
-            statuses: Default::default()
+            statuses: Default::default(),
+            first_free_index: MAINSTATUSES_COUNT,
         }
     }
 
@@ -77,12 +82,19 @@ impl Statuses {
         self_char_id: Entity,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        updater: &mut specs::Write<LazyUpdate>,
     ) {
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for (i, status) in self.statuses
+            .iter_mut()
+            .filter(|it| it.is_some())
+            .enumerate() {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
                 char_pos,
                 system_vars,
+                entities,
+                updater,
             );
             match result {
                 StatusUpdateResult::RemoveIt => {
@@ -90,6 +102,9 @@ impl Statuses {
                 }
                 StatusUpdateResult::KeepIt => {}
             }
+        }
+        while self.first_free_index > MAINSTATUSES_COUNT && self.statuses[self.first_free_index-1].is_none() {
+            self.first_free_index -= 1;
         }
     }
 
@@ -182,6 +197,26 @@ impl Statuses {
         return ret;
     }
 
+    pub fn calc_largest_remaining_status_time_percent(
+        &self,
+        now: ElapsedTime,
+    ) -> Option<f32> {
+        let mut ret = None;
+        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+            let rem = status.as_ref().unwrap().lock().unwrap().get_status_completion_percent(now);
+            ret = if let Some(status_remaining_time) = rem {
+                if let Some(current_rem_time) = ret {
+                    Some(status_remaining_time.max(current_rem_time))
+                } else {
+                    rem
+                }
+            } else {
+                ret
+            };
+        }
+        return ret;
+    }
+
     pub fn is_mounted(&self) -> bool {
         self.statuses[MainStatuses::Mounted as usize].is_some()
     }
@@ -202,11 +237,30 @@ impl Statuses {
         self.statuses[MainStatuses::Mounted as usize] = value;
     }
 
+    pub fn add(&mut self, status: Arc<Mutex<Box<dyn Status>>>) {
+        self.statuses[self.first_free_index] = Some(status);
+        self.first_free_index += 1;
+    }
+
+    pub fn remove(&mut self, status_type: StatusType) {
+        for arc_status in &mut self.statuses {
+            let should_remove = arc_status.as_ref().map(|it| {
+                it.lock().unwrap().typ() == status_type
+            }).unwrap_or(false);
+            if should_remove {
+                *arc_status = None;
+            }
+        }
+    }
+
+    pub fn remove_main_status(&mut self, status: MainStatuses) {
+        self.statuses[status as usize] = None;
+    }
+
     pub fn add_poison(&mut self,
                       poison_caster_entity_id: Entity,
                       started: ElapsedTime,
                       until: ElapsedTime) {
-        // let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
         let new_until = {
             let status = &self.statuses[MainStatuses::Poison as usize];
             if let Some(current_poison) = status {
@@ -242,6 +296,8 @@ pub enum StatusUpdateResult {
 impl Status for MountedStatus {
     fn can_target_move(&self) -> bool { true }
 
+    fn typ(&self) -> StatusType { StatusType::Supportive }
+
     fn can_target_cast(&self) -> bool { true }
 
     fn get_render_color(&self) -> [f32; 4] {
@@ -272,6 +328,8 @@ impl Status for MountedStatus {
         self_char_id: Entity,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
     }
@@ -282,12 +340,14 @@ impl Status for MountedStatus {
         system_vars: &mut SystemVariables,
     ) {}
 
-    fn get_duration_percent_for_rendering(&self, now: ElapsedTime) -> Option<f32> {
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         None
     }
 }
 
 impl Status for PoisonStatus {
+    fn typ(&self) -> StatusType { StatusType::Harmful }
+
     fn can_target_move(&self) -> bool { true }
 
     fn can_target_cast(&self) -> bool { true }
@@ -316,6 +376,8 @@ impl Status for PoisonStatus {
               self_char_id: Entity,
               char_pos: &WorldCoords,
               system_vars: &mut SystemVariables,
+              entities: &specs::Entities,
+              updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt
@@ -345,7 +407,7 @@ impl Status for PoisonStatus {
                                               system_vars);
     }
 
-    fn get_duration_percent_for_rendering(&self, now: ElapsedTime) -> Option<f32> {
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         Some(now.percentage_between(self.started, self.until))
     }
 }
@@ -359,6 +421,23 @@ pub struct ApplyStatusComponent {
     pub source_entity_id: Entity,
     pub target_entity_id: Entity,
     pub status: ApplyStatusComponentPayload,
+}
+
+#[derive(Eq, PartialEq, Clone, Copy)]
+pub enum StatusType {
+    Supportive,
+    Harmful,
+}
+
+pub enum RemoveStatusComponentPayload {
+    MainStatus(MainStatuses),
+    SecondaryStatus(StatusType),
+}
+
+pub struct RemoveStatusComponent {
+    pub source_entity_id: Entity,
+    pub target_entity_id: Entity,
+    pub status: RemoveStatusComponentPayload,
 }
 
 unsafe impl Sync for ApplyStatusComponent {}
@@ -380,12 +459,37 @@ impl ApplyStatusComponent {
     pub fn from_secondary_status(
         source_entity_id: Entity,
         target_entity_id: Entity,
-        status: Box<dyn Status>
+        status: Box<dyn Status>,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
             source_entity_id,
             target_entity_id,
             status: ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status))),
+        }
+    }
+}
+
+impl RemoveStatusComponent {
+    pub fn from_main_status(
+        source_entity_id: Entity,
+        target_entity_id: Entity,
+        m: MainStatuses) -> RemoveStatusComponent {
+        RemoveStatusComponent {
+            source_entity_id,
+            target_entity_id,
+            status: RemoveStatusComponentPayload::MainStatus(m),
+        }
+    }
+
+    pub fn from_secondary_status(
+        source_entity_id: Entity,
+        target_entity_id: Entity,
+        status_type: StatusType,
+    ) -> RemoveStatusComponent {
+        RemoveStatusComponent {
+            source_entity_id,
+            target_entity_id,
+            status: RemoveStatusComponentPayload::SecondaryStatus(status_type),
         }
     }
 }

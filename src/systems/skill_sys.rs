@@ -12,7 +12,7 @@ pub struct SkillSystem;
 impl<'a> specs::System<'a> for SkillSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
@@ -26,7 +26,7 @@ impl<'a> specs::System<'a> for SkillSystem {
 
     fn run(&mut self, (
         entities,
-        mut char_storage,
+        char_storage,
         input_storage,
         browser_client_storage,
         physics_storage,
@@ -43,7 +43,7 @@ impl<'a> specs::System<'a> for SkillSystem {
                          &collisions_resource.collisions,
                          &mut system_vars,
                          &entities,
-                         &mut char_storage,
+                         &char_storage,
                          &mut physics_world,
                          &mut updater);
         }

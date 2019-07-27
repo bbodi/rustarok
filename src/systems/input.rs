@@ -433,6 +433,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 match controller.get_skill_for_key(SkillKey::Q) {
                     Some(Skills::FireWall) => {
                         controller.assign_skill(SkillKey::Q, Skills::Poison);
+                        controller.assign_skill(SkillKey::W, Skills::FireBomb);
+                        controller.assign_skill(SkillKey::E, Skills::Cure);
+                        controller.assign_skill(SkillKey::R, Skills::AbsorbShield);
                     }
                     Some(Skills::Poison) => {
                         controller.assign_skill(SkillKey::Q, Skills::FireWall);

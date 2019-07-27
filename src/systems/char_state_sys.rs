@@ -63,7 +63,12 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             if *char_comp.state() == CharState::Dead {
                 continue;
             }
-            char_comp.update_statuses(char_entity_id, &mut system_vars);
+            char_comp.update_statuses(
+                char_entity_id,
+                &mut system_vars,
+                &entities,
+                &mut updater,
+            );
 
             let char_pos = char_comp.pos();
             match char_comp.state().clone() {

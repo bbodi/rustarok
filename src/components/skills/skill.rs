@@ -9,13 +9,13 @@ use std::sync::{Arc, Mutex};
 use crate::video::{draw_lines_inefficiently};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
-use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent};
-use ncollide2d::query::Proximity;
-use crate::components::status::{ApplyStatusComponent, MainStatuses};
+use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent, AreaAttackComponent};
+use crate::components::status::{ApplyStatusComponent, MainStatuses, RemoveStatusComponent, StatusType};
 use strum_macros::EnumIter;
 use crate::components::skills::lightning::{LightningSkill, LightningManifest};
 use crate::common::{v2_to_v3, rotate_vec2};
 use crate::systems::render::RenderDesktopClientSystem;
+use crate::components::skills::fire_bomb::FireBombStatus;
 
 
 pub trait SkillManifestation {
@@ -25,7 +25,7 @@ pub trait SkillManifestation {
         all_collisions_in_world: &Vec<Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     );
@@ -57,7 +57,7 @@ impl SkillManifestationComponent {
         all_collisions_in_world: &Vec<Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
@@ -91,6 +91,9 @@ pub enum Skills {
     Heal,
     Mounting,
     Poison,
+    Cure,
+    FireBomb,
+    AbsorbShield,
 }
 
 impl Skills {
@@ -102,35 +105,9 @@ impl Skills {
             Skills::Heal => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp",
             Skills::Mounting => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\su_pickypeck.bmp",
             Skills::Poison => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\tf_poison.bmp",
-        }
-    }
-
-    pub fn damage_chars(
-        entities: &Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        system_vars: &mut SystemVariables,
-        skill_shape: impl ncollide2d::shape::Shape<f32>,
-        skill_isom: Isometry2<f32>,
-        caster_entity_id: Entity,
-        skill: Skills,
-    ) {
-        for (target_entity_id, char_state) in (entities, char_storage).join() {
-            // for optimized, shape-specific queries
-            // ncollide2d::query::distance_internal::
-            let coll_result = ncollide2d::query::proximity(
-                &skill_isom, &skill_shape,
-                &Isometry2::new(char_state.pos(), 0.0), &ncollide2d::shape::Ball::new(1.0),
-                0.0,
-            );
-            if coll_result == Proximity::Intersecting {
-                system_vars.attacks.push(
-                    AttackComponent {
-                        src_entity: caster_entity_id,
-                        dst_entity: target_entity_id,
-                        typ: AttackType::Skill(skill),
-                    }
-                );
-            }
+            Skills::Cure => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\so_el_cure.bmp",
+            Skills::FireBomb => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp",
+            Skills::AbsorbShield => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp",
         }
     }
 
@@ -291,7 +268,7 @@ impl Skills {
                 None
             }
             Skills::Mounting => {
-                system_vars.status_changes.push(
+                system_vars.apply_statuses.push(
                     ApplyStatusComponent::from_main_status(
                         caster_entity_id,
                         caster_entity_id,
@@ -315,13 +292,40 @@ impl Skills {
                     die_at: system_vars.time.add_seconds(0.7),
                     duration: ElapsedTime(0.7),
                 });
-                system_vars.status_changes.push(
+                system_vars.apply_statuses.push(
                     ApplyStatusComponent::from_main_status(
                         caster_entity_id,
                         target_entity.unwrap(),
                         MainStatuses::Poison,
                     )
                 );
+                None
+            }
+            Skills::Cure => {
+                system_vars.remove_statuses.push(
+                    RemoveStatusComponent::from_secondary_status(
+                        caster_entity_id,
+                        target_entity.unwrap(),
+                        StatusType::Harmful
+                    )
+                );
+                None
+            }
+            Skills::FireBomb => {
+                system_vars.apply_statuses.push(
+                    ApplyStatusComponent::from_secondary_status(
+                        caster_entity_id,
+                        target_entity.unwrap(),
+                        Box::new(FireBombStatus{
+                            caster_entity_id,
+                            started: system_vars.time,
+                            until: system_vars.time.add_seconds(2.0),
+                        })
+                    )
+                );
+                None
+            }
+            Skills::AbsorbShield => {
                 None
             }
         }
@@ -334,7 +338,10 @@ impl Skills {
             Skills::Lightning => 0.7,
             Skills::Heal => 0.3,
             Skills::Mounting => if char_state.statuses.is_mounted() { 0.0 } else { 2.0 },
-            Skills::Poison => 0.5
+            Skills::Poison => 0.5,
+            Skills::Cure => 0.5,
+            Skills::FireBomb => 0.5,
+            Skills::AbsorbShield => 0.5
         };
         return ElapsedTime(t);
     }
@@ -347,6 +354,9 @@ impl Skills {
             Skills::Heal => 10.0,
             Skills::Mounting => 0.0,
             Skills::Poison => 10.0,
+            Skills::Cure => 10.0,
+            Skills::FireBomb => 10.0,
+            Skills::AbsorbShield => 10.0,
         }
     }
 
@@ -358,6 +368,9 @@ impl Skills {
             Skills::Heal => SkillTargetType::OnlyAllyAndSelf,
             Skills::Mounting => SkillTargetType::NoTarget,
             Skills::Poison => SkillTargetType::OnlyEnemy,
+            Skills::Cure => SkillTargetType::OnlyAllyAndSelf,
+            Skills::FireBomb => SkillTargetType::OnlyEnemy,
+            Skills::AbsorbShield => SkillTargetType::OnlyAllyAndSelf,
         }
     }
 
@@ -441,6 +454,9 @@ impl Skills {
             Skills::Heal => {}
             Skills::Mounting => {}
             Skills::Poison => {}
+            Skills::Cure => {}
+            Skills::FireBomb => {}
+            Skills::AbsorbShield => {}
         }
     }
 }
@@ -473,7 +489,7 @@ impl PushBackWallSkill {
             skill_center + rotate_vec2(rot_angle_in_rad, &v2!(1.0, 0.0)),
         ].iter().map(|effect_coords| {
             let effect_comp = StrEffectComponent {
-                effect: "StrEffect::FireWall".to_owned(),
+                effect: "firewall".to_owned(),
                 pos: *effect_coords,
                 start_time: system_time,
                 die_at: system_time.add_seconds(3.0),
@@ -516,7 +532,7 @@ impl SkillManifestation for PushBackWallSkill {
               all_collisions_in_world: &Vec<Collision>,
               system_vars: &mut SystemVariables,
               entities: &specs::Entities,
-              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+              char_storage: &specs::ReadStorage<CharacterStateComponent>,
               physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.die_at.has_passed(system_vars.time) {
@@ -531,7 +547,7 @@ impl SkillManifestation for PushBackWallSkill {
                 let char_body_handle = physics_world.collider(coll.character_coll_handle).unwrap().body();
                 let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
                 let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
-                if let Some(char_state) = char_storage.get_mut(char_entity_id) {
+                if let Some(char_state) = char_storage.get(char_entity_id) {
                     let push_dir = self.pos - char_state.pos();
                     let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
                         v2!(1, 0) // "random"
@@ -597,7 +613,7 @@ impl BrutalSkillManifest {
 //            skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
 //        }).map(|effect_coords| {
 //            let effect_comp = StrEffectComponent {
-//                effect: "StrEffect::FireWall".to_owned(),
+//                effect: "firewall".to_owned(),
 //                pos: Point2::new(effect_coords.x, effect_coords.y),
 //                start_time: system_time,
 //                die_at: system_time.add_seconds(3.0),
@@ -637,7 +653,7 @@ impl SkillManifestation for BrutalSkillManifest {
               all_collisions_in_world: &Vec<Collision>,
               system_vars: &mut SystemVariables,
               entities: &specs::Entities,
-              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+              char_storage: &specs::ReadStorage<CharacterStateComponent>,
               _physics_world: &mut PhysicsWorld,
               updater: &mut specs::Write<LazyUpdate>) {
         if self.die_at.has_passed(system_vars.time) {
@@ -650,14 +666,13 @@ impl SkillManifestation for BrutalSkillManifest {
                 return;
             }
             self.next_damage_at = system_vars.time.add_seconds(0.5);
-            Skills::damage_chars(
-                entities,
-                char_storage,
-                system_vars,
-                ncollide2d::shape::Cuboid::new(self.half_extents),
-                Isometry2::new(self.pos, self.rot_angle_in_rad),
-                self.caster_entity_id,
-                Skills::BrutalTestSkill,
+            system_vars.area_attacks.push(
+                AreaAttackComponent {
+                    area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
+                    area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
+                    source_entity_id: self.caster_entity_id,
+                    typ: AttackType::Skill(Skills::BrutalTestSkill)
+                }
             );
         }
     }

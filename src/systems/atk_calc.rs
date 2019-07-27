@@ -2,11 +2,12 @@ use crate::components::char::{CharacterStateComponent, PhysicsComponent, CharSta
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
-use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType};
+use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType, AttackComponent};
 use specs::prelude::*;
-use nalgebra::Vector2;
-use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
+use nalgebra::{Vector2, Isometry2};
+use crate::components::status::{ApplyStatusComponentPayload, MainStatuses, ApplyStatusComponent, RemoveStatusComponent, RemoveStatusComponentPayload};
 use crate::components::skills::skill::Skills;
+use ncollide2d::query::Proximity;
 
 pub enum AttackOutcome {
     Damage(u32),
@@ -39,6 +40,24 @@ impl<'a> specs::System<'a> for AttackSystem {
         mut updater,
     ): Self::SystemData) {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
+
+        let mut new_attacks = system_vars.area_attacks.iter().map(|area_attack| {
+            // TODO: I don't want to pollute the code with mutable storages just because
+            // I can't degrade a writestorage to a readstorage temporarily, or can I?...
+            let read_only_char_storage: &specs::ReadStorage<'a, CharacterStateComponent> = unsafe {
+                std::mem::transmute(&char_state_storage)
+            };
+            AttackCalculation::damage_chars(
+                &entities,
+                read_only_char_storage,
+                &area_attack.area_shape,
+                &area_attack.area_isom,
+                area_attack.source_entity_id,
+                area_attack.typ,
+            )
+        }).flatten().collect();
+        system_vars.attacks.append(&mut new_attacks);
+        system_vars.area_attacks.clear();
 
         for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
@@ -100,39 +119,58 @@ impl<'a> specs::System<'a> for AttackSystem {
         }
         system_vars.attacks.clear();
 
-        for status in &system_vars.status_changes {
-            if let Some(target_char) = char_state_storage.get_mut(status.target_entity_id) {
-                match &status.status {
-                    ApplyStatusComponentPayload::MainStatus(status_name) => {
-                        log::debug!("Applying state '{:?}' on {:?}", status_name, status.target_entity_id);
-                        match status_name {
-                            MainStatuses::Mounted => {
-                                target_char.statuses.switch_mounted();
-                            }
-                            MainStatuses::Stun => {}
-                            MainStatuses::Poison => {
-                                target_char.statuses.add_poison(
-                                    status.source_entity_id,
-                                    system_vars.time,
-                                    system_vars.time.add_seconds(5.0)
-                                );
-                            }
-                        }
-                    }
-                    ApplyStatusComponentPayload::SecondaryStatus(box_status) => {}
-                }
-                target_char.calculated_attribs = target_char
-                    .statuses
-                    .calc_attribs(&target_char.outlook);
-            }
-        }
-        system_vars.status_changes.clear();
+        let status_changes = std::mem::replace(&mut system_vars.apply_statuses, Vec::with_capacity(128));
+        AttackSystem::add_new_statuses(
+            status_changes,
+            &mut char_state_storage,
+            system_vars.time,
+        );
+
+        let status_changes = std::mem::replace(&mut system_vars.remove_statuses, Vec::with_capacity(128));
+        AttackSystem::remove_statuses(
+            status_changes,
+            &mut char_state_storage,
+            system_vars.time,
+        );
+        system_vars.remove_statuses.clear();
     }
 }
+
 
 pub struct AttackCalculation;
 
 impl AttackCalculation {
+    pub fn damage_chars(
+        entities: &Entities,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        skill_shape: &Box<dyn ncollide2d::shape::Shape<f32>>,
+        skill_isom: &Isometry2<f32>,
+        caster_entity_id: Entity,
+        attack_typ: AttackType,
+    ) -> Vec<AttackComponent> {
+        let mut result_attacks = vec![];
+        for (target_entity_id, char_state) in (entities, char_storage).join() {
+            // for optimized, shape-specific queries
+            // ncollide2d::query::distance_internal::
+            let coll_result = ncollide2d::query::proximity(
+                &skill_isom, &**skill_shape,
+                &Isometry2::new(char_state.pos(), 0.0), &ncollide2d::shape::Ball::new(1.0),
+                0.0,
+            );
+            if coll_result == Proximity::Intersecting {
+                result_attacks.push(
+                    AttackComponent {
+                        src_entity: caster_entity_id,
+                        dst_entity: target_entity_id,
+                        typ: attack_typ,
+                    }
+                );
+            }
+        }
+        return result_attacks;
+    }
+
+
     pub fn attack(src: &CharacterStateComponent, dst: &CharacterStateComponent) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
         let mut src_outcomes = vec![];
         let mut dst_outcomes = vec![];
@@ -156,12 +194,16 @@ impl AttackCalculation {
             Skills::Lightning => 120.0,
             Skills::Heal => 0.0,
             Skills::Mounting => 0.0, // TODO: it should not be listed here
-            Skills::Poison => 30.0
+            Skills::Poison => 30.0,
+            Skills::Cure => 0.0,
+            Skills::FireBomb => 200.0,
+            Skills::AbsorbShield => 0.0,
         };
         match skill {
             // attacking skills
             Skills::Lightning |
             Skills::FireWall |
+            Skills::FireBomb |
             Skills::BrutalTestSkill => {
                 let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
                 let outcome = if atk == 0 {
@@ -184,6 +226,8 @@ impl AttackCalculation {
             Skills::Heal => {
                 dst_outcomes.push(AttackOutcome::Heal(200));
             }
+            Skills::Cure => {}
+            Skills::AbsorbShield => {}
             Skills::Mounting => {}// TODO: it should not be listed here
         };
         return (src_outcomes, dst_outcomes);
@@ -242,5 +286,63 @@ impl AttackCalculation {
             3.0,
             *char_pos,
             sys_time));
+    }
+}
+
+impl AttackSystem {
+    fn add_new_statuses(
+        status_changes: Vec<ApplyStatusComponent>,
+        char_state_storage: &mut WriteStorage<CharacterStateComponent>,
+        now: ElapsedTime) {
+        for status_change in status_changes.into_iter() {
+            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
+                match status_change.status {
+                    ApplyStatusComponentPayload::MainStatus(status_name) => {
+                        log::debug!("Applying state '{:?}' on {:?}", status_name, status_change.target_entity_id);
+                        match status_name {
+                            MainStatuses::Mounted => {
+                                target_char.statuses.switch_mounted();
+                            }
+                            MainStatuses::Stun => {}
+                            MainStatuses::Poison => {
+                                target_char.statuses.add_poison(
+                                    status_change.source_entity_id,
+                                    now,
+                                    now.add_seconds(15.0),
+                                );
+                            }
+                        }
+                    }
+                    ApplyStatusComponentPayload::SecondaryStatus(box_status) => {
+                        target_char.statuses.add(box_status);
+                    }
+                }
+                target_char.calculated_attribs = target_char
+                    .statuses
+                    .calc_attribs(&target_char.outlook);
+            }
+        }
+    }
+
+    fn remove_statuses(
+        status_changes: Vec<RemoveStatusComponent>,
+        char_state_storage: &mut WriteStorage<CharacterStateComponent>,
+        now: ElapsedTime) {
+        for status_change in status_changes.into_iter() {
+            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
+                match &status_change.status {
+                    RemoveStatusComponentPayload::MainStatus(status_name) => {
+                        log::debug!("Removing state '{:?}' from {:?}", status_name, status_change.target_entity_id);
+                        target_char.statuses.remove_main_status(*status_name);
+                    }
+                    RemoveStatusComponentPayload::SecondaryStatus(status_type) => {
+                        target_char.statuses.remove(*status_type);
+                    }
+                }
+                target_char.calculated_attribs = target_char
+                    .statuses
+                    .calc_attribs(&target_char.outlook);
+            }
+        }
     }
 }

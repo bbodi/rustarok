@@ -564,8 +564,10 @@ fn main() {
         map_render_data,
         texts,
         attacks: Vec::with_capacity(128),
+        area_attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
-        status_changes: Vec::with_capacity(128),
+        apply_statuses: Vec::with_capacity(128),
+        remove_statuses: Vec::with_capacity(128),
         skill_icons,
         str_effect_vao: DynamicVertexArray::new(
             gl::TRIANGLE_STRIP,
@@ -1406,7 +1408,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     let (elapsed, str_effects) = measure_time(|| {
         let mut str_effects: HashMap<String, StrFile> = HashMap::new();
 
-        str_effects.insert("StrEffect::FireWall".to_owned(), asset_loader.load_effect("firewall").unwrap());
+        str_effects.insert("firewall".to_owned(), asset_loader.load_effect("firewall").unwrap());
         str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
         str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
         str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
@@ -1414,6 +1416,8 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("StrEffect::Moonstar".to_owned(), asset_loader.load_effect("moonstar").unwrap());
         str_effects.insert("hunter_poison".to_owned(), asset_loader.load_effect("hunter_poison").unwrap());
         str_effects.insert("quagmire".to_owned(), asset_loader.load_effect("quagmire").unwrap());
+        str_effects.insert("firewall_blue".to_owned(), asset_loader.load_effect("firewall_blue").unwrap());
+        str_effects.insert("firepillarbomb".to_owned(), asset_loader.load_effect("firepillarbomb").unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());

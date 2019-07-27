@@ -247,6 +247,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                 &system_vars.matrices.ortho,
                                 controller.char == entity_id,
                                 &char_state,
+                                system_vars.time
                             );
                         }
                     }
@@ -288,6 +289,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                 &system_vars.matrices.ortho,
                                 controller.char == entity_id,
                                 &char_state,
+                                system_vars.time
                             );
                         }
                     }
@@ -363,6 +365,7 @@ fn draw_health_bar(
     ortho: &Matrix4<f32>,
     is_self: bool,
     char_state: &CharacterStateComponent,
+    now: ElapsedTime,
 ) {
     let shader = shader.gl_use();
     shader.set_mat4("projection", &ortho);
@@ -398,19 +401,30 @@ fn draw_health_bar(
         // [0.2, 0.46, 0.9] // for friends, blue
     };
     let mana_color = [0.23, 0.79, 0.88, 1.0];
-    match char_state.typ {
+    let bottom_bar_y = match char_state.typ {
         CharType::Player => {
             draw_rect(0, 0, bar_w, 9, &[0.0, 0.0, 0.0, 1.0]); // black border
             draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // center separator
             let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
             draw_rect(1, 1, inner_w, 4, &health_color);
             draw_rect(1, 6, bar_w - 2, 2, &mana_color);
+            9
         }
         _ => {
             draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // black border
             let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
             draw_rect(1, 1, inner_w, 3, &health_color);
+            5
         }
+    };
+
+    // draw status remaining time indicator
+    if let Some(perc) = char_state.statuses.calc_largest_remaining_status_time_percent(now) {
+        let orange = [1.0, 0.55, 0.0, 1.0];
+        let w = bar_w - 4;
+        draw_rect(2, bottom_bar_y+2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
+        let inner_w = (w as f32 * (1.0 - perc)) as i32;
+        draw_rect(2, bottom_bar_y+2, inner_w, 2, &orange);
     }
 }
 

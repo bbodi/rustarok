@@ -2,7 +2,7 @@ extern crate rand;
 
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
-use nalgebra::{Vector2};
+use nalgebra::{Vector2, Isometry2};
 use crate::{ElapsedTime};
 use specs::prelude::*;
 use crate::components::controller::WorldCoords;
@@ -86,6 +86,7 @@ impl FlyingNumberComponent {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum AttackType {
     Basic,
     Skill(Skills),
@@ -94,6 +95,13 @@ pub enum AttackType {
 pub struct AttackComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
+    pub typ: AttackType,
+}
+
+pub struct AreaAttackComponent {
+    pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
+    pub area_isom: Isometry2<f32>,
+    pub source_entity_id: Entity,
     pub typ: AttackType,
 }
 

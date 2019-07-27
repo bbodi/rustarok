@@ -5,8 +5,8 @@ use crate::video::{GlTexture, DynamicVertexArray};
 use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
 use crate::components::controller::SkillKey;
-use crate::components::{AttackComponent, ApplyForceComponent};
-use crate::components::status::ApplyStatusComponent;
+use crate::components::{AttackComponent, ApplyForceComponent, AreaAttackComponent};
+use crate::components::status::{ApplyStatusComponent, RemoveStatusComponent};
 use crate::components::skills::skill::Skills;
 
 pub mod input;
@@ -59,8 +59,10 @@ pub struct SystemVariables {
     pub texts: Texts,
     pub skill_icons: HashMap<Skills, GlTexture>,
     pub attacks: Vec<AttackComponent>,
+    pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
-    pub status_changes: Vec<ApplyStatusComponent>,
+    pub apply_statuses: Vec<ApplyStatusComponent>,
+    pub remove_statuses: Vec<RemoveStatusComponent>,
     // Todo: put it into the new Graphic module if it is ready
     pub str_effect_vao: DynamicVertexArray,
 }

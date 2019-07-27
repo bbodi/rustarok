@@ -405,11 +405,15 @@ impl CharacterStateComponent {
         &mut self,
         self_char_id: Entity,
         system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        updater: &mut specs::Write<LazyUpdate>,
     ) {
         self.statuses.update(
             self_char_id,
             &self.pos(),
-            system_vars
+            system_vars,
+            entities,
+            updater,
         )
     }
 
