@@ -6,7 +6,7 @@ use crate::consts::JobId;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::asset::SpriteResource;
 use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::{AttackComponent, AttackType};
+use crate::components::{AttackComponent, AttackType, ApplyForceComponent};
 use crate::components::controller::WorldCoords;
 use strum_macros::EnumCount;
 use nalgebra::Isometry2;
@@ -37,6 +37,7 @@ pub trait Status {
     ) -> StatusUpdateResult;
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome;
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool;
 
     fn render(
         &self,
@@ -72,6 +73,16 @@ impl Statuses {
             statuses: Default::default(),
             first_free_index: MAINSTATUSES_COUNT,
         }
+    }
+
+    pub fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+        let mut allow = true;
+        for status in self.statuses
+            .iter_mut()
+            .filter(|it| it.is_some()) {
+            allow &= status.as_ref().unwrap().lock().unwrap().allow_push(push);
+        }
+        return allow;
     }
 
     pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
@@ -354,6 +365,8 @@ impl Status for MountedStatus {
         outcome
     }
 
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool { true }
+
     fn render(
         &self,
         char_pos: &WorldCoords,
@@ -441,6 +454,8 @@ impl Status for PoisonStatus {
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         outcome
     }
+
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool { true }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         Some(now.percentage_between(self.started, self.until))

@@ -7,7 +7,7 @@ use specs::{Entity, LazyUpdate};
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::{AttackType, AttackComponent};
+use crate::components::{AttackType, AttackComponent, ApplyForceComponent};
 use crate::systems::atk_calc::AttackOutcome;
 
 #[derive(Clone)]
@@ -98,6 +98,8 @@ impl Status for AbsorbStatus {
             _ => {outcome}
         }
     }
+
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool { false }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         Some(now.percentage_between(self.started, self.until))

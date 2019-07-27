@@ -77,9 +77,12 @@ impl<'a> specs::System<'a> for AttackSystem {
 
         for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
-                char_body.set_linear_velocity(apply_force.force);
                 let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
-                char_state.cannot_control_until.run_at_least_until_seconds(system_vars.time, apply_force.duration);
+                if char_state.statuses.allow_push(apply_force) {
+                    char_body.set_linear_velocity(apply_force.force);
+                    let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
+                    char_state.cannot_control_until.run_at_least_until_seconds(system_vars.time, apply_force.duration);
+                }
             }
         }
         system_vars.pushes.clear();

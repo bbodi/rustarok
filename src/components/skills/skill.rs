@@ -520,6 +520,7 @@ impl PushBackWallSkill {
                 .with_membership(&[SKILL_AREA_COLLISION_GROUP])
                 .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
             )
+            .sensor(true)
             .build(physics_world)
             .handle();
 

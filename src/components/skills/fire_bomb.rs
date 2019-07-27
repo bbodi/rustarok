@@ -7,7 +7,7 @@ use specs::{Entity, LazyUpdate};
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
+use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent, ApplyForceComponent};
 use nalgebra::Isometry2;
 use crate::systems::atk_calc::AttackOutcome;
 
@@ -104,6 +104,8 @@ impl Status for FireBombStatus {
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         outcome
     }
+
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool { true }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         Some(now.percentage_between(self.started, self.until))
