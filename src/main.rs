@@ -40,7 +40,6 @@ use specs::prelude::*;
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame, Texts};
 use crate::systems::atk_calc::AttackSystem;
@@ -67,11 +66,16 @@ mod asset;
 mod consts;
 
 #[macro_use]
+mod common;
+
+#[macro_use]
 mod components;
 mod systems;
 
 use serde::Deserialize;
 use std::str::FromStr;
+use crate::components::skills::skill::{Skills, SkillManifestationComponent};
+use crate::common::p3_to_p2;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -720,7 +724,7 @@ fn main() {
                 .create_entity()
                 .with(StrEffectComponent {
                     effect: new_str_name.clone(),
-                    pos: Point2::new(hero_pos.x, hero_pos.y),
+                    pos: v2!(hero_pos.x, hero_pos.y),
                     start_time: ElapsedTime(0.0),
                     die_at: ElapsedTime(200.0),
                     duration: ElapsedTime(1.0),

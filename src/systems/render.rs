@@ -9,8 +9,9 @@ use crate::cam::Camera;
 use crate::components::controller::{ControllerComponent, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
-use crate::components::skill::{SkillManifestationComponent, SkillDescriptor, v2_to_v3, SkillTargetType, p2_to_v3};
 use crate::asset::str::KeyFrameType;
+use crate::components::skills::skill::{Skills, SkillTargetType, SkillManifestationComponent, SkillDescriptor};
+use crate::common::{v2_to_v3};
 
 /// The values that should be added to the sprite direction based on the camera
 /// direction (the index is the camera direction, which is floor(angle/45)
@@ -213,7 +214,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                   body_sprite,
                                                                                   &system_vars.matrices.view,
                                                                                   controller.yaw,
-                                                                                  &pos.coords,
+                                                                                  &pos,
                                                                                   [0, 0],
                                                                                   true,
                                                                                   1.1,
@@ -225,7 +226,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                         head_res,
                                                                                         &system_vars.matrices.view,
                                                                                         controller.yaw,
-                                                                                        &pos.coords,
+                                                                                        &pos,
                                                                                         pos_offset,
                                                                                         false,
                                                                                         1.1,
@@ -239,7 +240,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                              body_sprite,
                                                                              &system_vars.matrices.view,
                                                                              controller.yaw,
-                                                                             &pos.coords,
+                                                                             &pos,
                                                                              [0, 0],
                                                                              true,
                                                                              1.0,
@@ -250,7 +251,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                   head_res,
                                                                                   &system_vars.matrices.view,
                                                                                   controller.yaw,
-                                                                                  &pos.coords,
+                                                                                  &pos,
                                                                                   pos_offset,
                                                                                   false,
                                                                                   1.0,
@@ -281,7 +282,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                              body_res,
                                                                              &system_vars.matrices.view,
                                                                              controller.yaw,
-                                                                             &pos.coords,
+                                                                             &pos,
                                                                              [0, 0],
                                                                              true,
                                                                              1.1,
@@ -293,7 +294,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          body_res,
                                                                          &system_vars.matrices.view,
                                                                          controller.yaw,
-                                                                         &pos.coords,
+                                                                         &pos,
                                                                          [0, 0],
                                                                          true,
                                                                          1.0,
@@ -316,7 +317,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
             let char_pos = char_state_storage.get(controller.char).unwrap().pos();
             render_client(
-                &char_pos.coords,
+                &char_pos,
                 &controller.camera,
                 &system_vars.matrices.view,
                 &system_vars.shaders,
@@ -329,13 +330,19 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
                                           &system_vars.matrices.projection,
                                           &system_vars.matrices.view,
-                                          &Vector3::new(char_state.pos().x, 0.0, char_state.pos().y),
+                                          &char_state.pos(),
+                                          0.0,
                                           skill.get_casting_range(),
                                           &[0.0, 1.0, 0.0, 1.0]);
                 if skill.get_skill_target_type() == SkillTargetType::Area {
-                    skill.render_target_selection(
-                        &char_pos.coords,
+                    let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
+                        &char_pos,
                         &controller.mouse_world_pos,
+                        skill.get_casting_range(),
+                    );
+                    skill.render_target_selection(
+                        &skill_3d_pos,
+                        &dir_vector,
                         &system_vars,
                     );
                 }
@@ -344,7 +351,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 if let CharState::CastingSkill(casting_info) = char_state.state() {
                     let skill = casting_info.skill;
                     skill.render_casting(
-                        &char_pos.coords,
+                        &char_pos,
                         casting_info,
                         &system_vars,
                     );
@@ -940,9 +947,11 @@ impl RenderDesktopClientSystem {
 
             let matrix = {
                 let mut matrix = Matrix4::<f32>::identity();
-                let pos = p2_to_v3(world_pos);
-                matrix.prepend_translation_mut(&pos);
-                let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::z()), -angle).to_homogeneous();
+                matrix.prepend_translation_mut(&v2_to_v3(world_pos));
+                let rotation = Rotation3::from_axis_angle(
+                    &nalgebra::Unit::new_normalize(Vector3::z()),
+                    -angle)
+                    .to_homogeneous();
                 matrix = matrix * rotation;
                 shader.set_mat4("model", &matrix);
                 matrix

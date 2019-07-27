@@ -3,12 +3,12 @@ use specs::prelude::*;
 use crate::{ElapsedTime, PhysicsWorld};
 use crate::components::{AttackComponent, AttackType};
 use crate::components::char::{CharacterStateComponent, CharState, PhysicsComponent, EntityTarget, SpriteRenderDescriptorComponent};
-use crate::components::skill::SkillManifestationComponent;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::control_sys::CharacterControlSystem;
 use std::collections::HashMap;
 use crate::components::controller::WorldCoords;
-use crate::components::skill::SkillDescriptor;
+use crate::components::skills::skill::{SkillManifestationComponent, SkillDescriptor};
+use crate::common::v2_to_p2;
 
 pub struct CharacterStateUpdateSystem;
 
@@ -67,7 +67,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
 //                .statuses
 //                .update(system_vars.time, &mut char_comp);
 
-            let char_pos = char_comp.pos().coords;
+            let char_pos = char_comp.pos();
             match char_comp.state().clone() {
                 CharState::CastingSkill(casting_info) => {
                     if casting_info.cast_ends.has_passed(system_vars.time) {
@@ -75,7 +75,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         let manifestation = casting_info.skill.finish_cast(
                             char_entity_id,
                             &char_pos,
-                            &casting_info.mouse_pos_when_casted,
+                            &casting_info.skill_pos,
+                            &casting_info.char_to_skill_dir_when_casted,
                             casting_info.target_entity,
                             &mut physics_world,
                             &mut system_vars,
@@ -113,7 +114,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     if let EntityTarget::OtherEntity(target_entity) = target {
                         let target_pos = char_positions.get(target_entity);
                         if let Some(target_pos) = target_pos { // the target could have been removed
-                            let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), target_pos);
+                            let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &v2_to_p2(&target_pos));
                             if distance <= char_comp.calculated_attribs.attack_range.multiply(2.0) {
                                 let attack_anim_duration = ElapsedTime(1.0 / char_comp.calculated_attribs.attack_speed.as_f32());
                                 let attack_ends = system_vars.time.add(attack_anim_duration);
@@ -138,7 +139,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             char_comp.target = None;
                         }
                     } else if let EntityTarget::Pos(target_pos) = target {
-                        let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &target_pos);
+                        let distance = nalgebra::distance(&nalgebra::Point::from(char_pos), &v2_to_p2(target_pos));
                         if distance <= 0.2 {
                             // stop
                             char_comp.set_state(CharState::Idle, char_comp.dir());

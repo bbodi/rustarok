@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use crate::video::GlTexture;
 use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
-use crate::components::skill::Skills;
 use crate::components::controller::SkillKey;
 use crate::components::{AttackComponent, ApplyForceComponent};
 use crate::components::status::ApplyStatusComponent;
+use crate::components::skills::skill::Skills;
 
 pub mod input;
 pub mod phys;

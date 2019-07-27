@@ -2,19 +2,17 @@ extern crate rand;
 
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
-use nalgebra::{Point2, Vector2};
+use nalgebra::{Vector2};
 use crate::{ElapsedTime};
 use specs::prelude::*;
-use crate::components::skill::Skills;
 use crate::components::controller::WorldCoords;
 use nphysics2d::object::BodyHandle;
+use crate::components::skills::skill::Skills;
 
 pub mod char;
 pub mod controller;
 pub mod status;
-
-#[macro_use]
-pub mod skill;
+pub mod skills;
 
 #[derive(Component)]
 pub struct BrowserClient {
@@ -28,7 +26,7 @@ pub struct FlyingNumberComponent {
     pub value: u32,
     pub target_entity_id: Entity,
     pub typ: FlyingNumberType,
-    pub start_pos: Point2<f32>,
+    pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: f32,
@@ -74,7 +72,7 @@ impl FlyingNumberComponent {
                value: u32,
                target_entity_id: Entity,
                duration: f32,
-               start_pos: Point2<f32>,
+               start_pos: Vector2<f32>,
                sys_time: ElapsedTime) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,

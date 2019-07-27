@@ -1,11 +1,10 @@
-use nalgebra::{Point2, Vector2};
 use crate::systems::render::DIRECTION_TABLE;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, CastingSkillData};
-use crate::components::controller::{ControllerComponent, ControllerAction};
-use crate::components::skill::{SkillDescriptor, Skills};
+use crate::components::controller::{ControllerComponent, ControllerAction, WorldCoords};
 use crate::ElapsedTime;
+use crate::components::skills::skill::{Skills, SkillDescriptor};
 
 pub struct CharacterControlSystem;
 
@@ -56,7 +55,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         skill,
                         system_vars.time,
                         char_state,
-                        controller
+                        controller,
                     );
                 }
                 Some(ControllerAction::LeftClick) => {}
@@ -74,7 +73,7 @@ impl CharacterControlSystem {
         char_state: &mut CharacterStateComponent,
         controller: &ControllerComponent,
     ) {
-        let distance = (char_state.pos().coords - controller.mouse_world_pos.coords).magnitude();
+        let distance = (char_state.pos() - controller.mouse_world_pos).magnitude();
         let allowed = skill.is_casting_allowed(
             controller.char,
             controller.entity_below_cursor,
@@ -84,19 +83,21 @@ impl CharacterControlSystem {
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
             let casting_time_seconds = skill.get_casting_time(&char_state);
+            let dir_vector = (controller.mouse_world_pos - char_state.pos()).normalize();
             let new_state = CharState::CastingSkill(CastingSkillData {
                 target_entity: controller.entity_below_cursor,
                 cast_started: now,
                 cast_ends: now.add(casting_time_seconds),
                 can_move: false,
                 skill,
-                mouse_pos_when_casted: controller.mouse_world_pos,
+                skill_pos: controller.mouse_world_pos,
+                char_to_skill_dir_when_casted: dir_vector,
             });
             let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction
                 char_state.dir()
             } else {
                 let char_pos = char_state.pos();
-                CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos.coords)
+                CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos)
             };
             char_state.set_state(new_state, dir);
         } else {
@@ -105,7 +106,7 @@ impl CharacterControlSystem {
         }
     }
 
-    pub fn determine_dir(&target_pos: &Point2<f32>, pos: &Vector2<f32>) -> usize {
+    pub fn determine_dir(&target_pos: &WorldCoords, pos: &WorldCoords) -> usize {
         let dir_vec = target_pos - pos;
         // "- 90.0"
         // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,

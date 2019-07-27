@@ -1,6 +1,6 @@
 use crate::systems::{SystemVariables, SystemFrameDurations, CollisionsFromPrevFrame, Collision};
 use crate::{PhysicsWorld};
-use nalgebra::{Vector2, Point2};
+use nalgebra::{Vector2};
 use specs::prelude::*;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use ncollide2d::query::Proximity;
@@ -45,7 +45,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
                 }
             }
             let body_pos = body.position().translation.vector;
-            char_state.set_pos_dont_use_it(Point2::new(body_pos.x, body_pos.y));
+            char_state.set_pos_dont_use_it(body_pos);
         }
     }
 }

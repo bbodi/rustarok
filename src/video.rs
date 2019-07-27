@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3};
+use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3, Vector2};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
@@ -160,7 +160,8 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
 pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
                                  projection: &Matrix4<f32>,
                                  view: &Matrix4<f32>,
-                                 center: &Vector3<f32>,
+                                 center: &Vector2<f32>,
+                                 y: f32,
                                  r: f32,
                                  color: &[f32; 4]) {
     let shader = trimesh_shader.gl_use();
@@ -168,7 +169,8 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     shader.set_mat4("view", view);
     shader.set_vec4("color", color);
     let mut matrix = Matrix4::identity();
-    matrix.prepend_translation_mut(center);
+    let center = Vector3::new(center.x, y, center.y);
+    matrix.prepend_translation_mut(&center);
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
     matrix = matrix * rotation;
     shader.set_mat4("model", &matrix);

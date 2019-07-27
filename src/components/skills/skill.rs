@@ -3,7 +3,7 @@ use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
 use ncollide2d::world::CollisionGroups;
 use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWorld, ElapsedTime};
-use nalgebra::{Vector2, Vector3, Point2, Matrix4, Rotation3, Point3, Isometry2};
+use nalgebra::{Vector2, Vector3, Matrix4, Rotation3, Point3, Isometry2};
 use crate::systems::{SystemVariables, Collision};
 use std::sync::{Arc, Mutex};
 use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
@@ -13,26 +13,8 @@ use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyFo
 use ncollide2d::query::Proximity;
 use crate::components::status::{ApplyStatusComponent, MainStatus, Status};
 use strum_macros::EnumIter;
-
-#[macro_export]
-macro_rules! v2 {
-    ($x:expr, $y:expr) => { Vector2::<f32>::new($x as f32, $y as f32) }
-}
-
-#[macro_export]
-macro_rules! v3 {
-    ($x:expr, $y:expr, $z:expr) => { Vector3::<f32>::new($x as f32, $y as f32, $z as f32) }
-}
-
-#[macro_export]
-macro_rules! p2 {
-    ($x:expr, $y:expr) => { Point2::<f32>::new($x as f32, $y as f32) }
-}
-
-#[macro_export]
-macro_rules! p3 {
-    ($x:expr, $y:expr, $z:expr) => { Point3::<f32>::new($x as f32, $y as f32, $z as f32) }
-}
+use crate::components::skills::lightning::LightningSkill;
+use crate::common::{v2_to_v3, rotate_vec2};
 
 
 pub trait SkillManifestation {
@@ -133,8 +115,8 @@ pub trait SkillDescriptor {
 
     fn render_target_selection(
         &self,
-        char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
+        skill_pos: &Vector3<f32>,
+        char_to_skill_dir: &Vector3<f32>,
         system_vars: &SystemVariables,
     );
 }
@@ -149,7 +131,6 @@ pub enum Skills {
 }
 
 impl Skills {
-
     pub fn get_icon_path(&self) -> &'static str {
         match self {
             Skills::FireWall => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mg_firewall.bmp",
@@ -174,7 +155,7 @@ impl Skills {
             // ncollide2d::query::distance_internal::
             let coll_result = ncollide2d::query::proximity(
                 &skill_isom, &skill_shape,
-                &Isometry2::new(char_state.pos().coords, 0.0), &ncollide2d::shape::Ball::new(1.0),
+                &Isometry2::new(char_state.pos(), 0.0), &ncollide2d::shape::Ball::new(1.0),
                 0.0,
             );
             if coll_result == Proximity::Intersecting {
@@ -189,17 +170,21 @@ impl Skills {
         }
     }
 
-    fn limit_vector_into_range(char_pos: &Vector2<f32>, mouse_pos: &WorldCoords, range: f32) -> (Vector3<f32>, Vector3<f32>) {
-        let dir2d = mouse_pos.coords - char_pos;
-        let dir_vector = v2_to_v3(&dir2d).normalize();
-        let pos = v2_to_v3(&char_pos) + dir_vector * dir2d.magnitude().min(range);
+    pub fn limit_vector_into_range(
+        char_pos: &Vector2<f32>,
+        mouse_pos: &WorldCoords,
+        range: f32,
+    ) -> (Vector2<f32>, Vector2<f32>) {
+        let dir2d = mouse_pos - char_pos;
+        let dir_vector = dir2d.normalize();
+        let pos = char_pos + dir_vector * dir2d.magnitude().min(range);
         return (pos, dir_vector);
     }
 
     pub fn render_casting_box(
         casting_area_size: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
-        char_pos: &Vector2<f32>,
+        skill_pos: &Vector2<f32>,
+        char_to_skill_dir: &Vector2<f32>,
         system_vars: &SystemVariables,
     ) {
         let half = casting_area_size / 2.0;
@@ -209,8 +194,8 @@ impl Skills {
         let bottom_right = v2!(half.x, -half.y);
         // rotate
         let rot_matrix = Matrix4::<f32>::identity();
-        let angle = (mouse_pos.coords - char_pos).angle(&Vector2::y());
-        let angle = if mouse_pos.x > char_pos.x { angle } else { -angle };
+        let angle = char_to_skill_dir.angle(&Vector2::y());
+        let angle = if char_to_skill_dir.x > 0.0 { angle } else { -angle };
         let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), angle).to_homogeneous();
         let rot_matrix = rot_matrix * rotation;
 
@@ -219,16 +204,16 @@ impl Skills {
         let top_right = rot_matrix.transform_point(&p3!(top_right.x, 1, top_right.y));
         let bottom_right = rot_matrix.transform_point(&p3!(bottom_right.x, 1, bottom_right.y));
 
-        let skill_3d_pos = p2_to_v3(&mouse_pos);
+        let skill_pos = v2_to_v3(skill_pos);
         draw_lines_inefficiently(
             &system_vars.shaders.trimesh_shader,
             &system_vars.matrices.projection,
             &system_vars.matrices.view,
             &[
-                skill_3d_pos + bottom_left.coords,
-                skill_3d_pos + top_left.coords,
-                skill_3d_pos + top_right.coords,
-                skill_3d_pos + bottom_right.coords,
+                skill_pos + bottom_left.coords,
+                skill_pos + top_left.coords,
+                skill_pos + top_right.coords,
+                skill_pos + bottom_right.coords,
             ],
             &[0.0, 1.0, 0.0, 1.0],
         );
@@ -277,12 +262,13 @@ pub enum SkillTargetType {
     OnlySelf,
 }
 
-impl SkillDescriptor for Skills {
-    fn finish_cast(
+impl /*SkillDescriptor for*/ Skills {
+    pub fn finish_cast(
         &self,
         caster_entity_id: Entity,
         char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
+        skill_pos: &Vector2<f32>,
+        char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<Entity>,
         physics_world: &mut PhysicsWorld,
         system_vars: &mut SystemVariables,
@@ -291,13 +277,13 @@ impl SkillDescriptor for Skills {
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
             Skills::FireWall => {
-                let angle_in_rad = (mouse_pos.coords - char_pos).angle(&Vector2::y());
-                let angle_in_rad = if mouse_pos.x > char_pos.x { angle_in_rad } else { -angle_in_rad };
+                let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+                let angle_in_rad = if char_to_skill_dir.x > 0.0 { angle_in_rad } else { -angle_in_rad };
                 Some(Box::new(
                     PushBackWallSkill::new(
                         caster_entity_id,
                         physics_world,
-                        &mouse_pos.coords,
+                        &skill_pos,
                         angle_in_rad,
                         system_vars.time,
                         entities,
@@ -306,12 +292,12 @@ impl SkillDescriptor for Skills {
                 ))
             }
             Skills::BrutalTestSkill => {
-                let angle_in_rad = (mouse_pos.coords - char_pos).angle(&Vector2::y());
-                let angle_in_rad = if mouse_pos.x > char_pos.x { angle_in_rad } else { -angle_in_rad };
+                let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+                let angle_in_rad = if char_to_skill_dir.x > 0.0 { angle_in_rad } else { -angle_in_rad };
                 Some(Box::new(
                     BrutalSkillManifest::new(
                         caster_entity_id,
-                        &mouse_pos.coords,
+                        skill_pos,
                         angle_in_rad,
                         system_vars.time,
                         entities,
@@ -320,16 +306,11 @@ impl SkillDescriptor for Skills {
                 ))
             }
             Skills::Lightning => {
-                let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
-                    &char_pos,
-                    &mouse_pos,
-                    self.get_casting_range(),
-                );
                 Some(Box::new(
                     LightningManifest::new(
                         caster_entity_id,
-                        skill_3d_pos,
-                        dir_vector,
+                        skill_pos,
+                        char_to_skill_dir,
                         system_vars.time,
                         entities,
                     )
@@ -354,7 +335,7 @@ impl SkillDescriptor for Skills {
                 );
                 updater.insert(entities.create(), StrEffectComponent {
                     effect: "StrEffect::Concentration".to_owned(),
-                    pos: v2_to_p2(&char_pos),
+                    pos: *char_pos,
                     start_time: system_vars.time,
                     die_at: system_vars.time.add_seconds(0.7),
                     duration: ElapsedTime(0.7),
@@ -364,7 +345,7 @@ impl SkillDescriptor for Skills {
         }
     }
 
-    fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
+    pub fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
         let t = match self {
             Skills::FireWall => 0.3,
             Skills::BrutalTestSkill => 1.0,
@@ -375,7 +356,7 @@ impl SkillDescriptor for Skills {
         return ElapsedTime(t);
     }
 
-    fn get_casting_range(&self) -> f32 {
+    pub fn get_casting_range(&self) -> f32 {
         match self {
             Skills::FireWall => 10.0,
             Skills::BrutalTestSkill => 20.,
@@ -385,7 +366,7 @@ impl SkillDescriptor for Skills {
         }
     }
 
-    fn get_skill_target_type(&self) -> SkillTargetType {
+    pub fn get_skill_target_type(&self) -> SkillTargetType {
         match self {
             Skills::FireWall => SkillTargetType::Area,
             Skills::BrutalTestSkill => SkillTargetType::Area,
@@ -395,7 +376,7 @@ impl SkillDescriptor for Skills {
         }
     }
 
-    fn render_casting(
+    pub fn render_casting(
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
@@ -405,15 +386,15 @@ impl SkillDescriptor for Skills {
             _ => {
                 // "StrEffect::Yunta2"
                 self.render_target_selection(
-                    char_pos,
-                    &casting_state.mouse_pos_when_casted,
+                    &casting_state.skill_pos,
+                    &casting_state.char_to_skill_dir_when_casted,
                     system_vars,
                 );
             }
         }
     }
 
-    fn is_casting_allowed(
+    pub fn is_casting_allowed(
         &self,
         caster_id: Entity,
         target_entity: Option<Entity>,
@@ -439,39 +420,33 @@ impl SkillDescriptor for Skills {
         }
     }
 
-    fn render_target_selection(
+    pub fn render_target_selection(
         &self,
-        char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
+        skill_pos: &Vector2<f32>,
+        char_to_skill_dir: &Vector2<f32>,
         system_vars: &SystemVariables,
     ) {
         match self {
             Skills::FireWall => {
                 Skills::render_casting_box(
                     &v2!(3.0, 1.0),
-                    mouse_pos,
-                    char_pos,
+                    skill_pos,
+                    char_to_skill_dir,
                     system_vars,
                 );
             }
             Skills::BrutalTestSkill => {
                 Skills::render_casting_box(
                     &v2!(10.0, 10.0),
-                    mouse_pos,
-                    char_pos,
+                    skill_pos,
+                    char_to_skill_dir,
                     system_vars,
                 );
             }
             Skills::Lightning => {
-                let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(&char_pos, &mouse_pos, self.get_casting_range());
-                for i in 0..3 {
-                    draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
-                                              &system_vars.matrices.projection,
-                                              &system_vars.matrices.view,
-                                              &(skill_3d_pos + dir_vector * i as f32 * 2.2),
-                                              1.0,
-                                              &[0.0, 1.0, 0.0, 1.0]);
-                }
+                LightningSkill::render_target_selection(
+                    skill_pos, char_to_skill_dir, system_vars,
+                );
             }
             Skills::Heal => {}
             Skills::Mounting => {}
@@ -488,62 +463,6 @@ pub struct PushBackWallSkill {
     pub rot_angle_in_rad: f32,
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
-}
-
-pub fn v3_to_v2(input: &Vector3<f32>) -> Vector2<f32> {
-    v2!(input.x, input.z)
-}
-
-pub fn v3_to_p2(input: &Vector3<f32>) -> Point2<f32> {
-    Point2::new(input.x, input.z)
-}
-
-pub fn p3_to_p2(input: &Point3<f32>) -> Point2<f32> {
-    Point2::new(input.x, input.z)
-}
-
-pub fn p3_to_v2(input: &Point3<f32>) -> Vector2<f32> {
-    v2!(input.x, input.z)
-}
-
-pub fn v2_to_p3(input: &Vector2<f32>) -> Point3<f32> {
-    p3!(input.x, 0.0, input.y)
-}
-
-pub fn p2_to_v3(input: &Point2<f32>) -> Vector3<f32> {
-    Vector3::new(input.x, 0.0, input.y)
-}
-
-pub fn p2_to_v2(input: &Point2<f32>) -> Vector2<f32> {
-    input.coords
-}
-
-pub fn v2_to_v3(input: &Vector2<f32>) -> Vector3<f32> {
-    Vector3::new(input.x, 0.0, input.y)
-}
-
-pub fn v2<T: Into<f32>>(x: T, y: T) -> Vector2<f32> {
-    v2!(x.into(), y.into())
-}
-
-pub fn v2_to_p2(input: &Vector2<f32>) -> Point2<f32> {
-    Point2::new(input.x, input.y)
-}
-
-pub fn rotate_vec(rad: f32, vec: &Vector2<f32>) -> Point2<f32> {
-    let rot_matrix = Matrix4::<f32>::identity();
-    let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), rad).to_homogeneous();
-    let rot_matrix = rot_matrix * rotation;
-    let rotated = rot_matrix.transform_point(&v2_to_p3(&vec));
-    return p3_to_p2(&rotated);
-}
-
-pub fn rotate_vec2(rad: f32, vec: &Vector2<f32>) -> Vector2<f32> {
-    let rot_matrix = Matrix4::<f32>::identity();
-    let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), rad).to_homogeneous();
-    let rot_matrix = rot_matrix * rotation;
-    let rotated = rot_matrix.transform_point(&v2_to_p3(vec));
-    return p3_to_v2(&rotated);
 }
 
 impl PushBackWallSkill {
@@ -564,7 +483,7 @@ impl PushBackWallSkill {
         ].iter().map(|effect_coords| {
             let effect_comp = StrEffectComponent {
                 effect: "StrEffect::FireWall".to_owned(),
-                pos: v2_to_p2(effect_coords),
+                pos: *effect_coords,
                 start_time: system_time,
                 die_at: system_time.add_seconds(3.0),
                 duration: ElapsedTime(3.0),
@@ -622,7 +541,7 @@ impl SkillManifestation for PushBackWallSkill {
                 let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
                 let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
                 if let Some(char_state) = char_storage.get_mut(char_entity_id) {
-                    let push_dir = self.pos - char_state.pos().coords;
+                    let push_dir = self.pos - char_state.pos();
                     let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
                         v2!(1, 0) // "random"
                     } else {
@@ -699,7 +618,7 @@ impl BrutalSkillManifest {
 //        }).collect();
         let effect_comp = StrEffectComponent {
             effect: "StrEffect::LordOfVermilion".to_owned(),
-            pos: v2_to_p2(&skill_center),
+            pos: *skill_center,
             start_time: system_time,
             die_at: system_time.add_seconds(3.0),
             duration: ElapsedTime(3.0),
@@ -765,8 +684,8 @@ impl SkillManifestation for BrutalSkillManifest {
 pub struct LightningManifest {
     pub caster_entity_id: Entity,
     pub effect_id: Entity,
-    pub pos: Vector3<f32>,
-    pub dir_vector: Vector3<f32>,
+    pub pos: Vector2<f32>,
+    pub dir_vector: Vector2<f32>,
     pub created_at: ElapsedTime,
     pub next_action_at: ElapsedTime,
     pub next_damage_at: ElapsedTime,
@@ -777,21 +696,21 @@ pub struct LightningManifest {
 impl LightningManifest {
     pub fn new(
         caster_entity_id: Entity,
-        skill_center: Vector3<f32>,
-        dir_vector: Vector3<f32>,
+        skill_center: &Vector2<f32>,
+        dir_vector: &Vector2<f32>,
         now: ElapsedTime,
         entities: &specs::Entities,
     ) -> LightningManifest {
         LightningManifest {
             caster_entity_id,
             effect_id: entities.create(),
-            pos: skill_center,
+            pos: *skill_center,
             created_at: now,
             next_action_at: now,
             next_damage_at: now,
-            last_skill_pos: v3_to_v2(&skill_center),
+            last_skill_pos: *skill_center,
             action_count: 0,
-            dir_vector,
+            dir_vector: *dir_vector,
         }
     }
 }
@@ -816,7 +735,7 @@ impl SkillManifestation for LightningManifest {
                     0 => {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&self.pos),
+                            pos: self.pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -826,7 +745,7 @@ impl SkillManifestation for LightningManifest {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&pos),
+                            pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -836,7 +755,7 @@ impl SkillManifestation for LightningManifest {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&pos),
+                            pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -846,7 +765,7 @@ impl SkillManifestation for LightningManifest {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&pos),
+                            pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -856,7 +775,7 @@ impl SkillManifestation for LightningManifest {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&pos),
+                            pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -865,7 +784,7 @@ impl SkillManifestation for LightningManifest {
                     5 => {
                         StrEffectComponent {
                             effect: "StrEffect::Lightning".to_owned(),
-                            pos: v3_to_p2(&self.pos),
+                            pos: self.pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                             duration: ElapsedTime(1.0),
@@ -875,7 +794,7 @@ impl SkillManifestation for LightningManifest {
                         return;
                     }
                 };
-                self.last_skill_pos = p2_to_v2(&effect_comp.pos.clone());
+                self.last_skill_pos = effect_comp.pos.clone();
                 updater.insert(self.effect_id, effect_comp);
                 self.action_count += 1;
                 self.next_action_at = system_vars.time.add_seconds(2.0);
@@ -902,6 +821,7 @@ impl SkillManifestation for LightningManifest {
                                       &system_vars.matrices.projection,
                                       &system_vars.matrices.view,
                                       &(self.pos + self.dir_vector * i as f32 * 2.2),
+                                      0.0,
                                       1.0,
                                       &[0.0, 1.0, 0.0, 1.0]);
         }
@@ -912,6 +832,7 @@ impl SkillManifestation for LightningManifest {
                                           &system_vars.matrices.projection,
                                           &system_vars.matrices.view,
                                           &(self.pos + self.dir_vector * (5 - i) as f32 * 2.2),
+                                          0.0,
                                           1.0,
                                           &[0.0, 1.0, 0.0, 1.0]);
             }

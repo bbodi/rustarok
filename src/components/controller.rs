@@ -2,10 +2,10 @@ use specs::Entity;
 use crate::cam::Camera;
 use std::collections::HashMap;
 use sdl2::keyboard::Scancode;
-use nalgebra::{Point3, Point2, Matrix4};
+use nalgebra::{Point3, Matrix4, Vector2};
 use specs::prelude::*;
-use crate::components::skill::Skills;
 use strum_macros::EnumIter;
+use crate::components::skills::skill::Skills;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -30,8 +30,8 @@ impl KeyState {
     }
 }
 
-pub type ScreenCoords = Point2<u16>;
-pub type WorldCoords = Point2<f32>;
+pub type ScreenCoords = Vector2<u16>;
+pub type WorldCoords = Vector2<f32>;
 
 #[derive(PartialEq, Eq, Copy, Clone, EnumIter, Debug, Hash)]
 pub enum SkillKey {
@@ -148,7 +148,7 @@ impl ControllerComponent {
             last_action: None,
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
-            mouse_world_pos: Point2::new(0.0, 0.0),
+            mouse_world_pos: v2!(0, 0),
         }
     }
 
@@ -173,7 +173,7 @@ impl ControllerComponent {
     }
 
     pub fn mouse_pos(&self) -> ScreenCoords {
-        Point2::new(self.last_mouse_x, self.last_mouse_x)
+        Vector2::new(self.last_mouse_x, self.last_mouse_y)
     }
 
     pub fn cleanup_released_keys(&mut self) {

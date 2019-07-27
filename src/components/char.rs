@@ -7,10 +7,10 @@ use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
 use crate::systems::{Sex, Sprites};
-use crate::components::skill::{Skills};
 use crate::components::controller::WorldCoords;
 use crate::components::status::Statuses;
 use crate::asset::SpriteResource;
+use crate::components::skills::skill::Skills;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -124,18 +124,19 @@ impl PhysicsComponent {
 
 #[derive(Clone, Debug)]
 pub struct CastingSkillData {
-    pub mouse_pos_when_casted: WorldCoords,
+    pub skill_pos: Vector2<f32>,
+    pub char_to_skill_dir_when_casted: Vector2<f32>,
     pub target_entity: Option<Entity>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
     pub can_move: bool,
-    pub skill: Skills, // for debugging purposes
+    pub skill: Skills,
 }
 
 #[derive(Clone, Debug)]
 pub enum CharState {
     Idle,
-    Walking(Point2<f32>),
+    Walking(Vector2<f32>),
     Sitting,
     PickingItem,
     StandBy,
@@ -241,7 +242,7 @@ impl SpriteBoundingRect {
 #[derive(Debug)]
 pub enum EntityTarget {
     OtherEntity(Entity),
-    Pos(Point2<f32>),
+    Pos(WorldCoords),
 }
 
 #[derive(Copy, Clone)]
@@ -393,7 +394,7 @@ impl CharacterStateComponent {
         let statuses = Statuses::new();
         let calculated_attribs = statuses.calc_attribs(&outlook);
         CharacterStateComponent {
-            pos: Point2::new(0.0, 0.0),
+            pos: v2!(0, 0),
             typ,
             outlook,
             target: None,

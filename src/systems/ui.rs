@@ -9,8 +9,7 @@ use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CU
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, GlTexture};
 use crate::video::VertexAttribDefinition;
-use crate::components::skill::SkillTargetType;
-use crate::components::skill::SkillDescriptor;
+use crate::components::skills::skill::{SkillTargetType, SkillDescriptor};
 
 pub struct RenderUI {
     cursor_anim_descr: SpriteRenderDescriptorComponent,
@@ -100,35 +99,8 @@ impl<'a> specs::System<'a> for RenderUI {
                 _ => {}
             }
 
-            // Draw cursor
             let selecting_target = controller.is_selecting_target();
-            let cursor = if let Some((skill_key, skill)) = selecting_target {
-                let texture = &system_vars.texts.skill_name_texts[&skill];
-                render_texture_2d(
-                    &system_vars,
-                    texture,
-                    &Vector2::new(
-                        controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
-                        controller.last_mouse_y as f32 + 32.0,
-                    ),
-                    1.0,
-                );
-                if skill.get_skill_target_type() != SkillTargetType::Area {
-                    CURSOR_TARGET
-                } else {
-                    CURSOR_CLICK
-                }
-            } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
-                if entity_below_cursor == controller.char { // self
-                    CURSOR_NORMAL
-                } else {
-                    CURSOR_ATTACK
-                }
-            } else if !controller.cell_below_cursor_walkable {
-                CURSOR_STOP
-            } else {
-                CURSOR_NORMAL
-            };
+
             // draw skill bar
             let single_icon_size = 48;
             let inner_border = 3;
@@ -215,6 +187,34 @@ impl<'a> specs::System<'a> for RenderUI {
                 }
             }
 
+            // Draw cursor
+            let cursor = if let Some((skill_key, skill)) = selecting_target {
+                let texture = &system_vars.texts.skill_name_texts[&skill];
+                render_texture_2d(
+                    &system_vars,
+                    texture,
+                    &Vector2::new(
+                        controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
+                        controller.last_mouse_y as f32 + 32.0,
+                    ),
+                    1.0,
+                );
+                if skill.get_skill_target_type() != SkillTargetType::Area {
+                    CURSOR_TARGET
+                } else {
+                    CURSOR_CLICK
+                }
+            } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
+                if entity_below_cursor == controller.char { // self
+                    CURSOR_NORMAL
+                } else {
+                    CURSOR_ATTACK
+                }
+            } else if !controller.cell_below_cursor_walkable {
+                CURSOR_STOP
+            } else {
+                CURSOR_NORMAL
+            };
             self.cursor_anim_descr.action_index = cursor.1;
             render_sprite_2d(&system_vars,
                              &self.cursor_anim_descr,
@@ -270,10 +270,10 @@ fn render_sprite_2d(system_vars: &SystemVariables,
         shader.set_vec2("offset", &offset);
         shader.set_vec2("size", &[
             width,
-            height as f32
+            -height as f32
         ]);
         shader.set_f32("alpha", 1.0);
-        system_vars.map_render_data.sprite_vertex_array.bind().draw();
+        system_vars.map_render_data.centered_sprite_vertex_array.bind().draw();
     }
 }
 

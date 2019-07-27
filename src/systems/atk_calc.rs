@@ -5,8 +5,8 @@ use crate::{PhysicsWorld, ElapsedTime};
 use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType};
 use specs::prelude::*;
 use nalgebra::Vector2;
-use crate::components::skill::{Skills, v2_to_p2};
 use crate::components::status::ApplyStatusComponentPayload;
+use crate::components::skills::skill::Skills;
 
 pub enum AttackOutcome {
     Damage(u32),
@@ -77,7 +77,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &entities,
                         &mut updater,
                         attacked_entity,
-                        &char_pos.coords,
+                        &char_pos,
                         system_vars.time,
                     );
                 }
@@ -92,7 +92,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &entities,
                         &mut updater,
                         attacked_entity,
-                        &char_pos.coords,
+                        &char_pos,
                         system_vars.time,
                     );
                 }
@@ -224,7 +224,7 @@ impl AttackCalculation {
             value,
             target_entity_id,
             3.0,
-            v2_to_p2(&char_pos),
+            *char_pos,
             sys_time));
     }
 }

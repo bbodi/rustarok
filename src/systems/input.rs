@@ -8,10 +8,10 @@ use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
 use sdl2::mouse::MouseButton;
 use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
-use nalgebra::{Point2, Vector3, Vector4, Matrix4, Point3};
+use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use strum::IntoEnumIterator;
-use crate::components::skill::{SkillTargetType, Skills, SkillDescriptor};
+use crate::components::skills::skill::{Skills, SkillTargetType, SkillDescriptor};
 
 pub struct BrowserInputProducerSystem;
 
@@ -429,6 +429,17 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             );
             controller.mouse_world_pos = mouse_world_pos;
 
+            if controller.is_key_just_released(Scancode::F12) {
+                match controller.get_skill_for_key(SkillKey::Q) {
+                    Some(Skills::FireWall) => {
+                        controller.assign_skill(SkillKey::Q, Skills::FireWall);
+                    }
+                    _ => {
+
+                    }
+                }
+            }
+
 //            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
 //            if controller.keys.contains(&Scancode::W) {
 //                controller.camera.move_forward(camera_speed);
@@ -475,6 +486,6 @@ impl InputConsumerSystem {
         let plane_point = Vector3::new(0.0, 0.0, 0.0);
         let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords)) / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
-        return Point2::new(world_pos.x, world_pos.z);
+        return v2!(world_pos.x, world_pos.z);
     }
 }

@@ -5,7 +5,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables, CollisionsFromPrevFr
 use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
-use crate::components::skill::SkillManifestationComponent;
+use crate::components::skills::skill::SkillManifestationComponent;
 
 pub struct SkillSystem;
 
