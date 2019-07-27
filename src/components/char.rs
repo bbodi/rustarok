@@ -6,7 +6,7 @@ use crate::{LIVING_COLLISION_GROUP, PhysicsWorld, CharActionIndex, ElapsedTime, 
 use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
-use crate::systems::{Sex, Sprites};
+use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::components::controller::WorldCoords;
 use crate::components::status::Statuses;
 use crate::asset::SpriteResource;
@@ -124,7 +124,7 @@ impl PhysicsComponent {
 
 #[derive(Clone, Debug)]
 pub struct CastingSkillData {
-    pub skill_pos: Vector2<f32>,
+    pub target_area_pos: Option<Vector2<f32>>,
     pub char_to_skill_dir_when_casted: Vector2<f32>,
     pub target_entity: Option<Entity>,
     pub cast_started: ElapsedTime,
@@ -383,14 +383,6 @@ pub struct CharacterStateComponent {
 
 impl CharacterStateComponent {
     pub fn new(typ: CharType, outlook: CharOutlook) -> CharacterStateComponent {
-        let attributes = CharAttributes {
-            walking_speed: U8Float::new(Percentage::new(100.0)),
-            attack_range: U8Float::new(Percentage::new(100.0)),
-            attack_speed: U8Float::new(Percentage::new(100.0)),
-            attack_damage: 76,
-            armor: U8Float::new(Percentage::new(0.0)),
-            max_hp: 2000,
-        };
         let statuses = Statuses::new();
         let calculated_attribs = statuses.calc_attribs(&outlook);
         CharacterStateComponent {
@@ -407,6 +399,28 @@ impl CharacterStateComponent {
             calculated_attribs,
             statuses,
         }
+    }
+
+    pub fn update_statuses(
+        &mut self,
+        self_char_id: Entity,
+        system_vars: &mut SystemVariables,
+    ) {
+        self.statuses.update(
+            self_char_id,
+            &self.pos(),
+            system_vars
+        )
+    }
+
+    pub fn render(
+        &mut self,
+        system_vars: &mut SystemVariables,
+    ) {
+        self.statuses.render(
+            &self.pos(),
+            system_vars
+        )
     }
 
     pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {

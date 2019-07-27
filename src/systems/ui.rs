@@ -9,7 +9,7 @@ use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CU
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, GlTexture};
 use crate::video::VertexAttribDefinition;
-use crate::components::skills::skill::{SkillTargetType, SkillDescriptor};
+use crate::components::skills::skill::{SkillTargetType};
 
 pub struct RenderUI {
     cursor_anim_descr: SpriteRenderDescriptorComponent,

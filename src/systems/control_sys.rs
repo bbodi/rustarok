@@ -4,7 +4,7 @@ use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, CastingSkillData};
 use crate::components::controller::{ControllerComponent, ControllerAction, WorldCoords};
 use crate::ElapsedTime;
-use crate::components::skills::skill::{Skills, SkillDescriptor};
+use crate::components::skills::skill::{Skills, SkillTargetType};
 
 pub struct CharacterControlSystem;
 
@@ -90,7 +90,10 @@ impl CharacterControlSystem {
                 cast_ends: now.add(casting_time_seconds),
                 can_move: false,
                 skill,
-                skill_pos: controller.mouse_world_pos,
+                target_area_pos: match skill.get_skill_target_type() {
+                    SkillTargetType::Area => { Some(controller.mouse_world_pos) }
+                    _ => { None }
+                },
                 char_to_skill_dir_when_casted: dir_vector,
             });
             let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction

@@ -6,15 +6,16 @@ use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWo
 use nalgebra::{Vector2, Vector3, Matrix4, Rotation3, Point3, Isometry2};
 use crate::systems::{SystemVariables, Collision};
 use std::sync::{Arc, Mutex};
-use crate::video::{draw_lines_inefficiently, draw_circle_inefficiently};
+use crate::video::{draw_lines_inefficiently};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent};
 use ncollide2d::query::Proximity;
-use crate::components::status::{ApplyStatusComponent, MainStatus, Status};
+use crate::components::status::{ApplyStatusComponent, MainStatuses};
 use strum_macros::EnumIter;
-use crate::components::skills::lightning::LightningSkill;
+use crate::components::skills::lightning::{LightningSkill, LightningManifest};
 use crate::common::{v2_to_v3, rotate_vec2};
+use crate::systems::render::RenderDesktopClientSystem;
 
 
 pub trait SkillManifestation {
@@ -82,45 +83,6 @@ unsafe impl Sync for SkillManifestationComponent {}
 unsafe impl Send for SkillManifestationComponent {}
 
 
-pub trait SkillDescriptor {
-    fn finish_cast(
-        &self,
-        caster_entity_id: Entity,
-        char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
-        target_entity: Option<Entity>,
-        physics_world: &mut PhysicsWorld,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
-    ) -> Option<Box<dyn SkillManifestation>>;
-
-    fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime;
-    fn get_casting_range(&self) -> f32;
-
-    fn get_skill_target_type(&self) -> SkillTargetType;
-
-    fn render_casting(
-        &self,
-        char_pos: &Vector2<f32>,
-        casting_state: &CastingSkillData,
-        system_vars: &SystemVariables);
-
-    fn is_casting_allowed(
-        &self,
-        caster_id: Entity,
-        target_entity: Option<Entity>,
-        target_distance: f32,
-    ) -> bool;
-
-    fn render_target_selection(
-        &self,
-        skill_pos: &Vector3<f32>,
-        char_to_skill_dir: &Vector3<f32>,
-        system_vars: &SystemVariables,
-    );
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
     FireWall,
@@ -128,6 +90,7 @@ pub enum Skills {
     Lightning,
     Heal,
     Mounting,
+    Poison,
 }
 
 impl Skills {
@@ -138,6 +101,7 @@ impl Skills {
             Skills::Lightning => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp",
             Skills::Heal => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp",
             Skills::Mounting => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\su_pickypeck.bmp",
+            Skills::Poison => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\tf_poison.bmp",
         }
     }
 
@@ -262,12 +226,12 @@ pub enum SkillTargetType {
     OnlySelf,
 }
 
-impl /*SkillDescriptor for*/ Skills {
+impl Skills {
     pub fn finish_cast(
         &self,
         caster_entity_id: Entity,
         char_pos: &Vector2<f32>,
-        skill_pos: &Vector2<f32>,
+        skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<Entity>,
         physics_world: &mut PhysicsWorld,
@@ -283,7 +247,7 @@ impl /*SkillDescriptor for*/ Skills {
                     PushBackWallSkill::new(
                         caster_entity_id,
                         physics_world,
-                        &skill_pos,
+                        &skill_pos.unwrap(),
                         angle_in_rad,
                         system_vars.time,
                         entities,
@@ -297,7 +261,7 @@ impl /*SkillDescriptor for*/ Skills {
                 Some(Box::new(
                     BrutalSkillManifest::new(
                         caster_entity_id,
-                        skill_pos,
+                        &skill_pos.unwrap(),
                         angle_in_rad,
                         system_vars.time,
                         entities,
@@ -309,7 +273,7 @@ impl /*SkillDescriptor for*/ Skills {
                 Some(Box::new(
                     LightningManifest::new(
                         caster_entity_id,
-                        skill_pos,
+                        &skill_pos.unwrap(),
                         char_to_skill_dir,
                         system_vars.time,
                         entities,
@@ -330,7 +294,8 @@ impl /*SkillDescriptor for*/ Skills {
                 system_vars.status_changes.push(
                     ApplyStatusComponent::from_main_status(
                         caster_entity_id,
-                        MainStatus::Mounted,
+                        caster_entity_id,
+                        MainStatuses::Mounted,
                     )
                 );
                 updater.insert(entities.create(), StrEffectComponent {
@@ -340,6 +305,23 @@ impl /*SkillDescriptor for*/ Skills {
                     die_at: system_vars.time.add_seconds(0.7),
                     duration: ElapsedTime(0.7),
                 });
+                None
+            }
+            Skills::Poison => {
+                updater.insert(entities.create(), StrEffectComponent {
+                    effect: "hunter_poison".to_owned(),
+                    pos: skill_pos.unwrap(),
+                    start_time: system_vars.time,
+                    die_at: system_vars.time.add_seconds(0.7),
+                    duration: ElapsedTime(0.7),
+                });
+                system_vars.status_changes.push(
+                    ApplyStatusComponent::from_main_status(
+                        caster_entity_id,
+                        target_entity.unwrap(),
+                        MainStatuses::Poison,
+                    )
+                );
                 None
             }
         }
@@ -352,6 +334,7 @@ impl /*SkillDescriptor for*/ Skills {
             Skills::Lightning => 0.7,
             Skills::Heal => 0.3,
             Skills::Mounting => if char_state.statuses.is_mounted() { 0.0 } else { 2.0 },
+            Skills::Poison => 0.5
         };
         return ElapsedTime(t);
     }
@@ -363,6 +346,7 @@ impl /*SkillDescriptor for*/ Skills {
             Skills::Lightning => 7.0,
             Skills::Heal => 10.0,
             Skills::Mounting => 0.0,
+            Skills::Poison => 10.0,
         }
     }
 
@@ -372,7 +356,8 @@ impl /*SkillDescriptor for*/ Skills {
             Skills::BrutalTestSkill => SkillTargetType::Area,
             Skills::Lightning => SkillTargetType::Area,
             Skills::Heal => SkillTargetType::OnlyAllyAndSelf,
-            Skills::Mounting => SkillTargetType::NoTarget
+            Skills::Mounting => SkillTargetType::NoTarget,
+            Skills::Poison => SkillTargetType::OnlyEnemy,
         }
     }
 
@@ -380,16 +365,21 @@ impl /*SkillDescriptor for*/ Skills {
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
     ) {
         match self {
             _ => {
-                // "StrEffect::Yunta2"
-                self.render_target_selection(
-                    &casting_state.skill_pos,
-                    &casting_state.char_to_skill_dir_when_casted,
-                    system_vars,
-                );
+                RenderDesktopClientSystem::render_str("StrEffect::Moonstar",
+                                                      casting_state.cast_started,
+                                                      char_pos,
+                                                      system_vars);
+                if let Some(target_area_pos) = casting_state.target_area_pos {
+                    self.render_target_selection(
+                        &target_area_pos,
+                        &casting_state.char_to_skill_dir_when_casted,
+                        system_vars,
+                    );
+                }
             }
         }
     }
@@ -450,6 +440,7 @@ impl /*SkillDescriptor for*/ Skills {
             }
             Skills::Heal => {}
             Skills::Mounting => {}
+            Skills::Poison => {}
         }
     }
 }
@@ -678,164 +669,5 @@ impl SkillManifestation for BrutalSkillManifest {
             self.rot_angle_in_rad,
             &system_vars,
         );
-    }
-}
-
-pub struct LightningManifest {
-    pub caster_entity_id: Entity,
-    pub effect_id: Entity,
-    pub pos: Vector2<f32>,
-    pub dir_vector: Vector2<f32>,
-    pub created_at: ElapsedTime,
-    pub next_action_at: ElapsedTime,
-    pub next_damage_at: ElapsedTime,
-    pub last_skill_pos: Vector2<f32>,
-    pub action_count: u8,
-}
-
-impl LightningManifest {
-    pub fn new(
-        caster_entity_id: Entity,
-        skill_center: &Vector2<f32>,
-        dir_vector: &Vector2<f32>,
-        now: ElapsedTime,
-        entities: &specs::Entities,
-    ) -> LightningManifest {
-        LightningManifest {
-            caster_entity_id,
-            effect_id: entities.create(),
-            pos: *skill_center,
-            created_at: now,
-            next_action_at: now,
-            next_damage_at: now,
-            last_skill_pos: *skill_center,
-            action_count: 0,
-            dir_vector: *dir_vector,
-        }
-    }
-}
-
-
-impl SkillManifestation for LightningManifest {
-    fn update(&mut self,
-              self_entity_id: Entity,
-              _all_collisions_in_world: &Vec<Collision>,
-              system_vars: &mut SystemVariables,
-              entities: &specs::Entities,
-              char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-              physics_world: &mut PhysicsWorld,
-              updater: &mut specs::Write<LazyUpdate>) {
-        if self.created_at.add_seconds(12.0).has_passed(system_vars.time) {
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
-            updater.remove::<StrEffectComponent>(self.effect_id);
-        } else {
-            if self.next_action_at.has_passed(system_vars.time) {
-                updater.remove::<StrEffectComponent>(self.effect_id);
-                let effect_comp = match self.action_count {
-                    0 => {
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos: self.pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    1 => {
-                        let pos = self.pos + self.dir_vector * 2.2;
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    2 => {
-                        let pos = self.pos + self.dir_vector * 2.0 * 2.2;
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    3 => {
-                        let pos = self.pos + self.dir_vector * 2.0 * 2.2;
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    4 => {
-                        let pos = self.pos + self.dir_vector * 2.2;
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    5 => {
-                        StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
-                            pos: self.pos,
-                            start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
-                        }
-                    }
-                    _ => {
-                        return;
-                    }
-                };
-                self.last_skill_pos = effect_comp.pos.clone();
-                updater.insert(self.effect_id, effect_comp);
-                self.action_count += 1;
-                self.next_action_at = system_vars.time.add_seconds(2.0);
-                self.next_damage_at = system_vars.time; // do a damage right away at the new skill location
-            }
-            if self.next_damage_at.has_passed(system_vars.time) {
-                Skills::damage_chars(
-                    entities,
-                    char_storage,
-                    system_vars,
-                    ncollide2d::shape::Ball::new(1.0),
-                    Isometry2::new(self.last_skill_pos, 0.0),
-                    self.caster_entity_id,
-                    Skills::Lightning,
-                );
-                self.next_damage_at = self.next_damage_at.add_seconds(0.6);
-            }
-        }
-    }
-
-    fn render(&self, system_vars: &SystemVariables) {
-        for i in self.action_count..3 {
-            draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
-                                      &system_vars.matrices.projection,
-                                      &system_vars.matrices.view,
-                                      &(self.pos + self.dir_vector * i as f32 * 2.2),
-                                      0.0,
-                                      1.0,
-                                      &[0.0, 1.0, 0.0, 1.0]);
-        }
-        // backwards
-        if self.action_count >= 4 {
-            for i in self.action_count..6 {
-                draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
-                                          &system_vars.matrices.projection,
-                                          &system_vars.matrices.view,
-                                          &(self.pos + self.dir_vector * (5 - i) as f32 * 2.2),
-                                          0.0,
-                                          1.0,
-                                          &[0.0, 1.0, 0.0, 1.0]);
-            }
-        }
     }
 }

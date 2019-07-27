@@ -5,7 +5,7 @@ use crate::{PhysicsWorld, ElapsedTime};
 use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType};
 use specs::prelude::*;
 use nalgebra::Vector2;
-use crate::components::status::ApplyStatusComponentPayload;
+use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
 use crate::components::skills::skill::Skills;
 
 pub enum AttackOutcome {
@@ -106,8 +106,16 @@ impl<'a> specs::System<'a> for AttackSystem {
                     ApplyStatusComponentPayload::MainStatus(status_name) => {
                         log::debug!("Applying state '{:?}' on {:?}", status_name, status.target_entity_id);
                         match status_name {
-                            _ => {
+                            MainStatuses::Mounted => {
                                 target_char.statuses.switch_mounted();
+                            }
+                            MainStatuses::Stun => {}
+                            MainStatuses::Poison => {
+                                target_char.statuses.add_poison(
+                                    status.source_entity_id,
+                                    system_vars.time,
+                                    system_vars.time.add_seconds(5.0)
+                                );
                             }
                         }
                     }
@@ -148,6 +156,7 @@ impl AttackCalculation {
             Skills::Lightning => 120.0,
             Skills::Heal => 0.0,
             Skills::Mounting => 0.0, // TODO: it should not be listed here
+            Skills::Poison => 30.0
         };
         match skill {
             // attacking skills
@@ -162,6 +171,15 @@ impl AttackCalculation {
                 };
                 dst_outcomes.push(outcome);
             }
+            Skills::Poison => {
+                let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
+                let outcome = if atk == 0 {
+                    AttackOutcome::Block
+                } else {
+                    AttackOutcome::Poison(atk)
+                };
+                dst_outcomes.push(outcome);
+            }
             // healing skills
             Skills::Heal => {
                 dst_outcomes.push(AttackOutcome::Heal(200));
@@ -171,8 +189,6 @@ impl AttackCalculation {
         return (src_outcomes, dst_outcomes);
     }
 
-
-    pub fn apply_attack_state(src: &mut CharacterStateComponent, dst: &mut CharacterStateComponent) {}
 
     pub fn apply_damage(
         char_comp: &mut CharacterStateComponent,
@@ -214,10 +230,10 @@ impl AttackCalculation {
         let damage_entity = entities.create();
         let (typ, value) = match outcome {
             AttackOutcome::Damage(value) => (FlyingNumberType::Damage, *value),
-            AttackOutcome::Poison(_) => (FlyingNumberType::Damage, 0),
-            AttackOutcome::Crit(_) => (FlyingNumberType::Damage, 0),
+            AttackOutcome::Poison(value) => (FlyingNumberType::Poison, *value),
+            AttackOutcome::Crit(value) => (FlyingNumberType::Damage, *value),
             AttackOutcome::Heal(value) => (FlyingNumberType::Heal, *value),
-            AttackOutcome::Block => (FlyingNumberType::Normal, 0)
+            AttackOutcome::Block => (FlyingNumberType::Damage, 0)
         };
         updater.insert(damage_entity, FlyingNumberComponent::new(
             typ,

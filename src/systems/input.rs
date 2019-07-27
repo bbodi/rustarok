@@ -11,7 +11,7 @@ use crate::components::controller::{ControllerComponent, CastMode, ControllerAct
 use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use strum::IntoEnumIterator;
-use crate::components::skills::skill::{Skills, SkillTargetType, SkillDescriptor};
+use crate::components::skills::skill::{Skills, SkillTargetType};
 
 pub struct BrowserInputProducerSystem;
 
@@ -432,7 +432,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             if controller.is_key_just_released(Scancode::F12) {
                 match controller.get_skill_for_key(SkillKey::Q) {
                     Some(Skills::FireWall) => {
+                        controller.assign_skill(SkillKey::Q, Skills::Poison);
+                    }
+                    Some(Skills::Poison) => {
                         controller.assign_skill(SkillKey::Q, Skills::FireWall);
+                        controller.assign_skill(SkillKey::W, Skills::Lightning);
+                        controller.assign_skill(SkillKey::E, Skills::Heal);
+                        controller.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
                     }
                     _ => {
 

@@ -1,5 +1,5 @@
 use nalgebra::{Matrix4, Vector3, Rotation3, Vector2, Matrix3, Vector4};
-use crate::video::{VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, DynamicVertexArray, ShaderProgram, draw_circle_inefficiently};
+use crate::video::{VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, ShaderProgram, draw_circle_inefficiently};
 use crate::video::VertexAttribDefinition;
 use specs::prelude::*;
 use crate::systems::{SystemVariables, SystemFrameDurations};
@@ -10,7 +10,7 @@ use crate::components::controller::{ControllerComponent, WorldCoords};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
 use crate::asset::str::KeyFrameType;
-use crate::components::skills::skill::{Skills, SkillTargetType, SkillManifestationComponent, SkillDescriptor};
+use crate::components::skills::skill::{Skills, SkillTargetType, SkillManifestationComponent};
 use crate::common::{v2_to_v3};
 
 /// The values that should be added to the sprite direction based on the camera
@@ -59,7 +59,6 @@ impl<'a> specs::System<'a> for OpenGlInitializerFor3D {
 
 pub struct RenderDesktopClientSystem {
     rectangle_vao: VertexArray,
-    str_effect_vao: DynamicVertexArray,
     capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray>, // radius to vertexArray
 }
 
@@ -102,27 +101,6 @@ impl RenderDesktopClientSystem {
                         offset_of_first_element: 0,
                     }
                 ]),
-            str_effect_vao: DynamicVertexArray::new(
-                gl::TRIANGLE_STRIP,
-                vec![
-                    1.0, 1.0, // xy
-                    0.0, 0.0, // uv
-                    1.0, 1.0,
-                    1.0, 0.0, // uv
-                    1.0, 1.0,
-                    0.0, 1.0, // uv
-                    1.0, 1.0,
-                    1.0, 1.0, // uv
-                ], 4, vec![
-                    VertexAttribDefinition { // xy
-                        number_of_components: 2,
-                        offset_of_first_element: 0,
-                    },
-                    VertexAttribDefinition { // uv
-                        number_of_components: 2,
-                        offset_of_first_element: 2,
-                    }
-                ]),
         }
     }
 }
@@ -135,7 +113,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
@@ -150,7 +128,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         physics_storage,
         sprite_storage,
         mut char_state_storage,
-        system_vars,
+        mut system_vars,
         mut system_benchmark,
         skill_storage,
         str_effect_storage,
@@ -196,6 +174,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
                 let pos = char_state.pos();
                 let is_dead = char_state.state().is_dead();
+                let color = char_state.statuses.calc_render_color();
                 match char_state.outlook {
                     CharOutlook::Player { job_id, head_index, sex } => {
                         let body_sprite = char_state.statuses.calc_render_sprite(
@@ -245,7 +224,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                              true,
                                                                              1.0,
                                                                              is_dead,
-                                                                             &[1.0, 1.0, 1.0, 1.0]);
+                                                                             &color);
                         let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
                                                                                   &animated_sprite,
                                                                                   head_res,
@@ -256,7 +235,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                                   false,
                                                                                   1.0,
                                                                                   is_dead,
-                                                                                  &[1.0, 1.0, 1.0, 1.0]);
+                                                                                  &color);
 
                         char_state.bounding_rect_2d = body_bounding_rect;
                         char_state.bounding_rect_2d.merge(&head_bounding_rect);
@@ -299,7 +278,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                                                          true,
                                                                          1.0,
                                                                          is_dead,
-                                                                         &[1.0, 1.0, 1.0, 1.0]);
+                                                                         &color);
                         char_state.bounding_rect_2d = bounding_rect;
 
                         if !is_dead {
@@ -313,6 +292,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                         }
                     }
                 }
+
+                char_state.render(&mut system_vars);
             }
 
             let char_pos = char_state_storage.get(controller.char).unwrap().pos();
@@ -353,7 +334,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     skill.render_casting(
                         &char_pos,
                         casting_info,
-                        &system_vars,
+                        &mut system_vars,
                     );
                 }
             }
@@ -366,10 +347,10 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 if str_effect.die_at.has_passed(system_vars.time) {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
-                    self.render_str(&str_effect.effect,
+                    RenderDesktopClientSystem::render_str(&str_effect.effect,
                                     str_effect.start_time,
                                     &str_effect.pos,
-                                    &system_vars);
+                                    &mut system_vars);
                 }
             }
         }
@@ -832,6 +813,23 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                             (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5))).sin() * 5.0;
                         (1.0 - perc) * 1.0
                     }
+                    FlyingNumberType::Poison => {
+                        // follow the target
+                        let real_pos = char_state_storage
+                            .get(number.target_entity_id)
+                            .map(|it| it.pos())
+                            .unwrap_or(number.start_pos);
+                        pos.x = real_pos.x;
+                        pos.z = real_pos.y;
+                        let size = 0.4;
+                        pos.x -= width * size / 2.0;
+                        let y_offset = (perc - 0.3) * 3.0;
+                        pos.y += 2.0 + y_offset;
+                        // a small hack to mitigate the distortion effect of perspective projection
+                        // at the edge of the screens
+                        pos.z -= y_offset;
+                        size
+                    }
                     _ => {
                         pos.y += 4.0 * perc;
                         pos.z -= 2.0 * perc;
@@ -864,11 +862,10 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
 
 impl RenderDesktopClientSystem {
     pub fn render_str(
-        &mut self,
         effect_name: &str,
         start_time: ElapsedTime,
         world_pos: &WorldCoords,
-        system_vars: &SystemVariables,
+        system_vars: &mut SystemVariables,
     ) {
         unsafe {
             gl::Disable(gl::DEPTH_TEST);
@@ -961,20 +958,20 @@ impl RenderDesktopClientSystem {
 
             shader.set_vec2("offset", &offset);
             shader.set_vec4("color", &color);
-            self.str_effect_vao[0] = xy[0];
-            self.str_effect_vao[1] = xy[4];
-            self.str_effect_vao[4] = xy[1];
-            self.str_effect_vao[5] = xy[5];
-            self.str_effect_vao[8] = xy[3];
-            self.str_effect_vao[9] = xy[7];
-            self.str_effect_vao[12] = xy[2];
-            self.str_effect_vao[13] = xy[6];
+            system_vars.str_effect_vao[0] = xy[0];
+            system_vars.str_effect_vao[1] = xy[4];
+            system_vars.str_effect_vao[4] = xy[1];
+            system_vars.str_effect_vao[5] = xy[5];
+            system_vars.str_effect_vao[8] = xy[3];
+            system_vars.str_effect_vao[9] = xy[7];
+            system_vars.str_effect_vao[12] = xy[2];
+            system_vars.str_effect_vao[13] = xy[6];
 
             unsafe {
                 gl::BlendFunc(from_frame.src_alpha, from_frame.dst_alpha);
             }
             str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
-            self.str_effect_vao.bind().draw();
+            system_vars.str_effect_vao.bind().draw();
         }
         unsafe {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);

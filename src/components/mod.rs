@@ -43,8 +43,8 @@ pub struct StrEffectComponent {
 
 pub enum FlyingNumberType {
     Damage,
+    Poison,
     Heal,
-    Normal,
     Mana,
     Crit,
 }
@@ -60,7 +60,7 @@ impl FlyingNumberType {
                 }
             }
             FlyingNumberType::Heal => [0.0, 1.0, 0.0],
-            FlyingNumberType::Normal => [1.0, 1.0, 1.0],
+            FlyingNumberType::Poison => [0.55, 0.0, 0.55],
             FlyingNumberType::Mana => [0.0, 0.0, 1.0],
             FlyingNumberType::Crit => [1.0, 1.0, 1.0]
         }

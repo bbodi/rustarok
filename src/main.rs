@@ -50,7 +50,7 @@ use crate::systems::phys::{FrictionSystem, PhysicsSystem};
 use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, RenderDesktopClientSystem, RenderStreamingSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::ui::RenderUI;
-use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH, DynamicVertexArray};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::asset::str::StrFile;
 use crate::asset::gat::{CellType, Gat};
@@ -212,6 +212,10 @@ impl ElapsedTime {
 
     pub fn has_not_passed(&self, system_time: ElapsedTime) -> bool {
         self.0 > system_time.0
+    }
+
+    pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0.max(other.0))
     }
 }
 
@@ -562,7 +566,28 @@ fn main() {
         attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
         status_changes: Vec::with_capacity(128),
-        skill_icons
+        skill_icons,
+        str_effect_vao: DynamicVertexArray::new(
+            gl::TRIANGLE_STRIP,
+            vec![
+                1.0, 1.0, // xy
+                0.0, 0.0, // uv
+                1.0, 1.0,
+                1.0, 0.0, // uv
+                1.0, 1.0,
+                0.0, 1.0, // uv
+                1.0, 1.0,
+                1.0, 1.0, // uv
+            ], 4, vec![
+                VertexAttribDefinition { // xy
+                    number_of_components: 2,
+                    offset_of_first_element: 0,
+                },
+                VertexAttribDefinition { // uv
+                    number_of_components: 2,
+                    offset_of_first_element: 2,
+                }
+            ]),
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
@@ -724,9 +749,9 @@ fn main() {
                 .create_entity()
                 .with(StrEffectComponent {
                     effect: new_str_name.clone(),
-                    pos: v2!(hero_pos.x, hero_pos.y),
+                    pos: hero_pos,
                     start_time: ElapsedTime(0.0),
-                    die_at: ElapsedTime(200.0),
+                    die_at: ElapsedTime(20000.0),
                     duration: ElapsedTime(1.0),
                 })
                 .build();
@@ -1386,7 +1411,9 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
         str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
         str_effects.insert("StrEffect::Concentration".to_owned(), asset_loader.load_effect("concentration").unwrap());
-        str_effects.insert("StrEffect::Yunta2".to_owned(), asset_loader.load_effect("yunta_2").unwrap());
+        str_effects.insert("StrEffect::Moonstar".to_owned(), asset_loader.load_effect("moonstar").unwrap());
+        str_effects.insert("hunter_poison".to_owned(), asset_loader.load_effect("hunter_poison").unwrap());
+        str_effects.insert("quagmire".to_owned(), asset_loader.load_effect("quagmire").unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());

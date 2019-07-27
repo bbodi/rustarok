@@ -7,7 +7,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::systems::control_sys::CharacterControlSystem;
 use std::collections::HashMap;
 use crate::components::controller::WorldCoords;
-use crate::components::skills::skill::{SkillManifestationComponent, SkillDescriptor};
+use crate::components::skills::skill::{SkillManifestationComponent};
 use crate::common::v2_to_p2;
 
 pub struct CharacterStateUpdateSystem;
@@ -63,19 +63,22 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             if *char_comp.state() == CharState::Dead {
                 continue;
             }
-//            char_comp
-//                .statuses
-//                .update(system_vars.time, &mut char_comp);
+            char_comp.update_statuses(char_entity_id, &mut system_vars);
 
             let char_pos = char_comp.pos();
             match char_comp.state().clone() {
                 CharState::CastingSkill(casting_info) => {
                     if casting_info.cast_ends.has_passed(system_vars.time) {
                         log::debug!("Skill cast has finished: {:?}", casting_info.skill);
+                        let skill_pos = if let Some(target_entity) = casting_info.target_entity {
+                            Some(char_positions[&target_entity].clone())
+                        } else {
+                            casting_info.target_area_pos
+                        };
                         let manifestation = casting_info.skill.finish_cast(
                             char_entity_id,
                             &char_pos,
-                            &casting_info.skill_pos,
+                            skill_pos,
                             &casting_info.char_to_skill_dir_when_casted,
                             casting_info.target_entity,
                             &mut physics_world,

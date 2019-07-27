@@ -1,7 +1,7 @@
 use std::time::Instant;
 use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime, ElapsedTime};
 use std::collections::HashMap;
-use crate::video::GlTexture;
+use crate::video::{GlTexture, DynamicVertexArray};
 use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
 use crate::components::controller::SkillKey;
@@ -61,6 +61,8 @@ pub struct SystemVariables {
     pub attacks: Vec<AttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub status_changes: Vec<ApplyStatusComponent>,
+    // Todo: put it into the new Graphic module if it is ready
+    pub str_effect_vao: DynamicVertexArray,
 }
 
 pub struct Collision {
