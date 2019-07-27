@@ -504,10 +504,6 @@ fn main() {
 
 
     let (map_render_data, physics_world) = load_map("prontera", &asset_loader);
-    let mut texts = Texts {
-        skill_name_texts: HashMap::new(),
-        skill_key_texts: HashMap::new(),
-    };
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
     let skill_name_font = Video::load_font(
@@ -522,6 +518,32 @@ fn main() {
     ).unwrap();
     skill_name_font_outline.set_outline_width(2);
 
+    let skill_key_font = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20
+    ).unwrap();
+    let mut skill_key_font_outline = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20
+    ).unwrap();
+    skill_key_font_outline.set_outline_width(2);
+
+    let mut texts = Texts {
+        skill_name_texts: HashMap::new(),
+        skill_key_texts: HashMap::new(),
+        attack_absorbed: Video::create_outline_text_texture(
+            &skill_key_font,
+            &skill_key_font_outline,
+            "absorb"
+        ),
+        attack_blocked: Video::create_outline_text_texture(
+            &skill_key_font,
+            &skill_key_font_outline,
+            "block"
+        )
+    };
     let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
         let texture = Video::create_outline_text_texture(
@@ -535,17 +557,6 @@ fn main() {
         skill_icons.insert(skill, GlTexture::from_surface(skill_icon, gl::NEAREST));
     }
 
-    let skill_key_font = Video::load_font(
-        &ttf_context,
-        "assets/fonts/UbuntuMono-B.ttf",
-        20
-    ).unwrap();
-    let mut skill_key_font_outline = Video::load_font(
-        &ttf_context,
-        "assets/fonts/UbuntuMono-B.ttf",
-        20
-    ).unwrap();
-    skill_key_font_outline.set_outline_width(2);
     for skill_key in SkillKey::iter() {
         let texture = Video::create_outline_text_texture(
             &skill_key_font,
@@ -1419,6 +1430,7 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         str_effects.insert("quagmire".to_owned(), asset_loader.load_effect("quagmire").unwrap());
         str_effects.insert("firewall_blue".to_owned(), asset_loader.load_effect("firewall_blue").unwrap());
         str_effects.insert("firepillarbomb".to_owned(), asset_loader.load_effect("firepillarbomb").unwrap());
+        str_effects.insert("ramadan".to_owned(), asset_loader.load_effect("ramadan").unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());

@@ -7,9 +7,9 @@ use specs::{Entity, LazyUpdate};
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::skills::skill::Skills;
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use nalgebra::Isometry2;
+use crate::systems::atk_calc::AttackOutcome;
 
 #[derive(Clone)]
 pub struct FireBombStatus {
@@ -59,7 +59,7 @@ impl Status for FireBombStatus {
                     area_shape: area_shape.clone(),
                     area_isom: area_isom.clone(),
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::Skill(Skills::FireBomb)
+                    typ: AttackType::SpellDamage(200),
                 }
             );
             system_vars.apply_area_statuses.push(
@@ -99,6 +99,10 @@ impl Status for FireBombStatus {
                                               self.started,
                                               char_pos,
                                               system_vars);
+    }
+
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {

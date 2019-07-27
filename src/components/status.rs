@@ -7,10 +7,10 @@ use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::asset::SpriteResource;
 use crate::systems::render::RenderDesktopClientSystem;
 use crate::components::{AttackComponent, AttackType};
-use crate::components::skills::skill::Skills;
 use crate::components::controller::WorldCoords;
 use strum_macros::EnumCount;
 use nalgebra::Isometry2;
+use crate::systems::atk_calc::AttackOutcome;
 
 pub trait Status {
     fn dupl(&self) -> Box<dyn Status>;
@@ -35,6 +35,8 @@ pub trait Status {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult;
+
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome;
 
     fn render(
         &self,
@@ -72,6 +74,17 @@ impl Statuses {
         }
     }
 
+    pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
+        for status in self.statuses
+            .iter_mut()
+            .filter(|it| it.is_some()) {
+            outcome = status.as_ref().unwrap().lock().unwrap().affect_incoming_damage(
+                outcome,
+            );
+        }
+        return outcome;
+    }
+
     pub fn update(
         &mut self,
         self_char_id: Entity,
@@ -80,10 +93,9 @@ impl Statuses {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        for (i, status) in self.statuses
+        for status in self.statuses
             .iter_mut()
-            .filter(|it| it.is_some())
-            .enumerate() {
+            .filter(|it| it.is_some()) {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
                 char_pos,
@@ -338,6 +350,10 @@ impl Status for MountedStatus {
         StatusUpdateResult::KeepIt
     }
 
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
+    }
+
     fn render(
         &self,
         char_pos: &WorldCoords,
@@ -402,7 +418,7 @@ impl Status for PoisonStatus {
                     AttackComponent {
                         src_entity: self.poison_caster_entity_id,
                         dst_entity: self_char_id,
-                        typ: AttackType::Skill(Skills::Poison),
+                        typ: AttackType::Poison(30),
                     }
                 );
                 self.next_damage_at = system_vars.time.add_seconds(1.0);
@@ -420,6 +436,10 @@ impl Status for PoisonStatus {
                                               self.started,
                                               char_pos,
                                               system_vars);
+    }
+
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {

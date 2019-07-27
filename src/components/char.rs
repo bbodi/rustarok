@@ -417,16 +417,6 @@ impl CharacterStateComponent {
         )
     }
 
-    pub fn render(
-        &mut self,
-        system_vars: &mut SystemVariables,
-    ) {
-        self.statuses.render(
-            &self.pos(),
-            system_vars
-        )
-    }
-
     pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {
         self.pos = pos;
     }

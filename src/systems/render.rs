@@ -11,7 +11,7 @@ use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent
 use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
 use crate::asset::str::KeyFrameType;
 use crate::components::skills::skill::{Skills, SkillTargetType, SkillManifestationComponent};
-use crate::common::{v2_to_v3};
+use crate::common::v2_to_v3;
 
 /// The values that should be added to the sprite direction based on the camera
 /// direction (the index is the camera direction, which is floor(angle/45)
@@ -165,6 +165,49 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 self.capsule_vertex_arrays[&physics.radius].bind().draw();
             }
 
+            let char_pos = char_state_storage.get(controller.char).unwrap().pos();
+            render_client(
+                &char_pos,
+                &controller.camera,
+                &system_vars.matrices.view,
+                &system_vars.shaders,
+                &system_vars.matrices.projection,
+                &system_vars.map_render_data,
+            );
+
+            if let Some((skill_key, skill)) = controller.is_selecting_target() {
+                let char_state = char_state_storage.get(controller.char).unwrap();
+                draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
+                                          &system_vars.matrices.projection,
+                                          &system_vars.matrices.view,
+                                          &char_state.pos(),
+                                          0.0,
+                                          skill.get_casting_range(),
+                                          &[0.0, 1.0, 0.0, 1.0]);
+                if skill.get_skill_target_type() == SkillTargetType::Area {
+                    let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
+                        &char_pos,
+                        &controller.mouse_world_pos,
+                        skill.get_casting_range(),
+                    );
+                    skill.render_target_selection(
+                        &skill_3d_pos,
+                        &dir_vector,
+                        &system_vars,
+                    );
+                }
+            } else {
+                let char_state = char_state_storage.get(controller.char).unwrap();
+                if let CharState::CastingSkill(casting_info) = char_state.state() {
+                    let skill = casting_info.skill;
+                    skill.render_casting(
+                        &char_pos,
+                        casting_info,
+                        &mut system_vars,
+                    );
+                }
+            }
+
             // Draw players
             for (entity_id, animated_sprite, char_state) in (&entities,
                                                              &sprite_storage,
@@ -247,7 +290,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                 &system_vars.matrices.ortho,
                                 controller.char == entity_id,
                                 &char_state,
-                                system_vars.time
+                                system_vars.time,
                             );
                         }
                     }
@@ -289,56 +332,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                                 &system_vars.matrices.ortho,
                                 controller.char == entity_id,
                                 &char_state,
-                                system_vars.time
+                                system_vars.time,
                             );
                         }
                     }
                 }
 
-                char_state.render(&mut system_vars);
-            }
-
-            let char_pos = char_state_storage.get(controller.char).unwrap().pos();
-            render_client(
-                &char_pos,
-                &controller.camera,
-                &system_vars.matrices.view,
-                &system_vars.shaders,
-                &system_vars.matrices.projection,
-                &system_vars.map_render_data,
-            );
-
-            if let Some((skill_key, skill)) = controller.is_selecting_target() {
-                let char_state = char_state_storage.get(controller.char).unwrap();
-                draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
-                                          &system_vars.matrices.projection,
-                                          &system_vars.matrices.view,
-                                          &char_state.pos(),
-                                          0.0,
-                                          skill.get_casting_range(),
-                                          &[0.0, 1.0, 0.0, 1.0]);
-                if skill.get_skill_target_type() == SkillTargetType::Area {
-                    let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
-                        &char_pos,
-                        &controller.mouse_world_pos,
-                        skill.get_casting_range(),
-                    );
-                    skill.render_target_selection(
-                        &skill_3d_pos,
-                        &dir_vector,
-                        &system_vars,
-                    );
-                }
-            } else {
-                let char_state = char_state_storage.get(controller.char).unwrap();
-                if let CharState::CastingSkill(casting_info) = char_state.state() {
-                    let skill = casting_info.skill;
-                    skill.render_casting(
-                        &char_pos,
-                        casting_info,
-                        &mut system_vars,
-                    );
-                }
+                char_state.statuses.render(&char_state.pos(), &mut system_vars);
             }
 
             for skill in (&skill_storage).join() {
@@ -350,9 +350,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
                     RenderDesktopClientSystem::render_str(&str_effect.effect,
-                                    str_effect.start_time,
-                                    &str_effect.pos,
-                                    &mut system_vars);
+                                                          str_effect.start_time,
+                                                          &str_effect.pos,
+                                                          &mut system_vars);
                 }
             }
         }
@@ -422,9 +422,9 @@ fn draw_health_bar(
     if let Some(perc) = char_state.statuses.calc_largest_remaining_status_time_percent(now) {
         let orange = [1.0, 0.55, 0.0, 1.0];
         let w = bar_w - 4;
-        draw_rect(2, bottom_bar_y+2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
+        draw_rect(2, bottom_bar_y + 2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
         let inner_w = (w as f32 * (1.0 - perc)) as i32;
-        draw_rect(2, bottom_bar_y+2, inner_w, 2, &orange);
+        draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
     }
 }
 
@@ -769,40 +769,37 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
             let controller: &ControllerComponent = controller;
 
             for (entity_id, number) in (&entities, &numbers).join() {
-                let digits = DamageRenderSystem::get_digits(number.value);
-                // create vbo based on the numbers
-                let mut width = 0.0;
-                let mut vertices = vec![];
-                digits.iter().for_each(|&digit| {
-                    let digit = digit as usize;
-                    vertices.push([width - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
-                    vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                    vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                    vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
-                    vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-                    vertices.push([width + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
-                    width += 1.0;
-                });
-                let width = width;
-                let vertex_array = VertexArray::new(
-                    gl::TRIANGLES,
-                    &vertices, vertices.len(), vec![
-                        VertexAttribDefinition {
-                            number_of_components: 2,
-                            offset_of_first_element: 0,
-                        }, VertexAttribDefinition { // uv
-                            number_of_components: 2,
-                            offset_of_first_element: 2,
-                        }
-                    ]);
-
-                system_vars.sprites.numbers.bind(TEXTURE_0);
                 let mut matrix = Matrix4::<f32>::identity();
                 let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
+                let (width, height) = match number.typ {
+                    FlyingNumberType::Poison |
+                    FlyingNumberType::Heal |
+                    FlyingNumberType::Damage |
+                    FlyingNumberType::Mana |
+                    FlyingNumberType::Crit => {
+                        (
+                            DamageRenderSystem::get_digits(number.value).len() as f32,
+                            1.0
+                        )
+                    }
+                    FlyingNumberType::Block => {
+                        (
+                            system_vars.texts.attack_blocked.width as f32,
+                            system_vars.texts.attack_blocked.height as f32,
+                        )
+                    }
+                    FlyingNumberType::Absorb => {
+                        (
+                            system_vars.texts.attack_absorbed.width as f32,
+                            system_vars.texts.attack_absorbed.height as f32,
+                        )
+                    }
+                };
+
                 let perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
                 // TODO: don't render more than 1 damage in a single frame for the same target
-                let size = match number.typ {
+                let (size_x, size_y) = match number.typ {
                     FlyingNumberType::Heal => {
                         // follow the target
                         let real_pos = char_state_storage
@@ -818,17 +815,17 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                         // a small hack to mitigate the distortion effect of perspective projection
                         // at the edge of the screens
                         pos.z -= y_offset;
-                        size
+                        (size, size)
                     }
                     FlyingNumberType::Damage => {
                         pos.x += perc * 6.0;
                         pos.z -= perc * 4.0;
                         pos.y += 2.0 +
                             (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5))).sin() * 5.0;
-                        (1.0 - perc) * 1.0
+                        let size = (1.0 - perc) * 1.0;
+                        (size, size)
                     }
                     FlyingNumberType::Poison => {
-                        // follow the target
                         let real_pos = char_state_storage
                             .get(number.target_entity_id)
                             .map(|it| it.pos())
@@ -839,23 +836,37 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                         pos.x -= width * size / 2.0;
                         let y_offset = (perc - 0.3) * 3.0;
                         pos.y += 2.0 + y_offset;
-                        // a small hack to mitigate the distortion effect of perspective projection
-                        // at the edge of the screens
                         pos.z -= y_offset;
-                        size
+                        (size, size)
+                    }
+                    FlyingNumberType::Block | FlyingNumberType::Absorb => {
+                        let real_pos = char_state_storage
+                            .get(number.target_entity_id)
+                            .map(|it| it.pos())
+                            .unwrap_or(number.start_pos);
+                        pos.x = real_pos.x;
+                        pos.z = real_pos.y;
+                        let size_x = width * ONE_SPRITE_PIXEL_SIZE_IN_3D;
+                        let size_y = height * ONE_SPRITE_PIXEL_SIZE_IN_3D;
+//                        pos.x -= size_x / 2.0;
+                        let y_offset = (perc - 0.3) * 3.0;
+                        pos.y += 2.0 + y_offset;
+                        pos.z -= y_offset;
+                        (size_x, size_y)
                     }
                     _ => {
                         pos.y += 4.0 * perc;
                         pos.z -= 2.0 * perc;
                         pos.x += 2.0 * perc;
-                        (1.0 - perc) * 4.0
+                        let size = (1.0 - perc) * 4.0;
+                        (size, size)
                     }
                 };
                 matrix.prepend_translation_mut(&pos);
                 let shader = system_vars.shaders.sprite_shader.gl_use();
                 shader.set_vec2("size", &[
-                    size,
-                    size
+                    size_x,
+                    size_y
                 ]);
                 shader.set_mat4("model", &matrix);
                 shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
@@ -864,13 +875,60 @@ impl<'a> specs::System<'a> for DamageRenderSystem {
                 shader.set_int("model_texture", 0);
                 shader.set_f32("alpha", 1.3 - (perc + 0.3 * perc));
 
-                vertex_array.bind().draw();
+                match number.typ {
+                    FlyingNumberType::Poison |
+                    FlyingNumberType::Heal |
+                    FlyingNumberType::Damage |
+                    FlyingNumberType::Mana |
+                    FlyingNumberType::Crit => {
+                        system_vars.sprites.numbers.bind(TEXTURE_0);
+                        self.create_number_vertex_array(number.value).bind().draw();
+                    }
+                    FlyingNumberType::Block => {
+                        system_vars.texts.attack_blocked.bind(TEXTURE_0);
+                        system_vars.map_render_data.centered_sprite_vertex_array.bind().draw();
+                    }
+                    FlyingNumberType::Absorb => {
+                        system_vars.texts.attack_absorbed.bind(TEXTURE_0);
+                        system_vars.map_render_data.centered_sprite_vertex_array.bind().draw();
+                    }
+                };
 
                 if number.die_at.has_passed(system_vars.time) {
                     updater.remove::<FlyingNumberComponent>(entity_id);
                 }
             }
         }
+    }
+}
+
+impl DamageRenderSystem {
+    pub fn create_number_vertex_array(&self, number: u32) -> VertexArray {
+        let digits = DamageRenderSystem::get_digits(number);
+        // create vbo based on the numbers
+        let mut width = 0.0;
+        let mut vertices = vec![];
+        digits.iter().for_each(|&digit| {
+            let digit = digit as usize;
+            vertices.push([width - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
+            vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+            vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+            vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+            vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
+            vertices.push([width + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
+            width += 1.0;
+        });
+        return VertexArray::new(
+            gl::TRIANGLES,
+            &vertices, vertices.len(), vec![
+                VertexAttribDefinition {
+                    number_of_components: 2,
+                    offset_of_first_element: 0,
+                }, VertexAttribDefinition { // uv
+                    number_of_components: 2,
+                    offset_of_first_element: 2,
+                }
+            ]);
     }
 }
 

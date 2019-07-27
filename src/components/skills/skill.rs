@@ -16,6 +16,7 @@ use crate::components::skills::lightning::{LightningSkill, LightningManifest};
 use crate::common::{v2_to_v3, rotate_vec2};
 use crate::systems::render::RenderDesktopClientSystem;
 use crate::components::skills::fire_bomb::FireBombStatus;
+use crate::components::skills::absorb_shield::AbsorbStatus;
 
 
 pub trait SkillManifestation {
@@ -262,7 +263,7 @@ impl Skills {
                     AttackComponent {
                         src_entity: caster_entity_id,
                         dst_entity: target_entity.unwrap(),
-                        typ: AttackType::Skill(Skills::Heal),
+                        typ: AttackType::Heal(200),
                     }
                 );
                 None
@@ -326,6 +327,15 @@ impl Skills {
                 None
             }
             Skills::AbsorbShield => {
+                system_vars.apply_statuses.push(
+                    ApplyStatusComponent::from_secondary_status(
+                        caster_entity_id,
+                        target_entity.unwrap(),
+                        Box::new(
+                            AbsorbStatus::new(caster_entity_id, system_vars.time)
+                        ),
+                    )
+                );
                 None
             }
         }
@@ -558,7 +568,7 @@ impl SkillManifestation for PushBackWallSkill {
                         AttackComponent {
                             src_entity: self.caster_entity_id,
                             dst_entity: char_entity_id,
-                            typ: AttackType::Skill(Skills::FireWall),
+                            typ: AttackType::SpellDamage(600),
                         }
                     );
                     system_vars.pushes.push(
@@ -671,7 +681,7 @@ impl SkillManifestation for BrutalSkillManifest {
                     area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                     area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::Skill(Skills::BrutalTestSkill),
+                    typ: AttackType::SpellDamage(600),
                 }
             );
         }

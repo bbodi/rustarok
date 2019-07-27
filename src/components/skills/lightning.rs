@@ -1,7 +1,7 @@
 use nalgebra::{Vector2, Isometry2};
 use crate::systems::{SystemVariables, Collision};
 use crate::video::draw_circle_inefficiently;
-use crate::components::skills::skill::{Skills, SkillManifestation, SkillManifestationComponent};
+use crate::components::skills::skill::{SkillManifestation, SkillManifestationComponent};
 use specs::{Entity, LazyUpdate};
 use crate::{ElapsedTime, PhysicsWorld};
 use crate::components::char::CharacterStateComponent;
@@ -152,7 +152,7 @@ impl SkillManifestation for LightningManifest {
                         area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                         area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Skill(Skills::Lightning)
+                        typ: AttackType::SpellDamage(120),
                     }
                 );
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);

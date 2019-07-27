@@ -7,7 +7,6 @@ use crate::{ElapsedTime};
 use specs::prelude::*;
 use crate::components::controller::WorldCoords;
 use nphysics2d::object::BodyHandle;
-use crate::components::skills::skill::Skills;
 
 pub mod char;
 pub mod controller;
@@ -45,6 +44,8 @@ pub enum FlyingNumberType {
     Damage,
     Poison,
     Heal,
+    Block,
+    Absorb,
     Mana,
     Crit,
 }
@@ -62,7 +63,9 @@ impl FlyingNumberType {
             FlyingNumberType::Heal => [0.0, 1.0, 0.0],
             FlyingNumberType::Poison => [0.55, 0.0, 0.55],
             FlyingNumberType::Mana => [0.0, 0.0, 1.0],
-            FlyingNumberType::Crit => [1.0, 1.0, 1.0]
+            FlyingNumberType::Crit => [1.0, 1.0, 1.0],
+            FlyingNumberType::Block => [1.0, 1.0, 1.0],
+            FlyingNumberType::Absorb => [1.0, 1.0, 1.0],
         }
     }
 }
@@ -88,8 +91,10 @@ impl FlyingNumberComponent {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum AttackType {
-    Basic,
-    Skill(Skills),
+    Basic(u32),
+    SpellDamage(u32),
+    Heal(u32),
+    Poison(u32),
 }
 
 pub struct AttackComponent {

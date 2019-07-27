@@ -6,7 +6,6 @@ use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType, Att
 use specs::prelude::*;
 use nalgebra::{Vector2, Isometry2};
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses, ApplyStatusComponent, RemoveStatusComponent, RemoveStatusComponentPayload, ApplyStatusInAreaComponent};
-use crate::components::skills::skill::Skills;
 use ncollide2d::query::Proximity;
 
 pub enum AttackOutcome {
@@ -15,6 +14,7 @@ pub enum AttackOutcome {
     Crit(u32),
     Heal(u32),
     Block,
+    Absorb,
 }
 
 pub struct AttackSystem;
@@ -69,7 +69,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             AttackCalculation::apply_statuses_on_area(
                 &entities,
                 read_only_char_storage,
-                &area_status_change
+                &area_status_change,
             )
         }).flatten().collect();
         system_vars.apply_statuses.append(&mut new_status_applies);
@@ -92,21 +92,27 @@ impl<'a> specs::System<'a> for AttackSystem {
                 char_state_storage.get(attack.dst_entity)
                     .filter(|it| it.state().is_live())
                     .and_then(|dst_char_state| {
-                        Some(match &attack.typ {
-                            AttackType::Basic => AttackCalculation::attack(src_char_state, dst_char_state),
-                            AttackType::Skill(skill) => {
-                                AttackCalculation::skill_attack(src_char_state, dst_char_state, &skill)
-                            }
-                        })
+                        Some(
+                            AttackCalculation::attack(
+                                src_char_state,
+                                dst_char_state,
+                                attack.typ,
+                            ),
+                        )
                     })
             });
+
             if let Some((src_outcomes, dst_outcomes)) = outcome {
                 for outcome in src_outcomes.into_iter() {
                     let attacked_entity = attack.src_entity;
-                    let src_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                    AttackCalculation::apply_damage(src_char_state, &outcome, system_vars.time);
+                    let attacked_entity_state = char_state_storage.get_mut(attacked_entity).unwrap();
 
-                    let char_pos = src_char_state.pos();
+                    // Allow statuses to affect incoming damages/heals
+                    let outcome = attacked_entity_state.statuses.affect_incoming_damage(outcome);
+
+                    AttackCalculation::apply_damage(attacked_entity_state, &outcome, system_vars.time);
+
+                    let char_pos = attacked_entity_state.pos();
                     AttackCalculation::add_flying_damage_entity(
                         &outcome,
                         &entities,
@@ -118,10 +124,14 @@ impl<'a> specs::System<'a> for AttackSystem {
                 }
                 for outcome in dst_outcomes.into_iter() {
                     let attacked_entity = attack.dst_entity;
-                    let dst_char_state = char_state_storage.get_mut(attacked_entity).unwrap();
-                    AttackCalculation::apply_damage(dst_char_state, &outcome, system_vars.time);
+                    let attacked_entity_state = char_state_storage.get_mut(attacked_entity).unwrap();
 
-                    let char_pos = dst_char_state.pos();
+                    // Allow statuses to affect incoming damages/heals
+                    let outcome = attacked_entity_state.statuses.affect_incoming_damage(outcome);
+
+                    AttackCalculation::apply_damage(attacked_entity_state, &outcome, system_vars.time);
+
+                    let char_pos = attacked_entity_state.pos();
                     AttackCalculation::add_flying_damage_entity(
                         &outcome,
                         &entities,
@@ -208,7 +218,7 @@ impl AttackCalculation {
                     ApplyStatusComponent {
                         source_entity_id: area_status.source_entity_id,
                         target_entity_id,
-                        status: area_status.status.clone()
+                        status: area_status.status.clone(),
                     }
                 );
             }
@@ -217,40 +227,16 @@ impl AttackCalculation {
     }
 
 
-    pub fn attack(src: &CharacterStateComponent, dst: &CharacterStateComponent) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
+    pub fn attack(
+        src: &CharacterStateComponent,
+        dst: &CharacterStateComponent,
+        typ: AttackType,
+    ) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
         let mut src_outcomes = vec![];
         let mut dst_outcomes = vec![];
-        let atk = src.calculated_attribs.attack_damage as f32;
-        let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
-        let outcome = if atk == 0 {
-            AttackOutcome::Block
-        } else {
-            AttackOutcome::Damage(atk)
-        };
-        dst_outcomes.push(outcome);
-        return (src_outcomes, dst_outcomes);
-    }
-
-    pub fn skill_attack(src: &CharacterStateComponent, dst: &CharacterStateComponent, skill: &Skills) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
-        let mut src_outcomes = vec![];
-        let mut dst_outcomes = vec![];
-        let atk = match skill {
-            Skills::FireWall => 600.0,
-            Skills::BrutalTestSkill => 600.0,
-            Skills::Lightning => 120.0,
-            Skills::Heal => 0.0,
-            Skills::Mounting => 0.0, // TODO: it should not be listed here
-            Skills::Poison => 30.0,
-            Skills::Cure => 0.0,
-            Skills::FireBomb => 200.0,
-            Skills::AbsorbShield => 0.0,
-        };
-        match skill {
-            // attacking skills
-            Skills::Lightning |
-            Skills::FireWall |
-            Skills::FireBomb |
-            Skills::BrutalTestSkill => {
+        match typ {
+            AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
+                let atk = base_dmg as f32;
                 let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
                 let outcome = if atk == 0 {
                     AttackOutcome::Block
@@ -259,8 +245,11 @@ impl AttackCalculation {
                 };
                 dst_outcomes.push(outcome);
             }
-            Skills::Poison => {
-                let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(atk) as u32;
+            AttackType::Heal(healed) => {
+                dst_outcomes.push(AttackOutcome::Heal(healed));
+            }
+            AttackType::Poison(dmg) => {
+                let atk = dst.calculated_attribs.armor.subtract_me_from_as_percentage(dmg as f32) as u32;
                 let outcome = if atk == 0 {
                     AttackOutcome::Block
                 } else {
@@ -268,14 +257,7 @@ impl AttackCalculation {
                 };
                 dst_outcomes.push(outcome);
             }
-            // healing skills
-            Skills::Heal => {
-                dst_outcomes.push(AttackOutcome::Heal(200));
-            }
-            Skills::Cure => {}
-            Skills::AbsorbShield => {}
-            Skills::Mounting => {}// TODO: it should not be listed here
-        };
+        }
         return (src_outcomes, dst_outcomes);
     }
 
@@ -292,7 +274,6 @@ impl AttackCalculation {
                     .max_hp
                     .min(char_comp.hp + *val as i32);
             }
-            AttackOutcome::Block => {}
             AttackOutcome::Damage(val) => {
                 char_comp.cannot_control_until.run_at_least_until_seconds(now, 0.1);
                 char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
@@ -306,6 +287,8 @@ impl AttackCalculation {
                 char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
                 char_comp.hp -= *val as i32;
             }
+            AttackOutcome::Block => {}
+            AttackOutcome::Absorb => {}
         }
     }
 
@@ -323,7 +306,8 @@ impl AttackCalculation {
             AttackOutcome::Poison(value) => (FlyingNumberType::Poison, *value),
             AttackOutcome::Crit(value) => (FlyingNumberType::Damage, *value),
             AttackOutcome::Heal(value) => (FlyingNumberType::Heal, *value),
-            AttackOutcome::Block => (FlyingNumberType::Damage, 0)
+            AttackOutcome::Block => (FlyingNumberType::Block, 0),
+            AttackOutcome::Absorb => (FlyingNumberType::Absorb, 0),
         };
         updater.insert(damage_entity, FlyingNumberComponent::new(
             typ,

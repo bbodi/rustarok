@@ -44,6 +44,8 @@ pub struct Sprites {
 pub struct Texts {
     pub skill_name_texts: HashMap<Skills, GlTexture>,
     pub skill_key_texts: HashMap<SkillKey, GlTexture>,
+    pub attack_absorbed: GlTexture,
+    pub attack_blocked: GlTexture,
 }
 
 pub struct SystemVariables {

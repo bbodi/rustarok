@@ -112,7 +112,9 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             AttackComponent {
                                 src_entity: char_entity_id,
                                 dst_entity: target,
-                                typ: AttackType::Basic,
+                                typ: AttackType::Basic(
+                                    char_comp.calculated_attribs.attack_damage as u32
+                                ),
                             }
                         );
                     }
