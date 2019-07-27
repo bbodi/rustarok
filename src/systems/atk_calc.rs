@@ -5,7 +5,7 @@ use crate::{PhysicsWorld, ElapsedTime};
 use crate::components::{FlyingNumberType, FlyingNumberComponent, AttackType, AttackComponent};
 use specs::prelude::*;
 use nalgebra::{Vector2, Isometry2};
-use crate::components::status::{ApplyStatusComponentPayload, MainStatuses, ApplyStatusComponent, RemoveStatusComponent, RemoveStatusComponentPayload};
+use crate::components::status::{ApplyStatusComponentPayload, MainStatuses, ApplyStatusComponent, RemoveStatusComponent, RemoveStatusComponentPayload, ApplyStatusInAreaComponent};
 use crate::components::skills::skill::Skills;
 use ncollide2d::query::Proximity;
 
@@ -58,6 +58,22 @@ impl<'a> specs::System<'a> for AttackSystem {
         }).flatten().collect();
         system_vars.attacks.append(&mut new_attacks);
         system_vars.area_attacks.clear();
+
+        // apply area statuses
+        let mut new_status_applies = system_vars.apply_area_statuses.iter().map(|area_status_change| {
+            // TODO: I don't want to pollute the code with mutable storages just because
+            // I can't degrade a writestorage to a readstorage temporarily, or can I?...
+            let read_only_char_storage: &specs::ReadStorage<'a, CharacterStateComponent> = unsafe {
+                std::mem::transmute(&char_state_storage)
+            };
+            AttackCalculation::apply_statuses_on_area(
+                &entities,
+                read_only_char_storage,
+                &area_status_change
+            )
+        }).flatten().collect();
+        system_vars.apply_statuses.append(&mut new_status_applies);
+        system_vars.apply_area_statuses.clear();
 
         for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
@@ -168,6 +184,36 @@ impl AttackCalculation {
             }
         }
         return result_attacks;
+    }
+
+    pub fn apply_statuses_on_area(
+        entities: &Entities,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        area_status: &ApplyStatusInAreaComponent,
+    ) -> Vec<ApplyStatusComponent> {
+        let mut result_statuses = vec![];
+        for (target_entity_id, char_state) in (entities, char_storage).join() {
+            if area_status.except.map(|it| it == target_entity_id).unwrap_or(false) {
+                continue;
+            }
+            // for optimized, shape-specific queries
+            // ncollide2d::query::distance_internal::
+            let coll_result = ncollide2d::query::proximity(
+                &area_status.area_isom, &*area_status.area_shape,
+                &Isometry2::new(char_state.pos(), 0.0), &ncollide2d::shape::Ball::new(1.0),
+                0.0,
+            );
+            if coll_result == Proximity::Intersecting {
+                result_statuses.push(
+                    ApplyStatusComponent {
+                        source_entity_id: area_status.source_entity_id,
+                        target_entity_id,
+                        status: area_status.status.clone()
+                    }
+                );
+            }
+        }
+        return result_statuses;
     }
 
 
@@ -296,6 +342,9 @@ impl AttackSystem {
         now: ElapsedTime) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
+                if target_char.hp <= 0 {
+                    continue;
+                }
                 match status_change.status {
                     ApplyStatusComponentPayload::MainStatus(status_name) => {
                         log::debug!("Applying state '{:?}' on {:?}", status_name, status_change.target_entity_id);

@@ -567,6 +567,7 @@ fn main() {
         area_attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
         apply_statuses: Vec::with_capacity(128),
+        apply_area_statuses: Vec::with_capacity(128),
         remove_statuses: Vec::with_capacity(128),
         skill_icons,
         str_effect_vao: DynamicVertexArray::new(

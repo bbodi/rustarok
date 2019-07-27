@@ -52,6 +52,9 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             if char_comp.hp <= 0 && *char_comp.state() != CharState::Dead {
                 log::debug!("Entity has died {:?}", char_entity_id);
                 char_comp.set_state(CharState::Dead, char_comp.dir());
+                // TODO: implement Death as status?
+                // then swap the order, first remove states then apply new ones (to remove the death state in case of resurrect)
+                char_comp.statuses.remove_all();
                 // remove rigid bodies from the physic simulation
                 if let Some(phys_comp) = physics_storage.get(char_entity_id) {
                     let body_handle = phys_comp.body_handle;

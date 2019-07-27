@@ -1,4 +1,4 @@
-use crate::components::status::{Status, StatusUpdateResult, StatusType};
+use crate::components::status::{Status, StatusUpdateResult, StatusType, ApplyStatusInAreaComponent, ApplyStatusComponentPayload};
 use crate::components::char::{CharAttributes};
 use crate::consts::JobId;
 use crate::systems::{Sex, Sprites, SystemVariables};
@@ -11,6 +11,7 @@ use crate::components::skills::skill::Skills;
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use nalgebra::Isometry2;
 
+#[derive(Clone)]
 pub struct FireBombStatus {
     pub caster_entity_id: Entity,
     pub started: ElapsedTime,
@@ -19,6 +20,8 @@ pub struct FireBombStatus {
 
 
 impl Status for FireBombStatus {
+    fn dupl(&self) -> Box<dyn Status> { Box::new(self.clone()) }
+
     fn can_target_move(&self) -> bool { true }
 
     fn typ(&self) -> StatusType { StatusType::Harmful }
@@ -49,12 +52,31 @@ impl Status for FireBombStatus {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
+            let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
+            let area_isom = Isometry2::new(*char_pos, 0.0);
             system_vars.area_attacks.push(
                 AreaAttackComponent {
-                    area_shape: Box::new(ncollide2d::shape::Ball::new(2.0)),
-                    area_isom: Isometry2::new(*char_pos, 0.0),
+                    area_shape: area_shape.clone(),
+                    area_isom: area_isom.clone(),
                     source_entity_id: self.caster_entity_id,
                     typ: AttackType::Skill(Skills::FireBomb)
+                }
+            );
+            system_vars.apply_area_statuses.push(
+                ApplyStatusInAreaComponent {
+                    source_entity_id: self.caster_entity_id,
+                    status: ApplyStatusComponentPayload::from_secondary(
+                        Box::new(
+                            FireBombStatus {
+                                caster_entity_id: self.caster_entity_id,
+                                started: system_vars.time,
+                                until: system_vars.time.add_seconds(2.0),
+                            }
+                        )
+                    ),
+                    area_shape: area_shape.clone(),
+                    area_isom: area_isom.clone(),
+                    except: Some(self_char_id)
                 }
             );
             let effect_comp = StrEffectComponent {

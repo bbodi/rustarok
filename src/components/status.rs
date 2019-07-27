@@ -9,10 +9,11 @@ use crate::systems::render::RenderDesktopClientSystem;
 use crate::components::{AttackComponent, AttackType};
 use crate::components::skills::skill::Skills;
 use crate::components::controller::WorldCoords;
-use std::any::Any;
 use strum_macros::EnumCount;
+use nalgebra::Isometry2;
 
-pub trait Status: Any {
+pub trait Status {
+    fn dupl(&self) -> Box<dyn Status>;
     fn can_target_move(&self) -> bool;
     fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
@@ -51,14 +52,8 @@ pub enum MainStatuses {
     Poison,
 }
 
+#[derive(Clone)]
 struct MountedStatus;
-
-struct PoisonStatus {
-    poison_caster_entity_id: Entity,
-    started: ElapsedTime,
-    until: ElapsedTime,
-    next_damage_at: ElapsedTime,
-}
 
 pub struct Statuses {
     statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; 32],
@@ -242,6 +237,13 @@ impl Statuses {
         self.first_free_index += 1;
     }
 
+    pub fn remove_all(&mut self) {
+        for status in &mut self.statuses {
+            *status = None;
+        }
+        self.first_free_index = MAINSTATUSES_COUNT;
+    }
+
     pub fn remove(&mut self, status_type: StatusType) {
         for arc_status in &mut self.statuses {
             let should_remove = arc_status.as_ref().map(|it| {
@@ -294,6 +296,8 @@ pub enum StatusUpdateResult {
 }
 
 impl Status for MountedStatus {
+    fn dupl(&self) -> Box<dyn Status> { Box::new(MountedStatus) }
+
     fn can_target_move(&self) -> bool { true }
 
     fn typ(&self) -> StatusType { StatusType::Supportive }
@@ -345,7 +349,18 @@ impl Status for MountedStatus {
     }
 }
 
+#[derive(Clone)]
+struct PoisonStatus {
+    poison_caster_entity_id: Entity,
+    started: ElapsedTime,
+    until: ElapsedTime,
+    next_damage_at: ElapsedTime,
+}
+
+
 impl Status for PoisonStatus {
+    fn dupl(&self) -> Box<dyn Status> { Box::new(self.clone()) }
+
     fn typ(&self) -> StatusType { StatusType::Harmful }
 
     fn can_target_move(&self) -> bool { true }
@@ -417,10 +432,40 @@ pub enum ApplyStatusComponentPayload {
     SecondaryStatus(Arc<Mutex<Box<dyn Status>>>),
 }
 
+impl ApplyStatusComponentPayload {
+    pub fn from_secondary(status: Box<dyn Status>) -> ApplyStatusComponentPayload{
+        ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status)))
+    }
+}
+
+impl Clone for ApplyStatusComponentPayload {
+    fn clone(&self) -> Self {
+        match self {
+            ApplyStatusComponentPayload::MainStatus(m) => {
+                ApplyStatusComponentPayload::MainStatus(*m)
+            }
+            ApplyStatusComponentPayload::SecondaryStatus(arc) => {
+                let boxed_status_clone = arc.lock().unwrap().dupl();
+                ApplyStatusComponentPayload::SecondaryStatus(
+                    Arc::new(Mutex::new(boxed_status_clone))
+                )
+            }
+        }
+    }
+}
+
 pub struct ApplyStatusComponent {
     pub source_entity_id: Entity,
     pub target_entity_id: Entity,
     pub status: ApplyStatusComponentPayload,
+}
+
+pub struct ApplyStatusInAreaComponent {
+    pub source_entity_id: Entity,
+    pub status: ApplyStatusComponentPayload,
+    pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
+    pub area_isom: Isometry2<f32>,
+    pub except: Option<Entity>
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -444,6 +489,10 @@ unsafe impl Sync for ApplyStatusComponent {}
 
 unsafe impl Send for ApplyStatusComponent {}
 
+unsafe impl Sync for ApplyStatusInAreaComponent {}
+
+unsafe impl Send for ApplyStatusInAreaComponent {}
+
 impl ApplyStatusComponent {
     pub fn from_main_status(
         source_entity_id: Entity,
@@ -464,7 +513,7 @@ impl ApplyStatusComponent {
         ApplyStatusComponent {
             source_entity_id,
             target_entity_id,
-            status: ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status))),
+            status: ApplyStatusComponentPayload::from_secondary(status),
         }
     }
 }

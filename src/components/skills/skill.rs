@@ -6,7 +6,7 @@ use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWo
 use nalgebra::{Vector2, Vector3, Matrix4, Rotation3, Point3, Isometry2};
 use crate::systems::{SystemVariables, Collision};
 use std::sync::{Arc, Mutex};
-use crate::video::{draw_lines_inefficiently};
+use crate::video::draw_lines_inefficiently;
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent, AreaAttackComponent};
@@ -306,7 +306,7 @@ impl Skills {
                     RemoveStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
-                        StatusType::Harmful
+                        StatusType::Harmful,
                     )
                 );
                 None
@@ -316,11 +316,11 @@ impl Skills {
                     ApplyStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
-                        Box::new(FireBombStatus{
+                        Box::new(FireBombStatus {
                             caster_entity_id,
                             started: system_vars.time,
                             until: system_vars.time.add_seconds(2.0),
-                        })
+                        }),
                     )
                 );
                 None
@@ -671,7 +671,7 @@ impl SkillManifestation for BrutalSkillManifest {
                     area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                     area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::Skill(Skills::BrutalTestSkill)
+                    typ: AttackType::Skill(Skills::BrutalTestSkill),
                 }
             );
         }
