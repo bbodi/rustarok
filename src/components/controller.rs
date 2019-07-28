@@ -72,7 +72,8 @@ pub enum ControllerAction {
     AttackTo(ScreenCoords),
     CastingSelectTarget(SkillKey, Skills),
     CancelCastingSelectTarget,
-    Casting(Skills),
+    /// bool = is self cast
+    Casting(Skills, bool),
     LeftClick,
 }
 
@@ -91,7 +92,7 @@ pub enum CastMode {
 #[derive(Component)]
 pub struct ControllerComponent {
     pub view_matrix: Matrix4<f32>,
-    pub char: Entity,
+    pub char_entity_id: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub next_action: Option<ControllerAction>,
@@ -137,7 +138,7 @@ impl ControllerComponent {
         camera.update_visible_z_range(projection);
         ControllerComponent {
             view_matrix: Matrix4::identity(), // it is filled before every frame
-            char,
+            char_entity_id: char,
             camera,
             cast_mode: CastMode::Normal,
             inputs: vec![],

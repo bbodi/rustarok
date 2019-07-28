@@ -109,7 +109,7 @@ impl RenderDesktopClientSystem {
             self.capsule_vertex_arrays[&physics.radius].bind().draw();
         }
 
-        let char_pos = char_state_storage.get(controller.char).unwrap().pos();
+        let char_pos = char_state_storage.get(controller.char_entity_id).unwrap().pos();
         render_client(
             &char_pos,
             &controller.camera,
@@ -120,7 +120,7 @@ impl RenderDesktopClientSystem {
         );
 
         if let Some((skill_key, skill)) = controller.is_selecting_target() {
-            let char_state = char_state_storage.get(controller.char).unwrap();
+            let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
             draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
                                       &system_vars.matrices.projection,
                                       &controller.view_matrix,
@@ -142,7 +142,7 @@ impl RenderDesktopClientSystem {
                 );
             }
         } else {
-            let char_state = char_state_storage.get(controller.char).unwrap();
+            let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
             if let CharState::CastingSkill(casting_info) = char_state.state() {
                 let skill = casting_info.skill;
                 skill.render_casting(
@@ -233,7 +233,7 @@ impl RenderDesktopClientSystem {
                             &system_vars.shaders.trimesh2d_shader,
                             &self.rectangle_vao,
                             &system_vars.matrices.ortho,
-                            controller.char == entity_id,
+                            controller.char_entity_id == entity_id,
                             &char_state,
                             system_vars.time,
                             &body_bounding_rect
@@ -278,7 +278,7 @@ impl RenderDesktopClientSystem {
                             &system_vars.shaders.trimesh2d_shader,
                             &self.rectangle_vao,
                             &system_vars.matrices.ortho,
-                            controller.char == entity_id,
+                            controller.char_entity_id == entity_id,
                             &char_state,
                             system_vars.time,
                             &bounding_rect
@@ -909,7 +909,7 @@ impl DamageRenderSystem {
                 size_y
             ]);
             shader.set_mat4("model", &matrix);
-            shader.set_vec3("color", &number.typ.color(controller.char == number.target_entity_id));
+            shader.set_vec3("color", &number.typ.color(controller.char_entity_id == number.target_entity_id));
             shader.set_mat4("projection", &system_vars.matrices.projection);
             shader.set_mat4("view", &controller.view_matrix);
             shader.set_int("model_texture", 0);

@@ -33,7 +33,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
                 body.set_linear_velocity(Vector2::zeros());
             } else {
                 let linear = body.velocity().linear;
-                if linear.x != 0.0 && linear.y != 0.0 {
+                if linear.x != 0.0 || linear.y != 0.0 {
                     let dir = linear.normalize();
                     let slowing_vector = body.velocity().linear - (dir * 1.0);
                     let len = slowing_vector.magnitude();

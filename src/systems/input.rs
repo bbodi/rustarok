@@ -9,7 +9,7 @@ use crate::systems::SystemVariables;
 use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
 use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
-use crate::components::char::{CharacterStateComponent};
+use crate::components::char::CharacterStateComponent;
 use strum::IntoEnumIterator;
 use crate::components::skills::skill::{Skills, SkillTargetType};
 use std::slice::Iter;
@@ -181,7 +181,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(input_producer.char).unwrap();
+                                    entities.delete(input_producer.char_entity_id).unwrap();
                                     entities.delete(entity_id).unwrap();
                                 }
                             };
@@ -189,7 +189,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                     }
                     _ => {
                         log::warn!("Unknown msg: {:?}", msg);
-                        entities.delete(input_producer.char).unwrap();
+                        entities.delete(input_producer.char_entity_id).unwrap();
                         entities.delete(entity_id).unwrap();
                     }
                 }
@@ -197,7 +197,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
                     log::info!("Client '{:?}' has disconnected", entity_id);
-                    entities.delete(input_producer.char).unwrap();
+                    entities.delete(input_producer.char_entity_id).unwrap();
                     entities.delete(entity_id).unwrap();
                 }
             }
@@ -364,7 +364,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.camera_follows_char = !controller.camera_follows_char;
             }
             if controller.camera_follows_char {
-                let char_state = char_state_storage.get(controller.char).unwrap();
+                let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
                 let pos = char_state.pos();
                 controller.camera.set_x(pos.x);
                 let z_range = controller.camera.visible_z_range;
@@ -385,12 +385,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             if controller.next_action.is_some() { // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
             }
+            let alt_down = controller.is_key_down(Scancode::LAlt);
             controller.next_action = if let Some((casting_skill_key, skill)) = controller.is_selecting_target() {
                 match controller.cast_mode {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
                             log::debug!("Player wants to cast {:?}", skill);
-                            Some(ControllerAction::Casting(skill))
+                            Some(ControllerAction::Casting(skill, false))
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
                         } else if let Some((skill_key, skill)) = just_pressed_skill_key
@@ -407,7 +408,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             Some(
                                 ControllerAction::Casting(
                                     controller.get_skill_for_key(casting_skill_key)
-                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! ")
+                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! "),
+                                    false,
                                 )
                             )
                         } else if controller.right_mouse_pressed {
@@ -419,18 +421,29 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         None
                     }
                 }
+            } else if let Some((skill_key, skill)) = just_released_skill_key
+                .and_then(|skill_key| {
+                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
+                }) {
+                // can get here only when alt was down and OnKeyRelease
+                log::debug!("Player wants to cast {:?}, SELF", skill);
+                Some(ControllerAction::Casting(skill, true))
             } else if let Some((skill_key, skill)) = just_pressed_skill_key
                 .and_then(|skill_key| {
                     controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
                 }) {
                 match controller.cast_mode {
                     CastMode::Normal | CastMode::OnKeyRelease => {
-                        log::debug!("Player select target for casting {:?}", skill);
-                        Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                        if !alt_down {
+                            log::debug!("Player select target for casting {:?}", skill);
+                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                        } else {
+                            None
+                        }
                     }
                     CastMode::OnKeyPress => {
-                        log::debug!("Player wants to cast {:?}", skill);
-                        Some(ControllerAction::Casting(skill))
+                        log::debug!("Player wants to cast {:?}, alt={:?}", skill, alt_down);
+                        Some(ControllerAction::Casting(skill, alt_down))
                     }
                 }
             } else if controller.right_mouse_pressed {
@@ -449,7 +462,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.last_mouse_y,
                 &controller.camera.pos(),
                 &system_vars.matrices.projection,
-                &controller.view_matrix
+                &controller.view_matrix,
             );
             controller.calc_entity_below_cursor();
 
@@ -473,9 +486,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         controller.assign_skill(SkillKey::E, Skills::Heal);
                         controller.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
                     }
-                    _ => {
-
-                    }
+                    _ => {}
                 }
             }
 
@@ -495,12 +506,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-
     pub fn target_selection_or_casting(skill_key: SkillKey, skill: Skills) -> ControllerAction {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            ControllerAction::Casting(skill)
+            ControllerAction::Casting(skill, true)
         } else {
             ControllerAction::CastingSelectTarget(skill_key, skill)
         }

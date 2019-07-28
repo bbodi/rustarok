@@ -5,6 +5,7 @@ use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, 
 use crate::components::controller::{ControllerComponent, ControllerAction, WorldCoords};
 use crate::ElapsedTime;
 use crate::components::skills::skill::{Skills, SkillTargetType};
+use nalgebra::Vector2;
 
 pub struct CharacterControlSystem;
 
@@ -31,11 +32,11 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
 
-            let char_state = char_state_storage.get_mut(controller.char).unwrap();
+            let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
             match controller.next_action {
                 Some(ControllerAction::MoveOrAttackTo(pos)) => {
                     char_state.target = if let Some(target_entity) = controller.entity_below_cursor {
-                        if target_entity != controller.char {
+                        if target_entity != controller.char_entity_id {
                             Some(EntityTarget::OtherEntity(target_entity))
                         } else {
                             None
@@ -50,12 +51,13 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 Some(ControllerAction::AttackTo(_)) => {}
                 Some(ControllerAction::CastingSelectTarget(..)) => {}
                 Some(ControllerAction::CancelCastingSelectTarget) => {}
-                Some(ControllerAction::Casting(skill)) => {
+                Some(ControllerAction::Casting(skill, is_self_cast)) => {
                     CharacterControlSystem::try_cast_skill(
                         skill,
                         system_vars.time,
                         char_state,
                         controller,
+                        is_self_cast,
                     );
                 }
                 Some(ControllerAction::LeftClick) => {}
@@ -72,35 +74,53 @@ impl CharacterControlSystem {
         now: ElapsedTime,
         char_state: &mut CharacterStateComponent,
         controller: &ControllerComponent,
+        is_self_cast: bool,
     ) {
-        let distance = (char_state.pos() - controller.mouse_world_pos).magnitude();
+        let (target_pos, target_entity) = if is_self_cast {
+            (char_state.pos(), Some(controller.char_entity_id))
+        } else {
+            (controller.mouse_world_pos, controller.entity_below_cursor)
+        };
+        let distance = (char_state.pos() - target_pos).magnitude();
         let allowed = skill.is_casting_allowed(
-            controller.char,
-            controller.entity_below_cursor,
+            controller.char_entity_id,
+            target_entity,
             distance,
         );
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
             let casting_time_seconds = skill.get_casting_time(&char_state);
-            let dir_vector = (controller.mouse_world_pos - char_state.pos()).normalize();
+            let dir_vector = target_pos - char_state.pos();
+            let dir_vector = if dir_vector.x == 0.0 && dir_vector.y == 0.0 {
+                v2!(1, 0)
+            } else {
+                dir_vector.normalize()
+            };
             let new_state = CharState::CastingSkill(CastingSkillData {
-                target_entity: controller.entity_below_cursor,
+                target_entity,
                 cast_started: now,
                 cast_ends: now.add(casting_time_seconds),
                 can_move: false,
                 skill,
                 target_area_pos: match skill.get_skill_target_type() {
-                    SkillTargetType::Area => { Some(controller.mouse_world_pos) }
+                    SkillTargetType::Area => { Some(target_pos) }
                     _ => { None }
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if controller.entity_below_cursor.map(|it| it == controller.char).is_some() { // skill on self, don't change direction
+            let dir = if is_self_cast &&
+                controller
+                    .entity_below_cursor
+                    .map(|it| it == controller.char_entity_id)
+                    .is_some() { // skill on self, don't change direction
                 char_state.dir()
             } else {
                 let char_pos = char_state.pos();
-                CharacterControlSystem::determine_dir(&controller.mouse_world_pos, &char_pos)
+                CharacterControlSystem::determine_dir(
+                    &target_pos,
+                    &char_pos,
+                )
             };
             char_state.set_state(new_state, dir);
         } else {

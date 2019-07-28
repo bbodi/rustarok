@@ -41,35 +41,37 @@ impl RenderUI {
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
         // Draw casting bar
-        let char_state = char_state_storage.get(controller.char).unwrap();
+        let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
         match char_state.state() {
             CharState::CastingSkill(casting_info) => {
-                // draw health bars etc
-                let shader = system_vars.shaders.trimesh2d_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.ortho);
-                let vao = self.vao.bind();
-                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-                    let mut matrix = Matrix4::<f32>::identity();
-                    let bar_w = 540.0;
-                    let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
-                    let pos = Vector3::new(
-                        bar_x + x as f32,
-                        VIDEO_HEIGHT as f32 - 200.0 + y as f32,
-                        0.0,
+                // for really short skills, don't render it
+                if casting_info.cast_ends.minus(casting_info.cast_started).as_f32() > 0.1 {
+                    let shader = system_vars.shaders.trimesh2d_shader.gl_use();
+                    shader.set_mat4("projection", &system_vars.matrices.ortho);
+                    let vao = self.vao.bind();
+                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+                        let mut matrix = Matrix4::<f32>::identity();
+                        let bar_w = 540.0;
+                        let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
+                        let pos = Vector3::new(
+                            bar_x + x as f32,
+                            VIDEO_HEIGHT as f32 - 200.0 + y as f32,
+                            0.0,
+                        );
+                        matrix.prepend_translation_mut(&pos);
+                        shader.set_mat4("model", &matrix);
+                        shader.set_vec4("color", color);
+                        shader.set_vec2("size", &[w as f32, h as f32]);
+                        vao.draw();
+                    };
+                    draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
+                    draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
+                    let percentage = system_vars.time.percentage_between(
+                        casting_info.cast_started,
+                        casting_info.cast_ends,
                     );
-                    matrix.prepend_translation_mut(&pos);
-                    shader.set_mat4("model", &matrix);
-                    shader.set_vec4("color", color);
-                    shader.set_vec2("size", &[w as f32, h as f32]);
-                    vao.draw();
-                };
-                draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
-                draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
-                let percentage = system_vars.time.percentage_between(
-                    casting_info.cast_started,
-                    casting_info.cast_ends,
-                );
-                draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
+                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
+                }
             }
             _ => {}
         }
@@ -181,7 +183,7 @@ impl RenderUI {
             }
         } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
             let ent_below_cursor_state = char_state_storage.get(entity_below_cursor).unwrap();
-            if entity_below_cursor == controller.char ||
+            if entity_below_cursor == controller.char_entity_id ||
                 !ent_below_cursor_state.state().is_alive() { // self
                 CURSOR_NORMAL
             } else {

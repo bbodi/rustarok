@@ -219,6 +219,10 @@ impl ElapsedTime {
     pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
         ElapsedTime(self.0.max(other.0))
     }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
+    }
 }
 
 fn main() {
@@ -488,6 +492,7 @@ fn main() {
         }).collect::<Vec<String>>();
 
     let mut fov = 0.638;
+    let mut window_opened = false;
     let mut cam_angle = -60.0;
     let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(
@@ -739,6 +744,7 @@ fn main() {
             &mut other_monsters,
             &mut fov,
             &mut cam_angle,
+            &mut window_opened,
         );
         video.sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
@@ -783,7 +789,7 @@ fn main() {
                 let storage = ecs_world.write_storage::<ControllerComponent>();
                 let controller = storage.get(desktop_client_entity).unwrap();
                 let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                 char_state.pos()
             };
             ecs_world
@@ -847,6 +853,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                other_monsters: &mut Vec<Entity>,
                fov: &mut f32,
                cam_angle: &mut f32,
+               window_opened: &mut bool,
 ) -> (Option<String>, Option<String>, bool) {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
@@ -854,9 +861,10 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
     extern crate sublime_fuzzy;
     let mut ret = (None, None, false); // (map, str, show_cursor)
     { // IMGUI
-        ui.window(im_str!("Graphic opsions"))
+        ui.window(im_str!("Graphic options"))
             .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
+            .opened(window_opened)
             .build(|| {
                 ret.2 = ui.is_window_hovered();
                 let map_name_filter_clone = map_name_filter.clone();
@@ -962,7 +970,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 let controller = storage.get(desktop_client_controller_entity).unwrap();
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                    let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                     let mut aspd: f32 = char_state.calculated_attribs.attack_speed.as_f32();
                     ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
                         .build();
@@ -1036,7 +1044,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                         let storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                         char_state.pos()
                     };
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
@@ -1102,7 +1110,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                         let storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                         char_state.pos()
                     };
                     let (x, y) = loop {

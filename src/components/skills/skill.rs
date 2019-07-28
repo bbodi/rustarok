@@ -353,7 +353,7 @@ impl Skills {
             Skills::Poison => 0.5,
             Skills::Cure => 0.5,
             Skills::FireBomb => 0.5,
-            Skills::AbsorbShield => 0.0
+            Skills::AbsorbShield => 0.1
         };
         return ElapsedTime(t);
     }
@@ -561,6 +561,7 @@ impl SkillManifestation for PushBackWallSkill {
                 updater.remove::<StrEffectComponent>(*effect_id);
             }
         } else {
+            // TODO: wouldn't it be better to use the area push functionality?
             let my_collisions = all_collisions_in_world.iter().filter(|coll| coll.other_coll_handle == self.collider_handle);
             for coll in my_collisions {
                 let char_body_handle = physics_world.collider(coll.character_coll_handle).unwrap().body();
@@ -584,7 +585,7 @@ impl SkillManifestation for PushBackWallSkill {
                         ApplyForceComponent {
                             src_entity: self.caster_entity_id,
                             dst_entity: char_entity_id,
-                            force: push_dir * 20.0,
+                            force: dbg!(push_dir * 20.0),
                             body_handle: char_body_handle,
                             duration: 1.0,
                         }
