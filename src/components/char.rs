@@ -181,7 +181,7 @@ impl CharState {
         }
     }
 
-    pub fn is_live(&self) -> bool {
+    pub fn is_alive(&self) -> bool {
         match self {
             CharState::Dead => false,
             _ => true
@@ -370,15 +370,18 @@ pub struct CharacterStateComponent {
     pub typ: CharType,
     state: CharState,
     prev_state: CharState,
-    // attack count per seconds
-    pub bounding_rect_2d: SpriteBoundingRect,
-    // attacks per second
     dir: usize,
     pub cannot_control_until: ElapsedTime,
     pub outlook: CharOutlook,
     pub hp: i32,
     pub calculated_attribs: CharAttributes,
     pub statuses: Statuses,
+}
+
+impl Drop for CharacterStateComponent {
+    fn drop(&mut self) {
+        log::info!("CharacterStateComponent DROPPED");
+    }
 }
 
 impl CharacterStateComponent {
@@ -393,7 +396,6 @@ impl CharacterStateComponent {
             state: CharState::Idle,
             prev_state: CharState::Idle,
             dir: 0,
-            bounding_rect_2d: SpriteBoundingRect::default(),
             cannot_control_until: ElapsedTime(0.0),
             hp: 2000,
             calculated_attribs,

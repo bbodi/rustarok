@@ -6,28 +6,51 @@ use crate::components::BrowserClient;
 use specs::prelude::*;
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
-use sdl2::mouse::MouseButton;
+use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
 use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
-use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use crate::components::char::{CharacterStateComponent};
 use strum::IntoEnumIterator;
 use crate::components::skills::skill::{Skills, SkillTargetType};
+use std::slice::Iter;
 
 pub struct BrowserInputProducerSystem;
+
+const PACKET_MOUSE_MOVE: i32 = 1;
+const PACKET_MOUSE_DOWN: i32 = 2;
+const PACKET_MOUSE_UP: i32 = 3;
+const PACKET_KEY_DOWN: i32 = 4;
+const PACKET_KEY_UP: i32 = 5;
+const PACKET_MOUSE_WHEEL: i32 = 6;
+
+fn read_u16(iter: &mut Iter<u8>) -> u16 {
+    let upper_byte = iter.next().unwrap();
+    let lower_byte = iter.next().unwrap();
+    return ((*upper_byte as u16) << 8) | *lower_byte as u16;
+}
+
+fn read_i16(iter: &mut Iter<u8>) -> i16 {
+    let upper_byte = iter.next().unwrap();
+    let lower_byte = iter.next().unwrap();
+    return ((*upper_byte as i16) << 8) | *lower_byte as i16;
+}
 
 impl<'a> specs::System<'a> for BrowserInputProducerSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, BrowserClient>,
+        specs::Write<'a, LazyUpdate>,
     );
+
 
     fn run(&mut self, (
         entities,
         mut input_storage,
         mut browser_client_storage,
+        updater,
     ): Self::SystemData) {
-        for (entity, client, input_producer) in (&entities, &mut browser_client_storage, &mut input_storage).join() {
+        for (entity_id, client, input_producer) in (&entities, &mut browser_client_storage, &mut input_storage).join() {
             let sh = client.websocket.lock().unwrap().recv_message();
             if let Ok(msg) = sh {
                 match msg {
@@ -46,14 +69,9 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                         while let Some(header) = iter.next() {
                             let header = *header as i32;
                             match header & 0b1111 {
-                                1 => {
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_x: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
-
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+                                PACKET_MOUSE_MOVE => {
+                                    let mouse_x: u16 = read_u16(&mut iter);
+                                    let mouse_y: u16 = read_u16(&mut iter);
                                     log::trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
                                     let mousestate = {
                                         unsafe {
@@ -75,7 +93,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         }
                                     );
                                 }
-                                2 => {
+                                PACKET_MOUSE_DOWN => {
                                     let mouse_btn = match (header >> 4) & 0b11 {
                                         0 => sdl2::mouse::MouseButton::Left,
                                         1 => sdl2::mouse::MouseButton::Middle,
@@ -94,7 +112,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         }
                                     );
                                 }
-                                3 => {
+                                PACKET_MOUSE_UP => {
                                     let mouse_btn = match (header >> 4) & 0b11 {
                                         0 => sdl2::mouse::MouseButton::Left,
                                         1 => sdl2::mouse::MouseButton::Middle,
@@ -112,11 +130,9 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                             y: 0,
                                         });
                                 }
-                                4 => {
+                                PACKET_KEY_DOWN => {
                                     let scancode = *iter.next().unwrap();
-                                    let upper_byte = *iter.next().unwrap();
-                                    let lower_byte = *iter.next().unwrap();
-                                    let input_char: u16 = ((upper_byte as u16) << 8) | lower_byte as u16;
+                                    let input_char: u16 = read_u16(&mut iter);
                                     log::trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::KeyDown {
@@ -137,7 +153,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         );
                                     }
                                 }
-                                5 => {
+                                PACKET_KEY_UP => {
                                     let scancode = *iter.next().unwrap();
                                     log::trace!("Message arrived: KeyUp({})", scancode);
                                     input_producer.inputs.push(
@@ -150,23 +166,39 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                             repeat: false,
                                         });
                                 }
+                                PACKET_MOUSE_WHEEL => {
+                                    let delta_y: i32 = read_i16(&mut iter) as i32;
+                                    log::trace!("Message arrived: MouseWheel({})", delta_y);
+                                    input_producer.inputs.push(
+                                        sdl2::event::Event::MouseWheel {
+                                            which: 0,
+                                            x: 0,
+                                            y: delta_y as i32,
+                                            direction: MouseWheelDirection::Normal,
+                                            timestamp: 0,
+                                            window_id: 0,
+                                        });
+                                }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(entity).unwrap();
+                                    entities.delete(input_producer.char).unwrap();
+                                    entities.delete(entity_id).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
                         log::warn!("Unknown msg: {:?}", msg);
-                        entities.delete(entity).unwrap();
+                        entities.delete(input_producer.char).unwrap();
+                        entities.delete(entity_id).unwrap();
                     }
                 }
             } else if let Err(WebSocketError::IoError(e)) = sh {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
-                    log::info!("Client has disconnected");
-                    entities.delete(entity).unwrap();
+                    log::info!("Client '{:?}' has disconnected", entity_id);
+                    entities.delete(input_producer.char).unwrap();
+                    entities.delete(entity_id).unwrap();
                 }
             }
         }
@@ -178,7 +210,6 @@ pub struct InputConsumerSystem;
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
@@ -186,7 +217,6 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 
     fn run(&mut self, (
         entities,
-        physics_storage,
         char_state_storage,
         mut controller_storage,
         system_vars,
@@ -240,8 +270,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         mousestate: _,
                         x,
                         y,
-                        xrel,
-                        yrel
+                        xrel: _,
+                        yrel: _
                     } => {
                         // SDL generates only one event when the mouse touches the edge of the screen,
                         // so I put this pseudo key into the controller in that case, which will
@@ -421,20 +451,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 &system_vars.matrices.projection,
                 &controller.view_matrix
             );
-            controller.entity_below_cursor = {
-                let mut entity_below_cursor: Option<Entity> = None;
-                for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
-                    let bb = &other_char_state.bounding_rect_2d;
-                    let mx = controller.last_mouse_x as i32;
-                    let my = controller.last_mouse_y as i32;
-                    if other_char_state.state().is_live() && mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
-                        my <= bb.bottom_left[1] && my >= bb.top_right[1] {
-                        entity_below_cursor = Some(entity);
-                        break;
-                    }
-                }
-                entity_below_cursor
-            };
+            controller.calc_entity_below_cursor();
+
             controller.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
                 mouse_world_pos.x.max(0.0) as usize,
                 mouse_world_pos.y.abs() as usize,
@@ -447,11 +465,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         controller.assign_skill(SkillKey::Q, Skills::Poison);
                         controller.assign_skill(SkillKey::W, Skills::FireBomb);
                         controller.assign_skill(SkillKey::E, Skills::Cure);
-                        controller.assign_skill(SkillKey::R, Skills::AbsorbShield);
+                        controller.assign_skill(SkillKey::R, Skills::Lightning);
                     }
                     Some(Skills::Poison) => {
                         controller.assign_skill(SkillKey::Q, Skills::FireWall);
-                        controller.assign_skill(SkillKey::W, Skills::Lightning);
+                        controller.assign_skill(SkillKey::W, Skills::AbsorbShield);
                         controller.assign_skill(SkillKey::E, Skills::Heal);
                         controller.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
                     }

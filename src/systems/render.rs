@@ -76,11 +76,11 @@ impl RenderDesktopClientSystem {
 
     pub fn render_for_controller<'a>(
         &self,
-        controller: &ControllerComponent,
+        controller: &mut ControllerComponent,
         physics_storage: &specs::ReadStorage<'a, PhysicsComponent>,
         physics_world: &specs::ReadExpect<'a, PhysicsWorld>,
         system_vars: &mut SystemVariables,
-        char_state_storage: &mut specs::WriteStorage<'a, CharacterStateComponent>,
+        char_state_storage: &specs::ReadStorage<'a, CharacterStateComponent>,
         entities: &specs::Entities<'a>,
         sprite_storage: &specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         skill_storage: &specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -159,7 +159,7 @@ impl RenderDesktopClientSystem {
                                                          sprite_storage,
                                                          char_state_storage).join() {
             // for autocompletion
-            let char_state: &mut CharacterStateComponent = char_state;
+            let char_state: &CharacterStateComponent = char_state;
 
             let pos = char_state.pos();
             let is_dead = char_state.state().is_dead();
@@ -203,7 +203,7 @@ impl RenderDesktopClientSystem {
                     }
 
                     // todo: kell a pos_offset még mindig? (bounding rect)
-                    let (pos_offset, body_bounding_rect) = render_sprite(&system_vars,
+                    let (pos_offset, mut body_bounding_rect) = render_sprite(&system_vars,
                                                                          &animated_sprite,
                                                                          body_sprite,
                                                                          &controller.view_matrix,
@@ -226,8 +226,7 @@ impl RenderDesktopClientSystem {
                                                                               is_dead,
                                                                               &color);
 
-                    char_state.bounding_rect_2d = body_bounding_rect;
-                    char_state.bounding_rect_2d.merge(&head_bounding_rect);
+                    body_bounding_rect.merge(&head_bounding_rect);
 
                     if !is_dead {
                         draw_health_bar(
@@ -237,8 +236,13 @@ impl RenderDesktopClientSystem {
                             controller.char == entity_id,
                             &char_state,
                             system_vars.time,
+                            &body_bounding_rect
                         );
                     }
+
+                    controller.bounding_rect_2d.insert(
+                        entity_id, body_bounding_rect
+                    );
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -269,8 +273,6 @@ impl RenderDesktopClientSystem {
                                                                      1.0,
                                                                      is_dead,
                                                                      &color);
-                    char_state.bounding_rect_2d = bounding_rect;
-
                     if !is_dead {
                         draw_health_bar(
                             &system_vars.shaders.trimesh2d_shader,
@@ -279,8 +281,13 @@ impl RenderDesktopClientSystem {
                             controller.char == entity_id,
                             &char_state,
                             system_vars.time,
+                            &bounding_rect
                         );
                     }
+
+                    controller.bounding_rect_2d.insert(
+                        entity_id, bounding_rect
+                    );
                 }
             }
 
@@ -314,7 +321,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::WriteStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -330,7 +337,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         mut browser_client_storage,
         physics_storage,
         sprite_storage,
-        mut char_state_storage,
+        char_state_storage,
         mut system_vars,
         mut system_benchmark,
         skill_storage,
@@ -345,11 +352,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         }
         for (mut controller, browser) in (&mut controller_storage, &mut browser_client_storage).join() {
             self.render_for_controller(
-                &controller,
+                &mut controller,
                 &physics_storage,
                 &physics_world,
                 &mut system_vars,
-                &mut char_state_storage,
+                &char_state_storage,
                 &entities,
                 &sprite_storage,
                 &skill_storage,
@@ -393,11 +400,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
         for (mut controller, _not_browser) in (&mut controller_storage, !&browser_client_storage).join() {
             self.render_for_controller(
-                &controller,
+                &mut controller,
                 &physics_storage,
                 &physics_world,
                 &mut system_vars,
-                &mut char_state_storage,
+                &char_state_storage,
                 &entities,
                 &sprite_storage,
                 &skill_storage,
@@ -431,6 +438,7 @@ fn draw_health_bar(
     is_self: bool,
     char_state: &CharacterStateComponent,
     now: ElapsedTime,
+    bounding_rect_2d: &SpriteBoundingRect,
 ) {
     let shader = shader.gl_use();
     shader.set_mat4("projection", &ortho);
@@ -442,12 +450,12 @@ fn draw_health_bar(
     };
     let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
         let mut matrix = Matrix4::<f32>::identity();
-        let spr_x = char_state.bounding_rect_2d.bottom_left[0];
-        let spr_w = char_state.bounding_rect_2d.top_right[0] - char_state.bounding_rect_2d.bottom_left[0];
+        let spr_x = bounding_rect_2d.bottom_left[0];
+        let spr_w = bounding_rect_2d.top_right[0] - bounding_rect_2d.bottom_left[0];
         let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
         let pos = Vector3::new(
             bar_x + x as f32,
-            char_state.bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
+            bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
             0.0,
         );
         matrix.prepend_translation_mut(&pos);
@@ -789,7 +797,7 @@ impl DamageRenderSystem {
         &self,
         entities: &specs::Entities,
         numbers: &specs::ReadStorage<FlyingNumberComponent>,
-        char_state_storage: &specs::WriteStorage<CharacterStateComponent>,
+        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         controller: &ControllerComponent,
         system_vars: &specs::WriteExpect<SystemVariables>,
         updater: &specs::Write<LazyUpdate>,

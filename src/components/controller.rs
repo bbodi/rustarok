@@ -6,7 +6,7 @@ use nalgebra::{Point3, Matrix4, Vector2};
 use specs::prelude::*;
 use strum_macros::EnumIter;
 use crate::components::skills::skill::Skills;
-use crate::components::char::SpriteRenderDescriptorComponent;
+use crate::components::char::{SpriteRenderDescriptorComponent, SpriteBoundingRect};
 use crate::ElapsedTime;
 
 #[derive(Default)]
@@ -116,6 +116,13 @@ pub struct ControllerComponent {
     pub yaw: f32,
     pub pitch: f32,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
+    pub bounding_rect_2d: HashMap<Entity, SpriteBoundingRect>,
+}
+
+impl Drop for ControllerComponent {
+    fn drop(&mut self) {
+        log::info!("ControllerComponent DROPPED");
+    }
 }
 
 impl ControllerComponent {
@@ -154,6 +161,7 @@ impl ControllerComponent {
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
             mouse_world_pos: v2!(0, 0),
+            bounding_rect_2d: HashMap::new(),
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
@@ -163,6 +171,23 @@ impl ControllerComponent {
                 fps_multiplier: 1.0,
             }
         }
+    }
+
+    pub fn calc_entity_below_cursor(&mut self) {
+        self.entity_below_cursor = {
+            let mut entity_below_cursor: Option<Entity> = None;
+            for (entity_id, bounding_rect) in &self.bounding_rect_2d {
+                let mx = self.last_mouse_x as i32;
+                let my = self.last_mouse_y as i32;
+                if  mx >= bounding_rect.bottom_left[0] && mx <= bounding_rect.top_right[0] &&
+                    my <= bounding_rect.bottom_left[1] && my >= bounding_rect.top_right[1] {
+                    entity_below_cursor = Some(*entity_id);
+                    break;
+                }
+            }
+            entity_below_cursor
+        };
+        self.bounding_rect_2d.clear();
     }
 
 

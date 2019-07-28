@@ -353,7 +353,7 @@ impl Skills {
             Skills::Poison => 0.5,
             Skills::Cure => 0.5,
             Skills::FireBomb => 0.5,
-            Skills::AbsorbShield => 0.5
+            Skills::AbsorbShield => 0.0
         };
         return ElapsedTime(t);
     }

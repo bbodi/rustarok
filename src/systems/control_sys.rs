@@ -31,7 +31,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
 
-            let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
+            let char_state = char_state_storage.get_mut(controller.char).unwrap();
             match controller.next_action {
                 Some(ControllerAction::MoveOrAttackTo(pos)) => {
                     char_state.target = if let Some(target_entity) = controller.entity_below_cursor {

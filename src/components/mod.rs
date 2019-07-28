@@ -3,9 +3,9 @@ extern crate rand;
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
 use nalgebra::{Vector2, Isometry2};
-use crate::{ElapsedTime};
+use crate::ElapsedTime;
 use specs::prelude::*;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{WorldCoords};
 use nphysics2d::object::BodyHandle;
 
 pub mod char;
@@ -18,6 +18,12 @@ pub struct BrowserClient {
     pub websocket: Mutex<websocket::sync::Client<TcpStream>>,
     pub offscreen: Vec<u8>,
     pub ping: u16,
+}
+
+impl Drop for BrowserClient {
+    fn drop(&mut self) {
+        log::info!("BrowserClient DROPPED");
+    }
 }
 
 #[derive(Component)]

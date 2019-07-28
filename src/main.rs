@@ -1,3 +1,4 @@
+extern crate actix_web;
 extern crate byteorder;
 extern crate encoding;
 extern crate gl;
@@ -47,7 +48,7 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysicsSystem};
-use crate::systems::render::{RenderDesktopClientSystem};
+use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH, DynamicVertexArray};
 use crate::asset::{AssetLoader, SpriteResource};
@@ -63,6 +64,7 @@ mod cam;
 mod video;
 mod asset;
 mod consts;
+mod web_server;
 
 #[macro_use]
 mod common;
@@ -76,6 +78,7 @@ use std::str::FromStr;
 use crate::components::skills::skill::{Skills, SkillManifestationComponent};
 use crate::common::p3_to_p2;
 use std::sync::Mutex;
+use crate::web_server::start_web_server;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -604,7 +607,7 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let mut desktop_client_entity = {
+    let desktop_client_entity = {
         let desktop_client_char = components::char::create_char(
             &mut ecs_world,
             Point2::new(250.0, -200.0),
@@ -620,7 +623,7 @@ fn main() {
             &ecs_world.read_resource::<SystemVariables>().matrices.projection,
         );
         player.assign_skill(SkillKey::Q, Skills::FireWall);
-        player.assign_skill(SkillKey::W, Skills::Lightning);
+        player.assign_skill(SkillKey::W, Skills::AbsorbShield);
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
         player.assign_skill(SkillKey::Y, Skills::Mounting);
@@ -645,42 +648,54 @@ fn main() {
     let mut other_monsters: Vec<Entity> = vec![];
     let mut player_count = 0;
     let mut monster_count = 0;
+
+    start_web_server();
+
     'running: loop {
         match websocket_server.accept() {
             Ok(wsupgrade) => {
-                let browser_client = wsupgrade.accept().unwrap();
+                let mut browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
-                log::info!("Client connected");
-                let mut connected_client_entity = {
-                    let desktop_client_char = components::char::create_char(
-                        &mut ecs_world,
-                        Point2::new(250.0, -200.0),
-                        Sex::Male,
-                        JobId::CRUSADER,
-                        2,
-                        1,
-                    );
-                    let mut player = ControllerComponent::new(
-                        desktop_client_char,
-                        250.0,
-                        -180.0,
-                        &ecs_world.read_resource::<SystemVariables>().matrices.projection,
-                    );
-                    player.assign_skill(SkillKey::Q, Skills::FireWall);
-                    player.assign_skill(SkillKey::W, Skills::Lightning);
-                    player.assign_skill(SkillKey::E, Skills::Heal);
-                    player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-                    player.assign_skill(SkillKey::Y, Skills::Mounting);
-                    ecs_world
-                        .create_entity()
-                        .with(player)
-                        .with(BrowserClient {
-                            websocket: Mutex::new(browser_client),
-                            offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
-                            ping: 0,
-                        })
-                        .build()
+                let welcome_data: [u8; 4] = unsafe {
+                    std::mem::transmute::<[u16; 2], [u8; 4]>(
+                        [
+                            VIDEO_WIDTH as u16,
+                            VIDEO_HEIGHT as u16
+                        ]
+                    )
                 };
+                let welcome_msg = websocket::Message::binary(&welcome_data[..]);
+                let _ = browser_client.send_message(&welcome_msg).unwrap();
+
+                let browser_client_char = components::char::create_char(
+                    &mut ecs_world,
+                    Point2::new(250.0, -200.0),
+                    Sex::Male,
+                    JobId::CRUSADER,
+                    2,
+                    1,
+                );
+                let mut player = ControllerComponent::new(
+                    browser_client_char,
+                    250.0,
+                    -180.0,
+                    &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+                );
+                player.assign_skill(SkillKey::Q, Skills::FireWall);
+                player.assign_skill(SkillKey::W, Skills::Lightning);
+                player.assign_skill(SkillKey::E, Skills::Heal);
+                player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+                player.assign_skill(SkillKey::Y, Skills::Mounting);
+                let entity_id = ecs_world
+                    .create_entity()
+                    .with(player)
+                    .with(BrowserClient {
+                        websocket: Mutex::new(browser_client),
+                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
+                        ping: 0,
+                    })
+                    .build();
+                log::info!("Client connected: {:?}", entity_id);
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
@@ -732,31 +747,29 @@ fn main() {
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
-            let mut desktop_client_entity = {
-                let desktop_client_char = components::char::create_char(
-                    &mut ecs_world,
-                    Point2::new(250.0, -200.0),
-                    Sex::Male,
-                    JobId::CRUSADER,
-                    1,
-                    1,
-                );
-                let mut player = ControllerComponent::new(
-                    desktop_client_char,
-                    250.0,
-                    -180.0,
-                    &ecs_world.read_resource::<SystemVariables>().matrices.projection,
-                );
-                player.assign_skill(SkillKey::Q, Skills::FireWall);
-                player.assign_skill(SkillKey::W, Skills::Lightning);
-                player.assign_skill(SkillKey::E, Skills::Heal);
-                player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-                player.assign_skill(SkillKey::Y, Skills::Mounting);
-                ecs_world
-                    .create_entity()
-                    .with(player)
-                    .build()
-            };
+            let desktop_client_char = components::char::create_char(
+                &mut ecs_world,
+                Point2::new(250.0, -200.0),
+                Sex::Male,
+                JobId::CRUSADER,
+                1,
+                1,
+            );
+            let mut player = ControllerComponent::new(
+                desktop_client_char,
+                250.0,
+                -180.0,
+                &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+            );
+            player.assign_skill(SkillKey::Q, Skills::FireWall);
+            player.assign_skill(SkillKey::W, Skills::Lightning);
+            player.assign_skill(SkillKey::E, Skills::Heal);
+            player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+            player.assign_skill(SkillKey::Y, Skills::Mounting);
+            ecs_world
+                .create_entity()
+                .with(player)
+                .build();
         }
         if let Some(new_str_name) = new_str {
             {
@@ -939,7 +952,11 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                             _ => CastMode::OnKeyRelease,
                         };
                     }
-                    ui.text(im_str!("Mouse world pos: {}", controller.mouse_world_pos));
+                    ui.text(im_str!(
+                        "Mouse world pos: {}, {}",
+                        controller.mouse_world_pos.x,
+                        controller.mouse_world_pos.y,
+                    ));
                 }
 
                 let controller = storage.get(desktop_client_controller_entity).unwrap();

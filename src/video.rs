@@ -25,8 +25,8 @@ pub struct Video {
     _gl_context: GLContext,
 }
 
-pub const VIDEO_WIDTH: u32 = 1024;
-pub const VIDEO_HEIGHT: u32 = 768;
+pub const VIDEO_WIDTH: u32 = 640;
+pub const VIDEO_HEIGHT: u32 = 480;
 
 impl Video {
     pub fn init() -> Video {
@@ -245,7 +245,6 @@ impl GlTexture {
 
     pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
         let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
-            log::trace!("convert to RGBA");
             let mut optimized_surf = sdl2::surface::Surface::new(
                 surface.width(),
                 surface.height(),

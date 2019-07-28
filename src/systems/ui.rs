@@ -37,7 +37,7 @@ impl RenderUI {
         &self,
         entities: &specs::Entities<>,
         controller: &mut ControllerComponent,
-        char_state_storage: &specs::WriteStorage<CharacterStateComponent>,
+        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
         // Draw casting bar
@@ -180,7 +180,9 @@ impl RenderUI {
                 CURSOR_CLICK
             }
         } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
-            if entity_below_cursor == controller.char { // self
+            let ent_below_cursor_state = char_state_storage.get(entity_below_cursor).unwrap();
+            if entity_below_cursor == controller.char ||
+                !ent_below_cursor_state.state().is_alive() { // self
                 CURSOR_NORMAL
             } else {
                 CURSOR_ATTACK

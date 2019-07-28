@@ -26,7 +26,7 @@ impl AbsorbStatus {
         AbsorbStatus {
             caster_entity_id,
             started: now,
-            animation_started: now.add_seconds(-1.7),
+            animation_started: now.add_seconds(-1.9),
             until: now.add_seconds(3.0),
             absorbed_damage: 0,
         }
@@ -76,7 +76,7 @@ impl Status for AbsorbStatus {
             StatusUpdateResult::RemoveIt
         } else {
             if self.animation_started.add_seconds(2.0).has_passed(system_vars.time) {
-                self.animation_started = system_vars.time.add_seconds(-1.7);
+                self.animation_started = system_vars.time.add_seconds(-1.9);
             }
             StatusUpdateResult::KeepIt
         }

@@ -134,7 +134,7 @@ impl Statuses {
         view_matrix: &Matrix4<f32>
     ) {
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let result = status.as_ref().unwrap().lock().unwrap().render(
+            status.as_ref().unwrap().lock().unwrap().render(
                 char_pos,
                 system_vars,
                 view_matrix,
@@ -145,7 +145,7 @@ impl Statuses {
 
     pub fn get_base_attributes(outlook: &CharOutlook) -> CharAttributes {
         return match outlook {
-            CharOutlook::Player { job_id, head_index, sex } => {
+            CharOutlook::Player { job_id, .. } => {
                 match job_id {
                     _ => CharAttributes {
                         walking_speed: U8Float::new(Percentage::new(100.0)),

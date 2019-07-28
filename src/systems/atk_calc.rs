@@ -1,4 +1,4 @@
-use crate::components::char::{CharacterStateComponent, PhysicsComponent, CharState};
+use crate::components::char::{CharacterStateComponent, CharState};
 use specs::{Entity, LazyUpdate};
 use crate::systems::{SystemVariables, SystemFrameDurations};
 use crate::{PhysicsWorld, ElapsedTime};
@@ -22,7 +22,6 @@ pub struct AttackSystem;
 impl<'a> specs::System<'a> for AttackSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::ReadStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicsWorld>,
@@ -32,7 +31,6 @@ impl<'a> specs::System<'a> for AttackSystem {
 
     fn run(&mut self, (
         entities,
-        mut physics_storage,
         mut char_state_storage,
         mut system_vars,
         mut physics_world,
@@ -83,7 +81,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             // so src data (or an attack specific data structure) must be copied
             let outcome = char_state_storage.get(attack.src_entity).and_then(|src_char_state| {
                 char_state_storage.get(attack.dst_entity)
-                    .filter(|it| it.state().is_live())
+                    .filter(|it| it.state().is_alive())
                     .and_then(|dst_char_state| {
                         Some(
                             AttackCalculation::attack(
