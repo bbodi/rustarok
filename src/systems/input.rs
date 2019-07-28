@@ -421,13 +421,6 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         None
                     }
                 }
-            } else if let Some((skill_key, skill)) = just_released_skill_key
-                .and_then(|skill_key| {
-                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
-                }) {
-                // can get here only when alt was down and OnKeyRelease
-                log::debug!("Player wants to cast {:?}, SELF", skill);
-                Some(ControllerAction::Casting(skill, true))
             } else if let Some((skill_key, skill)) = just_pressed_skill_key
                 .and_then(|skill_key| {
                     controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
@@ -445,6 +438,17 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         log::debug!("Player wants to cast {:?}, alt={:?}", skill, alt_down);
                         Some(ControllerAction::Casting(skill, alt_down))
                     }
+                }
+            } else if let Some((skill_key, skill)) = just_released_skill_key
+                .and_then(|skill_key| {
+                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
+                }) {
+                // can get here only when alt was down and OnKeyRelease
+                if alt_down {
+                    log::debug!("Player wants to cast {:?}, SELF", skill);
+                    Some(ControllerAction::Casting(skill, true))
+                } else {
+                    None
                 }
             } else if controller.right_mouse_pressed {
                 Some(ControllerAction::MoveTowardsMouse(controller.mouse_pos()))
