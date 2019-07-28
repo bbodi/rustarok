@@ -89,6 +89,7 @@ pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) a
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
     log_level: String,
+    quick_startup: bool,
     grf_paths: Vec<String>,
 }
 
@@ -395,7 +396,10 @@ fn main() {
                 mounted_sprites
             },
             character_sprites: JobId::iter().take(25)
-                .filter(|job_id| *job_id != JobId::MARRIED)
+                .filter(|job_id|
+                    *job_id == JobId::CRUSADER ||
+                    *job_id == JobId::SWORDMAN
+                )
                 .map(|job_id| {
                     let job_file_name = &job_name_table[&job_id];
                     let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
@@ -505,7 +509,11 @@ fn main() {
     };
 
 
-    let (map_render_data, physics_world) = load_map("prontera", &asset_loader);
+    let (map_render_data, physics_world) = load_map(
+        "prontera",
+        &asset_loader,
+        config.quick_startup,
+    );
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
     let skill_name_font = Video::load_font(
@@ -646,7 +654,7 @@ fn main() {
 
     let mut sent_bytes_per_second: usize = 0;
     let mut sent_bytes_per_second_counter: usize = 0;
-    let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
+    let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
     let mut other_players: Vec<Entity> = vec![];
@@ -749,7 +757,11 @@ fn main() {
         video.sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
-            let (map_render_data, physics_world) = load_map(&new_map_name, &asset_loader);
+            let (map_render_data, physics_world) = load_map(
+                &new_map_name,
+                &asset_loader,
+                config.quick_startup,
+            );
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
@@ -1208,7 +1220,9 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, PhysicsWorld) {
+fn load_map(map_name: &str,
+            asset_loader: &AssetLoader,
+            quick_loading: bool) -> (MapRenderData, PhysicsWorld) {
     let (elapsed, world) = measure_time(|| {
         asset_loader.load_map(&map_name).unwrap()
     });
@@ -1283,11 +1297,15 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     });
     log::info!("gnd loaded: {}ms", elapsed.as_millis());
     let (elapsed, models) = measure_time(|| {
-        let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
-        return model_names.iter().map(|filename| {
-            let rsm = asset_loader.load_model(filename).unwrap();
-            (filename.clone(), rsm)
-        }).collect::<Vec<(ModelName, Rsm)>>();
+        if !quick_loading {
+            let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
+            return model_names.iter().map(|filename| {
+                let rsm = asset_loader.load_model(filename).unwrap();
+                (filename.clone(), rsm)
+            }).collect::<Vec<(ModelName, Rsm)>>();
+        } else {
+            vec![]
+        }
     });
     log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
 
@@ -1311,7 +1329,13 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     });
     log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
-    let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
+    let mut model_instances_iter = if quick_loading {
+        world.models.iter().take(0)
+    } else {
+        let len = world.models.len();
+        world.models.iter().take(len)
+    };
+    let model_instances: Vec<(ModelName, Matrix4<f32>)> = model_instances_iter.map(|model_instance| {
         let mut instance_matrix = Matrix4::<f32>::identity();
         instance_matrix.prepend_translation_mut(&(model_instance.pos + Vector3::new(ground.width as f32, 0f32, ground.height as f32)));
 

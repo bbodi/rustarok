@@ -183,8 +183,11 @@ impl RenderUI {
             }
         } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
             let ent_below_cursor_state = char_state_storage.get(entity_below_cursor).unwrap();
-            if entity_below_cursor == controller.char_entity_id ||
-                !ent_below_cursor_state.state().is_alive() { // self
+            let ent_is_dead = char_state_storage
+                .get(entity_below_cursor)
+                .map(|it| !it.state().is_alive())
+                .unwrap_or(false);
+            if entity_below_cursor == controller.char_entity_id || ent_is_dead { // self or dead
                 CURSOR_NORMAL
             } else {
                 CURSOR_ATTACK

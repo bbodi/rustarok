@@ -280,9 +280,6 @@ impl Rsm {
             bbox.center[i] = bbox.min[i] + bbox.range[i];
         }
 
-        // for faster startup
-        nodes.clear();
-
         Rsm {
             anim_len,
             shade_type,

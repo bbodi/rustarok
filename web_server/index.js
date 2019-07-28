@@ -13,7 +13,16 @@ var network_packet_buffer = new ArrayBuffer(1024);
 var buffer_offset = 0;
 var network_packet = new Uint8Array(network_packet_buffer);
 
-let socket = new WebSocket("ws://127.0.0.1:6969");
+var loc = window.location, new_uri;
+if (loc.protocol === "https:") {
+    new_uri = "wss:";
+} else {
+    new_uri = "ws:";
+}
+new_uri += "//" + loc.hostname;
+new_uri += ":6969";
+
+let socket = new WebSocket(new_uri);
 socket.binaryType = "arraybuffer";
 
 function packet_write_i16(value) {
