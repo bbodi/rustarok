@@ -1,8 +1,21 @@
+# Table of contents
+- [Building](#building)
+- [Running on Windows](#running-on-windows)
+- [How to play](#how-to-play)
+- [Design decisions](#design-decisions)
+- [Blog](#blog)
+- [Current Status and Gallery](#current-status-and-gallery)
+- [Background story](#background-story)
+  - [About the used game assets](#about-the-used-game-assets)
+- [Thanks](#thanks)
+
 # Rustarok
 
 A project whose primary goals are to have fun developing it and experiment with interesting technical problems from the world of game development.
 
 It is intended to be a multiplayer, fast-paced Moba style game. Check [Background story](#background-story) for details.
+
+
 
 ## Building
 
@@ -38,7 +51,11 @@ You will need Ragnarok Online asset files to run the game.
 - [Statuses](https://github.com/bbodi/rustarok/issues/1)
 - [Rendering system](https://github.com/bbodi/rustarok/issues/4)
 
-## Current Status & Gallery
+## Blog
+
+- [2019W30](https://github.com/bbodi/rustarok/issues/6)
+
+## Current Status and Gallery
 
 Currently the project is in a very early stage. Nothing is set in stone yet, I mostly prototyping ideas and techniques.
 
