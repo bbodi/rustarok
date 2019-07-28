@@ -1,3 +1,4 @@
+extern crate actix_web;
 extern crate byteorder;
 extern crate encoding;
 extern crate gl;
@@ -37,21 +38,19 @@ use specs::Builder;
 use specs::Join;
 use specs::prelude::*;
 
-use crate::components::{AttackComponent, BrowserClient, FlyingNumberComponent, StrEffectComponent};
-use crate::components::char::{CharacterStateComponent, Percentage, PhysicsComponent, U8Float, SpriteRenderDescriptorComponent, CharOutlook};
+use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::char::{CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent, CharOutlook};
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::skill::{SkillManifestationComponent, Skills, p3_to_p2};
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame};
+use crate::systems::{EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables, CollisionsFromPrevFrame, Texts};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysicsSystem};
-use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, RenderDesktopClientSystem, RenderStreamingSystem};
+use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
-use crate::systems::ui::RenderUI;
-use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH, DynamicVertexArray};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::asset::str::StrFile;
 use crate::asset::gat::{CellType, Gat};
@@ -65,6 +64,10 @@ mod cam;
 mod video;
 mod asset;
 mod consts;
+mod web_server;
+
+#[macro_use]
+mod common;
 
 #[macro_use]
 mod components;
@@ -72,6 +75,10 @@ mod systems;
 
 use serde::Deserialize;
 use std::str::FromStr;
+use crate::components::skills::skill::{Skills, SkillManifestationComponent};
+use crate::common::p3_to_p2;
+use std::sync::Mutex;
+use crate::web_server::start_web_server;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -82,6 +89,7 @@ pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) a
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
     log_level: String,
+    quick_startup: bool,
     grf_paths: Vec<String>,
 }
 
@@ -131,6 +139,7 @@ pub struct Shaders {
     pub player_shader: ShaderProgram,
     pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
+    pub rectangle_2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
     pub trimesh2d_shader: ShaderProgram,
 }
@@ -150,7 +159,6 @@ pub struct Shaders {
 pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
     pub ortho: Matrix4<f32>,
-    pub view: Matrix4<f32>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -208,6 +216,14 @@ impl ElapsedTime {
     pub fn has_not_passed(&self, system_time: ElapsedTime) -> bool {
         self.0 > system_time.0
     }
+
+    pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0.max(other.0))
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
+    }
 }
 
 fn main() {
@@ -221,7 +237,7 @@ fn main() {
         AssetLoader::new(config.grf_paths.as_slice())
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
-    log::info!("GRF loading: {}", elapsed.as_millis());
+    log::info!("GRF loading: {}ms", elapsed.as_millis());
     let mut video = Video::init();
 
     let shaders = Shaders {
@@ -297,6 +313,18 @@ fn main() {
                 ).unwrap()
             ]
         ).unwrap(),
+        rectangle_2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(
+                    include_str!("shaders/rectangle_2d.vert"),
+                    gl::VERTEX_SHADER,
+                ).unwrap(),
+                Shader::from_source(
+                    include_str!("shaders/rectangle_2d.frag"),
+                    gl::FRAGMENT_SHADER,
+                ).unwrap()
+            ]
+        ).unwrap(),
         trimesh_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
@@ -330,7 +358,6 @@ fn main() {
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
-    ecs_world.register::<AttackComponent>();
     ecs_world.register::<StrEffectComponent>();
 
     ecs_world.register::<SkillManifestationComponent>();
@@ -345,11 +372,7 @@ fn main() {
         .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
         .with(PhysicsSystem, "physics", &["char_state_update"])
         .with(AttackSystem, "attack_sys", &["physics"])
-        .with_thread_local(OpenGlInitializerFor3D)
-        .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(DamageRenderSystem::new())
-        .with_thread_local(RenderUI::new())
         .build();
 
     let rng = rand::thread_rng();
@@ -359,8 +382,24 @@ fn main() {
         Sprites {
             cursors: asset_loader.load_spr_and_act("data\\sprite\\cursors").unwrap(),
             numbers: GlTexture::from_file("assets\\damage.bmp"),
+            mounted_character_sprites: {
+                let mut mounted_sprites = HashMap::new();
+                let mounted_file_name = &job_name_table[&JobId::CRUSADER2];
+                let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
+                let folder2 = encoding::all::WINDOWS_1252.decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict).unwrap();
+                let male_file_name = format!("data\\sprite\\{}\\{}\\³²\\{}_³²", folder1, folder2, mounted_file_name);
+                let mut male = asset_loader.load_spr_and_act(&male_file_name).expect(&format!("Failed loading {:?}", JobId::CRUSADER2));
+                // for Idle action, character sprites contains head rotating animations, we don't need them
+                male.action.remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                let female = male.clone();
+                mounted_sprites.insert(JobId::CRUSADER, [male, female]);
+                mounted_sprites
+            },
             character_sprites: JobId::iter().take(25)
-                .filter(|job_id| *job_id != JobId::MARRIED)
+                .filter(|job_id|
+                    *job_id == JobId::CRUSADER ||
+                    *job_id == JobId::SWORDMAN
+                )
                 .map(|job_id| {
                     let job_file_name = &job_name_table[&job_id];
                     let folder1 = encoding::all::WINDOWS_1252.decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict).unwrap();
@@ -457,6 +496,7 @@ fn main() {
         }).collect::<Vec<String>>();
 
     let mut fov = 0.638;
+    let mut window_opened = false;
     let mut cam_angle = -60.0;
     let render_matrices = RenderMatrices {
         projection: Matrix4::new_perspective(
@@ -465,12 +505,76 @@ fn main() {
             0.1f32,
             1000.0f32,
         ),
-        view: Matrix4::identity(), // it is filled before every frame
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
 
-    let (map_render_data, physics_world) = load_map("prontera", &asset_loader);
+    let (map_render_data, physics_world) = load_map(
+        "prontera",
+        &asset_loader,
+        config.quick_startup,
+    );
+
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+    let skill_name_font = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        32,
+    ).unwrap();
+    let mut skill_name_font_outline = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        32,
+    ).unwrap();
+    skill_name_font_outline.set_outline_width(2);
+
+    let skill_key_font = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20,
+    ).unwrap();
+    let mut skill_key_font_outline = Video::load_font(
+        &ttf_context,
+        "assets/fonts/UbuntuMono-B.ttf",
+        20,
+    ).unwrap();
+    skill_key_font_outline.set_outline_width(2);
+
+    let mut texts = Texts {
+        skill_name_texts: HashMap::new(),
+        skill_key_texts: HashMap::new(),
+        attack_absorbed: Video::create_outline_text_texture(
+            &skill_key_font,
+            &skill_key_font_outline,
+            "absorb",
+        ),
+        attack_blocked: Video::create_outline_text_texture(
+            &skill_key_font,
+            &skill_key_font_outline,
+            "block",
+        ),
+    };
+    let mut skill_icons = HashMap::new();
+    for skill in Skills::iter() {
+        let texture = Video::create_outline_text_texture(
+            &skill_name_font,
+            &skill_name_font_outline,
+            &format!("{:?}", skill),
+        );
+        texts.skill_name_texts.insert(skill, texture);
+
+        let skill_icon = asset_loader.load_sdl_surface(skill.get_icon_path()).unwrap();
+        skill_icons.insert(skill, GlTexture::from_surface(skill_icon, gl::NEAREST));
+    }
+
+    for skill_key in SkillKey::iter() {
+        let texture = Video::create_outline_text_texture(
+            &skill_key_font,
+            &skill_key_font_outline,
+            &format!("{:?}", skill_key),
+        );
+        texts.skill_key_texts.insert(skill_key, texture);
+    }
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprites,
@@ -479,6 +583,35 @@ fn main() {
         time: ElapsedTime(0.0),
         matrices: render_matrices,
         map_render_data,
+        texts,
+        attacks: Vec::with_capacity(128),
+        area_attacks: Vec::with_capacity(128),
+        pushes: Vec::with_capacity(128),
+        apply_statuses: Vec::with_capacity(128),
+        apply_area_statuses: Vec::with_capacity(128),
+        remove_statuses: Vec::with_capacity(128),
+        skill_icons,
+        str_effect_vao: DynamicVertexArray::new(
+            gl::TRIANGLE_STRIP,
+            vec![
+                1.0, 1.0, // xy
+                0.0, 0.0, // uv
+                1.0, 1.0,
+                1.0, 0.0, // uv
+                1.0, 1.0,
+                0.0, 1.0, // uv
+                1.0, 1.0,
+                1.0, 1.0, // uv
+            ], 4, vec![
+                VertexAttribDefinition { // xy
+                    number_of_components: 2,
+                    offset_of_first_element: 0,
+                },
+                VertexAttribDefinition { // uv
+                    number_of_components: 2,
+                    offset_of_first_element: 2,
+                }
+            ]),
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
@@ -487,12 +620,12 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let mut desktop_client_entity = {
+    let desktop_client_entity = {
         let desktop_client_char = components::char::create_char(
             &mut ecs_world,
             Point2::new(250.0, -200.0),
             Sex::Male,
-            JobId::CRUSADER2,
+            JobId::CRUSADER,
             1,
             1,
         );
@@ -500,13 +633,13 @@ fn main() {
             desktop_client_char,
             250.0,
             -180.0,
-            &ecs_world.read_resource::<SystemVariables>().matrices.projection
+            &ecs_world.read_resource::<SystemVariables>().matrices.projection,
         );
-        player.assign_skill(SkillKey::Q, Skills::TestSkill);
-        player.assign_skill(SkillKey::W, Skills::Lightning);
+        player.assign_skill(SkillKey::Q, Skills::FireWall);
+        player.assign_skill(SkillKey::W, Skills::AbsorbShield);
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-//        player.assign_skill(SkillKey::Y, Skills::Mounting);
+        player.assign_skill(SkillKey::Y, Skills::Mounting);
         ecs_world
             .create_entity()
             .with(player)
@@ -521,28 +654,61 @@ fn main() {
 
     let mut sent_bytes_per_second: usize = 0;
     let mut sent_bytes_per_second_counter: usize = 0;
-    let mut websocket_server = websocket::sync::Server::bind("127.0.0.1:6969").unwrap();
+    let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
     let mut other_players: Vec<Entity> = vec![];
     let mut other_monsters: Vec<Entity> = vec![];
     let mut player_count = 0;
     let mut monster_count = 0;
+
+    start_web_server();
+
     'running: loop {
         match websocket_server.accept() {
             Ok(wsupgrade) => {
-                let browser_client = wsupgrade.accept().unwrap();
+                let mut browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
-                log::info!("Client connected");
-//                ecs_world
-//                    .create_entity()
-//                    .with(ControllerComponent::new(250.0, -180.0))
-//                    .with(BrowserClient {
-//                        websocket: Mutex::new(browser_client),
-//                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
-//                        ping: 0,
-//                    })
-//                    .build();
+                let welcome_data: [u8; 4] = unsafe {
+                    std::mem::transmute::<[u16; 2], [u8; 4]>(
+                        [
+                            VIDEO_WIDTH as u16,
+                            VIDEO_HEIGHT as u16
+                        ]
+                    )
+                };
+                let welcome_msg = websocket::Message::binary(&welcome_data[..]);
+                let _ = browser_client.send_message(&welcome_msg).unwrap();
+
+                let browser_client_char = components::char::create_char(
+                    &mut ecs_world,
+                    Point2::new(250.0, -200.0),
+                    Sex::Male,
+                    JobId::CRUSADER,
+                    2,
+                    1,
+                );
+                let mut player = ControllerComponent::new(
+                    browser_client_char,
+                    250.0,
+                    -180.0,
+                    &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+                );
+                player.assign_skill(SkillKey::Q, Skills::FireWall);
+                player.assign_skill(SkillKey::W, Skills::Lightning);
+                player.assign_skill(SkillKey::E, Skills::Heal);
+                player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+                player.assign_skill(SkillKey::Y, Skills::Mounting);
+                let entity_id = ecs_world
+                    .create_entity()
+                    .with(player)
+                    .with(BrowserClient {
+                        websocket: Mutex::new(browser_client),
+                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
+                        ping: 0,
+                    })
+                    .build();
+                log::info!("Client connected: {:?}", entity_id);
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
@@ -552,7 +718,6 @@ fn main() {
             let inputs = storage.get_mut(desktop_client_entity).unwrap();
 
             for event in video.event_pump.poll_iter() {
-                log::trace!("SDL event: {:?}", event);
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
                 match event {
                     sdl2::event::Event::Quit { .. } | sdl2::event::Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -565,11 +730,6 @@ fn main() {
             }
         }
 
-        {
-            let mut storage = ecs_world.write_storage::<ControllerComponent>();
-            let controller = storage.get_mut(desktop_client_entity).unwrap();
-            ecs_world.write_resource::<SystemVariables>().matrices.view = controller.camera.create_view_matrix();
-        }
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
@@ -592,34 +752,42 @@ fn main() {
             &mut other_monsters,
             &mut fov,
             &mut cam_angle,
+            &mut window_opened,
         );
         video.sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
-            let (map_render_data, physics_world) = load_map(&new_map_name, &asset_loader);
+            let (map_render_data, physics_world) = load_map(
+                &new_map_name,
+                &asset_loader,
+                config.quick_startup,
+            );
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
-            desktop_client_entity = {
-                let desktop_client_char = components::char::create_char(
-                    &mut ecs_world,
-                    Point2::new(250.0, -200.0),
-                    Sex::Male,
-                    JobId::ROGUE,
-                    1,
-                    1,
-                );
-                let projection_mat = ecs_world.read_resource::<SystemVariables>().matrices.projection;
-                ecs_world
-                    .create_entity()
-                    .with(ControllerComponent::new(
-                        desktop_client_char,
-                        250.0,
-                        -180.0,
-                        &projection_mat
-                    ))
-                    .build()
-            };
+            let desktop_client_char = components::char::create_char(
+                &mut ecs_world,
+                Point2::new(250.0, -200.0),
+                Sex::Male,
+                JobId::CRUSADER,
+                1,
+                1,
+            );
+            let mut player = ControllerComponent::new(
+                desktop_client_char,
+                250.0,
+                -180.0,
+                &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+            );
+            player.assign_skill(SkillKey::Q, Skills::FireWall);
+            player.assign_skill(SkillKey::W, Skills::Lightning);
+            player.assign_skill(SkillKey::E, Skills::Heal);
+            player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+            player.assign_skill(SkillKey::Y, Skills::Mounting);
+            ecs_world
+                .create_entity()
+                .with(player)
+                .build();
         }
         if let Some(new_str_name) = new_str {
             {
@@ -633,16 +801,16 @@ fn main() {
                 let storage = ecs_world.write_storage::<ControllerComponent>();
                 let controller = storage.get(desktop_client_entity).unwrap();
                 let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                 char_state.pos()
             };
             ecs_world
                 .create_entity()
                 .with(StrEffectComponent {
                     effect: new_str_name.clone(),
-                    pos: Point2::new(hero_pos.x, hero_pos.y),
+                    pos: hero_pos,
                     start_time: ElapsedTime(0.0),
-                    die_at: ElapsedTime(200.0),
+                    die_at: ElapsedTime(20000.0),
                     duration: ElapsedTime(1.0),
                 })
                 .build();
@@ -669,7 +837,7 @@ fn main() {
             let browser_storage = ecs_world.write_storage::<BrowserClient>();
             for browser_client in browser_storage.join() {
                 let message = websocket::Message::ping(&data[..]);
-                browser_client.websocket.lock().unwrap().send_message(&message).expect("Sending a ping message");
+                let _ = browser_client.websocket.lock().unwrap().send_message(&message);
             }
         }
         fps_counter += 1;
@@ -697,6 +865,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                other_monsters: &mut Vec<Entity>,
                fov: &mut f32,
                cam_angle: &mut f32,
+               window_opened: &mut bool,
 ) -> (Option<String>, Option<String>, bool) {
     let ui = video.imgui_sdl2.frame(&video.window,
                                     &mut video.imgui,
@@ -704,9 +873,10 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
     extern crate sublime_fuzzy;
     let mut ret = (None, None, false); // (map, str, show_cursor)
     { // IMGUI
-        ui.window(im_str!("Graphic opsions"))
+        ui.window(im_str!("Graphic options"))
             .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
+            .opened(window_opened)
             .build(|| {
                 ret.2 = ui.is_window_hovered();
                 let map_name_filter_clone = map_name_filter.clone();
@@ -802,17 +972,22 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                             _ => CastMode::OnKeyRelease,
                         };
                     }
-                    ui.text(im_str!("Mouse world pos: {}", controller.mouse_world_pos));
+                    ui.text(im_str!(
+                        "Mouse world pos: {}, {}",
+                        controller.mouse_world_pos.x,
+                        controller.mouse_world_pos.y,
+                    ));
                 }
 
                 let controller = storage.get(desktop_client_controller_entity).unwrap();
                 {
                     let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let mut char_state = char_state_storage.get_mut(controller.char).unwrap();
-                    let mut aspd: f32 = char_state.attack_speed.as_f32();
+                    let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
+                    let mut aspd: f32 = char_state.calculated_attribs.attack_speed.as_f32();
                     ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
                         .build();
-                    char_state.attack_speed = U8Float::new(Percentage::from_f32(aspd));
+                    // TODO:
+//                    char_state.base_attribs.attack_speed = U8Float::new(Percentage::from_f32(aspd));
                 }
 
                 ui.drag_float3(im_str!("light_dir"), &mut map_render_data.rsw.light.direction)
@@ -831,7 +1006,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
                 ui.text(im_str!("yaw: {}, pitch: {}", controller.yaw, controller.pitch));
                 ui.text(im_str!("FPS: {}", fps));
-                let (_traffic, _unit) = if sent_bytes_per_second > 1024 * 1024 {
+                let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
                 } else if sent_bytes_per_second > 1024 {
                     (sent_bytes_per_second / 1024, "Kb")
@@ -855,15 +1030,15 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                     };
                     ui.text_colored(color, im_str!("{}: {} ms", sys_name, duration));
                 }
-//                ui.text(im_str!("Traffic: {} {}", traffic, unit));
-//
-//                for browser_client in clients.iter() {
-//                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
-//                }
+                ui.text(im_str!("Traffic: {} {}", traffic, unit));
+
+                let browser_storage = ecs_world.read_storage::<BrowserClient>();
+                for browser_client in browser_storage.join() {
+                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
+                }
             });
     }
     {
-        ;
         let current_player_count = ecs_world.read_storage::<CharacterStateComponent>()
             .join()
             .filter(|it| match it.outlook {
@@ -871,6 +1046,8 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 _ => false
             })
             .count() as i32;
+        let current_user_count = 1 + ecs_world.read_storage::<BrowserClient>()
+            .join().count() as i32;
         if current_player_count < *player_count {
             let count_to_add = *player_count - current_player_count;
             for _i in 0..count_to_add {
@@ -879,7 +1056,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                         let storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                         char_state.pos()
                     };
                     let map_render_data = &ecs_world.read_resource::<SystemVariables>().map_render_data;
@@ -896,7 +1073,6 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 };
                 let pos2d = p3_to_p2(&pos);
                 let mut rng = rand::thread_rng();
-                let sprite_count = ecs_world.read_resource::<SystemVariables>().sprites.character_sprites.len();
                 let sex = if rng.gen::<usize>() % 2 == 0 { Sex::Male } else { Sex::Female };
                 let head_count = ecs_world.read_resource::<SystemVariables>().sprites.head_sprites[Sex::Male as usize].len();
                 let entity_id = components::char::create_char(
@@ -910,8 +1086,9 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
 
                 other_players.push(entity_id);
             }
-        } else if current_player_count - 1 > *player_count { // -1 is the entity of the controller
-            let to_remove = (current_player_count - *player_count - 1) as usize;
+        } else if current_player_count - current_user_count > *player_count { // -1 is the entity of the controller
+            let to_remove = (current_player_count - *player_count - current_user_count) as usize;
+            let to_remove = to_remove.min(other_players.len());
             let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
             let body_handles: Vec<BodyHandle> = {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
@@ -945,7 +1122,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                         let storage = ecs_world.write_storage::<ControllerComponent>();
                         let controller = storage.get(desktop_client_controller_entity).unwrap();
                         let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage.get_mut(controller.char).unwrap();
+                        let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
                         char_state.pos()
                     };
                     let (x, y) = loop {
@@ -1003,7 +1180,9 @@ pub struct MapRenderData {
     pub use_lightmaps: bool,
     pub use_lighting: bool,
     pub ground_vertex_array: VertexArray,
+    pub centered_sprite_vertex_array: VertexArray,
     pub sprite_vertex_array: VertexArray,
+    pub rectangle_vertex_array: VertexArray,
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
@@ -1041,7 +1220,9 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, PhysicsWorld) {
+fn load_map(map_name: &str,
+            asset_loader: &AssetLoader,
+            quick_loading: bool) -> (MapRenderData, PhysicsWorld) {
     let (elapsed, world) = measure_time(|| {
         asset_loader.load_map(&map_name).unwrap()
     });
@@ -1116,11 +1297,15 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     });
     log::info!("gnd loaded: {}ms", elapsed.as_millis());
     let (elapsed, models) = measure_time(|| {
-        let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
-        return model_names.iter().map(|filename| {
-            let rsm = asset_loader.load_model(filename).unwrap();
-            (filename.clone(), rsm)
-        }).collect::<Vec<(ModelName, Rsm)>>();
+        if !quick_loading {
+            let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
+            return model_names.iter().map(|filename| {
+                let rsm = asset_loader.load_model(filename).unwrap();
+                (filename.clone(), rsm)
+            }).collect::<Vec<(ModelName, Rsm)>>();
+        } else {
+            vec![]
+        }
     });
     log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
 
@@ -1144,7 +1329,13 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     });
     log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
-    let model_instances: Vec<(ModelName, Matrix4<f32>)> = world.models.iter().map(|model_instance| {
+    let mut model_instances_iter = if quick_loading {
+        world.models.iter().take(0)
+    } else {
+        let len = world.models.len();
+        world.models.iter().take(len)
+    };
+    let model_instances: Vec<(ModelName, Matrix4<f32>)> = model_instances_iter.map(|model_instance| {
         let mut instance_matrix = Matrix4::<f32>::identity();
         instance_matrix.prepend_translation_mut(&(model_instance.pos + Vector3::new(ground.width as f32, 0f32, ground.height as f32)));
 
@@ -1183,6 +1374,23 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         [-0.5, -0.5, 0.0, 1.0],
         [0.5, -0.5, 1.0, 1.0]
     ];
+    let centered_sprite_vertex_array = VertexArray::new(
+        gl::TRIANGLE_STRIP,
+        &s, 4, vec![
+            VertexAttribDefinition {
+                number_of_components: 2,
+                offset_of_first_element: 0,
+            }, VertexAttribDefinition { // uv
+                number_of_components: 2,
+                offset_of_first_element: 2,
+            }
+        ]);
+    let s: Vec<[f32; 4]> = vec![
+        [0.0, 0.0, 0.0, 0.0],
+        [1.0, 0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0]
+    ];
     let sprite_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
         &s, 4, vec![
@@ -1192,6 +1400,20 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
             }, VertexAttribDefinition { // uv
                 number_of_components: 2,
                 offset_of_first_element: 2,
+            }
+        ]);
+    let s: Vec<[f32; 2]> = vec![
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0]
+    ];
+    let rectangle_vertex_array = VertexArray::new(
+        gl::TRIANGLE_STRIP,
+        &s, 4, vec![
+            VertexAttribDefinition {
+                number_of_components: 2,
+                offset_of_first_element: 0,
             }
         ]);
 
@@ -1264,10 +1486,17 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
     let (elapsed, str_effects) = measure_time(|| {
         let mut str_effects: HashMap<String, StrFile> = HashMap::new();
 
-        str_effects.insert("StrEffect::FireWall".to_owned(), asset_loader.load_effect("firewall").unwrap());
+        str_effects.insert("firewall".to_owned(), asset_loader.load_effect("firewall").unwrap());
         str_effects.insert("StrEffect::StormGust".to_owned(), asset_loader.load_effect("stormgust").unwrap());
         str_effects.insert("StrEffect::LordOfVermilion".to_owned(), asset_loader.load_effect("lord").unwrap());
         str_effects.insert("StrEffect::Lightning".to_owned(), asset_loader.load_effect("lightning").unwrap());
+        str_effects.insert("StrEffect::Concentration".to_owned(), asset_loader.load_effect("concentration").unwrap());
+        str_effects.insert("StrEffect::Moonstar".to_owned(), asset_loader.load_effect("moonstar").unwrap());
+        str_effects.insert("hunter_poison".to_owned(), asset_loader.load_effect("hunter_poison").unwrap());
+        str_effects.insert("quagmire".to_owned(), asset_loader.load_effect("quagmire").unwrap());
+        str_effects.insert("firewall_blue".to_owned(), asset_loader.load_effect("firewall_blue").unwrap());
+        str_effects.insert("firepillarbomb".to_owned(), asset_loader.load_effect("firepillarbomb").unwrap());
+        str_effects.insert("ramadan".to_owned(), asset_loader.load_effect("ramadan").unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());
@@ -1281,7 +1510,9 @@ fn load_map(map_name: &str, asset_loader: &AssetLoader) -> (MapRenderData, Physi
         tile_color_texture,
         lightmap_texture,
         model_instances,
+        centered_sprite_vertex_array,
         sprite_vertex_array,
+        rectangle_vertex_array,
         use_tile_colors: true,
         use_lightmaps: true,
         use_lighting: true,

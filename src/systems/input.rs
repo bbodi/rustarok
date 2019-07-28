@@ -6,27 +6,51 @@ use crate::components::BrowserClient;
 use specs::prelude::*;
 use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
 use crate::systems::SystemVariables;
-use sdl2::mouse::MouseButton;
+use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
-use nalgebra::{Point2, Vector3, Vector4, Matrix4, Point3};
-use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
+use crate::components::char::CharacterStateComponent;
 use strum::IntoEnumIterator;
+use crate::components::skills::skill::{Skills, SkillTargetType};
+use std::slice::Iter;
 
 pub struct BrowserInputProducerSystem;
+
+const PACKET_MOUSE_MOVE: i32 = 1;
+const PACKET_MOUSE_DOWN: i32 = 2;
+const PACKET_MOUSE_UP: i32 = 3;
+const PACKET_KEY_DOWN: i32 = 4;
+const PACKET_KEY_UP: i32 = 5;
+const PACKET_MOUSE_WHEEL: i32 = 6;
+
+fn read_u16(iter: &mut Iter<u8>) -> u16 {
+    let upper_byte = iter.next().unwrap();
+    let lower_byte = iter.next().unwrap();
+    return ((*upper_byte as u16) << 8) | *lower_byte as u16;
+}
+
+fn read_i16(iter: &mut Iter<u8>) -> i16 {
+    let upper_byte = iter.next().unwrap();
+    let lower_byte = iter.next().unwrap();
+    return ((*upper_byte as i16) << 8) | *lower_byte as i16;
+}
 
 impl<'a> specs::System<'a> for BrowserInputProducerSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, BrowserClient>,
+        specs::Write<'a, LazyUpdate>,
     );
+
 
     fn run(&mut self, (
         entities,
         mut input_storage,
         mut browser_client_storage,
+        updater,
     ): Self::SystemData) {
-        for (entity, client, input_producer) in (&entities, &mut browser_client_storage, &mut input_storage).join() {
+        for (entity_id, client, input_producer) in (&entities, &mut browser_client_storage, &mut input_storage).join() {
             let sh = client.websocket.lock().unwrap().recv_message();
             if let Ok(msg) = sh {
                 match msg {
@@ -43,15 +67,11 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                     OwnedMessage::Binary(buf) => {
                         let mut iter = buf.iter();
                         while let Some(header) = iter.next() {
-                            match header {
-                                1 => {
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_x: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
-
-                                    let upper_byte = iter.next().unwrap();
-                                    let lower_byte = iter.next().unwrap();
-                                    let mouse_y: u16 = ((*upper_byte as u16) << 8) | *lower_byte as u16;
+                            let header = *header as i32;
+                            match header & 0b1111 {
+                                PACKET_MOUSE_MOVE => {
+                                    let mouse_x: u16 = read_u16(&mut iter);
+                                    let mouse_y: u16 = read_u16(&mut iter);
                                     log::trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
                                     let mousestate = {
                                         unsafe {
@@ -73,38 +93,46 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         }
                                     );
                                 }
-                                2 => {
-                                    log::trace!("Message arrived: MouseDown");
+                                PACKET_MOUSE_DOWN => {
+                                    let mouse_btn = match (header >> 4) & 0b11 {
+                                        0 => sdl2::mouse::MouseButton::Left,
+                                        1 => sdl2::mouse::MouseButton::Middle,
+                                        _ => sdl2::mouse::MouseButton::Right,
+                                    };
+                                    log::trace!("Message arrived: MouseDown: {:?}", mouse_btn);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonDown {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
-                                            mouse_btn: sdl2::mouse::MouseButton::Left,
+                                            mouse_btn,
                                             clicks: 0,
                                             x: 0,
                                             y: 0,
                                         }
                                     );
                                 }
-                                3 => {
-                                    log::trace!("Message arrived: MouseUp");
+                                PACKET_MOUSE_UP => {
+                                    let mouse_btn = match (header >> 4) & 0b11 {
+                                        0 => sdl2::mouse::MouseButton::Left,
+                                        1 => sdl2::mouse::MouseButton::Middle,
+                                        _ => sdl2::mouse::MouseButton::Right,
+                                    };
+                                    log::trace!("Message arrived: MouseUp: {:?}", mouse_btn);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonUp {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
-                                            mouse_btn: sdl2::mouse::MouseButton::Left,
+                                            mouse_btn,
                                             clicks: 0,
                                             x: 0,
                                             y: 0,
                                         });
                                 }
-                                4 => {
+                                PACKET_KEY_DOWN => {
                                     let scancode = *iter.next().unwrap();
-                                    let upper_byte = *iter.next().unwrap();
-                                    let lower_byte = *iter.next().unwrap();
-                                    let input_char: u16 = ((upper_byte as u16) << 8) | lower_byte as u16;
+                                    let input_char: u16 = read_u16(&mut iter);
                                     log::trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::KeyDown {
@@ -125,7 +153,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         );
                                     }
                                 }
-                                5 => {
+                                PACKET_KEY_UP => {
                                     let scancode = *iter.next().unwrap();
                                     log::trace!("Message arrived: KeyUp({})", scancode);
                                     input_producer.inputs.push(
@@ -138,23 +166,39 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                             repeat: false,
                                         });
                                 }
+                                PACKET_MOUSE_WHEEL => {
+                                    let delta_y: i32 = read_i16(&mut iter) as i32;
+                                    log::trace!("Message arrived: MouseWheel({})", delta_y);
+                                    input_producer.inputs.push(
+                                        sdl2::event::Event::MouseWheel {
+                                            which: 0,
+                                            x: 0,
+                                            y: delta_y as i32,
+                                            direction: MouseWheelDirection::Normal,
+                                            timestamp: 0,
+                                            window_id: 0,
+                                        });
+                                }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(entity).unwrap();
+                                    entities.delete(input_producer.char_entity_id).unwrap();
+                                    entities.delete(entity_id).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
                         log::warn!("Unknown msg: {:?}", msg);
-                        entities.delete(entity).unwrap();
+                        entities.delete(input_producer.char_entity_id).unwrap();
+                        entities.delete(entity_id).unwrap();
                     }
                 }
             } else if let Err(WebSocketError::IoError(e)) = sh {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
-                    log::info!("Client has disconnected");
-                    entities.delete(entity).unwrap();
+                    log::info!("Client '{:?}' has disconnected", entity_id);
+                    entities.delete(input_producer.char_entity_id).unwrap();
+                    entities.delete(entity_id).unwrap();
                 }
             }
         }
@@ -166,7 +210,6 @@ pub struct InputConsumerSystem;
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
@@ -174,7 +217,6 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 
     fn run(&mut self, (
         entities,
-        physics_storage,
         char_state_storage,
         mut controller_storage,
         system_vars,
@@ -228,8 +270,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         mousestate: _,
                         x,
                         y,
-                        xrel,
-                        yrel
+                        xrel: _,
+                        yrel: _
                     } => {
                         // SDL generates only one event when the mouse touches the edge of the screen,
                         // so I put this pseudo key into the controller in that case, which will
@@ -322,12 +364,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.camera_follows_char = !controller.camera_follows_char;
             }
             if controller.camera_follows_char {
-                let char_state = char_state_storage.get(controller.char).unwrap();
+                let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
                 let pos = char_state.pos();
                 controller.camera.set_x(pos.x);
                 let z_range = controller.camera.visible_z_range;
                 controller.camera.set_z(pos.y + z_range);
             }
+            controller.view_matrix = controller.camera.create_view_matrix();
             // setup next action based on input
             // TODO: optimize
             let just_pressed_skill_key = SkillKey::iter()
@@ -342,26 +385,31 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             if controller.next_action.is_some() { // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
             }
+            let alt_down = controller.is_key_down(Scancode::LAlt);
             controller.next_action = if let Some((casting_skill_key, skill)) = controller.is_selecting_target() {
                 match controller.cast_mode {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
-                            Some(ControllerAction::Casting(skill))
+                            log::debug!("Player wants to cast {:?}", skill);
+                            Some(ControllerAction::Casting(skill, false))
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
                         } else if let Some((skill_key, skill)) = just_pressed_skill_key
                             .and_then(|skill_key| {
                                 controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
                             }) {
-                            Some(ControllerAction::CastingSelectTarget(skill_key, skill))
+                            log::debug!("Player select target for casting {:?}", skill);
+                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
                         } else { None }
                     }
                     CastMode::OnKeyRelease => {
                         if controller.is_key_just_released(casting_skill_key.scancode()) {
+                            log::debug!("Player wants to cast {:?}", skill);
                             Some(
                                 ControllerAction::Casting(
                                     controller.get_skill_for_key(casting_skill_key)
-                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! ")
+                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! "),
+                                    false,
                                 )
                             )
                         } else if controller.right_mouse_pressed {
@@ -379,11 +427,28 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }) {
                 match controller.cast_mode {
                     CastMode::Normal | CastMode::OnKeyRelease => {
-                        Some(ControllerAction::CastingSelectTarget(skill_key, skill))
+                        if !alt_down {
+                            log::debug!("Player select target for casting {:?}", skill);
+                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                        } else {
+                            None
+                        }
                     }
                     CastMode::OnKeyPress => {
-                        Some(ControllerAction::Casting(skill))
+                        log::debug!("Player wants to cast {:?}, alt={:?}", skill, alt_down);
+                        Some(ControllerAction::Casting(skill, alt_down))
                     }
+                }
+            } else if let Some((skill_key, skill)) = just_released_skill_key
+                .and_then(|skill_key| {
+                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
+                }) {
+                // can get here only when alt was down and OnKeyRelease
+                if alt_down {
+                    log::debug!("Player wants to cast {:?}, SELF", skill);
+                    Some(ControllerAction::Casting(skill, true))
+                } else {
+                    None
                 }
             } else if controller.right_mouse_pressed {
                 Some(ControllerAction::MoveTowardsMouse(controller.mouse_pos()))
@@ -401,27 +466,33 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.last_mouse_y,
                 &controller.camera.pos(),
                 &system_vars.matrices.projection,
-                &system_vars.matrices.view,
+                &controller.view_matrix,
             );
-            controller.entity_below_cursor = {
-                let mut entity_below_cursor: Option<Entity> = None;
-                for (entity, other_char_state, other_physics) in (&entities, &char_state_storage, &physics_storage).join() {
-                    let bb = &other_char_state.bounding_rect_2d;
-                    let mx = controller.last_mouse_x as i32;
-                    let my = controller.last_mouse_y as i32;
-                    if other_char_state.state().is_live() && mx >= bb.bottom_left[0] && mx <= bb.top_right[0] &&
-                        my <= bb.bottom_left[1] && my >= bb.top_right[1] {
-                        entity_below_cursor = Some(entity);
-                        break;
-                    }
-                }
-                entity_below_cursor
-            };
+            controller.calc_entity_below_cursor();
+
             controller.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
                 mouse_world_pos.x.max(0.0) as usize,
                 mouse_world_pos.y.abs() as usize,
             );
             controller.mouse_world_pos = mouse_world_pos;
+
+            if controller.is_key_just_released(Scancode::F12) {
+                match controller.get_skill_for_key(SkillKey::Q) {
+                    Some(Skills::FireWall) => {
+                        controller.assign_skill(SkillKey::Q, Skills::Poison);
+                        controller.assign_skill(SkillKey::W, Skills::FireBomb);
+                        controller.assign_skill(SkillKey::E, Skills::Cure);
+                        controller.assign_skill(SkillKey::R, Skills::Lightning);
+                    }
+                    Some(Skills::Poison) => {
+                        controller.assign_skill(SkillKey::Q, Skills::FireWall);
+                        controller.assign_skill(SkillKey::W, Skills::AbsorbShield);
+                        controller.assign_skill(SkillKey::E, Skills::Heal);
+                        controller.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+                    }
+                    _ => {}
+                }
+            }
 
 //            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
 //            if controller.keys.contains(&Scancode::W) {
@@ -439,6 +510,16 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
+    pub fn target_selection_or_casting(skill_key: SkillKey, skill: Skills) -> ControllerAction {
+        // NoTarget skills have to be casted immediately without selecting target
+        if skill.get_skill_target_type() == SkillTargetType::NoTarget {
+            log::debug!("Skill '{:?}' is no target, so cast it", skill);
+            ControllerAction::Casting(skill, true)
+        } else {
+            ControllerAction::CastingSelectTarget(skill_key, skill)
+        }
+    }
+
     pub fn picking_2d_3d(x2d: u16, y2d: u16, camera_pos: &Point3<f32>,
                          projection: &Matrix4<f32>, view: &Matrix4<f32>) -> WorldCoords {
         let screen_point = Point2::new(x2d as f32, y2d as f32);
@@ -458,6 +539,6 @@ impl InputConsumerSystem {
         let plane_point = Vector3::new(0.0, 0.0, 0.0);
         let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords)) / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
-        return Point2::new(world_pos.x, world_pos.z);
+        return v2!(world_pos.x, world_pos.z);
     }
 }

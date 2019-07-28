@@ -26,8 +26,11 @@ strum_macros = "0.15.0"
 libflate = "0.1.25"
 config = "0.9.3"
 serde = {version = "1.0.97", features = ["derive"]}
+actix-web = "1.0.5"
+actix-rt = "0.2.4"
+actix-files = "0.1.4"
 
 [dependencies.sdl2]
-version = "0.32.1"
+version = "0.32.2"
 default-features = false
-features = ["image"]
+features = ["image", "ttf"]

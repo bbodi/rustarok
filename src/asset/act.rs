@@ -71,7 +71,7 @@ impl ActionFile {
             if version >= 2.2 {
                 a.delay = (buf.next_f32() * 25f32) as u32;
             }
-            a.duration = (a.delay as f32 / 1000.0) * a.frames.len() as f32;
+            a.duration = a.delay as f32 / 1000.0 * a.frames.len() as f32;
         });
         return ActionFile { actions, sounds };
     }

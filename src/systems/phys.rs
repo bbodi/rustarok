@@ -1,6 +1,6 @@
 use crate::systems::{SystemVariables, SystemFrameDurations, CollisionsFromPrevFrame, Collision};
 use crate::{PhysicsWorld};
-use nalgebra::{Vector2, Point2};
+use nalgebra::{Vector2};
 use specs::prelude::*;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
 use ncollide2d::query::Proximity;
@@ -32,11 +32,20 @@ impl<'a> specs::System<'a> for FrictionSystem {
             if char_state.cannot_control_until.has_passed(system_vars.time) {
                 body.set_linear_velocity(Vector2::zeros());
             } else {
-                let slowing_vector = body.velocity().linear - (body.velocity().linear * 0.1);
-                body.set_linear_velocity(slowing_vector);
+                let linear = body.velocity().linear;
+                if linear.x != 0.0 || linear.y != 0.0 {
+                    let dir = linear.normalize();
+                    let slowing_vector = body.velocity().linear - (dir * 1.0);
+                    let len = slowing_vector.magnitude();
+                    if len <= 0.0001 {
+                        body.set_linear_velocity(Vector2::zeros());
+                    } else {
+                        body.set_linear_velocity(slowing_vector);
+                    }
+                }
             }
             let body_pos = body.position().translation.vector;
-            char_state.set_pos_dont_use_it(Point2::new(body_pos.x, body_pos.y));
+            char_state.set_pos_dont_use_it(body_pos);
         }
     }
 }

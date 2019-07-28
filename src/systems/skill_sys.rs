@@ -5,7 +5,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables, CollisionsFromPrevFr
 use crate::components::controller::ControllerComponent;
 use crate::components::BrowserClient;
 use crate::components::char::{PhysicsComponent, CharacterStateComponent};
-use crate::components::skill::SkillManifestationComponent;
+use crate::components::skills::skill::SkillManifestationComponent;
 
 pub struct SkillSystem;
 
@@ -16,7 +16,7 @@ impl<'a> specs::System<'a> for SkillSystem {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteExpect<'a, PhysicsWorld>,
@@ -26,11 +26,11 @@ impl<'a> specs::System<'a> for SkillSystem {
 
     fn run(&mut self, (
         entities,
-        mut char_storage,
+        char_storage,
         input_storage,
         browser_client_storage,
         physics_storage,
-        system_vars,
+        mut system_vars,
         collisions_resource,
         mut system_benchmark,
         mut physics_world,
@@ -41,7 +41,7 @@ impl<'a> specs::System<'a> for SkillSystem {
         for (entity_id, skill) in (&entities, &mut skill_storage).join() {
             skill.update(entity_id,
                          &collisions_resource.collisions,
-                         &system_vars,
+                         &mut system_vars,
                          &entities,
                          &char_storage,
                          &mut physics_world,

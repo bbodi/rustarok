@@ -1,9 +1,13 @@
 use std::time::Instant;
 use crate::{Shaders, SpriteResource, Tick, RenderMatrices, MapRenderData, DeltaTime, ElapsedTime};
 use std::collections::HashMap;
-use crate::video::GlTexture;
+use crate::video::{GlTexture, DynamicVertexArray};
 use crate::consts::{JobId, MonsterId};
 use nphysics2d::object::ColliderHandle;
+use crate::components::controller::SkillKey;
+use crate::components::{AttackComponent, ApplyForceComponent, AreaAttackComponent};
+use crate::components::status::{ApplyStatusComponent, RemoveStatusComponent, ApplyStatusInAreaComponent};
+use crate::components::skills::skill::Skills;
 
 pub mod input;
 pub mod phys;
@@ -24,26 +28,46 @@ pub struct EffectSprites {
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum Sex {
     Male,
-    Female
+    Female,
 }
 
 pub struct Sprites {
     pub cursors: SpriteResource,
     pub numbers: GlTexture,
     pub character_sprites: HashMap<JobId, [SpriteResource; 2]>,
+    pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],
     pub monster_sprites: HashMap<MonsterId, SpriteResource>,
     pub effect_sprites: EffectSprites,
+}
+
+pub struct Texts {
+    pub skill_name_texts: HashMap<Skills, GlTexture>,
+    pub skill_key_texts: HashMap<SkillKey, GlTexture>,
+    pub attack_absorbed: GlTexture,
+    pub attack_blocked: GlTexture,
 }
 
 pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub tick: Tick,
-    pub dt: DeltaTime, // seconds the last frame required
-    pub time: ElapsedTime, // extract from the struct?
+    /// seconds the last frame required
+    pub dt: DeltaTime,
+    /// extract from the struct?
+    pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
+    pub texts: Texts,
+    pub skill_icons: HashMap<Skills, GlTexture>,
+    pub attacks: Vec<AttackComponent>,
+    pub area_attacks: Vec<AreaAttackComponent>,
+    pub pushes: Vec<ApplyForceComponent>,
+    pub apply_statuses: Vec<ApplyStatusComponent>,
+    pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
+    pub remove_statuses: Vec<RemoveStatusComponent>,
+    // Todo: put it into the new Graphic module if it is ready
+    pub str_effect_vao: DynamicVertexArray,
 }
 
 pub struct Collision {

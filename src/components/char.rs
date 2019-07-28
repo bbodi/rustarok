@@ -6,10 +6,11 @@ use crate::{LIVING_COLLISION_GROUP, PhysicsWorld, CharActionIndex, ElapsedTime, 
 use specs::Entity;
 use specs::prelude::*;
 use crate::consts::{MonsterId, JobId};
-use crate::systems::Sex;
-use crate::components::skill::SkillDescriptor;
-use std::sync::{Mutex, Arc};
+use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::components::controller::WorldCoords;
+use crate::components::status::Statuses;
+use crate::asset::SpriteResource;
+use crate::components::skills::skill::Skills;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -20,7 +21,7 @@ pub fn create_char(
     radius: i32,
 ) -> Entity {
     let entity_id = {
-        let mut char_comp = CharacterStateComponent::new(
+        let char_comp = CharacterStateComponent::new(
             CharType::Player,
             CharOutlook::Player {
                 job_id,
@@ -28,7 +29,6 @@ pub fn create_char(
                 sex,
             },
         );
-        char_comp.armor = U8Float::new(Percentage::new(10.0));
         let mut entity_builder = ecs_world.create_entity()
             .with(char_comp);
 
@@ -38,6 +38,7 @@ pub fn create_char(
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: None,
             direction: 0,
+            fps_multiplier: 1.0,
         });
         entity_builder.build()
     };
@@ -64,6 +65,7 @@ pub fn create_monster(
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: None,
             direction: 0,
+            fps_multiplier: 1.0,
         });
         entity_builder.build()
     };
@@ -114,26 +116,27 @@ impl PhysicsComponent {
             .build(world)
             .handle();
         PhysicsComponent {
-            radius: radius,
+            radius,
             body_handle: handle,
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CastingSkillData {
-    pub mouse_pos_when_casted: WorldCoords,
+    pub target_area_pos: Option<Vector2<f32>>,
+    pub char_to_skill_dir_when_casted: Vector2<f32>,
     pub target_entity: Option<Entity>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
     pub can_move: bool,
-    pub skill: Arc<Mutex<Box<SkillDescriptor>>>,
+    pub skill: Skills,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum CharState {
     Idle,
-    Walking(Point2<f32>),
+    Walking(Vector2<f32>),
     Sitting,
     PickingItem,
     StandBy,
@@ -178,7 +181,7 @@ impl CharState {
         }
     }
 
-    pub fn is_live(&self) -> bool {
+    pub fn is_alive(&self) -> bool {
         match self {
             CharState::Dead => false,
             _ => true
@@ -239,7 +242,7 @@ impl SpriteBoundingRect {
 #[derive(Debug)]
 pub enum EntityTarget {
     OtherEntity(Entity),
-    Pos(Point2<f32>),
+    Pos(WorldCoords),
 }
 
 #[derive(Copy, Clone)]
@@ -298,6 +301,14 @@ impl U8Float {
         self.as_f32() * num
     }
 
+    pub fn increase_by(&mut self, by: Percentage) {
+        self.0 = (self.0 as f32 * (1.0 + by.as_f32())) as u8;
+    }
+
+    pub fn decrease_by(&mut self, by: Percentage) {
+        self.0 = (self.0 as f32 * (1.0 - by.as_f32())) as u8;
+    }
+
     pub fn add_me_to_as_percentage(&self, num: f32) -> f32 {
         num + (self.as_f32() * num)
     }
@@ -324,6 +335,34 @@ pub enum CharOutlook {
     },
 }
 
+impl CharOutlook {
+    pub fn get_sprite_and_action_index<'a>(
+        &self,
+        sprites: &'a Sprites,
+        char_state: &CharState,
+    ) -> (&'a SpriteResource, usize) {
+        return match self {
+            CharOutlook::Player { job_id, head_index: _, sex } => {
+                let sprites = &sprites.character_sprites;
+                (&sprites[&job_id][*sex as usize], char_state.get_sprite_index(false))
+            }
+            CharOutlook::Monster(monster_id) => {
+                (&sprites.monster_sprites[&monster_id], char_state.get_sprite_index(true))
+            }
+        };
+    }
+}
+
+#[derive(Clone)]
+pub struct CharAttributes {
+    pub max_hp: i32,
+    pub walking_speed: U8Float,
+    pub attack_range: U8Float,
+    pub attack_speed: U8Float,
+    pub attack_damage: u16,
+    pub armor: U8Float,
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pos: WorldCoords,
@@ -331,44 +370,53 @@ pub struct CharacterStateComponent {
     pub typ: CharType,
     state: CharState,
     prev_state: CharState,
-    // attack count per seconds
-    pub bounding_rect_2d: SpriteBoundingRect,
-    // attacks per second
     dir: usize,
     pub cannot_control_until: ElapsedTime,
     pub outlook: CharOutlook,
-
-    pub max_hp: i32,
     pub hp: i32,
-    pub moving_speed: U8Float,
-    pub attack_range: U8Float,
-    pub attack_speed: U8Float,
-    pub attack_damage: u16,
-    pub attack_damage_bonus: U8Float,
-    pub armor: U8Float,
+    pub calculated_attribs: CharAttributes,
+    pub statuses: Statuses,
+}
+
+impl Drop for CharacterStateComponent {
+    fn drop(&mut self) {
+        log::info!("CharacterStateComponent DROPPED");
+    }
 }
 
 impl CharacterStateComponent {
     pub fn new(typ: CharType, outlook: CharOutlook) -> CharacterStateComponent {
+        let statuses = Statuses::new();
+        let calculated_attribs = statuses.calc_attribs(&outlook);
         CharacterStateComponent {
-            pos: Point2::new(0.0, 0.0),
+            pos: v2!(0, 0),
             typ,
             outlook,
             target: None,
-            moving_speed: U8Float::new(Percentage::new(100.0)),
-            attack_range: U8Float::new(Percentage::new(100.0)),
             state: CharState::Idle,
             prev_state: CharState::Idle,
-            attack_speed: U8Float::new(Percentage::new(100.0)),
-            attack_damage: 76,
-            attack_damage_bonus: U8Float::new(Percentage::new(0.0)),
-            armor: U8Float::new(Percentage::new(0.0)),
             dir: 0,
-            bounding_rect_2d: SpriteBoundingRect::default(),
             cannot_control_until: ElapsedTime(0.0),
-            max_hp: 2000,
             hp: 2000,
+            calculated_attribs,
+            statuses,
         }
+    }
+
+    pub fn update_statuses(
+        &mut self,
+        self_char_id: Entity,
+        system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        updater: &mut specs::Write<LazyUpdate>,
+    ) {
+        self.statuses.update(
+            self_char_id,
+            &self.pos(),
+            system_vars,
+            entities,
+            updater,
+        )
     }
 
     pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {
@@ -379,11 +427,12 @@ impl CharacterStateComponent {
         self.pos
     }
 
-    pub fn set_and_get_state_change(&mut self) -> bool {
-        let ret = self.prev_state != self.state;
-        // TODO: is it necessary to clone here?
+    pub fn state_has_changed(&mut self) -> bool {
+        return self.prev_state != self.state;
+    }
+
+    pub fn save_prev_state(&mut self) {
         self.prev_state = self.state.clone();
-        return ret;
     }
 
     pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
@@ -406,6 +455,24 @@ impl CharacterStateComponent {
         &self.state
     }
 
+    pub fn prev_state(&self) -> &CharState {
+        &self.prev_state
+    }
+
+    pub fn went_from_casting_to_idle(&self) -> bool {
+        match self.state {
+            CharState::Idle => {
+                match self.prev_state {
+                    CharState::CastingSkill(_) => {
+                        true
+                    }
+                    _ => false
+                }
+            }
+            _ => false
+        }
+    }
+
     pub fn dir(&self) -> usize {
         self.dir
     }
@@ -425,6 +492,7 @@ impl CharacterStateComponent {
 #[derive(Component)]
 pub struct SpriteRenderDescriptorComponent {
     pub action_index: usize,
+    pub fps_multiplier: f32,
     pub animation_started: ElapsedTime,
     pub forced_duration: Option<ElapsedTime>,
     pub direction: usize,

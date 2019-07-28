@@ -2,17 +2,16 @@ extern crate rand;
 
 use websocket::stream::sync::TcpStream;
 use std::sync::Mutex;
-use nalgebra::{Point2};
-use crate::{ElapsedTime};
+use nalgebra::{Vector2, Isometry2};
+use crate::ElapsedTime;
 use specs::prelude::*;
-use crate::components::skill::Skills;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{WorldCoords};
+use nphysics2d::object::BodyHandle;
 
 pub mod char;
 pub mod controller;
-
-#[macro_use]
-pub mod skill;
+pub mod status;
+pub mod skills;
 
 #[derive(Component)]
 pub struct BrowserClient {
@@ -21,12 +20,18 @@ pub struct BrowserClient {
     pub ping: u16,
 }
 
+impl Drop for BrowserClient {
+    fn drop(&mut self) {
+        log::info!("BrowserClient DROPPED");
+    }
+}
+
 #[derive(Component)]
 pub struct FlyingNumberComponent {
     pub value: u32,
     pub target_entity_id: Entity,
     pub typ: FlyingNumberType,
-    pub start_pos: Point2<f32>,
+    pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: f32,
@@ -43,8 +48,10 @@ pub struct StrEffectComponent {
 
 pub enum FlyingNumberType {
     Damage,
+    Poison,
     Heal,
-    Normal,
+    Block,
+    Absorb,
     Mana,
     Crit,
 }
@@ -60,9 +67,11 @@ impl FlyingNumberType {
                 }
             }
             FlyingNumberType::Heal => [0.0, 1.0, 0.0],
-            FlyingNumberType::Normal => [1.0, 1.0, 1.0],
+            FlyingNumberType::Poison => [0.55, 0.0, 0.55],
             FlyingNumberType::Mana => [0.0, 0.0, 1.0],
-            FlyingNumberType::Crit => [1.0, 1.0, 1.0]
+            FlyingNumberType::Crit => [1.0, 1.0, 1.0],
+            FlyingNumberType::Block => [1.0, 1.0, 1.0],
+            FlyingNumberType::Absorb => [1.0, 1.0, 1.0],
         }
     }
 }
@@ -72,7 +81,7 @@ impl FlyingNumberComponent {
                value: u32,
                target_entity_id: Entity,
                duration: f32,
-               start_pos: Point2<f32>,
+               start_pos: Vector2<f32>,
                sys_time: ElapsedTime) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,
@@ -86,14 +95,31 @@ impl FlyingNumberComponent {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum AttackType {
-    Basic,
-    Skill(Skills),
+    Basic(u32),
+    SpellDamage(u32),
+    Heal(u32),
+    Poison(u32),
 }
 
-#[derive(Component)]
 pub struct AttackComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
     pub typ: AttackType,
+}
+
+pub struct AreaAttackComponent {
+    pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
+    pub area_isom: Isometry2<f32>,
+    pub source_entity_id: Entity,
+    pub typ: AttackType,
+}
+
+pub struct ApplyForceComponent {
+    pub src_entity: Entity,
+    pub dst_entity: Entity,
+    pub force: Vector2<f32>,
+    pub body_handle: BodyHandle,
+    pub duration: f32,
 }

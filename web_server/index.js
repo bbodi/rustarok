@@ -1,3 +1,10 @@
+const PACKET_MOUSE_MOVE = 1;
+const PACKET_MOUSE_DOWN = 2;
+const PACKET_MOUSE_UP = 3;
+const PACKET_KEY_DOWN = 4;
+const PACKET_KEY_UP = 5;
+const PACKET_MOUSE_WHEEL = 6;
+
 var canvas = document.getElementById('main_canvas');
 var ctx = canvas.getContext('2d');
 var last_tick = 0;
@@ -6,7 +13,16 @@ var network_packet_buffer = new ArrayBuffer(1024);
 var buffer_offset = 0;
 var network_packet = new Uint8Array(network_packet_buffer);
 
-let socket = new WebSocket("ws://127.0.0.1:6969");
+var loc = window.location, new_uri;
+if (loc.protocol === "https:") {
+    new_uri = "wss:";
+} else {
+    new_uri = "ws:";
+}
+new_uri += "//" + loc.hostname;
+new_uri += ":6969";
+
+let socket = new WebSocket(new_uri);
 socket.binaryType = "arraybuffer";
 
 function packet_write_i16(value) {
@@ -30,6 +46,12 @@ socket.onopen = function(e) {
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('wheel', handleMouseWheel);
+    canvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
     tick();
@@ -50,10 +72,21 @@ function tick() {
     }
 }
 
+var VIDEO_WIDTH = 0;
+var VIDEO_HEIGHT = 0;
+
 socket.onmessage = function(event) {
     var blob = event.data;
-    var imageData = new ImageData(new Uint8ClampedArray(blob), 900, 700);
-    ctx.putImageData(imageData, 0, 0);
+    if (VIDEO_WIDTH === 0) { // first packet
+        var msg = new Uint16Array(blob);
+        VIDEO_WIDTH = msg[0];
+        VIDEO_HEIGHT = msg[1];
+        canvas.width = VIDEO_WIDTH;
+        canvas.height = VIDEO_HEIGHT;
+    } else {
+        var imageData = new ImageData(new Uint8ClampedArray(blob), VIDEO_WIDTH, VIDEO_HEIGHT);
+        ctx.putImageData(imageData, 0, 0);
+    }
 };
 
 socket.onclose = function(event) {
@@ -70,15 +103,34 @@ socket.onerror = function(error) {
     alert(`[error] ${error.message}`);
 };
 
+function handleMouseWheel(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    packet_write_i8(PACKET_MOUSE_WHEEL);
+    packet_write_i16(-e.deltaY / 100);
+}
+
+
 function handleMouseDown(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    packet_write_i8(2);
+//    var left_mouse = e.button == 0;
+//    var middle = e.button == 1;
+//    var right = e.button == 2;
+    var packet = e.button << 4;
+    packet |= PACKET_MOUSE_DOWN;
+    packet_write_i8(packet);
 }
 
 function handleMouseUp(e) {
-    packet_write_i8(3);
+    e.preventDefault();
+    e.stopPropagation();
+
+    var packet = e.button << 4;
+    packet |= PACKET_MOUSE_UP;
+    packet_write_i8(packet);
 }
 
 /*
@@ -98,15 +150,22 @@ pub struct Mod: u16 {
         const RESERVEDMOD = 0x8000;
     }
 */
+
 function handleKeyDown(e) {
-    packet_write_i8(4);
+    e.preventDefault();
+    e.stopPropagation();
+
+    packet_write_i8(PACKET_KEY_DOWN);
     packet_write_i8(code_to_sdl_scancode(e.code));
     // var modifiers = skip for now
     packet_write_i16(code_to_sdl_scancode(e.key.charCodeAt(0)));
 }
 
 function handleKeyUp(e) {
-    packet_write_i8(5);
+    e.preventDefault();
+    e.stopPropagation();
+
+    packet_write_i8(PACKET_KEY_UP);
     packet_write_i8(code_to_sdl_scancode(e.code));
 }
 
@@ -407,7 +466,7 @@ function handleMouseMove(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    packet_write_i8(1);
-    packet_write_i16(e.clientX);
-    packet_write_i16(e.clientY);
+    packet_write_i8(PACKET_MOUSE_MOVE);
+    packet_write_i16(e.layerX);
+    packet_write_i16(e.layerY);
 }

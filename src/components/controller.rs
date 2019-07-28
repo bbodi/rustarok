@@ -2,10 +2,12 @@ use specs::Entity;
 use crate::cam::Camera;
 use std::collections::HashMap;
 use sdl2::keyboard::Scancode;
-use nalgebra::{Point3, Point2, Matrix4};
+use nalgebra::{Point3, Matrix4, Vector2};
 use specs::prelude::*;
-use crate::components::skill::Skills;
 use strum_macros::EnumIter;
+use crate::components::skills::skill::Skills;
+use crate::components::char::{SpriteRenderDescriptorComponent, SpriteBoundingRect};
+use crate::ElapsedTime;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -30,10 +32,10 @@ impl KeyState {
     }
 }
 
-pub type ScreenCoords = Point2<u16>;
-pub type WorldCoords = Point2<f32>;
+pub type ScreenCoords = Vector2<u16>;
+pub type WorldCoords = Vector2<f32>;
 
-#[derive(PartialEq, Eq, Copy, Clone, EnumIter)]
+#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Debug, Hash)]
 pub enum SkillKey {
     Q,
     W,
@@ -70,7 +72,8 @@ pub enum ControllerAction {
     AttackTo(ScreenCoords),
     CastingSelectTarget(SkillKey, Skills),
     CancelCastingSelectTarget,
-    Casting(Skills),
+    /// bool = is self cast
+    Casting(Skills, bool),
     LeftClick,
 }
 
@@ -88,7 +91,8 @@ pub enum CastMode {
 
 #[derive(Component)]
 pub struct ControllerComponent {
-    pub char: Entity,
+    pub view_matrix: Matrix4<f32>,
+    pub char_entity_id: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
     pub next_action: Option<ControllerAction>,
@@ -112,6 +116,14 @@ pub struct ControllerComponent {
     pub cell_below_cursor_walkable: bool,
     pub yaw: f32,
     pub pitch: f32,
+    pub cursor_anim_descr: SpriteRenderDescriptorComponent,
+    pub bounding_rect_2d: HashMap<Entity, SpriteBoundingRect>,
+}
+
+impl Drop for ControllerComponent {
+    fn drop(&mut self) {
+        log::info!("ControllerComponent DROPPED");
+    }
 }
 
 impl ControllerComponent {
@@ -125,7 +137,8 @@ impl ControllerComponent {
         camera.rotate(pitch, yaw);
         camera.update_visible_z_range(projection);
         ControllerComponent {
-            char,
+            view_matrix: Matrix4::identity(), // it is filled before every frame
+            char_entity_id: char,
             camera,
             cast_mode: CastMode::Normal,
             inputs: vec![],
@@ -148,8 +161,34 @@ impl ControllerComponent {
             last_action: None,
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
-            mouse_world_pos: Point2::new(0.0, 0.0),
+            mouse_world_pos: v2!(0, 0),
+            bounding_rect_2d: HashMap::new(),
+            cursor_anim_descr: SpriteRenderDescriptorComponent {
+                action_index: 0,
+                animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+                fps_multiplier: 1.0,
+            }
         }
+    }
+
+    pub fn calc_entity_below_cursor(&mut self) {
+        self.entity_below_cursor = {
+            let mut entity_below_cursor: Option<Entity> = None;
+            for (entity_id, bounding_rect) in &self.bounding_rect_2d {
+                let mx = self.last_mouse_x as i32;
+                let my = self.last_mouse_y as i32;
+                if  mx >= bounding_rect.bottom_left[0] && mx <= bounding_rect.top_right[0] &&
+                    my <= bounding_rect.bottom_left[1] && my >= bounding_rect.top_right[1] {
+                    entity_below_cursor = Some(*entity_id);
+                    break;
+                }
+            }
+            entity_below_cursor
+        };
+        self.bounding_rect_2d.clear();
     }
 
 
@@ -173,7 +212,7 @@ impl ControllerComponent {
     }
 
     pub fn mouse_pos(&self) -> ScreenCoords {
-        Point2::new(self.last_mouse_x, self.last_mouse_x)
+        Vector2::new(self.last_mouse_x, self.last_mouse_y)
     }
 
     pub fn cleanup_released_keys(&mut self) {

@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3};
+use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3, Vector2};
 use std::ffi::{CString, CStr};
 use sdl2::surface::Surface;
 use std::path::Path;
@@ -11,6 +11,8 @@ use imgui::ImGui;
 use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
 use std::ops::{IndexMut, Index};
+use sdl2::ttf::Sdl2TtfContext;
+use sdl2::render::BlendMode;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -21,11 +23,10 @@ pub struct Video {
     pub event_pump: EventPump,
     // these two variables must be in scope, so don't remove their variables
     _gl_context: GLContext,
-//    _gl: *const (),
 }
 
-pub const VIDEO_WIDTH: u32 = 1024;
-pub const VIDEO_HEIGHT: u32 = 768;
+pub const VIDEO_WIDTH: u32 = 640;
+pub const VIDEO_HEIGHT: u32 = 480;
 
 impl Video {
     pub fn init() -> Video {
@@ -77,6 +78,38 @@ impl Video {
     pub fn set_title(&mut self, title: &str) {
         self.window.set_title(title).unwrap();
     }
+
+    //    ttf_context,let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+//    fonts: HashMap::new(),
+//    ttf_context: Sdl2TtfContext,
+//    fonts: HashMap<FontId, sdl2::ttf::Font<'a,'b>>
+    pub fn load_font<'a, 'b>(ttf_context: &'a Sdl2TtfContext, font_path: &str, size: u16) -> Result<sdl2::ttf::Font<'a, 'b>, String> {
+        ttf_context.load_font(font_path, size)
+    }
+
+    pub fn create_text_texture<'a, 'b>(font: &sdl2::ttf::Font<'a, 'b>, text: &str) -> GlTexture {
+        let surface = font.render(text)
+            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        return GlTexture::from_surface(surface, gl::NEAREST);
+    }
+
+    pub fn create_outline_text_texture<'a, 'b>(
+        font: &sdl2::ttf::Font<'a, 'b>,
+        outline_font: &sdl2::ttf::Font<'a, 'b>,
+        text: &str,
+    ) -> GlTexture {
+        let mut bg_surface = outline_font.render(text)
+            .blended(Color::RGBA(0, 0, 0, 255)).unwrap();
+        let mut fg_surface = font.render(text)
+            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
+        fg_surface.blit(
+            None,
+            &mut bg_surface,
+            sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height())
+        ).unwrap();
+        return GlTexture::from_surface(bg_surface, gl::NEAREST);
+    }
 }
 
 pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
@@ -127,7 +160,8 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
 pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
                                  projection: &Matrix4<f32>,
                                  view: &Matrix4<f32>,
-                                 center: &Vector3<f32>,
+                                 center: &Vector2<f32>,
+                                 y: f32,
                                  r: f32,
                                  color: &[f32; 4]) {
     let shader = trimesh_shader.gl_use();
@@ -135,7 +169,8 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     shader.set_mat4("view", view);
     shader.set_vec4("color", color);
     let mut matrix = Matrix4::identity();
-    matrix.prepend_translation_mut(center);
+    let center = Vector3::new(center.x, y, center.y);
+    matrix.prepend_translation_mut(&center);
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
     matrix = matrix * rotation;
     shader.set_mat4("model", &matrix);
@@ -210,7 +245,6 @@ impl GlTexture {
 
     pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
         let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
-            log::trace!("convert to RGBA");
             let mut optimized_surf = sdl2::surface::Surface::new(
                 surface.width(),
                 surface.height(),
