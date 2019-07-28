@@ -1,18 +1,15 @@
 use nalgebra::{Matrix4, Vector2, Vector3};
-use specs::prelude::*;
 
-use crate::{ElapsedTime, SpriteResource};
-use crate::components::BrowserClient;
+use crate::SpriteResource;
 use crate::components::char::{CharacterStateComponent, CharState, SpriteRenderDescriptorComponent};
 use crate::components::controller::{ControllerComponent, SkillKey};
 use crate::cursor::{CURSOR_ATTACK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET, CURSOR_CLICK};
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::SystemVariables;
 use crate::video::{TEXTURE_0, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, GlTexture};
 use crate::video::VertexAttribDefinition;
-use crate::components::skills::skill::{SkillTargetType};
+use crate::components::skills::skill::SkillTargetType;
 
 pub struct RenderUI {
-    cursor_anim_descr: SpriteRenderDescriptorComponent,
     vao: VertexArray,
 }
 
@@ -25,14 +22,6 @@ impl RenderUI {
             [1.0, 0.0]
         ];
         RenderUI {
-            cursor_anim_descr: SpriteRenderDescriptorComponent {
-                action_index: 0,
-                animation_started: ElapsedTime(0.0),
-                animation_ends_at: ElapsedTime(0.0),
-                forced_duration: None,
-                direction: 0,
-                fps_multiplier: 1.0,
-            },
             vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
                 &s, 4, vec![
@@ -43,184 +32,169 @@ impl RenderUI {
                 ]),
         }
     }
-}
 
-impl<'a> specs::System<'a> for RenderUI {
-    type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, ControllerComponent>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-    );
-
-    fn run(&mut self, (
-        entities,
-        input_storage,
-        browser_client_storage,
-        char_state_storage,
-        system_vars,
-        mut system_benchmark,
-    ): Self::SystemData) {
-        let stopwatch = system_benchmark.start_measurement("RenderUI");
-        for (controller, _not_browser) in (&input_storage, !&browser_client_storage).join() {
-            // Draw casting bar
-            let char_state = char_state_storage.get(controller.char).unwrap();
-            match char_state.state() {
-                CharState::CastingSkill(casting_info) => {
-                    // draw health bars etc
-                    let shader = system_vars.shaders.trimesh2d_shader.gl_use();
-                    shader.set_mat4("projection", &system_vars.matrices.ortho);
-                    let vao = self.vao.bind();
-                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-                        let mut matrix = Matrix4::<f32>::identity();
-                        let bar_w = 540.0;
-                        let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
-                        let pos = Vector3::new(
-                            bar_x + x as f32,
-                            VIDEO_HEIGHT as f32 - 200.0 + y as f32,
-                            0.0,
-                        );
-                        matrix.prepend_translation_mut(&pos);
-                        shader.set_mat4("model", &matrix);
-                        shader.set_vec4("color", color);
-                        shader.set_vec2("size", &[w as f32, h as f32]);
-                        vao.draw();
-                    };
-                    draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
-                    draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
-                    let percentage = system_vars.time.percentage_between(
-                        casting_info.cast_started,
-                        casting_info.cast_ends,
+    pub fn run(
+        &self,
+        entities: &specs::Entities<>,
+        controller: &mut ControllerComponent,
+        char_state_storage: &specs::WriteStorage<CharacterStateComponent>,
+        system_vars: &specs::WriteExpect<SystemVariables>,
+    ) {
+        // Draw casting bar
+        let char_state = char_state_storage.get(controller.char).unwrap();
+        match char_state.state() {
+            CharState::CastingSkill(casting_info) => {
+                // draw health bars etc
+                let shader = system_vars.shaders.trimesh2d_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.ortho);
+                let vao = self.vao.bind();
+                let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+                    let mut matrix = Matrix4::<f32>::identity();
+                    let bar_w = 540.0;
+                    let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
+                    let pos = Vector3::new(
+                        bar_x + x as f32,
+                        VIDEO_HEIGHT as f32 - 200.0 + y as f32,
+                        0.0,
                     );
-                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
-                }
-                _ => {}
+                    matrix.prepend_translation_mut(&pos);
+                    shader.set_mat4("model", &matrix);
+                    shader.set_vec4("color", color);
+                    shader.set_vec2("size", &[w as f32, h as f32]);
+                    vao.draw();
+                };
+                draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
+                draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
+                let percentage = system_vars.time.percentage_between(
+                    casting_info.cast_started,
+                    casting_info.cast_ends,
+                );
+                draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[0.14, 0.36, 0.79, 1.0]); // inner fill
             }
+            _ => {}
+        }
 
-            let selecting_target = controller.is_selecting_target();
+        let selecting_target = controller.is_selecting_target();
 
-            // draw skill bar
-            let single_icon_size = 48;
-            let inner_border = 3;
-            let outer_border = 6;
-            let space = 4;
-            let skill_bar_width = (outer_border * 2) +
-                4 * single_icon_size +
-                inner_border * 4 * 2 +
-                3 * space;
-            let start_x = VIDEO_WIDTH / 2 - skill_bar_width / 2;
-            let y = VIDEO_HEIGHT - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
+        // draw skill bar
+        let single_icon_size = 48;
+        let inner_border = 3;
+        let outer_border = 6;
+        let space = 4;
+        let skill_bar_width = (outer_border * 2) +
+            4 * single_icon_size +
+            inner_border * 4 * 2 +
+            3 * space;
+        let start_x = VIDEO_WIDTH / 2 - skill_bar_width / 2;
+        let y = VIDEO_HEIGHT - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
 
-            // blueish background
-            render_rect(
-                &system_vars,
-                &Vector2::new(start_x as f32, y as f32),
-                &[
-                    skill_bar_width as f32,
-                    single_icon_size as f32 + (outer_border*2 + inner_border*2) as f32
-                ],
-                &[0.11, 0.25, 0.48, 1.0],
-            );
+        // blueish background
+        render_rect(
+            &system_vars,
+            &Vector2::new(start_x as f32, y as f32),
+            &[
+                skill_bar_width as f32,
+                single_icon_size as f32 + (outer_border * 2 + inner_border * 2) as f32
+            ],
+            &[0.11, 0.25, 0.48, 1.0],
+        );
 
-            let mut x = start_x + outer_border;
-            for (i, skill_key) in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R]
-                .iter().enumerate() {
-                if let Some(skill) = controller.get_skill_for_key(*skill_key) {
-                    // inner border
-                    let border_color = selecting_target
-                        .filter(|it| it.0 == *skill_key)
-                        .map(|_it| [0.0, 1.0, 0.0, 1.0])
-                        .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-                    render_rect(
-                        &system_vars,
-                        &Vector2::new(
-                            x as f32,
-                            (y + outer_border) as f32,
-                        ),
-                        &[
-                            (single_icon_size + inner_border * 2) as f32,
-                            (single_icon_size + inner_border * 2) as f32
-                        ],
-                        &border_color,
-                    );
+        let mut x = start_x + outer_border;
+        for (i, skill_key) in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R]
+            .iter().enumerate() {
+            if let Some(skill) = controller.get_skill_for_key(*skill_key) {
+                // inner border
+                let border_color = selecting_target
+                    .filter(|it| it.0 == *skill_key)
+                    .map(|_it| [0.0, 1.0, 0.0, 1.0])
+                    .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+                render_rect(
+                    &system_vars,
+                    &Vector2::new(
+                        x as f32,
+                        (y + outer_border) as f32,
+                    ),
+                    &[
+                        (single_icon_size + inner_border * 2) as f32,
+                        (single_icon_size + inner_border * 2) as f32
+                    ],
+                    &border_color,
+                );
 
-                    x += inner_border;
-                    let icon_y = (y + outer_border + inner_border) as f32;
-                    // blueish background
-                    render_rect(
-                        &system_vars,
-                        &Vector2::new(
-                            x as f32,
-                            icon_y,
-                        ),
-                        &[
-                            (single_icon_size) as f32,
-                            (single_icon_size) as f32
-                        ],
-                        &[0.11, 0.25, 0.48, 1.0],
-                    );
-                    let texture = &system_vars.skill_icons[&skill];
-                    render_texture_2d(
-                        &system_vars,
-                        texture,
-                        &Vector2::new(
-                            x as f32,
-                            icon_y,
-                        ),
-                        2.0,
-                    );
-                    let skill_key_texture = &system_vars.texts.skill_key_texts[&skill_key];
-                    let center_x = -2.0 + x as f32 + single_icon_size as f32 - skill_key_texture.width as f32;
-                    let center_y = -2.0 + icon_y + single_icon_size as f32 - skill_key_texture.height as f32;
-                    render_texture_2d(
-                        &system_vars,
-                        skill_key_texture,
-                        &Vector2::new(
-                            center_x,
-                            center_y,
-                        ),
-                        1.0,
-                    );
-                    x += single_icon_size + inner_border + space;
-                }
-            }
-
-            // Draw cursor
-            let cursor = if let Some((skill_key, skill)) = selecting_target {
-                let texture = &system_vars.texts.skill_name_texts[&skill];
+                x += inner_border;
+                let icon_y = (y + outer_border + inner_border) as f32;
+                // blueish background
+                render_rect(
+                    &system_vars,
+                    &Vector2::new(
+                        x as f32,
+                        icon_y,
+                    ),
+                    &[
+                        (single_icon_size) as f32,
+                        (single_icon_size) as f32
+                    ],
+                    &[0.11, 0.25, 0.48, 1.0],
+                );
+                let texture = &system_vars.skill_icons[&skill];
                 render_texture_2d(
                     &system_vars,
                     texture,
                     &Vector2::new(
-                        controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
-                        controller.last_mouse_y as f32 + 32.0,
+                        x as f32,
+                        icon_y,
+                    ),
+                    2.0,
+                );
+                let skill_key_texture = &system_vars.texts.skill_key_texts[&skill_key];
+                let center_x = -2.0 + x as f32 + single_icon_size as f32 - skill_key_texture.width as f32;
+                let center_y = -2.0 + icon_y + single_icon_size as f32 - skill_key_texture.height as f32;
+                render_texture_2d(
+                    &system_vars,
+                    skill_key_texture,
+                    &Vector2::new(
+                        center_x,
+                        center_y,
                     ),
                     1.0,
                 );
-                if skill.get_skill_target_type() != SkillTargetType::Area {
-                    CURSOR_TARGET
-                } else {
-                    CURSOR_CLICK
-                }
-            } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
-                if entity_below_cursor == controller.char { // self
-                    CURSOR_NORMAL
-                } else {
-                    CURSOR_ATTACK
-                }
-            } else if !controller.cell_below_cursor_walkable {
-                CURSOR_STOP
-            } else {
-                CURSOR_NORMAL
-            };
-            self.cursor_anim_descr.action_index = cursor.1;
-            render_sprite_2d(&system_vars,
-                             &self.cursor_anim_descr,
-                             &system_vars.sprites.cursors,
-                             &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32));
+                x += single_icon_size + inner_border + space;
+            }
         }
+
+        // Draw cursor
+        let cursor = if let Some((skill_key, skill)) = selecting_target {
+            let texture = &system_vars.texts.skill_name_texts[&skill];
+            render_texture_2d(
+                &system_vars,
+                texture,
+                &Vector2::new(
+                    controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
+                    controller.last_mouse_y as f32 + 32.0,
+                ),
+                1.0,
+            );
+            if skill.get_skill_target_type() != SkillTargetType::Area {
+                CURSOR_TARGET
+            } else {
+                CURSOR_CLICK
+            }
+        } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
+            if entity_below_cursor == controller.char { // self
+                CURSOR_NORMAL
+            } else {
+                CURSOR_ATTACK
+            }
+        } else if !controller.cell_below_cursor_walkable {
+            CURSOR_STOP
+        } else {
+            CURSOR_NORMAL
+        };
+        controller.cursor_anim_descr.action_index = cursor.1;
+        render_sprite_2d(&system_vars,
+                         &controller.cursor_anim_descr,
+                         &system_vars.sprites.cursors,
+                         &Vector2::new(controller.last_mouse_x as f32, controller.last_mouse_y as f32));
     }
 }
 

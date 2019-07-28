@@ -6,6 +6,8 @@ use nalgebra::{Point3, Matrix4, Vector2};
 use specs::prelude::*;
 use strum_macros::EnumIter;
 use crate::components::skills::skill::Skills;
+use crate::components::char::SpriteRenderDescriptorComponent;
+use crate::ElapsedTime;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -88,6 +90,7 @@ pub enum CastMode {
 
 #[derive(Component)]
 pub struct ControllerComponent {
+    pub view_matrix: Matrix4<f32>,
     pub char: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
@@ -112,6 +115,7 @@ pub struct ControllerComponent {
     pub cell_below_cursor_walkable: bool,
     pub yaw: f32,
     pub pitch: f32,
+    pub cursor_anim_descr: SpriteRenderDescriptorComponent,
 }
 
 impl ControllerComponent {
@@ -125,6 +129,7 @@ impl ControllerComponent {
         camera.rotate(pitch, yaw);
         camera.update_visible_z_range(projection);
         ControllerComponent {
+            view_matrix: Matrix4::identity(), // it is filled before every frame
             char,
             camera,
             cast_mode: CastMode::Normal,
@@ -149,6 +154,14 @@ impl ControllerComponent {
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
             mouse_world_pos: v2!(0, 0),
+            cursor_anim_descr: SpriteRenderDescriptorComponent {
+                action_index: 0,
+                animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+                fps_multiplier: 1.0,
+            }
         }
     }
 

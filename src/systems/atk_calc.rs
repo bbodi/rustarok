@@ -42,14 +42,9 @@ impl<'a> specs::System<'a> for AttackSystem {
         let stopwatch = system_benchmark.start_measurement("AttackSystem");
 
         let mut new_attacks = system_vars.area_attacks.iter().map(|area_attack| {
-            // TODO: I don't want to pollute the code with mutable storages just because
-            // I can't degrade a writestorage to a readstorage temporarily, or can I?...
-            let read_only_char_storage: &specs::ReadStorage<'a, CharacterStateComponent> = unsafe {
-                std::mem::transmute(&char_state_storage)
-            };
             AttackCalculation::damage_chars(
                 &entities,
-                read_only_char_storage,
+                &char_state_storage,
                 &area_attack.area_shape,
                 &area_attack.area_isom,
                 area_attack.source_entity_id,
@@ -61,14 +56,9 @@ impl<'a> specs::System<'a> for AttackSystem {
 
         // apply area statuses
         let mut new_status_applies = system_vars.apply_area_statuses.iter().map(|area_status_change| {
-            // TODO: I don't want to pollute the code with mutable storages just because
-            // I can't degrade a writestorage to a readstorage temporarily, or can I?...
-            let read_only_char_storage: &specs::ReadStorage<'a, CharacterStateComponent> = unsafe {
-                std::mem::transmute(&char_state_storage)
-            };
             AttackCalculation::apply_statuses_on_area(
                 &entities,
-                read_only_char_storage,
+                &char_state_storage,
                 &area_status_change,
             )
         }).flatten().collect();
@@ -171,7 +161,7 @@ pub struct AttackCalculation;
 impl AttackCalculation {
     pub fn damage_chars(
         entities: &Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_storage: &specs::WriteStorage<CharacterStateComponent>,
         skill_shape: &Box<dyn ncollide2d::shape::Shape<f32>>,
         skill_isom: &Isometry2<f32>,
         caster_entity_id: Entity,
@@ -201,7 +191,7 @@ impl AttackCalculation {
 
     pub fn apply_statuses_on_area(
         entities: &Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_storage: &specs::WriteStorage<CharacterStateComponent>,
         area_status: &ApplyStatusInAreaComponent,
     ) -> Vec<ApplyStatusComponent> {
         let mut result_statuses = vec![];

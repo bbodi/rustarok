@@ -44,7 +44,8 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                     OwnedMessage::Binary(buf) => {
                         let mut iter = buf.iter();
                         while let Some(header) = iter.next() {
-                            match header {
+                            let header = *header as i32;
+                            match header & 0b1111 {
                                 1 => {
                                     let upper_byte = iter.next().unwrap();
                                     let lower_byte = iter.next().unwrap();
@@ -75,13 +76,18 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     );
                                 }
                                 2 => {
-                                    log::trace!("Message arrived: MouseDown");
+                                    let mouse_btn = match (header >> 4) & 0b11 {
+                                        0 => sdl2::mouse::MouseButton::Left,
+                                        1 => sdl2::mouse::MouseButton::Middle,
+                                        _ => sdl2::mouse::MouseButton::Right,
+                                    };
+                                    log::trace!("Message arrived: MouseDown: {:?}", mouse_btn);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonDown {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
-                                            mouse_btn: sdl2::mouse::MouseButton::Left,
+                                            mouse_btn,
                                             clicks: 0,
                                             x: 0,
                                             y: 0,
@@ -89,13 +95,18 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     );
                                 }
                                 3 => {
-                                    log::trace!("Message arrived: MouseUp");
+                                    let mouse_btn = match (header >> 4) & 0b11 {
+                                        0 => sdl2::mouse::MouseButton::Left,
+                                        1 => sdl2::mouse::MouseButton::Middle,
+                                        _ => sdl2::mouse::MouseButton::Right,
+                                    };
+                                    log::trace!("Message arrived: MouseUp: {:?}", mouse_btn);
                                     input_producer.inputs.push(
                                         sdl2::event::Event::MouseButtonUp {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
-                                            mouse_btn: sdl2::mouse::MouseButton::Left,
+                                            mouse_btn,
                                             clicks: 0,
                                             x: 0,
                                             y: 0,
@@ -329,6 +340,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 let z_range = controller.camera.visible_z_range;
                 controller.camera.set_z(pos.y + z_range);
             }
+            controller.view_matrix = controller.camera.create_view_matrix();
             // setup next action based on input
             // TODO: optimize
             let just_pressed_skill_key = SkillKey::iter()
@@ -407,7 +419,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.last_mouse_y,
                 &controller.camera.pos(),
                 &system_vars.matrices.projection,
-                &system_vars.matrices.view,
+                &controller.view_matrix
             );
             controller.entity_below_cursor = {
                 let mut entity_below_cursor: Option<Entity> = None;

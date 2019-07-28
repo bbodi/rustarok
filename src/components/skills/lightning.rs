@@ -1,4 +1,4 @@
-use nalgebra::{Vector2, Isometry2};
+use nalgebra::{Vector2, Isometry2, Matrix4};
 use crate::systems::{SystemVariables, Collision};
 use crate::video::draw_circle_inefficiently;
 use crate::components::skills::skill::{SkillManifestation, SkillManifestationComponent};
@@ -14,11 +14,12 @@ impl LightningSkill {
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         system_vars: &SystemVariables,
+        view_matrix: &Matrix4<f32>
     ) {
         for i in 0..3 {
             draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
                                       &system_vars.matrices.projection,
-                                      &system_vars.matrices.view,
+                                      view_matrix,
                                       &(skill_pos + char_to_skill_dir * i as f32 * 2.2),
                                       0.0,
                                       1.0,
@@ -160,11 +161,11 @@ impl SkillManifestation for LightningManifest {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables) {
+    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
         for i in self.action_count..3 {
             draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
                                       &system_vars.matrices.projection,
-                                      &system_vars.matrices.view,
+                                      view_matrix,
                                       &(self.pos + self.dir_vector * i as f32 * 2.2),
                                       0.0,
                                       1.0,
@@ -175,7 +176,7 @@ impl SkillManifestation for LightningManifest {
             for i in self.action_count..6 {
                 draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
                                           &system_vars.matrices.projection,
-                                          &system_vars.matrices.view,
+                                          view_matrix,
                                           &(self.pos + self.dir_vector * (5 - i) as f32 * 2.2),
                                           0.0,
                                           1.0,

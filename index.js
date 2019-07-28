@@ -30,6 +30,11 @@ socket.onopen = function(e) {
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
     tick();
@@ -52,7 +57,7 @@ function tick() {
 
 socket.onmessage = function(event) {
     var blob = event.data;
-    var imageData = new ImageData(new Uint8ClampedArray(blob), 900, 700);
+    var imageData = new ImageData(new Uint8ClampedArray(blob), 1024, 768);
     ctx.putImageData(imageData, 0, 0);
 };
 
@@ -74,11 +79,23 @@ function handleMouseDown(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    packet_write_i8(2);
+//    var left_mouse = e.button == 0;
+//    var middle = e.button == 1;
+//    var right = e.button == 2;
+    console.info("down: ", e.button);
+    var packet = e.button << 4;
+    packet |= 2; // this is the "id" of the packet
+    packet_write_i8(packet);
 }
 
 function handleMouseUp(e) {
-    packet_write_i8(3);
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.info("up: ", e.button);
+    var packet = e.button << 4;
+    packet |= 3; // this is the "id" of the packet
+    packet_write_i8(packet);
 }
 
 /*

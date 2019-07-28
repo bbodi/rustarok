@@ -1,5 +1,5 @@
 use crate::components::status::{Status, StatusUpdateResult, StatusType, ApplyStatusInAreaComponent, ApplyStatusComponentPayload};
-use crate::components::char::{CharAttributes};
+use crate::components::char::CharAttributes;
 use crate::consts::JobId;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::asset::SpriteResource;
@@ -8,7 +8,7 @@ use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use crate::systems::render::RenderDesktopClientSystem;
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent, ApplyForceComponent};
-use nalgebra::Isometry2;
+use nalgebra::{Isometry2, Matrix4};
 use crate::systems::atk_calc::AttackOutcome;
 
 #[derive(Clone)]
@@ -76,7 +76,7 @@ impl Status for FireBombStatus {
                     ),
                     area_shape: area_shape.clone(),
                     area_isom: area_isom.clone(),
-                    except: Some(self_char_id)
+                    except: Some(self_char_id),
                 }
             );
             let effect_comp = StrEffectComponent {
@@ -94,11 +94,17 @@ impl Status for FireBombStatus {
         }
     }
 
-    fn render(&self, char_pos: &WorldCoords, system_vars: &mut SystemVariables) {
+    fn render(
+        &self,
+        char_pos: &WorldCoords,
+        system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>,
+    ) {
         RenderDesktopClientSystem::render_str("firewall",
                                               self.started,
                                               char_pos,
-                                              system_vars);
+                                              system_vars,
+                                              view_matrix);
     }
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {

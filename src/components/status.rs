@@ -9,7 +9,7 @@ use crate::systems::render::RenderDesktopClientSystem;
 use crate::components::{AttackComponent, AttackType, ApplyForceComponent};
 use crate::components::controller::WorldCoords;
 use strum_macros::EnumCount;
-use nalgebra::Isometry2;
+use nalgebra::{Isometry2, Matrix4};
 use crate::systems::atk_calc::AttackOutcome;
 
 pub trait Status {
@@ -43,6 +43,7 @@ pub trait Status {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>
     );
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32>;
 }
@@ -121,7 +122,7 @@ impl Statuses {
                 StatusUpdateResult::KeepIt => {}
             }
         }
-        while self.first_free_index > MAINSTATUSES_COUNT && self.statuses[self.first_free_index-1].is_none() {
+        while self.first_free_index > MAINSTATUSES_COUNT && self.statuses[self.first_free_index - 1].is_none() {
             self.first_free_index -= 1;
         }
     }
@@ -130,11 +131,13 @@ impl Statuses {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>
     ) {
         for status in self.statuses.iter().filter(|it| it.is_some()) {
             let result = status.as_ref().unwrap().lock().unwrap().render(
                 char_pos,
                 system_vars,
+                view_matrix,
             );
         }
     }
@@ -371,6 +374,7 @@ impl Status for MountedStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>
     ) {}
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
@@ -444,11 +448,15 @@ impl Status for PoisonStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>,
     ) {
-        RenderDesktopClientSystem::render_str("quagmire",
-                                              self.started,
-                                              char_pos,
-                                              system_vars);
+        RenderDesktopClientSystem::render_str(
+            "quagmire",
+            self.started,
+            char_pos,
+            system_vars,
+            view_matrix,
+        );
     }
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
@@ -468,7 +476,7 @@ pub enum ApplyStatusComponentPayload {
 }
 
 impl ApplyStatusComponentPayload {
-    pub fn from_secondary(status: Box<dyn Status>) -> ApplyStatusComponentPayload{
+    pub fn from_secondary(status: Box<dyn Status>) -> ApplyStatusComponentPayload {
         ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status)))
     }
 }
@@ -500,7 +508,7 @@ pub struct ApplyStatusInAreaComponent {
     pub status: ApplyStatusComponentPayload,
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub except: Option<Entity>
+    pub except: Option<Entity>,
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]

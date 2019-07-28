@@ -31,7 +31,7 @@ pub trait SkillManifestation {
         updater: &mut specs::Write<LazyUpdate>,
     );
 
-    fn render(&self, system_vars: &SystemVariables);
+    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>);
 }
 
 #[storage(HashMapStorage)]
@@ -73,9 +73,9 @@ impl SkillManifestationComponent {
         );
     }
 
-    pub fn render(&self, system_vars: &SystemVariables) {
+    pub fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
         let skill = self.skill.lock().unwrap();
-        skill.render(system_vars);
+        skill.render(system_vars, view_matrix);
     }
 }
 
@@ -128,6 +128,7 @@ impl Skills {
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         system_vars: &SystemVariables,
+        view_matrix: &Matrix4<f32>,
     ) {
         let half = casting_area_size / 2.0;
         let bottom_left = v2!(-half.x, -half.y);
@@ -150,7 +151,7 @@ impl Skills {
         draw_lines_inefficiently(
             &system_vars.shaders.trimesh_shader,
             &system_vars.matrices.projection,
-            &system_vars.matrices.view,
+            view_matrix,
             &[
                 skill_pos + bottom_left.coords,
                 skill_pos + top_left.coords,
@@ -166,6 +167,7 @@ impl Skills {
         half: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_vars: &SystemVariables,
+        view_matrix: &Matrix4<f32>,
     ) {
         let rot_matrix = Matrix4::<f32>::identity();
         let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), rot_angle_in_rad).to_homogeneous();
@@ -180,7 +182,7 @@ impl Skills {
         draw_lines_inefficiently(
             &system_vars.shaders.trimesh_shader,
             &system_vars.matrices.projection,
-            &system_vars.matrices.view,
+            view_matrix,
             &[
                 bottom_left,
                 top_left,
@@ -389,18 +391,21 @@ impl Skills {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &mut SystemVariables,
+        view_matrix: &Matrix4<f32>,
     ) {
         match self {
             _ => {
                 RenderDesktopClientSystem::render_str("StrEffect::Moonstar",
                                                       casting_state.cast_started,
                                                       char_pos,
-                                                      system_vars);
+                                                      system_vars,
+                                                      view_matrix);
                 if let Some(target_area_pos) = casting_state.target_area_pos {
                     self.render_target_selection(
                         &target_area_pos,
                         &casting_state.char_to_skill_dir_when_casted,
                         system_vars,
+                        view_matrix,
                     );
                 }
             }
@@ -438,6 +443,7 @@ impl Skills {
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         system_vars: &SystemVariables,
+        view_matrix: &Matrix4<f32>,
     ) {
         match self {
             Skills::FireWall => {
@@ -446,6 +452,7 @@ impl Skills {
                     skill_pos,
                     char_to_skill_dir,
                     system_vars,
+                    view_matrix,
                 );
             }
             Skills::BrutalTestSkill => {
@@ -454,11 +461,12 @@ impl Skills {
                     skill_pos,
                     char_to_skill_dir,
                     system_vars,
+                    view_matrix,
                 );
             }
             Skills::Lightning => {
                 LightningSkill::render_target_selection(
-                    skill_pos, char_to_skill_dir, system_vars,
+                    skill_pos, char_to_skill_dir, system_vars, view_matrix,
                 );
             }
             Skills::Heal => {}
@@ -586,12 +594,13 @@ impl SkillManifestation for PushBackWallSkill {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables) {
+    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
         Skills::render_casting_box2(
             &self.pos,
             &self.half_extents,
             self.rot_angle_in_rad,
             &system_vars,
+            view_matrix,
         );
     }
 }
@@ -688,12 +697,13 @@ impl SkillManifestation for BrutalSkillManifest {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables) {
+    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
         Skills::render_casting_box2(
             &self.pos,
             &self.half_extents,
             self.rot_angle_in_rad,
             &system_vars,
+            view_matrix,
         );
     }
 }

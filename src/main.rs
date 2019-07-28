@@ -47,9 +47,8 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysicsSystem};
-use crate::systems::render::{DamageRenderSystem, OpenGlInitializerFor3D, RenderDesktopClientSystem, RenderStreamingSystem};
+use crate::systems::render::{RenderDesktopClientSystem};
 use crate::systems::skill_sys::SkillSystem;
-use crate::systems::ui::RenderUI;
 use crate::video::{GlTexture, ortho, Shader, ShaderProgram, VertexArray, VertexAttribDefinition, Video, VIDEO_HEIGHT, VIDEO_WIDTH, DynamicVertexArray};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::asset::str::StrFile;
@@ -76,6 +75,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use crate::components::skills::skill::{Skills, SkillManifestationComponent};
 use crate::common::p3_to_p2;
+use std::sync::Mutex;
 
 pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
@@ -155,7 +155,6 @@ pub struct Shaders {
 pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
     pub ortho: Matrix4<f32>,
-    pub view: Matrix4<f32>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -305,7 +304,7 @@ fn main() {
                     gl::FRAGMENT_SHADER,
                 ).unwrap()
             ]
-        ).unwrap() ,
+        ).unwrap(),
         rectangle_2d_shader: ShaderProgram::from_shaders(
             &[
                 Shader::from_source(
@@ -365,11 +364,7 @@ fn main() {
         .with(CharacterStateUpdateSystem, "char_state_update", &["char_control"])
         .with(PhysicsSystem, "physics", &["char_state_update"])
         .with(AttackSystem, "attack_sys", &["physics"])
-        .with_thread_local(OpenGlInitializerFor3D)
-        .with_thread_local(RenderStreamingSystem)
         .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(DamageRenderSystem::new())
-        .with_thread_local(RenderUI::new())
         .build();
 
     let rng = rand::thread_rng();
@@ -498,7 +493,6 @@ fn main() {
             0.1f32,
             1000.0f32,
         ),
-        view: Matrix4::identity(), // it is filled before every frame
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
@@ -509,24 +503,24 @@ fn main() {
     let skill_name_font = Video::load_font(
         &ttf_context,
         "assets/fonts/UbuntuMono-B.ttf",
-        32
+        32,
     ).unwrap();
     let mut skill_name_font_outline = Video::load_font(
         &ttf_context,
         "assets/fonts/UbuntuMono-B.ttf",
-        32
+        32,
     ).unwrap();
     skill_name_font_outline.set_outline_width(2);
 
     let skill_key_font = Video::load_font(
         &ttf_context,
         "assets/fonts/UbuntuMono-B.ttf",
-        20
+        20,
     ).unwrap();
     let mut skill_key_font_outline = Video::load_font(
         &ttf_context,
         "assets/fonts/UbuntuMono-B.ttf",
-        20
+        20,
     ).unwrap();
     skill_key_font_outline.set_outline_width(2);
 
@@ -536,20 +530,20 @@ fn main() {
         attack_absorbed: Video::create_outline_text_texture(
             &skill_key_font,
             &skill_key_font_outline,
-            "absorb"
+            "absorb",
         ),
         attack_blocked: Video::create_outline_text_texture(
             &skill_key_font,
             &skill_key_font_outline,
-            "block"
-        )
+            "block",
+        ),
     };
     let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
         let texture = Video::create_outline_text_texture(
             &skill_name_font,
             &skill_name_font_outline,
-            &format!("{:?}", skill)
+            &format!("{:?}", skill),
         );
         texts.skill_name_texts.insert(skill, texture);
 
@@ -561,7 +555,7 @@ fn main() {
         let texture = Video::create_outline_text_texture(
             &skill_key_font,
             &skill_key_font_outline,
-            &format!("{:?}", skill_key)
+            &format!("{:?}", skill_key),
         );
         texts.skill_key_texts.insert(skill_key, texture);
     }
@@ -657,15 +651,36 @@ fn main() {
                 let browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
                 log::info!("Client connected");
-//                ecs_world
-//                    .create_entity()
-//                    .with(ControllerComponent::new(250.0, -180.0))
-//                    .with(BrowserClient {
-//                        websocket: Mutex::new(browser_client),
-//                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
-//                        ping: 0,
-//                    })
-//                    .build();
+                let mut connected_client_entity = {
+                    let desktop_client_char = components::char::create_char(
+                        &mut ecs_world,
+                        Point2::new(250.0, -200.0),
+                        Sex::Male,
+                        JobId::CRUSADER,
+                        2,
+                        1,
+                    );
+                    let mut player = ControllerComponent::new(
+                        desktop_client_char,
+                        250.0,
+                        -180.0,
+                        &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+                    );
+                    player.assign_skill(SkillKey::Q, Skills::FireWall);
+                    player.assign_skill(SkillKey::W, Skills::Lightning);
+                    player.assign_skill(SkillKey::E, Skills::Heal);
+                    player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+                    player.assign_skill(SkillKey::Y, Skills::Mounting);
+                    ecs_world
+                        .create_entity()
+                        .with(player)
+                        .with(BrowserClient {
+                            websocket: Mutex::new(browser_client),
+                            offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
+                            ping: 0,
+                        })
+                        .build()
+                };
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
@@ -675,7 +690,6 @@ fn main() {
             let inputs = storage.get_mut(desktop_client_entity).unwrap();
 
             for event in video.event_pump.poll_iter() {
-                log::trace!("SDL event: {:?}", event);
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
                 match event {
                     sdl2::event::Event::Quit { .. } | sdl2::event::Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
@@ -688,11 +702,6 @@ fn main() {
             }
         }
 
-        {
-            let mut storage = ecs_world.write_storage::<ControllerComponent>();
-            let controller = storage.get_mut(desktop_client_entity).unwrap();
-            ecs_world.write_resource::<SystemVariables>().matrices.view = controller.camera.create_view_matrix();
-        }
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
 
@@ -723,24 +732,29 @@ fn main() {
             ecs_world.write_resource::<SystemVariables>().map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
-            desktop_client_entity = {
+            let mut desktop_client_entity = {
                 let desktop_client_char = components::char::create_char(
                     &mut ecs_world,
                     Point2::new(250.0, -200.0),
                     Sex::Male,
-                    JobId::ROGUE,
+                    JobId::CRUSADER,
                     1,
                     1,
                 );
-                let projection_mat = ecs_world.read_resource::<SystemVariables>().matrices.projection;
+                let mut player = ControllerComponent::new(
+                    desktop_client_char,
+                    250.0,
+                    -180.0,
+                    &ecs_world.read_resource::<SystemVariables>().matrices.projection,
+                );
+                player.assign_skill(SkillKey::Q, Skills::FireWall);
+                player.assign_skill(SkillKey::W, Skills::Lightning);
+                player.assign_skill(SkillKey::E, Skills::Heal);
+                player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+                player.assign_skill(SkillKey::Y, Skills::Mounting);
                 ecs_world
                     .create_entity()
-                    .with(ControllerComponent::new(
-                        desktop_client_char,
-                        250.0,
-                        -180.0,
-                        &projection_mat,
-                    ))
+                    .with(player)
                     .build()
             };
         }
@@ -792,7 +806,7 @@ fn main() {
             let browser_storage = ecs_world.write_storage::<BrowserClient>();
             for browser_client in browser_storage.join() {
                 let message = websocket::Message::ping(&data[..]);
-                browser_client.websocket.lock().unwrap().send_message(&message).expect("Sending a ping message");
+                let _ = browser_client.websocket.lock().unwrap().send_message(&message);
             }
         }
         fps_counter += 1;
@@ -955,7 +969,7 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 ui.text(im_str!("Maps: {},{},{}", controller.camera.pos().x, controller.camera.pos().y, controller.camera.pos().z));
                 ui.text(im_str!("yaw: {}, pitch: {}", controller.yaw, controller.pitch));
                 ui.text(im_str!("FPS: {}", fps));
-                let (_traffic, _unit) = if sent_bytes_per_second > 1024 * 1024 {
+                let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
                 } else if sent_bytes_per_second > 1024 {
                     (sent_bytes_per_second / 1024, "Kb")
@@ -979,15 +993,15 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                     };
                     ui.text_colored(color, im_str!("{}: {} ms", sys_name, duration));
                 }
-//                ui.text(im_str!("Traffic: {} {}", traffic, unit));
-//
-//                for browser_client in clients.iter() {
-//                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
-//                }
+                ui.text(im_str!("Traffic: {} {}", traffic, unit));
+
+                let browser_storage = ecs_world.read_storage::<BrowserClient>();
+                for browser_client in browser_storage.join() {
+                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
+                }
             });
     }
     {
-        ;
         let current_player_count = ecs_world.read_storage::<CharacterStateComponent>()
             .join()
             .filter(|it| match it.outlook {
@@ -995,6 +1009,8 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
                 _ => false
             })
             .count() as i32;
+        let current_user_count = 1 + ecs_world.read_storage::<BrowserClient>()
+            .join().count() as i32;
         if current_player_count < *player_count {
             let count_to_add = *player_count - current_player_count;
             for _i in 0..count_to_add {
@@ -1033,8 +1049,9 @@ fn imgui_frame(desktop_client_controller_entity: Entity,
 
                 other_players.push(entity_id);
             }
-        } else if current_player_count - 1 > *player_count { // -1 is the entity of the controller
-            let to_remove = (current_player_count - *player_count - 1) as usize;
+        } else if current_player_count - current_user_count > *player_count { // -1 is the entity of the controller
+            let to_remove = (current_player_count - *player_count - current_user_count) as usize;
+            let to_remove = to_remove.min(other_players.len());
             let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
             let body_handles: Vec<BodyHandle> = {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
