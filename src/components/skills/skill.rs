@@ -1,23 +1,26 @@
-use specs::prelude::*;
-use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{ColliderDesc, ColliderHandle};
-use ncollide2d::world::CollisionGroups;
-use crate::{STATIC_MODELS_COLLISION_GROUP, SKILL_AREA_COLLISION_GROUP, PhysicsWorld, ElapsedTime};
-use nalgebra::{Vector2, Vector3, Matrix4, Rotation3, Point3, Isometry2};
-use crate::systems::{SystemVariables, Collision};
-use std::sync::{Arc, Mutex};
-use crate::video::draw_lines_inefficiently;
+use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
-use crate::components::{StrEffectComponent, AttackComponent, AttackType, ApplyForceComponent, AreaAttackComponent};
-use crate::components::status::{ApplyStatusComponent, MainStatuses, RemoveStatusComponent, StatusType};
-use strum_macros::EnumIter;
-use crate::components::skills::lightning::{LightningSkill, LightningManifest};
-use crate::common::{v2_to_v3, rotate_vec2};
-use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::absorb_shield::AbsorbStatus;
-
+use crate::components::skills::fire_bomb::FireBombStatus;
+use crate::components::skills::lightning::{LightningManifest, LightningSkill};
+use crate::components::status::{
+    ApplyStatusComponent, MainStatuses, RemoveStatusComponent, StatusType,
+};
+use crate::components::{
+    ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
+};
+use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::{Collision, SystemVariables};
+use crate::video::draw_lines_inefficiently;
+use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
+use nalgebra::{Isometry2, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use ncollide2d::shape::ShapeHandle;
+use ncollide2d::world::CollisionGroups;
+use nphysics2d::object::{ColliderDesc, ColliderHandle};
+use specs::prelude::*;
+use std::sync::{Arc, Mutex};
+use strum_macros::EnumIter;
 
 pub trait SkillManifestation {
     fn update(
@@ -63,13 +66,14 @@ impl SkillManifestationComponent {
         updater: &mut specs::Write<LazyUpdate>,
     ) {
         let mut skill = self.skill.lock().unwrap();
-        skill.update(self_entity_id,
-                     all_collisions_in_world,
-                     system_vars,
-                     entities,
-                     char_storage,
-                     physics_world,
-                     updater,
+        skill.update(
+            self_entity_id,
+            all_collisions_in_world,
+            system_vars,
+            entities,
+            char_storage,
+            physics_world,
+            updater,
         );
     }
 
@@ -82,7 +86,6 @@ impl SkillManifestationComponent {
 unsafe impl Sync for SkillManifestationComponent {}
 
 unsafe impl Send for SkillManifestationComponent {}
-
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
@@ -138,8 +141,14 @@ impl Skills {
         // rotate
         let rot_matrix = Matrix4::<f32>::identity();
         let angle = char_to_skill_dir.angle(&Vector2::y());
-        let angle = if char_to_skill_dir.x > 0.0 { angle } else { -angle };
-        let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), angle).to_homogeneous();
+        let angle = if char_to_skill_dir.x > 0.0 {
+            angle
+        } else {
+            -angle
+        };
+        let rotation =
+            Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), angle)
+                .to_homogeneous();
         let rot_matrix = rot_matrix * rotation;
 
         let bottom_left = rot_matrix.transform_point(&p3!(bottom_left.x, 1, bottom_left.y));
@@ -170,25 +179,26 @@ impl Skills {
         view_matrix: &Matrix4<f32>,
     ) {
         let rot_matrix = Matrix4::<f32>::identity();
-        let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), rot_angle_in_rad).to_homogeneous();
+        let rotation = Rotation3::from_axis_angle(
+            &nalgebra::Unit::new_normalize(Vector3::y()),
+            rot_angle_in_rad,
+        )
+        .to_homogeneous();
         let rot_matrix = rot_matrix * rotation;
 
         let self_pos_3d = v2_to_v3(&pos);
-        let bottom_left = self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, -half.y)).coords;
+        let bottom_left =
+            self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, -half.y)).coords;
         let top_left = self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, half.y)).coords;
         let top_right = self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, half.y)).coords;
-        let bottom_right = self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, -half.y)).coords;
+        let bottom_right =
+            self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, -half.y)).coords;
 
         draw_lines_inefficiently(
             &system_vars.shaders.trimesh_shader,
             &system_vars.matrices.projection,
             view_matrix,
-            &[
-                bottom_left,
-                top_left,
-                top_right,
-                bottom_right,
-            ],
+            &[bottom_left, top_left, top_right, bottom_right],
             &[0.0, 1.0, 0.0, 1.0],
         );
     }
@@ -222,101 +232,106 @@ impl Skills {
         match self {
             Skills::FireWall => {
                 let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-                let angle_in_rad = if char_to_skill_dir.x > 0.0 { angle_in_rad } else { -angle_in_rad };
-                Some(Box::new(
-                    PushBackWallSkill::new(
-                        caster_entity_id,
-                        physics_world,
-                        &skill_pos.unwrap(),
-                        angle_in_rad,
-                        system_vars.time,
-                        entities,
-                        updater,
-                    )
-                ))
+                let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+                    angle_in_rad
+                } else {
+                    -angle_in_rad
+                };
+                Some(Box::new(PushBackWallSkill::new(
+                    caster_entity_id,
+                    physics_world,
+                    &skill_pos.unwrap(),
+                    angle_in_rad,
+                    system_vars.time,
+                    entities,
+                    updater,
+                )))
             }
             Skills::BrutalTestSkill => {
                 let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-                let angle_in_rad = if char_to_skill_dir.x > 0.0 { angle_in_rad } else { -angle_in_rad };
-                Some(Box::new(
-                    BrutalSkillManifest::new(
-                        caster_entity_id,
-                        &skill_pos.unwrap(),
-                        angle_in_rad,
-                        system_vars.time,
-                        entities,
-                        updater,
-                    )
-                ))
+                let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+                    angle_in_rad
+                } else {
+                    -angle_in_rad
+                };
+                Some(Box::new(BrutalSkillManifest::new(
+                    caster_entity_id,
+                    &skill_pos.unwrap(),
+                    angle_in_rad,
+                    system_vars.time,
+                    entities,
+                    updater,
+                )))
             }
-            Skills::Lightning => {
-                Some(Box::new(
-                    LightningManifest::new(
-                        caster_entity_id,
-                        &skill_pos.unwrap(),
-                        char_to_skill_dir,
-                        system_vars.time,
-                        entities,
-                    )
-                ))
-            }
+            Skills::Lightning => Some(Box::new(LightningManifest::new(
+                caster_entity_id,
+                &skill_pos.unwrap(),
+                char_to_skill_dir,
+                system_vars.time,
+                entities,
+            ))),
             Skills::Heal => {
-                system_vars.attacks.push(
-                    AttackComponent {
-                        src_entity: caster_entity_id,
-                        dst_entity: target_entity.unwrap(),
-                        typ: AttackType::Heal(200),
-                    }
-                );
+                system_vars.attacks.push(AttackComponent {
+                    src_entity: caster_entity_id,
+                    dst_entity: target_entity.unwrap(),
+                    typ: AttackType::Heal(200),
+                });
                 None
             }
             Skills::Mounting => {
-                system_vars.apply_statuses.push(
-                    ApplyStatusComponent::from_main_status(
+                system_vars
+                    .apply_statuses
+                    .push(ApplyStatusComponent::from_main_status(
                         caster_entity_id,
                         caster_entity_id,
                         MainStatuses::Mounted,
-                    )
+                    ));
+                updater.insert(
+                    entities.create(),
+                    StrEffectComponent {
+                        effect: "StrEffect::Concentration".to_owned(),
+                        pos: *char_pos,
+                        start_time: system_vars.time,
+                        die_at: system_vars.time.add_seconds(0.7),
+                        duration: ElapsedTime(0.7),
+                    },
                 );
-                updater.insert(entities.create(), StrEffectComponent {
-                    effect: "StrEffect::Concentration".to_owned(),
-                    pos: *char_pos,
-                    start_time: system_vars.time,
-                    die_at: system_vars.time.add_seconds(0.7),
-                    duration: ElapsedTime(0.7),
-                });
                 None
             }
             Skills::Poison => {
-                updater.insert(entities.create(), StrEffectComponent {
-                    effect: "hunter_poison".to_owned(),
-                    pos: skill_pos.unwrap(),
-                    start_time: system_vars.time,
-                    die_at: system_vars.time.add_seconds(0.7),
-                    duration: ElapsedTime(0.7),
-                });
-                system_vars.apply_statuses.push(
-                    ApplyStatusComponent::from_main_status(
+                updater.insert(
+                    entities.create(),
+                    StrEffectComponent {
+                        effect: "hunter_poison".to_owned(),
+                        pos: skill_pos.unwrap(),
+                        start_time: system_vars.time,
+                        die_at: system_vars.time.add_seconds(0.7),
+                        duration: ElapsedTime(0.7),
+                    },
+                );
+                system_vars
+                    .apply_statuses
+                    .push(ApplyStatusComponent::from_main_status(
                         caster_entity_id,
                         target_entity.unwrap(),
                         MainStatuses::Poison,
-                    )
-                );
+                    ));
                 None
             }
             Skills::Cure => {
-                system_vars.remove_statuses.push(
-                    RemoveStatusComponent::from_secondary_status(
+                system_vars
+                    .remove_statuses
+                    .push(RemoveStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
                         StatusType::Harmful,
-                    )
-                );
+                    ));
                 None
             }
             Skills::FireBomb => {
-                system_vars.apply_statuses.push(
-                    ApplyStatusComponent::from_secondary_status(
+                system_vars
+                    .apply_statuses
+                    .push(ApplyStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
                         Box::new(FireBombStatus {
@@ -324,20 +339,17 @@ impl Skills {
                             started: system_vars.time,
                             until: system_vars.time.add_seconds(2.0),
                         }),
-                    )
-                );
+                    ));
                 None
             }
             Skills::AbsorbShield => {
-                system_vars.apply_statuses.push(
-                    ApplyStatusComponent::from_secondary_status(
+                system_vars
+                    .apply_statuses
+                    .push(ApplyStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
-                        Box::new(
-                            AbsorbStatus::new(caster_entity_id, system_vars.time)
-                        ),
-                    )
-                );
+                        Box::new(AbsorbStatus::new(caster_entity_id, system_vars.time)),
+                    ));
                 None
             }
         }
@@ -349,11 +361,17 @@ impl Skills {
             Skills::BrutalTestSkill => 1.0,
             Skills::Lightning => 0.7,
             Skills::Heal => 0.3,
-            Skills::Mounting => if char_state.statuses.is_mounted() { 0.0 } else { 2.0 },
+            Skills::Mounting => {
+                if char_state.statuses.is_mounted() {
+                    0.0
+                } else {
+                    2.0
+                }
+            }
             Skills::Poison => 0.5,
             Skills::Cure => 0.5,
             Skills::FireBomb => 0.5,
-            Skills::AbsorbShield => 0.1
+            Skills::AbsorbShield => 0.1,
         };
         return ElapsedTime(t);
     }
@@ -395,11 +413,13 @@ impl Skills {
     ) {
         match self {
             _ => {
-                RenderDesktopClientSystem::render_str("StrEffect::Moonstar",
-                                                      casting_state.cast_started,
-                                                      char_pos,
-                                                      system_vars,
-                                                      view_matrix);
+                RenderDesktopClientSystem::render_str(
+                    "StrEffect::Moonstar",
+                    casting_state.cast_started,
+                    char_pos,
+                    system_vars,
+                    view_matrix,
+                );
                 if let Some(target_area_pos) = casting_state.target_area_pos {
                     self.render_target_selection(
                         &target_area_pos,
@@ -421,10 +441,12 @@ impl Skills {
         match self.get_skill_target_type() {
             SkillTargetType::Area => true,
             SkillTargetType::NoTarget => true,
-            SkillTargetType::AnyEntity => target_entity.is_some() && self.get_casting_range() >= target_distance,
+            SkillTargetType::AnyEntity => {
+                target_entity.is_some() && self.get_casting_range() >= target_distance
+            }
             SkillTargetType::OnlyAllyButNoSelf => {
-                target_entity.map(|it| it != caster_id).unwrap_or(false) &&
-                    self.get_casting_range() >= target_distance
+                target_entity.map(|it| it != caster_id).unwrap_or(false)
+                    && self.get_casting_range() >= target_distance
             }
             SkillTargetType::OnlyAllyAndSelf => {
                 target_entity.is_some() && self.get_casting_range() >= target_distance
@@ -432,9 +454,7 @@ impl Skills {
             SkillTargetType::OnlyEnemy => {
                 target_entity.is_some() && self.get_casting_range() >= target_distance
             }
-            SkillTargetType::OnlySelf => {
-                target_entity.map(|it| it == caster_id).unwrap_or(false)
-            }
+            SkillTargetType::OnlySelf => target_entity.map(|it| it == caster_id).unwrap_or(false),
         }
     }
 
@@ -466,7 +486,10 @@ impl Skills {
             }
             Skills::Lightning => {
                 LightningSkill::render_target_selection(
-                    skill_pos, char_to_skill_dir, system_vars, view_matrix,
+                    skill_pos,
+                    char_to_skill_dir,
+                    system_vars,
+                    view_matrix,
                 );
             }
             Skills::Heal => {}
@@ -505,7 +528,9 @@ impl PushBackWallSkill {
             skill_center + rotate_vec2(rot_angle_in_rad, &v2!(-1.0, 0.0)),
             *skill_center,
             skill_center + rotate_vec2(rot_angle_in_rad, &v2!(1.0, 0.0)),
-        ].iter().map(|effect_coords| {
+        ]
+        .iter()
+        .map(|effect_coords| {
             let effect_comp = StrEffectComponent {
                 effect: "firewall".to_owned(),
                 pos: *effect_coords,
@@ -516,17 +541,17 @@ impl PushBackWallSkill {
             let effect_entity = entities.create();
             updater.insert(effect_entity, effect_comp);
             effect_entity
-        }).collect();
+        })
+        .collect();
 
-        let cuboid = ShapeHandle::new(
-            ncollide2d::shape::Cuboid::new(half_extents)
-        );
+        let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
         let collider_handle = ColliderDesc::new(cuboid)
             .translation(*skill_center)
             .rotation(rot_angle_in_rad.to_degrees())
-            .collision_groups(CollisionGroups::new()
-                .with_membership(&[SKILL_AREA_COLLISION_GROUP])
-                .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP])
+            .collision_groups(
+                CollisionGroups::new()
+                    .with_membership(&[SKILL_AREA_COLLISION_GROUP])
+                    .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP]),
             )
             .sensor(true)
             .build(physics_world)
@@ -546,14 +571,16 @@ impl PushBackWallSkill {
 }
 
 impl SkillManifestation for PushBackWallSkill {
-    fn update(&mut self,
-              self_entity_id: Entity,
-              all_collisions_in_world: &Vec<Collision>,
-              system_vars: &mut SystemVariables,
-              entities: &specs::Entities,
-              char_storage: &specs::ReadStorage<CharacterStateComponent>,
-              physics_world: &mut PhysicsWorld,
-              updater: &mut specs::Write<LazyUpdate>) {
+    fn update(
+        &mut self,
+        self_entity_id: Entity,
+        all_collisions_in_world: &Vec<Collision>,
+        system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        physics_world: &mut PhysicsWorld,
+        updater: &mut specs::Write<LazyUpdate>,
+    ) {
         if self.die_at.has_passed(system_vars.time) {
             physics_world.remove_colliders(&[self.collider_handle]);
             updater.remove::<SkillManifestationComponent>(self_entity_id);
@@ -562,11 +589,19 @@ impl SkillManifestation for PushBackWallSkill {
             }
         } else {
             // TODO: wouldn't it be better to use the area push functionality?
-            let my_collisions = all_collisions_in_world.iter().filter(|coll| coll.other_coll_handle == self.collider_handle);
+            let my_collisions = all_collisions_in_world
+                .iter()
+                .filter(|coll| coll.other_coll_handle == self.collider_handle);
             for coll in my_collisions {
-                let char_body_handle = physics_world.collider(coll.character_coll_handle).unwrap().body();
+                let char_body_handle = physics_world
+                    .collider(coll.character_coll_handle)
+                    .unwrap()
+                    .body();
                 let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
-                let char_entity_id = *char_body.user_data().map(|v| v.downcast_ref().unwrap()).unwrap();
+                let char_entity_id = *char_body
+                    .user_data()
+                    .map(|v| v.downcast_ref().unwrap())
+                    .unwrap();
                 if let Some(char_state) = char_storage.get(char_entity_id) {
                     let push_dir = self.pos - char_state.pos();
                     let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
@@ -574,22 +609,18 @@ impl SkillManifestation for PushBackWallSkill {
                     } else {
                         -push_dir.normalize()
                     };
-                    system_vars.attacks.push(
-                        AttackComponent {
-                            src_entity: self.caster_entity_id,
-                            dst_entity: char_entity_id,
-                            typ: AttackType::SpellDamage(600),
-                        }
-                    );
-                    system_vars.pushes.push(
-                        ApplyForceComponent {
-                            src_entity: self.caster_entity_id,
-                            dst_entity: char_entity_id,
-                            force: dbg!(push_dir * 20.0),
-                            body_handle: char_body_handle,
-                            duration: 1.0,
-                        }
-                    );
+                    system_vars.attacks.push(AttackComponent {
+                        src_entity: self.caster_entity_id,
+                        dst_entity: char_entity_id,
+                        typ: AttackType::SpellDamage(600),
+                    });
+                    system_vars.pushes.push(ApplyForceComponent {
+                        src_entity: self.caster_entity_id,
+                        dst_entity: char_entity_id,
+                        force: dbg!(push_dir * 20.0),
+                        body_handle: char_body_handle,
+                        duration: 1.0,
+                    });
                 }
             }
         }
@@ -628,22 +659,22 @@ impl BrutalSkillManifest {
     ) -> BrutalSkillManifest {
         let half_extents = v2!(5.0, 5.0);
 
-//        let effect_ids = (0..11*11).map(|i| {
-//            let x = (-5.0 + (i%10) as f32);
-//            let y = (-5.0 + (i/10) as f32);
-//            skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
-//        }).map(|effect_coords| {
-//            let effect_comp = StrEffectComponent {
-//                effect: "firewall".to_owned(),
-//                pos: Point2::new(effect_coords.x, effect_coords.y),
-//                start_time: system_time,
-//                die_at: system_time.add_seconds(3.0),
-//                duration: ElapsedTime(3.0),
-//            };
-//            let effect_entity = entities.create();
-//            updater.insert(effect_entity, effect_comp);
-//            effect_entity
-//        }).collect();
+        //        let effect_ids = (0..11*11).map(|i| {
+        //            let x = (-5.0 + (i%10) as f32);
+        //            let y = (-5.0 + (i/10) as f32);
+        //            skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
+        //        }).map(|effect_coords| {
+        //            let effect_comp = StrEffectComponent {
+        //                effect: "firewall".to_owned(),
+        //                pos: Point2::new(effect_coords.x, effect_coords.y),
+        //                start_time: system_time,
+        //                die_at: system_time.add_seconds(3.0),
+        //                duration: ElapsedTime(3.0),
+        //            };
+        //            let effect_entity = entities.create();
+        //            updater.insert(effect_entity, effect_comp);
+        //            effect_entity
+        //        }).collect();
         let effect_comp = StrEffectComponent {
             effect: "StrEffect::LordOfVermilion".to_owned(),
             pos: *skill_center,
@@ -667,16 +698,17 @@ impl BrutalSkillManifest {
     }
 }
 
-
 impl SkillManifestation for BrutalSkillManifest {
-    fn update(&mut self,
-              self_entity_id: Entity,
-              all_collisions_in_world: &Vec<Collision>,
-              system_vars: &mut SystemVariables,
-              entities: &specs::Entities,
-              char_storage: &specs::ReadStorage<CharacterStateComponent>,
-              _physics_world: &mut PhysicsWorld,
-              updater: &mut specs::Write<LazyUpdate>) {
+    fn update(
+        &mut self,
+        self_entity_id: Entity,
+        all_collisions_in_world: &Vec<Collision>,
+        system_vars: &mut SystemVariables,
+        entities: &specs::Entities,
+        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _physics_world: &mut PhysicsWorld,
+        updater: &mut specs::Write<LazyUpdate>,
+    ) {
         if self.die_at.has_passed(system_vars.time) {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             for effect_id in &self.effect_ids {
@@ -687,14 +719,12 @@ impl SkillManifestation for BrutalSkillManifest {
                 return;
             }
             self.next_damage_at = system_vars.time.add_seconds(0.5);
-            system_vars.area_attacks.push(
-                AreaAttackComponent {
-                    area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
-                    area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
-                    source_entity_id: self.caster_entity_id,
-                    typ: AttackType::SpellDamage(600),
-                }
-            );
+            system_vars.area_attacks.push(AreaAttackComponent {
+                area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
+                area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
+                source_entity_id: self.caster_entity_id,
+                typ: AttackType::SpellDamage(600),
+            });
         }
     }
 

@@ -1,5 +1,3 @@
-
-
 // animation index, action index
 pub struct CursorFrame(pub usize, pub usize);
 pub const CURSOR_NORMAL: CursorFrame = CursorFrame(0, 0);

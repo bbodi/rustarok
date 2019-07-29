@@ -1,18 +1,18 @@
-use nalgebra::{Matrix4, Matrix3, Vector3, Rotation3, Point3, Vector2};
-use std::ffi::{CString, CStr};
-use sdl2::surface::Surface;
-use std::path::Path;
-use sdl2::pixels::{PixelFormatEnum, Color};
-use std::fmt::Display;
-use std::sync::Arc;
-use sdl2::{Sdl, EventPump};
-use sdl2::video::{Window, GLContext};
 use imgui::ImGui;
-use imgui_sdl2::ImguiSdl2;
 use imgui_opengl_renderer::Renderer;
-use std::ops::{IndexMut, Index};
-use sdl2::ttf::Sdl2TtfContext;
+use imgui_sdl2::ImguiSdl2;
+use nalgebra::{Matrix3, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::BlendMode;
+use sdl2::surface::Surface;
+use sdl2::ttf::Sdl2TtfContext;
+use sdl2::video::{GLContext, Window};
+use sdl2::{EventPump, Sdl};
+use std::ffi::{CStr, CString};
+use std::fmt::Display;
+use std::ops::{Index, IndexMut};
+use std::path::Path;
+use std::sync::Arc;
 
 pub struct Video {
     pub sdl_context: Sdl,
@@ -40,7 +40,7 @@ impl Video {
             .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
             .opengl()
             .allow_highdpi()
-//            .resizable()
+            //            .resizable()
             .build()
             .unwrap();
         // these two variables must be in scope, so don't remove their variables
@@ -58,7 +58,8 @@ impl Video {
         let mut imgui = imgui::ImGui::init();
         imgui.set_ini_filename(None);
         let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
-        let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+        let renderer =
+            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
         Video {
             sdl_context,
@@ -80,16 +81,22 @@ impl Video {
     }
 
     //    ttf_context,let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
-//    fonts: HashMap::new(),
-//    ttf_context: Sdl2TtfContext,
-//    fonts: HashMap<FontId, sdl2::ttf::Font<'a,'b>>
-    pub fn load_font<'a, 'b>(ttf_context: &'a Sdl2TtfContext, font_path: &str, size: u16) -> Result<sdl2::ttf::Font<'a, 'b>, String> {
+    //    fonts: HashMap::new(),
+    //    ttf_context: Sdl2TtfContext,
+    //    fonts: HashMap<FontId, sdl2::ttf::Font<'a,'b>>
+    pub fn load_font<'a, 'b>(
+        ttf_context: &'a Sdl2TtfContext,
+        font_path: &str,
+        size: u16,
+    ) -> Result<sdl2::ttf::Font<'a, 'b>, String> {
         ttf_context.load_font(font_path, size)
     }
 
     pub fn create_text_texture<'a, 'b>(font: &sdl2::ttf::Font<'a, 'b>, text: &str) -> GlTexture {
-        let surface = font.render(text)
-            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        let surface = font
+            .render(text)
+            .blended(Color::RGBA(255, 255, 255, 255))
+            .unwrap();
         return GlTexture::from_surface(surface, gl::NEAREST);
     }
 
@@ -98,16 +105,22 @@ impl Video {
         outline_font: &sdl2::ttf::Font<'a, 'b>,
         text: &str,
     ) -> GlTexture {
-        let mut bg_surface = outline_font.render(text)
-            .blended(Color::RGBA(0, 0, 0, 255)).unwrap();
-        let mut fg_surface = font.render(text)
-            .blended(Color::RGBA(255, 255, 255, 255)).unwrap();
+        let mut bg_surface = outline_font
+            .render(text)
+            .blended(Color::RGBA(0, 0, 0, 255))
+            .unwrap();
+        let mut fg_surface = font
+            .render(text)
+            .blended(Color::RGBA(255, 255, 255, 255))
+            .unwrap();
         fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
-        fg_surface.blit(
-            None,
-            &mut bg_surface,
-            sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height())
-        ).unwrap();
+        fg_surface
+            .blit(
+                None,
+                &mut bg_surface,
+                sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height()),
+            )
+            .unwrap();
         return GlTexture::from_surface(bg_surface, gl::NEAREST);
     }
 }
@@ -126,22 +139,24 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
     mat
 }
 
-pub fn draw_lines_inefficiently2(trimesh_shader: &ShaderProgram,
-                                 projection: &Matrix4<f32>,
-                                 view: &Matrix4<f32>,
-                                 points: &[Point3<f32>],
-                                 color: &[f32; 4]) {
+pub fn draw_lines_inefficiently2(
+    trimesh_shader: &ShaderProgram,
+    projection: &Matrix4<f32>,
+    view: &Matrix4<f32>,
+    points: &[Point3<f32>],
+    color: &[f32; 4],
+) {
     let points: Vec<Vector3<f32>> = points.iter().map(|&p| p.coords).collect();
-    draw_lines_inefficiently(trimesh_shader, projection, view,
-                             points.as_slice(),
-                             color);
+    draw_lines_inefficiently(trimesh_shader, projection, view, points.as_slice(), color);
 }
 
-pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
-                                projection: &Matrix4<f32>,
-                                view: &Matrix4<f32>,
-                                points: &[Vector3<f32>],
-                                color: &[f32; 4]) {
+pub fn draw_lines_inefficiently(
+    trimesh_shader: &ShaderProgram,
+    projection: &Matrix4<f32>,
+    view: &Matrix4<f32>,
+    points: &[Vector3<f32>],
+    color: &[f32; 4],
+) {
     let shader = trimesh_shader.gl_use();
     shader.set_mat4("projection", &projection);
     shader.set_mat4("view", view);
@@ -149,21 +164,26 @@ pub fn draw_lines_inefficiently(trimesh_shader: &ShaderProgram,
     shader.set_mat4("model", &Matrix4::identity());
     VertexArray::new(
         gl::LINE_LOOP,
-        points, points.len(), vec![
-            VertexAttribDefinition {
-                number_of_components: 3,
-                offset_of_first_element: 0,
-            }
-        ]).bind().draw();
+        points,
+        points.len(),
+        vec![VertexAttribDefinition {
+            number_of_components: 3,
+            offset_of_first_element: 0,
+        }],
+    )
+    .bind()
+    .draw();
 }
 
-pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
-                                 projection: &Matrix4<f32>,
-                                 view: &Matrix4<f32>,
-                                 center: &Vector2<f32>,
-                                 y: f32,
-                                 r: f32,
-                                 color: &[f32; 4]) {
+pub fn draw_circle_inefficiently(
+    trimesh_shader: &ShaderProgram,
+    projection: &Matrix4<f32>,
+    view: &Matrix4<f32>,
+    center: &Vector2<f32>,
+    y: f32,
+    r: f32,
+    color: &[f32; 4],
+) {
     let shader = trimesh_shader.gl_use();
     shader.set_mat4("projection", &projection);
     shader.set_mat4("view", view);
@@ -171,25 +191,27 @@ pub fn draw_circle_inefficiently(trimesh_shader: &ShaderProgram,
     let mut matrix = Matrix4::identity();
     let center = Vector3::new(center.x, y, center.y);
     matrix.prepend_translation_mut(&center);
-    let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
+    let rotation = Rotation3::from_axis_angle(
+        &nalgebra::Unit::new_normalize(Vector3::x()),
+        std::f32::consts::FRAC_PI_2,
+    )
+    .to_homogeneous();
     matrix = matrix * rotation;
     shader.set_mat4("model", &matrix);
-    let capsule_mesh = ncollide2d::procedural::circle(
-        &(r * 2.0),
-        32,
-    );
+    let capsule_mesh = ncollide2d::procedural::circle(&(r * 2.0), 32);
 
     let coords = capsule_mesh.coords();
     VertexArray::new(
         gl::LINE_LOOP,
         coords,
         coords.len(),
-        vec![
-            VertexAttribDefinition {
-                number_of_components: 2,
-                offset_of_first_element: 0,
-            }
-        ]).bind().draw();
+        vec![VertexAttribDefinition {
+            number_of_components: 2,
+            offset_of_first_element: 0,
+        }],
+    )
+    .bind()
+    .draw();
 }
 
 #[derive(Hash, Eq, PartialEq, Debug)]
@@ -197,9 +219,7 @@ struct GlTextureContext(gl::types::GLuint);
 
 impl Drop for GlTextureContext {
     fn drop(&mut self) {
-        unsafe {
-            gl::DeleteTextures(1, &self.0 as *const gl::types::GLuint)
-        }
+        unsafe { gl::DeleteTextures(1, &self.0 as *const gl::types::GLuint) }
     }
 }
 
@@ -229,15 +249,17 @@ impl GlTexture {
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> GlTexture
-        where P: Display
+    where
+        P: Display,
     {
         use sdl2::image::LoadSurface;
         let mut surface = sdl2::surface::Surface::from_file(&path).unwrap();
-        let mut optimized_surf = sdl2::surface::Surface::new(
-            surface.width(),
-            surface.height(),
-            PixelFormatEnum::RGBA32).unwrap();
-        surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
+        let mut optimized_surf =
+            sdl2::surface::Surface::new(surface.width(), surface.height(), PixelFormatEnum::RGBA32)
+                .unwrap();
+        surface
+            .set_color_key(true, Color::RGB(255, 0, 255))
+            .unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
         log::trace!("Texture from file --> {}", &path);
         GlTexture::from_surface(optimized_surf, gl::NEAREST)
@@ -248,22 +270,28 @@ impl GlTexture {
             let mut optimized_surf = sdl2::surface::Surface::new(
                 surface.width(),
                 surface.height(),
-                PixelFormatEnum::RGBA32).unwrap();
-            surface.set_color_key(true, Color::RGB(255, 0, 255)).unwrap();
+                PixelFormatEnum::RGBA32,
+            )
+            .unwrap();
+            surface
+                .set_color_key(true, Color::RGB(255, 0, 255))
+                .unwrap();
             surface.blit(None, &mut optimized_surf, None).unwrap();
             optimized_surf
-        } else { surface };
+        } else {
+            surface
+        };
         let mut texture_id: gl::types::GLuint = 0;
         unsafe {
             gl::GenTextures(1, &mut texture_id);
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
-                0, // Pyramid level (for mip-mapping) - 0 is the top level
+                0,               // Pyramid level (for mip-mapping) - 0 is the top level
                 gl::RGBA as i32, // Internal colour format to convert to
                 surface.width() as i32,
                 surface.height() as i32,
-                0, // border
+                0,               // border
                 gl::RGBA as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
@@ -290,11 +318,11 @@ impl GlTexture {
             gl::BindTexture(gl::TEXTURE_2D, texture_id);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
-                0, // Pyramid level (for mip-mapping) - 0 is the top level
+                0,               // Pyramid level (for mip-mapping) - 0 is the top level
                 gl::RGBA as i32, // Internal colour format to convert to
                 width,
                 height,
-                0, // border
+                0,        // border
                 gl::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
                 gl::UNSIGNED_BYTE,
                 data.as_ptr() as *const gl::types::GLvoid,
@@ -316,7 +344,6 @@ pub struct VertexAttribDefinition {
     pub offset_of_first_element: usize,
 }
 
-
 pub struct VertexArrayBind<'a> {
     vertex_array: &'a VertexArray,
 }
@@ -325,8 +352,8 @@ impl<'a> VertexArrayBind<'a> {
     pub fn draw(&self) {
         unsafe {
             gl::DrawArrays(
-                self.vertex_array.draw_mode, // mode
-                0, // starting index in the enabled arrays
+                self.vertex_array.draw_mode,           // mode
+                0,                                     // starting index in the enabled arrays
                 self.vertex_array.vertex_count as i32, // number of indices to be rendered
             );
         }
@@ -336,7 +363,12 @@ impl<'a> VertexArrayBind<'a> {
 impl<'a> Drop for VertexArrayBind<'a> {
     fn drop(&mut self) {
         unsafe {
-            for (i, _def) in self.vertex_array.vertex_attrib_pointer_defs.iter().enumerate() {
+            for (i, _def) in self
+                .vertex_array
+                .vertex_attrib_pointer_defs
+                .iter()
+                .enumerate()
+            {
                 gl::DisableVertexAttribArray(i as u32);
             }
             gl::BindVertexArray(0);
@@ -362,10 +394,10 @@ impl<'a> IndexedVertexArrayBind<'a> {
     pub fn draw(&self) {
         unsafe {
             gl::DrawElements(
-                self.vertex_array.draw_mode,      // mode
-                self.vertex_array.vertex_count as i32,    // count
-                gl::UNSIGNED_INT,   // type
-                std::ptr::null(),           // element array buffer offset
+                self.vertex_array.draw_mode,           // mode
+                self.vertex_array.vertex_count as i32, // count
+                gl::UNSIGNED_INT,                      // type
+                std::ptr::null(),                      // element array buffer offset
             );
         }
     }
@@ -387,10 +419,11 @@ impl IndexedVertexArray {
                 gl::VertexAttribPointer(
                     i as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
-                    gl::FLOAT, // data type
-                    gl::FALSE, // normalized (int-to-float conversion)
+                    gl::FLOAT,   // data type
+                    gl::FALSE,   // normalized (int-to-float conversion)
                     self.stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
 
@@ -412,10 +445,10 @@ impl IndexedVertexArray {
             gl::GenBuffers(1, &mut vbo);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
-                gl::ARRAY_BUFFER, // target
+                gl::ARRAY_BUFFER,                                                     // target
                 (vertices.len() * std::mem::size_of::<T>()) as gl::types::GLsizeiptr, // size of data in bytes
                 vertices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                gl::STATIC_DRAW, // usage
+                gl::STATIC_DRAW,                               // usage
             );
         }
         let mut vao: gl::types::GLuint = 0;
@@ -432,8 +465,9 @@ impl IndexedVertexArray {
                     def.number_of_components as i32,
                     gl::FLOAT, // data type
                     gl::FALSE, // normalized (int-to-float conversion)
-                    stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    stride,    // stride (byte offset between consecutive attributes)
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
         }
@@ -446,7 +480,7 @@ impl IndexedVertexArray {
                     gl::ELEMENT_ARRAY_BUFFER, // target
                     (indices.len() * std::mem::size_of::<u32>()) as gl::types::GLsizeiptr, // size of data in bytes
                     indices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                    gl::STATIC_DRAW, // usage
+                    gl::STATIC_DRAW,                              // usage
                 );
             }
             index_vbo
@@ -504,10 +538,11 @@ impl VertexArray {
                 gl::VertexAttribPointer(
                     i as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
-                    gl::FLOAT, // data type
-                    gl::FALSE, // normalized (int-to-float conversion)
+                    gl::FLOAT,   // data type
+                    gl::FALSE,   // normalized (int-to-float conversion)
                     self.stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
 
@@ -528,10 +563,10 @@ impl VertexArray {
             gl::GenBuffers(1, &mut vbo);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
-                gl::ARRAY_BUFFER, // target
+                gl::ARRAY_BUFFER,                                                     // target
                 (vertices.len() * std::mem::size_of::<T>()) as gl::types::GLsizeiptr, // size of data in bytes
                 vertices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                gl::STATIC_DRAW, // usage
+                gl::STATIC_DRAW,                               // usage
             );
         }
         let mut vao: gl::types::GLuint = 0;
@@ -548,8 +583,9 @@ impl VertexArray {
                     def.number_of_components as i32,
                     gl::FLOAT, // data type
                     gl::FALSE, // normalized (int-to-float conversion)
-                    stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    stride,    // stride (byte offset between consecutive attributes)
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
         }
@@ -587,8 +623,8 @@ impl<'a> DynamicVertexArrayBind<'a> {
     pub fn draw(&self) {
         unsafe {
             gl::DrawArrays(
-                self.vertex_array.draw_mode, // mode
-                0, // starting index in the enabled arrays
+                self.vertex_array.draw_mode,           // mode
+                0,                                     // starting index in the enabled arrays
                 self.vertex_array.vertex_count as i32, // number of indices to be rendered
             );
         }
@@ -598,7 +634,12 @@ impl<'a> DynamicVertexArrayBind<'a> {
 impl<'a> Drop for DynamicVertexArrayBind<'a> {
     fn drop(&mut self) {
         unsafe {
-            for (i, _def) in self.vertex_array.vertex_attrib_pointer_defs.iter().enumerate() {
+            for (i, _def) in self
+                .vertex_array
+                .vertex_attrib_pointer_defs
+                .iter()
+                .enumerate()
+            {
                 gl::DisableVertexAttribArray(i as u32);
             }
             gl::BindVertexArray(0);
@@ -645,18 +686,19 @@ impl DynamicVertexArray {
                 gl::VertexAttribPointer(
                     attrib_location as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
-                    gl::FLOAT, // data type
-                    gl::FALSE, // normalized (int-to-float conversion)
+                    gl::FLOAT,   // data type
+                    gl::FALSE,   // normalized (int-to-float conversion)
                     self.stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
 
             gl::BufferData(
-                gl::ARRAY_BUFFER, // target
+                gl::ARRAY_BUFFER,                                                          // target
                 (self.buffer.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr, // size of data in bytes
                 self.buffer.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                gl::DYNAMIC_DRAW, // usage
+                gl::DYNAMIC_DRAW,                                 // usage
             );
 
             DynamicVertexArrayBind {
@@ -676,15 +718,17 @@ impl DynamicVertexArray {
             gl::GenBuffers(1, &mut vbo);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
-                gl::ARRAY_BUFFER, // target
+                gl::ARRAY_BUFFER,                                                       // target
                 (vertices.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr, // size of data in bytes
                 vertices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                gl::DYNAMIC_DRAW, // usage
+                gl::DYNAMIC_DRAW,                              // usage
             );
         }
         let mut vao: gl::types::GLuint = 0;
-        let component_count_for_one_vertex: usize = definitions.iter().map(|def| def.number_of_components).sum();
-        let stride = (component_count_for_one_vertex * std::mem::size_of::<f32>()) as gl::types::GLint;
+        let component_count_for_one_vertex: usize =
+            definitions.iter().map(|def| def.number_of_components).sum();
+        let stride =
+            (component_count_for_one_vertex * std::mem::size_of::<f32>()) as gl::types::GLint;
         unsafe {
             gl::GenVertexArrays(1, &mut vao);
             gl::BindVertexArray(vao);
@@ -697,8 +741,9 @@ impl DynamicVertexArray {
                     def.number_of_components as i32,
                     gl::FLOAT, // data type
                     gl::FALSE, // normalized (int-to-float conversion)
-                    stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element) as *const gl::types::GLvoid,
+                    stride,    // stride (byte offset between consecutive attributes)
+                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
+                        as *const gl::types::GLvoid,
                 );
             }
         }
@@ -742,10 +787,7 @@ impl Drop for Shader {
 }
 
 impl Shader {
-    pub fn from_source(
-        source: &str,
-        kind: gl::types::GLenum,
-    ) -> Result<Shader, String> {
+    pub fn from_source(source: &str, kind: gl::types::GLenum) -> Result<Shader, String> {
         let c_str: &CStr = &CString::new(source).unwrap();
         let id = unsafe { gl::CreateShader(kind) };
         unsafe {
@@ -763,7 +805,12 @@ impl Shader {
             }
             let mut buffer = Vec::<u8>::with_capacity(len as usize);
             unsafe {
-                gl::GetShaderInfoLog(id, len, std::ptr::null_mut(), buffer.as_mut_ptr() as *mut i8);
+                gl::GetShaderInfoLog(
+                    id,
+                    len,
+                    std::ptr::null_mut(),
+                    buffer.as_mut_ptr() as *mut i8,
+                );
                 buffer.set_len(len as usize);
                 Err(String::from_utf8_unchecked(buffer))
             }
@@ -789,24 +836,25 @@ impl ActiveShaderProgram {
     pub fn set_mat4(&self, name: &str, matrix: &Matrix4<f32>) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::UniformMatrix4fv(
                 location,
-                1, // count
+                1,         // count
                 gl::FALSE, // transpose
                 matrix.as_slice().as_ptr() as *const f32,
             );
         }
     }
 
-
     pub fn set_mat3(&self, name: &str, matrix: &Matrix3<f32>) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::UniformMatrix3fv(
                 location,
-                1, // count
+                1,         // count
                 gl::FALSE, // transpose
                 matrix.as_slice().as_ptr() as *const f32,
             );
@@ -816,7 +864,8 @@ impl ActiveShaderProgram {
     pub fn set_vec3(&self, name: &str, vector: &[f32; 3]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform3fv(
                 location,
                 1, // count
@@ -828,7 +877,8 @@ impl ActiveShaderProgram {
     pub fn set_vec2(&self, name: &str, vector: &[f32; 2]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform2fv(
                 location,
                 1, // count
@@ -840,7 +890,8 @@ impl ActiveShaderProgram {
     pub fn set_vec4(&self, name: &str, vector: &[f32; 4]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform4fv(
                 location,
                 1, // count
@@ -852,7 +903,8 @@ impl ActiveShaderProgram {
     pub fn set_int(&self, name: &str, value: i32) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform1i(location, value);
         }
     }
@@ -860,7 +912,8 @@ impl ActiveShaderProgram {
     pub fn set_f32(&self, name: &str, value: f32) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let location = gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform1f(location, value);
         }
     }
@@ -871,19 +924,21 @@ impl ShaderProgram {
         unsafe {
             gl::UseProgram(self.id);
         }
-        ActiveShaderProgram {
-            id: self.id
-        }
+        ActiveShaderProgram { id: self.id }
     }
 
     pub fn from_shaders(shaders: &[Shader]) -> Result<ShaderProgram, String> {
         let program_id = unsafe { gl::CreateProgram() };
 
         for shader in shaders {
-            unsafe { gl::AttachShader(program_id, shader.id()); }
+            unsafe {
+                gl::AttachShader(program_id, shader.id());
+            }
         }
 
-        unsafe { gl::LinkProgram(program_id); }
+        unsafe {
+            gl::LinkProgram(program_id);
+        }
 
         let mut success: gl::types::GLint = 1;
         unsafe {
@@ -895,7 +950,9 @@ impl ShaderProgram {
         }
 
         for shader in shaders {
-            unsafe { gl::DetachShader(program_id, shader.id()); }
+            unsafe {
+                gl::DetachShader(program_id, shader.id());
+            }
         }
 
         Ok(ShaderProgram { id: program_id })
@@ -932,10 +989,10 @@ impl Drop for ShaderProgram {
 }
 
 fn create_whitespace_cstring_with_len(len: usize) -> CString {
-// allocate buffer of correct size
+    // allocate buffer of correct size
     let mut buffer: Vec<u8> = Vec::with_capacity(len + 1);
-// fill it with len spaces
+    // fill it with len spaces
     buffer.extend([b' '].iter().cycle().take(len));
-// convert buffer to CString
+    // convert buffer to CString
     unsafe { CString::from_vec_unchecked(buffer) }
 }

@@ -1,11 +1,11 @@
+use crate::components::char::{CastingSkillData, CharState, CharacterStateComponent, EntityTarget};
+use crate::components::controller::{ControllerAction, ControllerComponent, WorldCoords};
+use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render::DIRECTION_TABLE;
-use specs::prelude::*;
-use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, CastingSkillData};
-use crate::components::controller::{ControllerComponent, ControllerAction, WorldCoords};
+use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
-use crate::components::skills::skill::{Skills, SkillTargetType};
 use nalgebra::Vector2;
+use specs::prelude::*;
 
 pub struct CharacterControlSystem;
 
@@ -19,23 +19,29 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     );
 
     // TODO: it is not obvious what is the difference between this, input sys and char_state_sys
-    fn run(&mut self, (
+    fn run(
+        &mut self,
+        (
         entities,
         mut char_state_storage,
         controller_storage,
         system_vars,
         mut system_benchmark,
-    ): Self::SystemData) {
+    ): Self::SystemData,
+    ) {
         let stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
         let rng = rand::thread_rng();
         for controller in (&controller_storage).join() {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
 
-            let char_state = char_state_storage.get_mut(controller.char_entity_id).unwrap();
+            let char_state = char_state_storage
+                .get_mut(controller.char_entity_id)
+                .unwrap();
             match controller.next_action {
                 Some(ControllerAction::MoveOrAttackTo(pos)) => {
-                    char_state.target = if let Some(target_entity) = controller.entity_below_cursor {
+                    char_state.target = if let Some(target_entity) = controller.entity_below_cursor
+                    {
                         if target_entity != controller.char_entity_id {
                             Some(EntityTarget::OtherEntity(target_entity))
                         } else {
@@ -67,7 +73,6 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     }
 }
 
-
 impl CharacterControlSystem {
     pub fn try_cast_skill(
         skill: Skills,
@@ -82,11 +87,7 @@ impl CharacterControlSystem {
             (controller.mouse_world_pos, controller.entity_below_cursor)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
-        let allowed = skill.is_casting_allowed(
-            controller.char_entity_id,
-            target_entity,
-            distance,
-        );
+        let allowed = skill.is_casting_allowed(controller.char_entity_id, target_entity, distance);
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
@@ -104,28 +105,31 @@ impl CharacterControlSystem {
                 can_move: false,
                 skill,
                 target_area_pos: match skill.get_skill_target_type() {
-                    SkillTargetType::Area => { Some(target_pos) }
-                    _ => { None }
+                    SkillTargetType::Area => Some(target_pos),
+                    _ => None,
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if is_self_cast &&
-                controller
+            let dir = if is_self_cast
+                && controller
                     .entity_below_cursor
                     .map(|it| it == controller.char_entity_id)
-                    .is_some() { // skill on self, don't change direction
+                    .is_some()
+            {
+                // skill on self, don't change direction
                 char_state.dir()
             } else {
                 let char_pos = char_state.pos();
-                CharacterControlSystem::determine_dir(
-                    &target_pos,
-                    &char_pos,
-                )
+                CharacterControlSystem::determine_dir(&target_pos, &char_pos)
             };
             char_state.set_state(new_state, dir);
         } else {
-            log::debug!("Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
-                         skill, allowed, can_move);
+            log::debug!(
+                "Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
+                skill,
+                allowed,
+                can_move
+            );
         }
     }
 
@@ -136,7 +140,13 @@ impl CharacterControlSystem {
         // this calculation gives a different result which is shifted 90 degrees clockwise,
         // so it is 90 at [1;0].
         let dd = dir_vec.x.atan2(dir_vec.y).to_degrees() - 90.0;
-        let dd = if dd < 0.0 { dd + 360.0 } else if dd > 360.0 { dd - 360.0 } else { dd };
+        let dd = if dd < 0.0 {
+            dd + 360.0
+        } else if dd > 360.0 {
+            dd - 360.0
+        } else {
+            dd
+        };
         let dir_index = (dd / 45.0 + 0.5) as usize % 8;
         return DIRECTION_TABLE[dir_index];
     }

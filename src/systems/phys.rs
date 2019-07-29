@@ -1,10 +1,10 @@
-use crate::systems::{SystemVariables, SystemFrameDurations, CollisionsFromPrevFrame, Collision};
-use crate::{PhysicsWorld};
-use nalgebra::{Vector2};
-use specs::prelude::*;
-use crate::components::char::{PhysicsComponent, CharacterStateComponent};
+use crate::components::char::{CharacterStateComponent, PhysicsComponent};
+use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
+use crate::PhysicsWorld;
+use nalgebra::Vector2;
+use ncollide2d::events::ContactEvent;
 use ncollide2d::query::Proximity;
-use ncollide2d::events::{ContactEvent};
+use specs::prelude::*;
 
 pub struct PhysicsSystem;
 
@@ -19,13 +19,16 @@ impl<'a> specs::System<'a> for FrictionSystem {
         specs::ReadExpect<'a, SystemVariables>,
     );
 
-    fn run(&mut self, (
+    fn run(
+        &mut self,
+        (
         mut physics_world,
         mut system_benchmark,
         physics_storage,
         mut char_storage,
         system_vars,
-    ): Self::SystemData) {
+    ): Self::SystemData,
+    ) {
         let stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for (physics, char_state) in (&physics_storage, &mut char_storage).join() {
             let body = physics_world.rigid_body_mut(physics.body_handle).unwrap();
@@ -62,16 +65,19 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         specs::Write<'a, LazyUpdate>,
     );
 
-    fn run(&mut self, (
-        entities,
-        mut physics_world,
-        mut system_benchmark,
-        char_storage,
-        physics_storage,
-        system_vars,
-        mut collisions_resource,
-        updater,
-    ): Self::SystemData) {
+    fn run(
+        &mut self,
+        (
+            entities,
+            mut physics_world,
+            mut system_benchmark,
+            char_storage,
+            physics_storage,
+            system_vars,
+            mut collisions_resource,
+            updater,
+        ): Self::SystemData,
+    ) {
         let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
         physics_world.set_timestep(system_vars.dt.0);
@@ -80,54 +86,68 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         collisions_resource.collisions.clear();
 
         collisions_resource.collisions.extend(
-            physics_world.proximity_events().iter().map(|event| {
-                log::trace!("{:?}", event);
-                if event.new_status == Proximity::Intersecting {
-                    let collision = {
-                        let collider1 = physics_world.collider(event.collider1).unwrap();
-                        let collider1_body = collider1.body();
-                        let collider2 = physics_world.collider(event.collider2).unwrap();
-                        let collider2_body = collider2.body();
-                        if collider1_body.is_ground() {
-                            Collision {
-                                character_coll_handle: collider2.handle(),
-                                other_coll_handle: collider1.handle(),
+            physics_world
+                .proximity_events()
+                .iter()
+                .map(|event| {
+                    log::trace!("{:?}", event);
+                    if event.new_status == Proximity::Intersecting {
+                        let collision = {
+                            let collider1 = physics_world.collider(event.collider1).unwrap();
+                            let collider1_body = collider1.body();
+                            let collider2 = physics_world.collider(event.collider2).unwrap();
+                            let collider2_body = collider2.body();
+                            if collider1_body.is_ground() {
+                                Collision {
+                                    character_coll_handle: collider2.handle(),
+                                    other_coll_handle: collider1.handle(),
+                                }
+                            } else {
+                                Collision {
+                                    character_coll_handle: collider1.handle(),
+                                    other_coll_handle: collider2.handle(),
+                                }
                             }
-                        } else {
-                            Collision {
-                                character_coll_handle: collider1.handle(),
-                                other_coll_handle: collider2.handle(),
-                            }
-                        }
-                    };
-                    Some(collision)
-                } else { None }
-            }).filter(|it| it.is_some()).map(|it| it.unwrap())
+                        };
+                        Some(collision)
+                    } else {
+                        None
+                    }
+                })
+                .filter(|it| it.is_some())
+                .map(|it| it.unwrap()),
         );
         collisions_resource.collisions.extend(
-            physics_world.contact_events().iter().map(|event| {
-                log::trace!("{:?}", event);
-                if let ContactEvent::Started(handle1, handle2) = event {
-                    let collision = {
-                        let collider1 = physics_world.collider(*handle1).unwrap();
-                        let collider1_body = collider1.body();
-                        let collider2 = physics_world.collider(*handle2).unwrap();
-                        let collider2_body = collider2.body();
-                        if collider1_body.is_ground() {
-                            Collision {
-                                character_coll_handle: collider2.handle(),
-                                other_coll_handle: collider1.handle(),
+            physics_world
+                .contact_events()
+                .iter()
+                .map(|event| {
+                    log::trace!("{:?}", event);
+                    if let ContactEvent::Started(handle1, handle2) = event {
+                        let collision = {
+                            let collider1 = physics_world.collider(*handle1).unwrap();
+                            let collider1_body = collider1.body();
+                            let collider2 = physics_world.collider(*handle2).unwrap();
+                            let collider2_body = collider2.body();
+                            if collider1_body.is_ground() {
+                                Collision {
+                                    character_coll_handle: collider2.handle(),
+                                    other_coll_handle: collider1.handle(),
+                                }
+                            } else {
+                                Collision {
+                                    character_coll_handle: collider1.handle(),
+                                    other_coll_handle: collider2.handle(),
+                                }
                             }
-                        } else {
-                            Collision {
-                                character_coll_handle: collider1.handle(),
-                                other_coll_handle: collider2.handle(),
-                            }
-                        }
-                    };
-                    Some(collision)
-                } else { None }
-            }).filter(|it| it.is_some()).map(|it| it.unwrap())
+                        };
+                        Some(collision)
+                    } else {
+                        None
+                    }
+                })
+                .filter(|it| it.is_some())
+                .map(|it| it.unwrap()),
         );
     }
 }

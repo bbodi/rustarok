@@ -1,31 +1,31 @@
-use std::path::Path;
-use crate::asset::str::StrFile;
 use crate::asset::act::ActionFile;
-use crate::asset::spr::{SpriteTexture, SpriteFile};
-use crate::asset::rsw::Rsw;
-use crate::asset::gnd::Gnd;
 use crate::asset::gat::Gat;
-use std::fs::File;
-use std::io::Read;
-use std::io::prelude::*;
-use std::io::SeekFrom;
-use encoding::DecoderTrap;
-use encoding::types::Encoding;
+use crate::asset::gnd::Gnd;
 use crate::asset::rsm::Rsm;
+use crate::asset::rsw::Rsw;
+use crate::asset::spr::{SpriteFile, SpriteTexture};
+use crate::asset::str::StrFile;
 use crate::ModelName;
-use std::collections::HashMap;
+use encoding::types::Encoding;
+use encoding::DecoderTrap;
 use libflate::zlib::Decoder;
-use std::ops::*;
 use sdl2::image::ImageRWops;
 use sdl2::pixels::PixelFormatEnum;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::Read;
+use std::io::SeekFrom;
+use std::ops::*;
+use std::path::Path;
 
+pub mod act;
 pub mod gat;
-pub mod str;
-pub mod rsw;
 pub mod gnd;
 pub mod rsm;
-pub mod act;
+pub mod rsw;
 pub mod spr;
+pub mod str;
 
 const GRF_HEADER_SIZE: usize = 15 + 15 + 4 * 4;
 
@@ -54,9 +54,11 @@ pub struct GrfEntry {
 
 impl AssetLoader {
     pub fn new<P: AsRef<Path> + Clone>(paths: &[P]) -> Result<AssetLoader, std::io::Error> {
-        let readers: Result<Vec<BinaryReader>, std::io::Error> = paths.iter().enumerate().map(|(_i, path)| {
-            BinaryReader::new(path.clone())
-        }).collect();
+        let readers: Result<Vec<BinaryReader>, std::io::Error> = paths
+            .iter()
+            .enumerate()
+            .map(|(_i, path)| BinaryReader::new(path.clone()))
+            .collect();
         return match readers {
             Err(e) => Err(e),
             Ok(readers) => {
@@ -88,28 +90,47 @@ impl AssetLoader {
                         std::io::copy(&mut decoder, &mut out).unwrap();
 
                         let mut table_reader = BinaryReader::from_vec(out);
-                        let entries: HashMap<String, (usize, GrfEntry)> = (0..file_count).map(|_i| {
-                            let mut filename = String::new();
-                            loop {
-                                let ch = table_reader.next_u8();
-                                if ch == 0 {
-                                    break;
+                        let entries: HashMap<String, (usize, GrfEntry)> = (0..file_count)
+                            .map(|_i| {
+                                let mut filename = String::new();
+                                loop {
+                                    let ch = table_reader.next_u8();
+                                    if ch == 0 {
+                                        break;
+                                    }
+                                    filename.push(ch as char);
                                 }
-                                filename.push(ch as char);
-                            }
-                            let entry = GrfEntry {
-                                pack_size: table_reader.next_u8() as u32 | (table_reader.next_u8() as u32).shl(8) | (table_reader.next_u8() as u32).shl(16) | (table_reader.next_u8() as u32).shl(24),
-                                length_aligned: table_reader.next_u8() as u32 | (table_reader.next_u8() as u32).shl(8) | (table_reader.next_u8() as u32).shl(16) | (table_reader.next_u8() as u32).shl(24),
-                                real_size: table_reader.next_u8() as u32 | (table_reader.next_u8() as u32).shl(8) | (table_reader.next_u8() as u32).shl(16) | (table_reader.next_u8() as u32).shl(24),
-                                typ: table_reader.next_u8(),
-                                offset: table_reader.next_u8() as u32 | (table_reader.next_u8() as u32).shl(8) | (table_reader.next_u8() as u32).shl(16) | (table_reader.next_u8() as u32).shl(24),
-                            };
-                            (filename.to_ascii_lowercase(), (file_index, entry))
-                        }).collect();
+                                let entry = GrfEntry {
+                                    pack_size: table_reader.next_u8() as u32
+                                        | (table_reader.next_u8() as u32).shl(8)
+                                        | (table_reader.next_u8() as u32).shl(16)
+                                        | (table_reader.next_u8() as u32).shl(24),
+                                    length_aligned: table_reader.next_u8() as u32
+                                        | (table_reader.next_u8() as u32).shl(8)
+                                        | (table_reader.next_u8() as u32).shl(16)
+                                        | (table_reader.next_u8() as u32).shl(24),
+                                    real_size: table_reader.next_u8() as u32
+                                        | (table_reader.next_u8() as u32).shl(8)
+                                        | (table_reader.next_u8() as u32).shl(16)
+                                        | (table_reader.next_u8() as u32).shl(24),
+                                    typ: table_reader.next_u8(),
+                                    offset: table_reader.next_u8() as u32
+                                        | (table_reader.next_u8() as u32).shl(8)
+                                        | (table_reader.next_u8() as u32).shl(16)
+                                        | (table_reader.next_u8() as u32).shl(24),
+                                };
+                                (filename.to_ascii_lowercase(), (file_index, entry))
+                            })
+                            .collect();
                         entries
-                    }).flatten().collect();
+                    })
+                    .flatten()
+                    .collect();
                 Ok(AssetLoader {
-                    paths: paths.iter().map(|path| path.as_ref().to_str().unwrap().to_owned()).collect(),
+                    paths: paths
+                        .iter()
+                        .map(|path| path.as_ref().to_str().unwrap().to_owned())
+                        .collect(),
                     entries,
                 })
             }
@@ -118,20 +139,20 @@ impl AssetLoader {
 
     /// Clones backup surfaces, quite inefficient to share one surface...
     pub fn backup_surface(&self) -> sdl2::surface::Surface {
-        let mut missing_texture = sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGBA8888).unwrap();
-        missing_texture.fill_rect(None, sdl2::pixels::Color::RGB(255, 20, 147)).unwrap();
+        let mut missing_texture =
+            sdl2::surface::Surface::new(256, 256, PixelFormatEnum::RGBA8888).unwrap();
+        missing_texture
+            .fill_rect(None, sdl2::pixels::Color::RGB(255, 20, 147))
+            .unwrap();
         missing_texture
     }
-
 
     pub fn exists(&self, file_name: &str) -> bool {
         self.entries.get(file_name).is_some()
     }
 
     pub fn get_entry_names(&self) -> Vec<String> {
-        self.entries.keys()
-            .map(|it| it.to_owned())
-            .collect()
+        self.entries.keys().map(|it| it.to_owned()).collect()
     }
 
     pub fn get_content(&self, file_name: &str) -> Result<Vec<u8>, String> {
@@ -140,8 +161,13 @@ impl AssetLoader {
                 let mut f = File::open(&self.paths[*path_index]).unwrap();
 
                 let mut buf = Vec::<u8>::with_capacity(entry.length_aligned as usize);
-                f.seek(SeekFrom::Start(entry.offset as u64 + GRF_HEADER_SIZE as u64)).expect(&format!("Could not get {}", file_name));
-                f.take(entry.length_aligned as u64).read_to_end(&mut buf).expect(&format!("Could not get {}", file_name));
+                f.seek(SeekFrom::Start(
+                    entry.offset as u64 + GRF_HEADER_SIZE as u64,
+                ))
+                .expect(&format!("Could not get {}", file_name));
+                f.take(entry.length_aligned as u64)
+                    .read_to_end(&mut buf)
+                    .expect(&format!("Could not get {}", file_name));
 
                 if entry.typ & GRF_FILELIST_TYPE_ENCRYPT_MIXED != 0 {
                     panic!("'{}' is encrypted!", file_name);
@@ -153,7 +179,7 @@ impl AssetLoader {
                 std::io::copy(&mut decoder, &mut out).unwrap();
                 return Ok(out);
             }
-            None => Err(format!("Could not load '{}'", file_name))
+            None => Err(format!("Could not load '{}'", file_name)),
         };
     }
 
@@ -169,7 +195,8 @@ impl AssetLoader {
     }
 
     pub fn read_dir(&self, dir_name: &str) -> Vec<String> {
-        self.get_entry_names().into_iter()
+        self.get_entry_names()
+            .into_iter()
             .filter(|it| it.starts_with(dir_name))
             .collect()
     }
@@ -177,7 +204,11 @@ impl AssetLoader {
     pub fn load_effect(&self, effect_name: &str) -> Result<StrFile, String> {
         let file_name = format!("data\\texture\\effect\\{}.str", effect_name);
         let content = self.get_content(&file_name)?;
-        return Ok(StrFile::load(&self, BinaryReader::from_vec(content), effect_name));
+        return Ok(StrFile::load(
+            &self,
+            BinaryReader::from_vec(content),
+            effect_name,
+        ));
     }
 
     pub fn load_map(&self, map_name: &str) -> Result<Rsw, String> {
@@ -198,12 +229,19 @@ impl AssetLoader {
         return Ok(Rsm::load(BinaryReader::from_vec(content)));
     }
 
-    pub fn load_gnd(&self, map_name: &str, water_level: f32, water_height: f32) -> Result<Gnd, String> {
+    pub fn load_gnd(
+        &self,
+        map_name: &str,
+        water_level: f32,
+        water_height: f32,
+    ) -> Result<Gnd, String> {
         let file_name = format!("data\\{}.gnd", map_name);
         let content = self.get_content(&file_name)?;
-        return Ok(Gnd::load(BinaryReader::from_vec(content),
-                            water_level,
-                            water_height));
+        return Ok(Gnd::load(
+            BinaryReader::from_vec(content),
+            water_level,
+            water_height,
+        ));
     }
 
     pub fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
@@ -218,17 +256,19 @@ impl AssetLoader {
         let mut optimized_surf = sdl2::surface::Surface::new(
             surface.width(),
             surface.height(),
-            PixelFormatEnum::RGBA32)?;
-        surface.set_color_key(true, sdl2::pixels::Color::RGB(255, 0, 255)).unwrap();
+            PixelFormatEnum::RGBA32,
+        )?;
+        surface
+            .set_color_key(true, sdl2::pixels::Color::RGB(255, 0, 255))
+            .unwrap();
         surface.blit(None, &mut optimized_surf, None)?;
         return Ok(optimized_surf);
     }
 
     pub fn load_spr_and_act(&self, path: &str) -> Result<SpriteResource, String> {
         let content = self.get_content(&format!("{}.spr", path))?;
-        let frames: Vec<SpriteTexture> = SpriteFile::load(
-            BinaryReader::from_vec(content)
-        ).frames
+        let frames: Vec<SpriteTexture> = SpriteFile::load(BinaryReader::from_vec(content))
+            .frames
             .into_iter()
             .map(|frame| SpriteTexture::from(frame))
             .collect();
@@ -254,25 +294,25 @@ struct BinaryReader {
 }
 
 impl BinaryReader {
-    pub fn tell(&self) -> usize { self.index }
+    pub fn tell(&self) -> usize {
+        self.index
+    }
 
-    pub fn len(&self) -> usize { self.buf.len() }
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
 
     pub fn new<P: AsRef<Path> + Clone>(path: P) -> Result<BinaryReader, std::io::Error> {
         let mut buf = BinaryReader {
             buf: Vec::new(),
             index: 0,
         };
-        let _read = File::open(path)?
-            .read_to_end(&mut buf.buf)?;
+        let _read = File::open(path)?.read_to_end(&mut buf.buf)?;
         return Ok(buf);
     }
 
     pub fn from_vec(vec: Vec<u8>) -> BinaryReader {
-        BinaryReader {
-            buf: vec,
-            index: 0,
-        }
+        BinaryReader { buf: vec, index: 0 }
     }
 
     pub fn next_u8(&mut self) -> u8 {
@@ -288,9 +328,7 @@ impl BinaryReader {
             self.buf[self.index + 3],
         ];
         self.index += 4;
-        unsafe {
-            std::mem::transmute(bytes)
-        }
+        unsafe { std::mem::transmute(bytes) }
     }
 
     pub fn next_i32(&mut self) -> i32 {
@@ -316,10 +354,7 @@ impl BinaryReader {
     }
 
     pub fn next_u16(&mut self) -> u16 {
-        let bytes = [
-            self.buf[self.index],
-            self.buf[self.index + 1],
-        ];
+        let bytes = [self.buf[self.index], self.buf[self.index + 1]];
         self.index += 2;
         u16::from_le_bytes(bytes)
     }
@@ -327,14 +362,18 @@ impl BinaryReader {
     pub fn string(&mut self, max_len: u32) -> String {
         let i = self.index;
         self.index += max_len as usize;
-        let bytes: Vec<u8> = self.buf.iter()
+        let bytes: Vec<u8> = self
+            .buf
+            .iter()
             .skip(i)
             .take(max_len as usize)
             .take_while(|b| **b != 0)
             .map(|b| *b)
             .collect();
-        let decoded = encoding::all::WINDOWS_1252.decode(&bytes, DecoderTrap::Strict).unwrap();
-//        return String::from_utf8(encoding::all::UTF_8.encode(&decoded, EncoderTrap::Strict).unwrap()).unwrap();
+        let decoded = encoding::all::WINDOWS_1252
+            .decode(&bytes, DecoderTrap::Strict)
+            .unwrap();
+        //        return String::from_utf8(encoding::all::UTF_8.encode(&decoded, EncoderTrap::Strict).unwrap()).unwrap();
         decoded
     }
 

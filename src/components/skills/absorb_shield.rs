@@ -1,15 +1,15 @@
-use crate::components::status::{Status, StatusUpdateResult, StatusType};
-use crate::components::char::CharAttributes;
-use crate::consts::JobId;
-use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::asset::SpriteResource;
-use specs::{Entity, LazyUpdate};
+use crate::components::char::CharAttributes;
 use crate::components::controller::WorldCoords;
-use crate::ElapsedTime;
-use crate::systems::render::RenderDesktopClientSystem;
-use crate::components::{AttackType, AttackComponent, ApplyForceComponent};
+use crate::components::status::{Status, StatusType, StatusUpdateResult};
+use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
+use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::ElapsedTime;
 use nalgebra::Matrix4;
+use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
 pub struct AbsorbStatus {
@@ -19,7 +19,6 @@ pub struct AbsorbStatus {
     pub until: ElapsedTime,
     pub absorbed_damage: u32,
 }
-
 
 impl AbsorbStatus {
     pub fn new(caster_entity_id: Entity, now: ElapsedTime) -> AbsorbStatus {
@@ -34,28 +33,41 @@ impl AbsorbStatus {
 }
 
 impl Status for AbsorbStatus {
-    fn dupl(&self) -> Box<dyn Status> { Box::new(self.clone()) }
+    fn dupl(&self) -> Box<dyn Status> {
+        Box::new(self.clone())
+    }
 
-    fn can_target_move(&self) -> bool { true }
+    fn can_target_move(&self) -> bool {
+        true
+    }
 
-    fn typ(&self) -> StatusType { StatusType::Supportive }
+    fn typ(&self) -> StatusType {
+        StatusType::Supportive
+    }
 
-    fn can_target_cast(&self) -> bool { true }
+    fn can_target_cast(&self) -> bool {
+        true
+    }
 
-    fn get_render_color(&self) -> [f32; 4] { [1.0, 1.0, 1.0, 1.0] }
+    fn get_render_color(&self) -> [f32; 4] {
+        [1.0, 1.0, 1.0, 1.0]
+    }
 
-    fn get_render_size(&self) -> f32 { 1.0 }
+    fn get_render_size(&self) -> f32 {
+        1.0
+    }
 
     fn calc_attribs(&self, attributes: &mut CharAttributes) {}
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id:
-        JobId,
+        job_id: JobId,
         head_index: usize,
         sex: Sex,
         sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource> { None }
+    ) -> Option<&'a SpriteResource> {
+        None
+    }
 
     fn update(
         &mut self,
@@ -66,16 +78,18 @@ impl Status for AbsorbStatus {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
-            system_vars.attacks.push(
-                AttackComponent {
-                    src_entity: self.caster_entity_id,
-                    dst_entity: self_char_id,
-                    typ: AttackType::Heal(self.absorbed_damage),
-                }
-            );
+            system_vars.attacks.push(AttackComponent {
+                src_entity: self.caster_entity_id,
+                dst_entity: self_char_id,
+                typ: AttackType::Heal(self.absorbed_damage),
+            });
             StatusUpdateResult::RemoveIt
         } else {
-            if self.animation_started.add_seconds(2.0).has_passed(system_vars.time) {
+            if self
+                .animation_started
+                .add_seconds(2.0)
+                .has_passed(system_vars.time)
+            {
                 self.animation_started = system_vars.time.add_seconds(-1.9);
             }
             StatusUpdateResult::KeepIt
@@ -86,26 +100,32 @@ impl Status for AbsorbStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>) {
-        RenderDesktopClientSystem::render_str("ramadan",
-                                              self.animation_started,
-                                              char_pos,
-                                              system_vars,
-                                              view_matrix);
+        view_matrix: &Matrix4<f32>,
+    ) {
+        RenderDesktopClientSystem::render_str(
+            "ramadan",
+            self.animation_started,
+            char_pos,
+            system_vars,
+            view_matrix,
+        );
     }
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         match outcome {
-            AttackOutcome::Damage(value) | AttackOutcome::Poison(value) |
-            AttackOutcome::Crit(value) => {
+            AttackOutcome::Damage(value)
+            | AttackOutcome::Poison(value)
+            | AttackOutcome::Crit(value) => {
                 self.absorbed_damage += value;
                 AttackOutcome::Absorb
             }
-            _ => { outcome }
+            _ => outcome,
         }
     }
 
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool { false }
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+        false
+    }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
         Some(now.percentage_between(self.started, self.until))

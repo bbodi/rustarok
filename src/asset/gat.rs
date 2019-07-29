@@ -1,8 +1,8 @@
 use std::fs::File;
 
-use byteorder::{ReadBytesExt, LittleEndian};
-use byteorder::WriteBytesExt;
 use crate::asset::BinaryReader;
+use byteorder::WriteBytesExt;
+use byteorder::{LittleEndian, ReadBytesExt};
 
 pub enum CellType {
     None = 1 << 0,
@@ -29,18 +29,21 @@ pub struct Gat {
 
 impl Gat {
     pub fn is_walkable(&self, x: usize, y: usize) -> bool {
-        self.cells.get(y * self.width as usize + x).map(|it| it.cell_type & CellType::Walkable as u8 != 0).unwrap_or(false)
+        self.cells
+            .get(y * self.width as usize + x)
+            .map(|it| it.cell_type & CellType::Walkable as u8 != 0)
+            .unwrap_or(false)
     }
 }
 
 static TYPE_TABLE: [u8; 7] = [
-    CellType::Walkable as u8 | CellType::Snipable as u8,                  // walkable ground
-    CellType::None as u8,                                          // non-walkable ground
-    CellType::Walkable as u8 | CellType::Snipable as u8,                  // ???
+    CellType::Walkable as u8 | CellType::Snipable as u8, // walkable ground
+    CellType::None as u8,                                // non-walkable ground
+    CellType::Walkable as u8 | CellType::Snipable as u8, // ???
     CellType::Walkable as u8 | CellType::Snipable as u8 | CellType::Water as u8, // walkable water
-    CellType::Walkable as u8 | CellType::Snipable as u8,                  // ???
-    CellType::Snipable as u8,                                      // gat (snipable)
-    CellType::Walkable as u8 | CellType::Snipable as u8                   // ???
+    CellType::Walkable as u8 | CellType::Snipable as u8, // ???
+    CellType::Snipable as u8,                            // gat (snipable)
+    CellType::Walkable as u8 | CellType::Snipable as u8, // ???
 ];
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -62,15 +65,17 @@ impl Gat {
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         let width = buf.next_u32();
         let height = buf.next_u32();
-        let cells: Vec<GatCell> = (0..width * height).map(|_i| {
-            GatCell {
-                cells: [buf.next_f32() * 0.2,
+        let cells: Vec<GatCell> = (0..width * height)
+            .map(|_i| GatCell {
+                cells: [
                     buf.next_f32() * 0.2,
                     buf.next_f32() * 0.2,
-                    buf.next_f32() * 0.2],
+                    buf.next_f32() * 0.2,
+                    buf.next_f32() * 0.2,
+                ],
                 cell_type: TYPE_TABLE[buf.next_u32() as usize],
-            }
-        }).collect();
+            })
+            .collect();
         let rectangles = if let Ok(mut cache_file) = File::open(map_name.to_owned() + ".cel") {
             let mut rectangles = vec![];
             loop {
@@ -78,25 +83,35 @@ impl Gat {
                 if area.is_err() {
                     break;
                 }
-                rectangles.push(
-                    BlockingRectangle {
-                        area: area.unwrap() as i32,
-                        start_x: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
-                        bottom: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
-                        width: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
-                        height: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
-                    });
+                rectangles.push(BlockingRectangle {
+                    area: area.unwrap() as i32,
+                    start_x: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                    bottom: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                    width: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                    height: cache_file.read_u16::<LittleEndian>().unwrap() as i32,
+                });
             }
             rectangles
         } else {
-            let rectangles = Gat::merge_cells_into_convex_rectangles(&cells, width as usize, height as usize);
+            let rectangles =
+                Gat::merge_cells_into_convex_rectangles(&cells, width as usize, height as usize);
             let mut cache_file = File::create(map_name.to_owned() + ".cel").unwrap();
             for rectangle in rectangles.iter() {
-                cache_file.write_u32::<LittleEndian>(rectangle.area as u32).unwrap();
-                cache_file.write_u16::<LittleEndian>(rectangle.start_x as u16).unwrap();
-                cache_file.write_u16::<LittleEndian>(rectangle.bottom as u16).unwrap();
-                cache_file.write_u16::<LittleEndian>(rectangle.width as u16).unwrap();
-                cache_file.write_u16::<LittleEndian>(rectangle.height as u16).unwrap();
+                cache_file
+                    .write_u32::<LittleEndian>(rectangle.area as u32)
+                    .unwrap();
+                cache_file
+                    .write_u16::<LittleEndian>(rectangle.start_x as u16)
+                    .unwrap();
+                cache_file
+                    .write_u16::<LittleEndian>(rectangle.bottom as u16)
+                    .unwrap();
+                cache_file
+                    .write_u16::<LittleEndian>(rectangle.width as u16)
+                    .unwrap();
+                cache_file
+                    .write_u16::<LittleEndian>(rectangle.height as u16)
+                    .unwrap();
             }
             rectangles
         };
@@ -110,19 +125,27 @@ impl Gat {
         }
     }
 
-    fn merge_cells_into_convex_rectangles(cells: &[GatCell], width: usize, height: usize) -> Vec<BlockingRectangle> {
-        let mut non_walkable_cells: Vec<bool> = cells.iter().map(|c| {
-            c.cell_type & CellType::Walkable as u8 == 0
-        }).collect();
+    fn merge_cells_into_convex_rectangles(
+        cells: &[GatCell],
+        width: usize,
+        height: usize,
+    ) -> Vec<BlockingRectangle> {
+        let mut non_walkable_cells: Vec<bool> = cells
+            .iter()
+            .map(|c| c.cell_type & CellType::Walkable as u8 == 0)
+            .collect();
         dbg!(non_walkable_cells.iter().filter(|&&it| it).count());
 
         let mut rectangles: Vec<BlockingRectangle> = Vec::new();
         loop {
             let largest_rect = {
-                let row_areas = Gat::calc_area_of_continous_convex_cells(&non_walkable_cells, width, height);
-                row_areas.iter().max_by(|x, y| {
-                    x.area.cmp(&y.area)
-                }).unwrap().clone()
+                let row_areas =
+                    Gat::calc_area_of_continous_convex_cells(&non_walkable_cells, width, height);
+                row_areas
+                    .iter()
+                    .max_by(|x, y| x.area.cmp(&y.area))
+                    .unwrap()
+                    .clone()
             };
             // remove the max rectangle
             let start_y = largest_rect.bottom - (largest_rect.height - 1);
@@ -138,7 +161,11 @@ impl Gat {
             rectangles.push(largest_rect);
             if area == 1 {
                 // all the rectangles are a unit tile
-                for (i, _non_walkable) in non_walkable_cells.iter().enumerate().filter(|(_i, &non_walkable)| non_walkable) {
+                for (i, _non_walkable) in non_walkable_cells
+                    .iter()
+                    .enumerate()
+                    .filter(|(_i, &non_walkable)| non_walkable)
+                {
                     let x = i % width;
                     let y = i / width;
                     rectangles.push(BlockingRectangle {
@@ -158,7 +185,11 @@ impl Gat {
         return rectangles;
     }
 
-    fn calc_area_of_continous_convex_cells(cells: &[bool], width: usize, height: usize) -> Vec<BlockingRectangle> {
+    fn calc_area_of_continous_convex_cells(
+        cells: &[bool],
+        width: usize,
+        height: usize,
+    ) -> Vec<BlockingRectangle> {
         let mut heights = vec![0; (width * height) as usize];
         let mut row_heights = Vec::<BlockingRectangle>::with_capacity(height);
         for (i, _cell) in cells.iter().enumerate() {
@@ -174,9 +205,11 @@ impl Gat {
                 }
             }
 
-            if (x + 1) % width == 0 && x > 1 { // row is ready
+            if (x + 1) % width == 0 && x > 1 {
+                // row is ready
                 let row = &heights[y * width..(y * width) + width];
-                let (area, start_x, width, height) = Gat::largest_rectangle_until_this_row(row, width);
+                let (area, start_x, width, height) =
+                    Gat::largest_rectangle_until_this_row(row, width);
                 row_heights.push(BlockingRectangle {
                     area,
                     start_x,
@@ -227,9 +260,18 @@ mod tests {
 
     #[test]
     fn test2() {
-        assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 1, 0, 0, 1, 0], 6), (2, 0, 2, 1));
-        assert_eq!(Gat::largest_rectangle_until_this_row(&[1, 3, 2, 2, 3, 0], 6), (8, 1, 4, 2));
-        assert_eq!(Gat::largest_rectangle_until_this_row(&[0, 0, 0, 0, 0, 0], 6), (0, 0, 0, 0));
+        assert_eq!(
+            Gat::largest_rectangle_until_this_row(&[1, 1, 0, 0, 1, 0], 6),
+            (2, 0, 2, 1)
+        );
+        assert_eq!(
+            Gat::largest_rectangle_until_this_row(&[1, 3, 2, 2, 3, 0], 6),
+            (8, 1, 4, 2)
+        );
+        assert_eq!(
+            Gat::largest_rectangle_until_this_row(&[0, 0, 0, 0, 0, 0], 6),
+            (0, 0, 0, 0)
+        );
     }
 
     #[test]
@@ -293,8 +335,11 @@ mod tests {
                 bottom: 3,
                 width: 2,
                 height: 3,
-            }
+            },
         ];
-        assert_eq!(Gat::calc_area_of_continous_convex_cells(&input, 6, 4), expected_output);
+        assert_eq!(
+            Gat::calc_area_of_continous_convex_cells(&input, 6, 4),
+            expected_output
+        );
     }
 }

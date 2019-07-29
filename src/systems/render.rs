@@ -1,18 +1,26 @@
-use nalgebra::{Matrix4, Vector3, Rotation3, Vector2, Matrix3, Vector4};
-use crate::video::{VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH, TEXTURE_0, TEXTURE_1, TEXTURE_2, ShaderProgram, draw_circle_inefficiently};
-use crate::video::VertexAttribDefinition;
-use specs::prelude::*;
-use crate::systems::{SystemVariables, SystemFrameDurations};
-use crate::{Shaders, MapRenderData, SpriteResource, PhysicsWorld, ElapsedTime};
-use std::collections::HashMap;
-use crate::cam::Camera;
-use crate::components::controller::{ControllerComponent, WorldCoords};
-use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent, FlyingNumberType};
-use crate::components::char::{PhysicsComponent, CharacterStateComponent, ComponentRadius, SpriteBoundingRect, SpriteRenderDescriptorComponent, CharState, CharType, CharOutlook};
 use crate::asset::str::KeyFrameType;
-use crate::components::skills::skill::{Skills, SkillTargetType, SkillManifestationComponent};
+use crate::cam::Camera;
 use crate::common::v2_to_v3;
+use crate::components::char::{
+    CharOutlook, CharState, CharType, CharacterStateComponent, ComponentRadius, PhysicsComponent,
+    SpriteBoundingRect, SpriteRenderDescriptorComponent,
+};
+use crate::components::controller::{ControllerComponent, WorldCoords};
+use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
+use crate::components::{
+    BrowserClient, FlyingNumberComponent, FlyingNumberType, StrEffectComponent,
+};
 use crate::systems::ui::RenderUI;
+use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::video::VertexAttribDefinition;
+use crate::video::{
+    draw_circle_inefficiently, ShaderProgram, VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2,
+    VIDEO_HEIGHT, VIDEO_WIDTH,
+};
+use crate::{ElapsedTime, MapRenderData, PhysicsWorld, Shaders, SpriteResource};
+use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use specs::prelude::*;
+use std::collections::HashMap;
 
 /// The values that should be added to the sprite direction based on the camera
 /// direction (the index is the camera direction, which is floor(angle/45)
@@ -20,7 +28,6 @@ pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 
 // todo: Move it into GPU?
 pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0;
-
 
 pub struct RenderDesktopClientSystem {
     rectangle_vao: VertexArray,
@@ -32,43 +39,41 @@ pub struct RenderDesktopClientSystem {
 
 impl RenderDesktopClientSystem {
     pub fn new() -> RenderDesktopClientSystem {
-        let s: Vec<[f32; 2]> = vec![
-            [0.0, 1.0],
-            [1.0, 1.0],
-            [0.0, 0.0],
-            [1.0, 0.0]
-        ];
+        let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
 
-        let capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray> = [1, 2, 3, 4].iter().map(|radius| {
-            let capsule_mesh = ncollide2d::procedural::circle(
-                &(*radius as f32 * 0.5 * 2.0),
-                32,
-            );
+        let capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray> = [1, 2, 3, 4]
+            .iter()
+            .map(|radius| {
+                let capsule_mesh =
+                    ncollide2d::procedural::circle(&(*radius as f32 * 0.5 * 2.0), 32);
 
-            let coords = capsule_mesh.coords();
-            (ComponentRadius(*radius), VertexArray::new(
-                gl::LINE_LOOP,
-                coords,
-                coords.len(),
-                vec![
-                    VertexAttribDefinition {
-                        number_of_components: 2,
-                        offset_of_first_element: 0,
-                    }
-                ])
-            )
-        }).collect();
+                let coords = capsule_mesh.coords();
+                (
+                    ComponentRadius(*radius),
+                    VertexArray::new(
+                        gl::LINE_LOOP,
+                        coords,
+                        coords.len(),
+                        vec![VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 0,
+                        }],
+                    ),
+                )
+            })
+            .collect();
 
         RenderDesktopClientSystem {
             capsule_vertex_arrays,
             rectangle_vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
-                &s, 4, vec![
-                    VertexAttribDefinition {
-                        number_of_components: 2,
-                        offset_of_first_element: 0,
-                    }
-                ]),
+                &s,
+                4,
+                vec![VertexAttribDefinition {
+                    number_of_components: 2,
+                    offset_of_first_element: 0,
+                }],
+            ),
             damage_render_sys: DamageRenderSystem::new(),
             render_ui_sys: RenderUI::new(),
         }
@@ -97,7 +102,11 @@ impl RenderDesktopClientSystem {
             let pos = body.unwrap().position().translation.vector;
             let pos = v3!(pos.x, 0.05, pos.y);
             matrix.prepend_translation_mut(&pos);
-            let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::x()), std::f32::consts::FRAC_PI_2).to_homogeneous();
+            let rotation = Rotation3::from_axis_angle(
+                &nalgebra::Unit::new_normalize(Vector3::x()),
+                std::f32::consts::FRAC_PI_2,
+            )
+            .to_homogeneous();
             matrix = matrix * rotation;
 
             let shader = system_vars.shaders.trimesh_shader.gl_use();
@@ -109,7 +118,10 @@ impl RenderDesktopClientSystem {
             self.capsule_vertex_arrays[&physics.radius].bind().draw();
         }
 
-        let char_pos = char_state_storage.get(controller.char_entity_id).unwrap().pos();
+        let char_pos = char_state_storage
+            .get(controller.char_entity_id)
+            .unwrap()
+            .pos();
         render_client(
             &char_pos,
             &controller.camera,
@@ -121,13 +133,15 @@ impl RenderDesktopClientSystem {
 
         if let Some((skill_key, skill)) = controller.is_selecting_target() {
             let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
-            draw_circle_inefficiently(&system_vars.shaders.trimesh_shader,
-                                      &system_vars.matrices.projection,
-                                      &controller.view_matrix,
-                                      &char_state.pos(),
-                                      0.0,
-                                      skill.get_casting_range(),
-                                      &[0.0, 1.0, 0.0, 1.0]);
+            draw_circle_inefficiently(
+                &system_vars.shaders.trimesh_shader,
+                &system_vars.matrices.projection,
+                &controller.view_matrix,
+                &char_state.pos(),
+                0.0,
+                skill.get_casting_range(),
+                &[0.0, 1.0, 0.0, 1.0],
+            );
             if skill.get_skill_target_type() == SkillTargetType::Area {
                 let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
                     &char_pos,
@@ -155,9 +169,9 @@ impl RenderDesktopClientSystem {
         }
 
         // Draw players
-        for (entity_id, animated_sprite, char_state) in (entities,
-                                                         sprite_storage,
-                                                         char_state_storage).join() {
+        for (entity_id, animated_sprite, char_state) in
+            (entities, sprite_storage, char_state_storage).join()
+        {
             // for autocompletion
             let char_state: &CharacterStateComponent = char_state;
 
@@ -165,7 +179,11 @@ impl RenderDesktopClientSystem {
             let is_dead = char_state.state().is_dead();
             let color = char_state.statuses.calc_render_color();
             match char_state.outlook {
-                CharOutlook::Player { job_id, head_index, sex } => {
+                CharOutlook::Player {
+                    job_id,
+                    head_index,
+                    sex,
+                } => {
                     let body_sprite = char_state.statuses.calc_render_sprite(
                         job_id,
                         head_index,
@@ -176,55 +194,67 @@ impl RenderDesktopClientSystem {
                         let sprites = &system_vars.sprites.head_sprites;
                         &sprites[sex as usize][head_index]
                     };
-                    if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
-                        let (pos_offset, _body_bounding_rect) = render_sprite(&system_vars,
-                                                                              &animated_sprite,
-                                                                              body_sprite,
-                                                                              &controller.view_matrix,
-                                                                              controller.yaw,
-                                                                              &pos,
-                                                                              [0, 0],
-                                                                              true,
-                                                                              1.1,
-                                                                              is_dead,
-                                                                              &[0.0, 0.0, 1.0, 0.4]);
+                    if controller
+                        .entity_below_cursor
+                        .filter(|it| *it == entity_id)
+                        .is_some()
+                    {
+                        let (pos_offset, _body_bounding_rect) = render_sprite(
+                            &system_vars,
+                            &animated_sprite,
+                            body_sprite,
+                            &controller.view_matrix,
+                            controller.yaw,
+                            &pos,
+                            [0, 0],
+                            true,
+                            1.1,
+                            is_dead,
+                            &[0.0, 0.0, 1.0, 0.4],
+                        );
 
-                        let (_head_pos_offset, _head_bounding_rect) = render_sprite(&system_vars,
-                                                                                    &animated_sprite,
-                                                                                    head_res,
-                                                                                    &controller.view_matrix,
-                                                                                    controller.yaw,
-                                                                                    &pos,
-                                                                                    pos_offset,
-                                                                                    false,
-                                                                                    1.1,
-                                                                                    is_dead,
-                                                                                    &[0.0, 0.0, 1.0, 0.5]);
+                        let (_head_pos_offset, _head_bounding_rect) = render_sprite(
+                            &system_vars,
+                            &animated_sprite,
+                            head_res,
+                            &controller.view_matrix,
+                            controller.yaw,
+                            &pos,
+                            pos_offset,
+                            false,
+                            1.1,
+                            is_dead,
+                            &[0.0, 0.0, 1.0, 0.5],
+                        );
                     }
 
                     // todo: kell a pos_offset még mindig? (bounding rect)
-                    let (pos_offset, mut body_bounding_rect) = render_sprite(&system_vars,
-                                                                         &animated_sprite,
-                                                                         body_sprite,
-                                                                         &controller.view_matrix,
-                                                                         controller.yaw,
-                                                                         &pos,
-                                                                         [0, 0],
-                                                                         true,
-                                                                         1.0,
-                                                                         is_dead,
-                                                                         &color);
-                    let (head_pos_offset, head_bounding_rect) = render_sprite(&system_vars,
-                                                                              &animated_sprite,
-                                                                              head_res,
-                                                                              &controller.view_matrix,
-                                                                              controller.yaw,
-                                                                              &pos,
-                                                                              pos_offset,
-                                                                              false,
-                                                                              1.0,
-                                                                              is_dead,
-                                                                              &color);
+                    let (pos_offset, mut body_bounding_rect) = render_sprite(
+                        &system_vars,
+                        &animated_sprite,
+                        body_sprite,
+                        &controller.view_matrix,
+                        controller.yaw,
+                        &pos,
+                        [0, 0],
+                        true,
+                        1.0,
+                        is_dead,
+                        &color,
+                    );
+                    let (head_pos_offset, head_bounding_rect) = render_sprite(
+                        &system_vars,
+                        &animated_sprite,
+                        head_res,
+                        &controller.view_matrix,
+                        controller.yaw,
+                        &pos,
+                        pos_offset,
+                        false,
+                        1.0,
+                        is_dead,
+                        &color,
+                    );
 
                     body_bounding_rect.merge(&head_bounding_rect);
 
@@ -236,43 +266,51 @@ impl RenderDesktopClientSystem {
                             controller.char_entity_id == entity_id,
                             &char_state,
                             system_vars.time,
-                            &body_bounding_rect
+                            &body_bounding_rect,
                         );
                     }
 
-                    controller.bounding_rect_2d.insert(
-                        entity_id, body_bounding_rect
-                    );
+                    controller
+                        .bounding_rect_2d
+                        .insert(entity_id, body_bounding_rect);
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
                         let sprites = &system_vars.sprites.monster_sprites;
                         &sprites[&monster_id]
                     };
-                    if controller.entity_below_cursor.filter(|it| *it == entity_id).is_some() {
-                        let (_pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                         &animated_sprite,
-                                                                         body_res,
-                                                                         &controller.view_matrix,
-                                                                         controller.yaw,
-                                                                         &pos,
-                                                                         [0, 0],
-                                                                         true,
-                                                                         1.1,
-                                                                         is_dead,
-                                                                         &[0.0, 0.0, 1.0, 0.5]);
+                    if controller
+                        .entity_below_cursor
+                        .filter(|it| *it == entity_id)
+                        .is_some()
+                    {
+                        let (_pos_offset, bounding_rect) = render_sprite(
+                            &system_vars,
+                            &animated_sprite,
+                            body_res,
+                            &controller.view_matrix,
+                            controller.yaw,
+                            &pos,
+                            [0, 0],
+                            true,
+                            1.1,
+                            is_dead,
+                            &[0.0, 0.0, 1.0, 0.5],
+                        );
                     }
-                    let (_pos_offset, bounding_rect) = render_sprite(&system_vars,
-                                                                     &animated_sprite,
-                                                                     body_res,
-                                                                     &controller.view_matrix,
-                                                                     controller.yaw,
-                                                                     &pos,
-                                                                     [0, 0],
-                                                                     true,
-                                                                     1.0,
-                                                                     is_dead,
-                                                                     &color);
+                    let (_pos_offset, bounding_rect) = render_sprite(
+                        &system_vars,
+                        &animated_sprite,
+                        body_res,
+                        &controller.view_matrix,
+                        controller.yaw,
+                        &pos,
+                        [0, 0],
+                        true,
+                        1.0,
+                        is_dead,
+                        &color,
+                    );
                     if !is_dead {
                         draw_health_bar(
                             &system_vars.shaders.trimesh2d_shader,
@@ -281,17 +319,17 @@ impl RenderDesktopClientSystem {
                             controller.char_entity_id == entity_id,
                             &char_state,
                             system_vars.time,
-                            &bounding_rect
+                            &bounding_rect,
                         );
                     }
 
-                    controller.bounding_rect_2d.insert(
-                        entity_id, bounding_rect
-                    );
+                    controller.bounding_rect_2d.insert(entity_id, bounding_rect);
                 }
             }
 
-            char_state.statuses.render(&char_state.pos(), system_vars, &controller.view_matrix);
+            char_state
+                .statuses
+                .render(&char_state.pos(), system_vars, &controller.view_matrix);
         }
 
         for skill in (&skill_storage).join() {
@@ -307,7 +345,7 @@ impl RenderDesktopClientSystem {
                     str_effect.start_time,
                     &str_effect.pos,
                     system_vars,
-                    &controller.view_matrix
+                    &controller.view_matrix,
                 );
             }
         }
@@ -331,26 +369,31 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, FlyingNumberComponent>,
     );
 
-    fn run(&mut self, (
-        entities,
-        mut controller_storage,
-        mut browser_client_storage,
-        physics_storage,
-        sprite_storage,
-        char_state_storage,
-        mut system_vars,
-        mut system_benchmark,
-        skill_storage,
-        str_effect_storage,
-        physics_world,
-        updater,
-        numbers,
-    ): Self::SystemData) {
+    fn run(
+        &mut self,
+        (
+            entities,
+            mut controller_storage,
+            mut browser_client_storage,
+            physics_storage,
+            sprite_storage,
+            char_state_storage,
+            mut system_vars,
+            mut system_benchmark,
+            skill_storage,
+            str_effect_storage,
+            physics_world,
+            updater,
+            numbers,
+        ): Self::SystemData,
+    ) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        for (mut controller, browser) in (&mut controller_storage, &mut browser_client_storage).join() {
+        for (mut controller, browser) in
+            (&mut controller_storage, &mut browser_client_storage).join()
+        {
             self.render_for_controller(
                 &mut controller,
                 &physics_storage,
@@ -383,12 +426,18 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             // now the back buffer contains the rendered image for this client
             unsafe {
                 gl::ReadBuffer(gl::BACK);
-                gl::ReadPixels(0, 0, VIDEO_WIDTH as i32, VIDEO_HEIGHT as i32,
-                               gl::RGBA,
-                               gl::UNSIGNED_BYTE, browser.offscreen.as_mut_ptr() as *mut gl::types::GLvoid);
+                gl::ReadPixels(
+                    0,
+                    0,
+                    VIDEO_WIDTH as i32,
+                    VIDEO_HEIGHT as i32,
+                    gl::RGBA,
+                    gl::UNSIGNED_BYTE,
+                    browser.offscreen.as_mut_ptr() as *mut gl::types::GLvoid,
+                );
             }
             let message = websocket::Message::binary(browser.offscreen.as_slice());
-//                sent_bytes_per_second_counter += client.offscreen.len();
+            //                sent_bytes_per_second_counter += client.offscreen.len();
             // it is ok if it fails, the client might have disconnected but
             // ecs_world.maintain has not been executed yet to remove it from the world
             let _result = browser.websocket.lock().unwrap().send_message(&message);
@@ -398,7 +447,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        for (mut controller, _not_browser) in (&mut controller_storage, !&browser_client_storage).join() {
+        for (mut controller, _not_browser) in
+            (&mut controller_storage, !&browser_client_storage).join()
+        {
             self.render_for_controller(
                 &mut controller,
                 &physics_storage,
@@ -446,7 +497,7 @@ fn draw_health_bar(
     let bar_w = match char_state.typ {
         CharType::Player => 80,
         CharType::Minion => 70,
-        _ => 100
+        _ => 100,
     };
     let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
         let mut matrix = Matrix4::<f32>::identity();
@@ -465,13 +516,12 @@ fn draw_health_bar(
         vao.draw();
     };
 
-
     let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs.max_hp as f32;
     let health_color = if is_self {
         [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
     } else {
         [0.79, 0.00, 0.21, 1.0] // for enemies, red
-        // [0.2, 0.46, 0.9] // for friends, blue
+                                // [0.2, 0.46, 0.9] // for friends, blue
     };
     let mana_color = [0.23, 0.79, 0.88, 1.0];
     let bottom_bar_y = match char_state.typ {
@@ -492,7 +542,10 @@ fn draw_health_bar(
     };
 
     // draw status remaining time indicator
-    if let Some(perc) = char_state.statuses.calc_largest_remaining_status_time_percent(now) {
+    if let Some(perc) = char_state
+        .statuses
+        .calc_largest_remaining_status_time_percent(now)
+    {
         let orange = [1.0, 0.55, 0.0, 1.0];
         let w = bar_w - 4;
         draw_rect(2, bottom_bar_y + 2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
@@ -513,23 +566,27 @@ fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
     model_view[10] = 1.0;
 }
 
-pub fn render_sprite(system_vars: &SystemVariables,
-                     animation: &SpriteRenderDescriptorComponent,
-                     sprite_res: &SpriteResource,
-                     view: &Matrix4<f32>,
-                     camera_yaw: f32,
-                     pos: &Vector2<f32>,
-                     pos_offset: [i32; 2],
-                     is_main: bool,
-                     size_multiplier: f32,
-                     is_dead: bool,
-                     color: &[f32; 4],
+pub fn render_sprite(
+    system_vars: &SystemVariables,
+    animation: &SpriteRenderDescriptorComponent,
+    sprite_res: &SpriteResource,
+    view: &Matrix4<f32>,
+    camera_yaw: f32,
+    pos: &Vector2<f32>,
+    pos_offset: [i32; 2],
+    is_main: bool,
+    size_multiplier: f32,
+    is_dead: bool,
+    color: &[f32; 4],
 ) -> ([i32; 2], SpriteBoundingRect) {
     let shader = system_vars.shaders.player_shader.gl_use();
     shader.set_mat4("projection", &system_vars.matrices.projection);
     shader.set_mat4("view", &view);
     shader.set_int("model_texture", 0);
-    let binded_sprite_vertex_array = system_vars.map_render_data.centered_sprite_vertex_array.bind();
+    let binded_sprite_vertex_array = system_vars
+        .map_render_data
+        .centered_sprite_vertex_array
+        .bind();
 
     let idx = {
         let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
@@ -537,10 +594,19 @@ pub fn render_sprite(system_vars: &SystemVariables,
     };
 
     // TODO: if debug
-    let action = sprite_res.action.actions.get(idx).or_else(|| {
-        log::error!("Invalid action action index: {} idx: {}", animation.action_index, idx);
-        Some(&sprite_res.action.actions[0])
-    }).unwrap();
+    let action = sprite_res
+        .action
+        .actions
+        .get(idx)
+        .or_else(|| {
+            log::error!(
+                "Invalid action action index: {} idx: {}",
+                animation.action_index,
+                idx
+            );
+            Some(&sprite_res.action.actions[0])
+        })
+        .unwrap();
     let frame_index = if is_dead {
         action.frames.len() - 1
     } else {
@@ -550,7 +616,11 @@ pub fn render_sprite(system_vars: &SystemVariables,
         } else {
             action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
         };
-        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 { 0.1 } else { time_needed_for_one_frame };
+        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 {
+            0.1
+        } else {
+            time_needed_for_one_frame
+        };
         let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
         ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
     };
@@ -580,15 +650,18 @@ pub fn render_sprite(system_vars: &SystemVariables,
         offset = if !frame.positions.is_empty() && !is_main {
             [
                 (pos_offset[0] - frame.positions[0][0]) as f32,
-                (pos_offset[1] - frame.positions[0][1]) as f32
+                (pos_offset[1] - frame.positions[0][1]) as f32,
             ]
         } else {
             [0.0, 0.0]
         };
-        offset = [layer.pos[0] as f32 + offset[0], layer.pos[1] as f32 + offset[1]];
+        offset = [
+            layer.pos[0] as f32 + offset[0],
+            layer.pos[1] as f32 + offset[1],
+        ];
         offset = [
             offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.1
+            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.1,
         ];
         shader.set_vec2("offset", &offset);
 
@@ -605,17 +678,34 @@ pub fn render_sprite(system_vars: &SystemVariables,
 
         binded_sprite_vertex_array.draw();
     }
-    let anim_pos = frame.positions.get(0).map(|it| it.clone()).unwrap_or([0, 0]);
+    let anim_pos = frame
+        .positions
+        .get(0)
+        .map(|it| it.clone())
+        .unwrap_or([0, 0]);
 
     let size = [width.abs(), height];
-    let bb = project_to_screen(&size, &offset, view * matrix, &system_vars.matrices.projection);
-    return ([
-                (anim_pos[0] as f32 * size_multiplier) as i32,
-                (anim_pos[1] as f32 * size_multiplier) as i32
-            ], bb);
+    let bb = project_to_screen(
+        &size,
+        &offset,
+        view * matrix,
+        &system_vars.matrices.projection,
+    );
+    return (
+        [
+            (anim_pos[0] as f32 * size_multiplier) as i32,
+            (anim_pos[1] as f32 * size_multiplier) as i32,
+        ],
+        bb,
+    );
 }
 
-fn project_to_screen(size: &[f32; 2], offset: &[f32; 2], mut model_view: Matrix4<f32>, projection: &Matrix4<f32>) -> SpriteBoundingRect {
+fn project_to_screen(
+    size: &[f32; 2],
+    offset: &[f32; 2],
+    mut model_view: Matrix4<f32>,
+    projection: &Matrix4<f32>,
+) -> SpriteBoundingRect {
     let mut top_right = Vector4::new(0.5 * size[0], 0.5 * size[1], 0.0, 1.0);
     top_right.x += offset[0];
     top_right.y -= offset[1]; // itt régen + 0.5
@@ -629,7 +719,7 @@ fn project_to_screen(size: &[f32; 2], offset: &[f32; 2], mut model_view: Matrix4
         let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
         [
             ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
-            VIDEO_HEIGHT as i32 - ((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32
+            VIDEO_HEIGHT as i32 - ((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32,
         ]
     }
     let bottom_left = sh(projection * model_view * bottom_left);
@@ -640,12 +730,14 @@ fn project_to_screen(size: &[f32; 2], offset: &[f32; 2], mut model_view: Matrix4
     };
 }
 
-fn render_client(char_pos: &Vector2<f32>,
-                 camera: &Camera,
-                 view: &Matrix4<f32>,
-                 shaders: &Shaders,
-                 projection_matrix: &Matrix4<f32>,
-                 map_render_data: &MapRenderData) {
+fn render_client(
+    char_pos: &Vector2<f32>,
+    camera: &Camera,
+    view: &Matrix4<f32>,
+    shaders: &Shaders,
+    projection_matrix: &Matrix4<f32>,
+    map_render_data: &MapRenderData,
+) {
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
     let normal_matrix = {
@@ -655,7 +747,13 @@ fn render_client(char_pos: &Vector2<f32>,
     };
 
     if map_render_data.draw_ground {
-        render_ground(shaders, projection_matrix, map_render_data, &model_view, &normal_matrix);
+        render_ground(
+            shaders,
+            projection_matrix,
+            map_render_data,
+            &model_view,
+            &normal_matrix,
+        );
     }
 
     let shader = shaders.model_shader.gl_use();
@@ -669,47 +767,50 @@ fn render_client(char_pos: &Vector2<f32>,
     shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
     shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
 
-    shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    shader.set_int(
+        "use_lighting",
+        if map_render_data.use_lighting { 1 } else { 0 },
+    );
 
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
         for (i, (model_name, matrix)) in map_render_data.model_instances.iter().enumerate() {
             let model_render_data = &map_render_data.models[&model_name];
             // TODO: before transformation, max and min is reversed
-//            min: Point {
-//                coords: Matrix {
-//                    data: [
-//                        -32.90765,
-//                        -70.0698,
-//                        -30.87375,
-//                    ],
-//                },
-//            },
-//            max: Point {
-//                coords: Matrix {
-//                    data: [
-//                        32.90765,
-//                        0.0,
-//                        30.87375,
-//                    ],
-//                },
-//            },
+            //            min: Point {
+            //                coords: Matrix {
+            //                    data: [
+            //                        -32.90765,
+            //                        -70.0698,
+            //                        -30.87375,
+            //                    ],
+            //                },
+            //            },
+            //            max: Point {
+            //                coords: Matrix {
+            //                    data: [
+            //                        32.90765,
+            //                        0.0,
+            //                        30.87375,
+            //                    ],
+            //                },
+            //            },
             let min = matrix.transform_point(&model_render_data.bounding_box.min);
             let max = matrix.transform_point(&model_render_data.bounding_box.max);
             let cam_pos = camera.pos();
-            if ((max.x < cam_pos.x - 40.0 || max.x > cam_pos.x + 40.0) &&
-                (min.x < cam_pos.x - 40.0 || min.x > cam_pos.x + 40.0)) ||
-                ((max.z < cam_pos.z - 70.0 || max.z > cam_pos.z + 5.0) &&
-                    (min.z < cam_pos.z - 70.0 || min.z > cam_pos.z + 5.0))
+            if ((max.x < cam_pos.x - 40.0 || max.x > cam_pos.x + 40.0)
+                && (min.x < cam_pos.x - 40.0 || min.x > cam_pos.x + 40.0))
+                || ((max.z < cam_pos.z - 70.0 || max.z > cam_pos.z + 5.0)
+                    && (min.z < cam_pos.z - 70.0 || min.z > cam_pos.z + 5.0))
             {
                 continue;
             }
             shader.set_mat4("model", &matrix);
-            let alpha = if
-            ((max.x > cam_pos.x - 10.0 && max.x < cam_pos.x + 10.0) ||
+            let alpha = if ((max.x > cam_pos.x - 10.0 && max.x < cam_pos.x + 10.0) ||
                 (min.x > cam_pos.x - 10.0 && min.x < cam_pos.x + 10.0))
                 && char_pos.y <= max.z // character is behind
-                && min.y > 5.0 {
+                && min.y > 5.0
+            {
                 1.0 //0.3
             } else {
                 model_render_data.alpha
@@ -726,11 +827,13 @@ fn render_client(char_pos: &Vector2<f32>,
     }
 }
 
-fn render_ground(shaders: &Shaders,
-                 projection_matrix: &Matrix4<f32>,
-                 map_render_data: &MapRenderData,
-                 model_view: &Matrix4<f32>,
-                 normal_matrix: &Matrix3<f32>) {
+fn render_ground(
+    shaders: &Shaders,
+    projection_matrix: &Matrix4<f32>,
+    map_render_data: &MapRenderData,
+    model_view: &Matrix4<f32>,
+    normal_matrix: &Matrix3<f32>,
+) {
     let shader = shaders.ground_shader.gl_use();
     shader.set_mat4("projection", &projection_matrix);
     shader.set_mat4("model_view", &model_view);
@@ -746,9 +849,22 @@ fn render_ground(shaders: &Shaders,
     shader.set_int("tile_color_texture", 1);
     map_render_data.lightmap_texture.bind(TEXTURE_2);
     shader.set_int("lightmap_texture", 2);
-    shader.set_int("use_tile_color", if map_render_data.use_tile_colors { 1 } else { 0 });
-    shader.set_int("use_lightmap", if map_render_data.use_lightmaps { 1 } else { 0 });
-    shader.set_int("use_lighting", if map_render_data.use_lighting { 1 } else { 0 });
+    shader.set_int(
+        "use_tile_color",
+        if map_render_data.use_tile_colors {
+            1
+        } else {
+            0
+        },
+    );
+    shader.set_int(
+        "use_lightmap",
+        if map_render_data.use_lightmaps { 1 } else { 0 },
+    );
+    shader.set_int(
+        "use_lighting",
+        if map_render_data.use_lighting { 1 } else { 0 },
+    );
     map_render_data.ground_vertex_array.bind().draw();
 }
 
@@ -813,31 +929,28 @@ impl DamageRenderSystem {
             let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
 
             let (width, height) = match number.typ {
-                FlyingNumberType::Poison |
-                FlyingNumberType::Heal |
-                FlyingNumberType::Damage |
-                FlyingNumberType::Mana |
-                FlyingNumberType::Crit => {
-                    (
-                        DamageRenderSystem::get_digits(number.value).len() as f32,
-                        1.0
-                    )
-                }
-                FlyingNumberType::Block => {
-                    (
-                        system_vars.texts.attack_blocked.width as f32,
-                        system_vars.texts.attack_blocked.height as f32,
-                    )
-                }
-                FlyingNumberType::Absorb => {
-                    (
-                        system_vars.texts.attack_absorbed.width as f32,
-                        system_vars.texts.attack_absorbed.height as f32,
-                    )
-                }
+                FlyingNumberType::Poison
+                | FlyingNumberType::Heal
+                | FlyingNumberType::Damage
+                | FlyingNumberType::Mana
+                | FlyingNumberType::Crit => (
+                    DamageRenderSystem::get_digits(number.value).len() as f32,
+                    1.0,
+                ),
+                FlyingNumberType::Block => (
+                    system_vars.texts.attack_blocked.width as f32,
+                    system_vars.texts.attack_blocked.height as f32,
+                ),
+                FlyingNumberType::Absorb => (
+                    system_vars.texts.attack_absorbed.width as f32,
+                    system_vars.texts.attack_absorbed.height as f32,
+                ),
             };
 
-            let perc = system_vars.time.elapsed_since(number.start_time).div(number.duration as f32);
+            let perc = system_vars
+                .time
+                .elapsed_since(number.start_time)
+                .div(number.duration as f32);
             // TODO: don't render more than 1 damage in a single frame for the same target
             let (size_x, size_y) = match number.typ {
                 FlyingNumberType::Heal => {
@@ -860,8 +973,11 @@ impl DamageRenderSystem {
                 FlyingNumberType::Damage => {
                     pos.x += perc * 6.0;
                     pos.z -= perc * 4.0;
-                    pos.y += 2.0 +
-                        (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5))).sin() * 5.0;
+                    pos.y += 2.0
+                        + (-std::f32::consts::FRAC_PI_2
+                            + (std::f32::consts::PI * (0.5 + perc * 1.5)))
+                            .sin()
+                            * 5.0;
                     let size = (1.0 - perc) * 1.0;
                     (size, size)
                 }
@@ -888,7 +1004,7 @@ impl DamageRenderSystem {
                     pos.z = real_pos.y;
                     let size_x = width * ONE_SPRITE_PIXEL_SIZE_IN_3D;
                     let size_y = height * ONE_SPRITE_PIXEL_SIZE_IN_3D;
-//                        pos.x -= size_x / 2.0;
+                    //                        pos.x -= size_x / 2.0;
                     let y_offset = (perc - 0.3) * 3.0;
                     pos.y += 2.0 + y_offset;
                     pos.z -= y_offset;
@@ -904,33 +1020,43 @@ impl DamageRenderSystem {
             };
             matrix.prepend_translation_mut(&pos);
             let shader = system_vars.shaders.sprite_shader.gl_use();
-            shader.set_vec2("size", &[
-                size_x,
-                size_y
-            ]);
+            shader.set_vec2("size", &[size_x, size_y]);
             shader.set_mat4("model", &matrix);
-            shader.set_vec3("color", &number.typ.color(controller.char_entity_id == number.target_entity_id));
+            shader.set_vec3(
+                "color",
+                &number
+                    .typ
+                    .color(controller.char_entity_id == number.target_entity_id),
+            );
             shader.set_mat4("projection", &system_vars.matrices.projection);
             shader.set_mat4("view", &controller.view_matrix);
             shader.set_int("model_texture", 0);
             shader.set_f32("alpha", 1.3 - (perc + 0.3 * perc));
 
             match number.typ {
-                FlyingNumberType::Poison |
-                FlyingNumberType::Heal |
-                FlyingNumberType::Damage |
-                FlyingNumberType::Mana |
-                FlyingNumberType::Crit => {
+                FlyingNumberType::Poison
+                | FlyingNumberType::Heal
+                | FlyingNumberType::Damage
+                | FlyingNumberType::Mana
+                | FlyingNumberType::Crit => {
                     system_vars.sprites.numbers.bind(TEXTURE_0);
                     self.create_number_vertex_array(number.value).bind().draw();
                 }
                 FlyingNumberType::Block => {
                     system_vars.texts.attack_blocked.bind(TEXTURE_0);
-                    system_vars.map_render_data.centered_sprite_vertex_array.bind().draw();
+                    system_vars
+                        .map_render_data
+                        .centered_sprite_vertex_array
+                        .bind()
+                        .draw();
                 }
                 FlyingNumberType::Absorb => {
                     system_vars.texts.attack_absorbed.bind(TEXTURE_0);
-                    system_vars.map_render_data.centered_sprite_vertex_array.bind().draw();
+                    system_vars
+                        .map_render_data
+                        .centered_sprite_vertex_array
+                        .bind()
+                        .draw();
                 }
             };
 
@@ -975,24 +1101,44 @@ impl DamageRenderSystem {
         digits.iter().for_each(|&digit| {
             let digit = digit as usize;
             vertices.push([width - 0.5, 0.5, self.texture_u_coords[digit], 0.0]);
-            vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+            vertices.push([
+                width + 0.5,
+                0.5,
+                self.texture_u_coords[digit] + self.single_digit_u_coord,
+                0.0,
+            ]);
             vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-            vertices.push([width + 0.5, 0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 0.0]);
+            vertices.push([
+                width + 0.5,
+                0.5,
+                self.texture_u_coords[digit] + self.single_digit_u_coord,
+                0.0,
+            ]);
             vertices.push([width - 0.5, -0.5, self.texture_u_coords[digit], 1.0]);
-            vertices.push([width + 0.5, -0.5, self.texture_u_coords[digit] + self.single_digit_u_coord, 1.0]);
+            vertices.push([
+                width + 0.5,
+                -0.5,
+                self.texture_u_coords[digit] + self.single_digit_u_coord,
+                1.0,
+            ]);
             width += 1.0;
         });
         return VertexArray::new(
             gl::TRIANGLES,
-            &vertices, vertices.len(), vec![
+            &vertices,
+            vertices.len(),
+            vec![
                 VertexAttribDefinition {
                     number_of_components: 2,
                     offset_of_first_element: 0,
-                }, VertexAttribDefinition { // uv
+                },
+                VertexAttribDefinition {
+                    // uv
                     number_of_components: 2,
                     offset_of_first_element: 2,
-                }
-            ]);
+                },
+            ],
+        );
     }
 }
 
@@ -1015,7 +1161,11 @@ impl RenderDesktopClientSystem {
         let str_file = &system_vars.map_render_data.str_effects[effect_name];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
-        let key_index = system_vars.time.elapsed_since(start_time).div(seconds_needed_for_one_frame) as i32 % max_key as i32;
+        let key_index = system_vars
+            .time
+            .elapsed_since(start_time)
+            .div(seconds_needed_for_one_frame) as i32
+            % max_key as i32;
 
         let mut from_id = None;
         let mut to_id = None;
@@ -1045,47 +1195,54 @@ impl RenderDesktopClientSystem {
             let from_frame = &layer.key_frames[from_id];
             let to_frame = &layer.key_frames[to_id];
 
-            let (color, pos, uv, xy, angle) = if to_id != from_id + 1 || to_frame.frame != from_frame.frame {
-                // no other source
-                if last_source_id <= from_frame.frame {
-                    continue;
-                }
-                (from_frame.color, from_frame.pos, from_frame.uv, from_frame.xy, from_frame.angle)
-            } else {
-                let delta = (key_index - from_frame.frame) as f32;
-                // morphing
-                let color = [
-                    from_frame.color[0] + to_frame.color[0] * delta,
-                    from_frame.color[1] + to_frame.color[1] * delta,
-                    from_frame.color[2] + to_frame.color[2] * delta,
-                    from_frame.color[3] + to_frame.color[3] * delta,
-                ];
-                let xy = [
-                    from_frame.xy[0] + to_frame.xy[0] * delta,
-                    from_frame.xy[1] + to_frame.xy[1] * delta,
-                    from_frame.xy[2] + to_frame.xy[2] * delta,
-                    from_frame.xy[3] + to_frame.xy[3] * delta,
-                    from_frame.xy[4] + to_frame.xy[4] * delta,
-                    from_frame.xy[5] + to_frame.xy[5] * delta,
-                    from_frame.xy[6] + to_frame.xy[6] * delta,
-                    from_frame.xy[7] + to_frame.xy[7] * delta,
-                ];
-                let angle = from_frame.angle + to_frame.angle * delta;
-                let pos = [
-                    from_frame.pos[0] + to_frame.pos[0] * delta,
-                    from_frame.pos[1] + to_frame.pos[1] * delta,
-                ];
-                (color, pos, from_frame.uv, xy, angle)
-            };
-
+            let (color, pos, uv, xy, angle) =
+                if to_id != from_id + 1 || to_frame.frame != from_frame.frame {
+                    // no other source
+                    if last_source_id <= from_frame.frame {
+                        continue;
+                    }
+                    (
+                        from_frame.color,
+                        from_frame.pos,
+                        from_frame.uv,
+                        from_frame.xy,
+                        from_frame.angle,
+                    )
+                } else {
+                    let delta = (key_index - from_frame.frame) as f32;
+                    // morphing
+                    let color = [
+                        from_frame.color[0] + to_frame.color[0] * delta,
+                        from_frame.color[1] + to_frame.color[1] * delta,
+                        from_frame.color[2] + to_frame.color[2] * delta,
+                        from_frame.color[3] + to_frame.color[3] * delta,
+                    ];
+                    let xy = [
+                        from_frame.xy[0] + to_frame.xy[0] * delta,
+                        from_frame.xy[1] + to_frame.xy[1] * delta,
+                        from_frame.xy[2] + to_frame.xy[2] * delta,
+                        from_frame.xy[3] + to_frame.xy[3] * delta,
+                        from_frame.xy[4] + to_frame.xy[4] * delta,
+                        from_frame.xy[5] + to_frame.xy[5] * delta,
+                        from_frame.xy[6] + to_frame.xy[6] * delta,
+                        from_frame.xy[7] + to_frame.xy[7] * delta,
+                    ];
+                    let angle = from_frame.angle + to_frame.angle * delta;
+                    let pos = [
+                        from_frame.pos[0] + to_frame.pos[0] * delta,
+                        from_frame.pos[1] + to_frame.pos[1] * delta,
+                    ];
+                    (color, pos, from_frame.uv, xy, angle)
+                };
 
             let matrix = {
                 let mut matrix = Matrix4::<f32>::identity();
                 matrix.prepend_translation_mut(&v2_to_v3(world_pos));
                 let rotation = Rotation3::from_axis_angle(
                     &nalgebra::Unit::new_normalize(Vector3::z()),
-                    -angle)
-                    .to_homogeneous();
+                    -angle,
+                )
+                .to_homogeneous();
                 matrix = matrix * rotation;
                 shader.set_mat4("model", &matrix);
                 matrix

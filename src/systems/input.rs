@@ -1,18 +1,20 @@
-use websocket::{OwnedMessage, WebSocketError};
-use std::time::SystemTime;
-use sdl2::keyboard::Scancode;
-use std::io::ErrorKind;
-use crate::components::BrowserClient;
-use specs::prelude::*;
-use crate::video::{VIDEO_WIDTH, VIDEO_HEIGHT};
-use crate::systems::SystemVariables;
-use sdl2::mouse::{MouseButton, MouseWheelDirection};
-use crate::components::controller::{ControllerComponent, CastMode, ControllerAction, SkillKey, WorldCoords};
-use nalgebra::{Point2, Vector2, Vector3, Vector4, Matrix4, Point3};
 use crate::components::char::CharacterStateComponent;
-use strum::IntoEnumIterator;
-use crate::components::skills::skill::{Skills, SkillTargetType};
+use crate::components::controller::{
+    CastMode, ControllerAction, ControllerComponent, SkillKey, WorldCoords,
+};
+use crate::components::skills::skill::{SkillTargetType, Skills};
+use crate::components::BrowserClient;
+use crate::systems::SystemVariables;
+use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
+use nalgebra::{Matrix4, Point2, Point3, Vector2, Vector3, Vector4};
+use sdl2::keyboard::Scancode;
+use sdl2::mouse::{MouseButton, MouseWheelDirection};
+use specs::prelude::*;
+use std::io::ErrorKind;
 use std::slice::Iter;
+use std::time::SystemTime;
+use strum::IntoEnumIterator;
+use websocket::{OwnedMessage, WebSocketError};
 
 pub struct BrowserInputProducerSystem;
 
@@ -43,25 +45,25 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
         specs::Write<'a, LazyUpdate>,
     );
 
-
-    fn run(&mut self, (
-        entities,
-        mut input_storage,
-        mut browser_client_storage,
-        updater,
-    ): Self::SystemData) {
-        for (entity_id, client, input_producer) in (&entities, &mut browser_client_storage, &mut input_storage).join() {
+    fn run(
+        &mut self,
+        (entities, mut input_storage, mut browser_client_storage, updater): Self::SystemData,
+    ) {
+        for (entity_id, client, input_producer) in
+            (&entities, &mut browser_client_storage, &mut input_storage).join()
+        {
             let sh = client.websocket.lock().unwrap().recv_message();
             if let Ok(msg) = sh {
                 match msg {
                     OwnedMessage::Pong(buf) => {
                         let ping_time = u128::from_le_bytes([
-                            buf[0], buf[1], buf[2], buf[3],
-                            buf[4], buf[5], buf[6], buf[7],
-                            buf[8], buf[9], buf[10], buf[11],
-                            buf[12], buf[13], buf[14], buf[15],
+                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
+                            buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
                         ]);
-                        let now_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+                        let now_ms = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis();
                         client.ping = (now_ms - ping_time) as u16;
                     }
                     OwnedMessage::Binary(buf) => {
@@ -72,26 +74,26 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 PACKET_MOUSE_MOVE => {
                                     let mouse_x: u16 = read_u16(&mut iter);
                                     let mouse_y: u16 = read_u16(&mut iter);
-                                    log::trace!("Message arrived: MouseMove({}, {})", mouse_x, mouse_y);
+                                    log::trace!(
+                                        "Message arrived: MouseMove({}, {})",
+                                        mouse_x,
+                                        mouse_y
+                                    );
                                     let mousestate = {
                                         unsafe {
-                                            std::mem::transmute((0 as u32,
-                                                                 0 as i32,
-                                                                 0 as i32))
+                                            std::mem::transmute((0 as u32, 0 as i32, 0 as i32))
                                         }
                                     };
-                                    input_producer.inputs.push(
-                                        sdl2::event::Event::MouseMotion {
-                                            timestamp: 0,
-                                            window_id: 0,
-                                            which: 0,
-                                            mousestate,
-                                            x: mouse_x as i32,
-                                            y: mouse_y as i32,
-                                            xrel: 0,
-                                            yrel: 0,
-                                        }
-                                    );
+                                    input_producer.inputs.push(sdl2::event::Event::MouseMotion {
+                                        timestamp: 0,
+                                        window_id: 0,
+                                        which: 0,
+                                        mousestate,
+                                        x: mouse_x as i32,
+                                        y: mouse_y as i32,
+                                        xrel: 0,
+                                        yrel: 0,
+                                    });
                                 }
                                 PACKET_MOUSE_DOWN => {
                                     let mouse_btn = match (header >> 4) & 0b11 {
@@ -109,7 +111,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                             clicks: 0,
                                             x: 0,
                                             y: 0,
-                                        }
+                                        },
                                     );
                                 }
                                 PACKET_MOUSE_UP => {
@@ -119,8 +121,9 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         _ => sdl2::mouse::MouseButton::Right,
                                     };
                                     log::trace!("Message arrived: MouseUp: {:?}", mouse_btn);
-                                    input_producer.inputs.push(
-                                        sdl2::event::Event::MouseButtonUp {
+                                    input_producer
+                                        .inputs
+                                        .push(sdl2::event::Event::MouseButtonUp {
                                             timestamp: 0,
                                             window_id: 0,
                                             which: 0,
@@ -133,51 +136,50 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 PACKET_KEY_DOWN => {
                                     let scancode = *iter.next().unwrap();
                                     let input_char: u16 = read_u16(&mut iter);
-                                    log::trace!("Message arrived: KeyDown({}, {})", scancode, input_char);
-                                    input_producer.inputs.push(
-                                        sdl2::event::Event::KeyDown {
+                                    log::trace!(
+                                        "Message arrived: KeyDown({}, {})",
+                                        scancode,
+                                        input_char
+                                    );
+                                    input_producer.inputs.push(sdl2::event::Event::KeyDown {
+                                        timestamp: 0,
+                                        window_id: 0,
+                                        keycode: None,
+                                        scancode: Scancode::from_i32(scancode as i32),
+                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        repeat: false,
+                                    });
+                                    if let Some(ch) = std::char::from_u32(input_char as u32) {
+                                        input_producer.inputs.push(sdl2::event::Event::TextInput {
                                             timestamp: 0,
                                             window_id: 0,
-                                            keycode: None,
-                                            scancode: Scancode::from_i32(scancode as i32),
-                                            keymod: sdl2::keyboard::Mod::NOMOD,
-                                            repeat: false,
+                                            text: ch.to_string(),
                                         });
-                                    if let Some(ch) = std::char::from_u32(input_char as u32) {
-                                        input_producer.inputs.push(
-                                            sdl2::event::Event::TextInput {
-                                                timestamp: 0,
-                                                window_id: 0,
-                                                text: ch.to_string(),
-                                            }
-                                        );
                                     }
                                 }
                                 PACKET_KEY_UP => {
                                     let scancode = *iter.next().unwrap();
                                     log::trace!("Message arrived: KeyUp({})", scancode);
-                                    input_producer.inputs.push(
-                                        sdl2::event::Event::KeyUp {
-                                            timestamp: 0,
-                                            window_id: 0,
-                                            keycode: None,
-                                            scancode: Scancode::from_i32(scancode as i32),
-                                            keymod: sdl2::keyboard::Mod::NOMOD,
-                                            repeat: false,
-                                        });
+                                    input_producer.inputs.push(sdl2::event::Event::KeyUp {
+                                        timestamp: 0,
+                                        window_id: 0,
+                                        keycode: None,
+                                        scancode: Scancode::from_i32(scancode as i32),
+                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        repeat: false,
+                                    });
                                 }
                                 PACKET_MOUSE_WHEEL => {
                                     let delta_y: i32 = read_i16(&mut iter) as i32;
                                     log::trace!("Message arrived: MouseWheel({})", delta_y);
-                                    input_producer.inputs.push(
-                                        sdl2::event::Event::MouseWheel {
-                                            which: 0,
-                                            x: 0,
-                                            y: delta_y as i32,
-                                            direction: MouseWheelDirection::Normal,
-                                            timestamp: 0,
-                                            window_id: 0,
-                                        });
+                                    input_producer.inputs.push(sdl2::event::Event::MouseWheel {
+                                        which: 0,
+                                        x: 0,
+                                        y: delta_y as i32,
+                                        direction: MouseWheelDirection::Normal,
+                                        timestamp: 0,
+                                        window_id: 0,
+                                    });
                                 }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
@@ -215,18 +217,19 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         specs::WriteExpect<'a, SystemVariables>,
     );
 
-    fn run(&mut self, (
-        entities,
-        char_state_storage,
-        mut controller_storage,
-        system_vars,
-    ): Self::SystemData) {
+    fn run(
+        &mut self,
+        (entities, char_state_storage, mut controller_storage, system_vars): Self::SystemData,
+    ) {
         for controller in (&mut controller_storage).join() {
             // for autocompletion...
             let controller: &mut ControllerComponent = controller;
 
-
-            let camera_speed = if controller.is_key_down(Scancode::LShift) { 6.0 } else { 1.0 };
+            let camera_speed = if controller.is_key_down(Scancode::LShift) {
+                6.0
+            } else {
+                1.0
+            };
             let events: Vec<_> = controller.inputs.drain(..).collect();
             controller.left_mouse_released = false;
             controller.right_mouse_released = false;
@@ -235,34 +238,30 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             controller.cleanup_released_keys();
             for event in events {
                 match event {
-                    sdl2::event::Event::MouseButtonDown { mouse_btn, .. } => {
-                        match mouse_btn {
-                            MouseButton::Left => {
-                                controller.left_mouse_down = true;
-                                controller.left_mouse_pressed = true;
-                                controller.left_mouse_released = false;
-                            }
-                            MouseButton::Right => {
-                                controller.right_mouse_down = true;
-                                controller.right_mouse_pressed = true;
-                                controller.right_mouse_released = false;
-                            }
-                            _ => {}
+                    sdl2::event::Event::MouseButtonDown { mouse_btn, .. } => match mouse_btn {
+                        MouseButton::Left => {
+                            controller.left_mouse_down = true;
+                            controller.left_mouse_pressed = true;
+                            controller.left_mouse_released = false;
                         }
-                    }
-                    sdl2::event::Event::MouseButtonUp { mouse_btn, .. } => {
-                        match mouse_btn {
-                            MouseButton::Left => {
-                                controller.left_mouse_down = false;
-                                controller.left_mouse_released = true;
-                            }
-                            MouseButton::Right => {
-                                controller.right_mouse_down = false;
-                                controller.right_mouse_released = true;
-                            }
-                            _ => {}
+                        MouseButton::Right => {
+                            controller.right_mouse_down = true;
+                            controller.right_mouse_pressed = true;
+                            controller.right_mouse_released = false;
                         }
-                    }
+                        _ => {}
+                    },
+                    sdl2::event::Event::MouseButtonUp { mouse_btn, .. } => match mouse_btn {
+                        MouseButton::Left => {
+                            controller.left_mouse_down = false;
+                            controller.left_mouse_released = true;
+                        }
+                        MouseButton::Right => {
+                            controller.right_mouse_down = false;
+                            controller.right_mouse_released = true;
+                        }
+                        _ => {}
+                    },
                     sdl2::event::Event::MouseMotion {
                         timestamp: _,
                         window_id: _,
@@ -271,61 +270,58 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         x,
                         y,
                         xrel: _,
-                        yrel: _
+                        yrel: _,
                     } => {
                         // SDL generates only one event when the mouse touches the edge of the screen,
                         // so I put this pseudo key into the controller in that case, which will
                         // indicate screen movement
-//                        if x == 0 {
-//                            controller.key_pressed(Scancode::Left);
-//                            controller.camera.move_along_x(-camera_speed);
-//                        } else if x == (VIDEO_WIDTH as i32) - 1 {
-//                            controller.key_pressed(Scancode::Right);
-//                            controller.camera.move_along_x(camera_speed);
-//                        } else {
-//                            controller.key_released(Scancode::Left);
-//                            controller.key_released(Scancode::Right);
-//                        }
-//                        if y == 0 {
-//                            controller.key_pressed(Scancode::Up);
-//                            controller.camera.move_along_z(-camera_speed);
-//                        } else if y == (VIDEO_HEIGHT as i32) - 1 {
-//                            controller.key_pressed(Scancode::Down);
-//                            controller.camera.move_along_z(camera_speed);
-//                        } else {
-//                            controller.key_released(Scancode::Up);
-//                            controller.key_released(Scancode::Down);
-//                        }
+                        //                        if x == 0 {
+                        //                            controller.key_pressed(Scancode::Left);
+                        //                            controller.camera.move_along_x(-camera_speed);
+                        //                        } else if x == (VIDEO_WIDTH as i32) - 1 {
+                        //                            controller.key_pressed(Scancode::Right);
+                        //                            controller.camera.move_along_x(camera_speed);
+                        //                        } else {
+                        //                            controller.key_released(Scancode::Left);
+                        //                            controller.key_released(Scancode::Right);
+                        //                        }
+                        //                        if y == 0 {
+                        //                            controller.key_pressed(Scancode::Up);
+                        //                            controller.camera.move_along_z(-camera_speed);
+                        //                        } else if y == (VIDEO_HEIGHT as i32) - 1 {
+                        //                            controller.key_pressed(Scancode::Down);
+                        //                            controller.camera.move_along_z(camera_speed);
+                        //                        } else {
+                        //                            controller.key_released(Scancode::Up);
+                        //                            controller.key_released(Scancode::Down);
+                        //                        }
                         // free look
-//                        if controller.mouse_down {
-//                            let x_offset = x - controller.last_mouse_x as i32;
-//                            let y_offset = controller.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
-//                            controller.yaw += x_offset as f32;
-//                            controller.pitch += y_offset as f32;
-//                            if controller.pitch > 89.0 {
-//                                controller.pitch = 89.0;
-//                            }
-//                            if controller.pitch < -89.0 {
-//                                controller.pitch = -89.0;
-//                            }
-//                            if controller.yaw > 360.0 {
-//                                controller.yaw -= 360.0;
-//                            } else if controller.yaw < 0.0 {
-//                                controller.yaw += 360.0;
-//                            }
-//                            controller.camera.rotate(controller.pitch, controller.yaw);
-//                        }
+                        //                        if controller.mouse_down {
+                        //                            let x_offset = x - controller.last_mouse_x as i32;
+                        //                            let y_offset = controller.last_mouse_y as i32 - y; // reversed since y-coordinates go from bottom to top
+                        //                            controller.yaw += x_offset as f32;
+                        //                            controller.pitch += y_offset as f32;
+                        //                            if controller.pitch > 89.0 {
+                        //                                controller.pitch = 89.0;
+                        //                            }
+                        //                            if controller.pitch < -89.0 {
+                        //                                controller.pitch = -89.0;
+                        //                            }
+                        //                            if controller.yaw > 360.0 {
+                        //                                controller.yaw -= 360.0;
+                        //                            } else if controller.yaw < 0.0 {
+                        //                                controller.yaw += 360.0;
+                        //                            }
+                        //                            controller.camera.rotate(controller.pitch, controller.yaw);
+                        //                        }
                         controller.last_mouse_x = x as u16;
                         controller.last_mouse_y = y as u16;
                     }
-                    sdl2::event::Event::MouseWheel {
-                        y,
-                        ..
-                    } => {
+                    sdl2::event::Event::MouseWheel { y, .. } => {
                         controller.camera.move_forward(y as f32 * 2.0);
-                        controller.camera.update_visible_z_range(
-                            &system_vars.matrices.projection
-                        );
+                        controller
+                            .camera
+                            .update_visible_z_range(&system_vars.matrices.projection);
                     }
                     sdl2::event::Event::KeyDown { scancode, .. } => {
                         if let Some(scancode) = scancode {
@@ -352,13 +348,20 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             }
             if controller.camera.pos().x < 0.0 {
                 controller.camera.set_x(0.0);
-            } else if controller.camera.pos().x > system_vars.map_render_data.gnd.width as f32 * 2.0 {
-                controller.camera.set_x(system_vars.map_render_data.gnd.width as f32 * 2.0);
+            } else if controller.camera.pos().x > system_vars.map_render_data.gnd.width as f32 * 2.0
+            {
+                controller
+                    .camera
+                    .set_x(system_vars.map_render_data.gnd.width as f32 * 2.0);
             }
             if controller.camera.pos().z > 0.0 {
                 controller.camera.set_z(0.0);
-            } else if controller.camera.pos().z < -(system_vars.map_render_data.gnd.height as f32 * 2.0) {
-                controller.camera.set_z(-(system_vars.map_render_data.gnd.height as f32 * 2.0));
+            } else if controller.camera.pos().z
+                < -(system_vars.map_render_data.gnd.height as f32 * 2.0)
+            {
+                controller
+                    .camera
+                    .set_z(-(system_vars.map_render_data.gnd.height as f32 * 2.0));
             }
             if controller.is_key_just_released(Scancode::L) {
                 controller.camera_follows_char = !controller.camera_follows_char;
@@ -374,19 +377,24 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             // setup next action based on input
             // TODO: optimize
             let just_pressed_skill_key = SkillKey::iter()
-                .filter(|key| {
-                    controller.is_key_just_pressed(key.scancode())
-                }).take(1).collect::<Vec<SkillKey>>().pop();
+                .filter(|key| controller.is_key_just_pressed(key.scancode()))
+                .take(1)
+                .collect::<Vec<SkillKey>>()
+                .pop();
             let just_released_skill_key = SkillKey::iter()
-                .filter(|key| {
-                    controller.is_key_just_released(key.scancode())
-                }).take(1).collect::<Vec<SkillKey>>().pop();
+                .filter(|key| controller.is_key_just_released(key.scancode()))
+                .take(1)
+                .collect::<Vec<SkillKey>>()
+                .pop();
 
-            if controller.next_action.is_some() { // here 'next_action' is the action from the prev frame
+            if controller.next_action.is_some() {
+                // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
             }
             let alt_down = controller.is_key_down(Scancode::LAlt);
-            controller.next_action = if let Some((casting_skill_key, skill)) = controller.is_selecting_target() {
+            controller.next_action = if let Some((casting_skill_key, skill)) =
+                controller.is_selecting_target()
+            {
                 match controller.cast_mode {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
@@ -394,13 +402,20 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             Some(ControllerAction::Casting(skill, false))
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
-                        } else if let Some((skill_key, skill)) = just_pressed_skill_key
-                            .and_then(|skill_key| {
-                                controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
-                            }) {
+                        } else if let Some((skill_key, skill)) =
+                            just_pressed_skill_key.and_then(|skill_key| {
+                                controller
+                                    .get_skill_for_key(skill_key)
+                                    .map(|skill| (skill_key, skill))
+                            })
+                        {
                             log::debug!("Player select target for casting {:?}", skill);
-                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
-                        } else { None }
+                            Some(InputConsumerSystem::target_selection_or_casting(
+                                skill_key, skill,
+                            ))
+                        } else {
+                            None
+                        }
                     }
                     CastMode::OnKeyRelease => {
                         if controller.is_key_just_released(casting_skill_key.scancode()) {
@@ -414,22 +429,27 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             )
                         } else if controller.right_mouse_pressed {
                             Some(ControllerAction::CancelCastingSelectTarget)
-                        } else { None }
+                        } else {
+                            None
+                        }
                     }
                     CastMode::OnKeyPress => {
                         // not possible to get into this state while OnKeyPress is active
                         None
                     }
                 }
-            } else if let Some((skill_key, skill)) = just_pressed_skill_key
-                .and_then(|skill_key| {
-                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
-                }) {
+            } else if let Some((skill_key, skill)) = just_pressed_skill_key.and_then(|skill_key| {
+                controller
+                    .get_skill_for_key(skill_key)
+                    .map(|skill| (skill_key, skill))
+            }) {
                 match controller.cast_mode {
                     CastMode::Normal | CastMode::OnKeyRelease => {
                         if !alt_down {
                             log::debug!("Player select target for casting {:?}", skill);
-                            Some(InputConsumerSystem::target_selection_or_casting(skill_key, skill))
+                            Some(InputConsumerSystem::target_selection_or_casting(
+                                skill_key, skill,
+                            ))
                         } else {
                             None
                         }
@@ -439,10 +459,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         Some(ControllerAction::Casting(skill, alt_down))
                     }
                 }
-            } else if let Some((skill_key, skill)) = just_released_skill_key
-                .and_then(|skill_key| {
-                    controller.get_skill_for_key(skill_key).map(|skill| (skill_key, skill))
-                }) {
+            } else if let Some((skill_key, skill)) = just_released_skill_key.and_then(|skill_key| {
+                controller
+                    .get_skill_for_key(skill_key)
+                    .map(|skill| (skill_key, skill))
+            }) {
                 // can get here only when alt was down and OnKeyRelease
                 if alt_down {
                     log::debug!("Player wants to cast {:?}, SELF", skill);
@@ -494,17 +515,17 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
-//            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
-//            if controller.keys.contains(&Scancode::W) {
-//                controller.camera.move_forward(camera_speed);
-//            } else if controller.keys.contains(&Scancode::S) {
-//                controller.camera.move_forward(-camera_speed);
-//            }
-//            if controller.keys.contains(&Scancode::A) {
-//                controller.camera.move_side(-camera_speed);
-//            } else if controller.keys.contains(&Scancode::D) {
-//                controller.camera.move_side(camera_speed);
-//            }
+            //            let camera_speed = if controller.keys.contains(&Scancode::LShift) { 6.0 } else { 2.0 };
+            //            if controller.keys.contains(&Scancode::W) {
+            //                controller.camera.move_forward(camera_speed);
+            //            } else if controller.keys.contains(&Scancode::S) {
+            //                controller.camera.move_forward(-camera_speed);
+            //            }
+            //            if controller.keys.contains(&Scancode::A) {
+            //                controller.camera.move_side(-camera_speed);
+            //            } else if controller.keys.contains(&Scancode::D) {
+            //                controller.camera.move_side(camera_speed);
+            //            }
         }
     }
 }
@@ -520,14 +541,21 @@ impl InputConsumerSystem {
         }
     }
 
-    pub fn picking_2d_3d(x2d: u16, y2d: u16, camera_pos: &Point3<f32>,
-                         projection: &Matrix4<f32>, view: &Matrix4<f32>) -> WorldCoords {
+    pub fn picking_2d_3d(
+        x2d: u16,
+        y2d: u16,
+        camera_pos: &Point3<f32>,
+        projection: &Matrix4<f32>,
+        view: &Matrix4<f32>,
+    ) -> WorldCoords {
         let screen_point = Point2::new(x2d as f32, y2d as f32);
 
-        let ray_clip = Vector4::new(2.0 * screen_point.x as f32 / VIDEO_WIDTH as f32 - 1.0,
-                                    1.0 - (2.0 * screen_point.y as f32) / VIDEO_HEIGHT as f32,
-                                    -1.0,
-                                    1.0);
+        let ray_clip = Vector4::new(
+            2.0 * screen_point.x as f32 / VIDEO_WIDTH as f32 - 1.0,
+            1.0 - (2.0 * screen_point.y as f32) / VIDEO_HEIGHT as f32,
+            -1.0,
+            1.0,
+        );
         let ray_eye = projection.try_inverse().unwrap() * ray_clip;
         let ray_eye = Vector4::new(ray_eye.x, ray_eye.y, -1.0, 0.0);
         let ray_world = view.try_inverse().unwrap() * ray_eye;
@@ -537,7 +565,8 @@ impl InputConsumerSystem {
         let line_direction: Vector3<f32> = ray_world;
         let plane_normal = Vector3::new(0.0, 1.0, 0.0);
         let plane_point = Vector3::new(0.0, 0.0, 0.0);
-        let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords)) / plane_normal.dot(&line_direction);
+        let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords))
+            / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
         return v2!(world_pos.x, world_pos.z);
     }
