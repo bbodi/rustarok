@@ -1,6 +1,6 @@
-use nalgebra::{Point3, Vector3, Matrix4};
 use crate::systems::input::InputConsumerSystem;
 use crate::video::VIDEO_HEIGHT;
+use nalgebra::{Matrix4, Point3, Vector3};
 
 pub struct Camera {
     pos: Point3<f32>,
@@ -19,7 +19,7 @@ impl Camera {
             front,
             up,
             right: front.cross(&up).normalize(),
-            visible_z_range: 0.0
+            visible_z_range: 0.0,
         }
     }
 
@@ -38,7 +38,9 @@ impl Camera {
     pub fn update_visible_z_range(&mut self, projection: &Matrix4<f32>) {
         let view = self.create_view_matrix();
         let center = InputConsumerSystem::picking_2d_3d(
-            0, (VIDEO_HEIGHT/2) as u16, &self.pos(),
+            0,
+            (VIDEO_HEIGHT / 2) as u16,
+            &self.pos(),
             projection,
             &view,
         );
@@ -50,7 +52,8 @@ impl Camera {
             pitch.to_radians().cos() * yaw.to_radians().cos(),
             pitch.to_radians().sin(),
             pitch.to_radians().cos() * yaw.to_radians().sin(),
-        ).normalize();
+        )
+        .normalize();
         self.right = self.front.cross(&Vector3::y()).normalize();
         self.up = self.right.cross(&self.front).normalize();
     }

@@ -1,13 +1,13 @@
-use specs::Entity;
 use crate::cam::Camera;
-use std::collections::HashMap;
-use sdl2::keyboard::Scancode;
-use nalgebra::{Point3, Matrix4, Vector2};
-use specs::prelude::*;
-use strum_macros::EnumIter;
+use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
 use crate::components::skills::skill::Skills;
-use crate::components::char::{SpriteRenderDescriptorComponent, SpriteBoundingRect};
 use crate::ElapsedTime;
+use nalgebra::{Matrix4, Point3, Vector2};
+use sdl2::keyboard::Scancode;
+use specs::prelude::*;
+use specs::Entity;
+use std::collections::HashMap;
+use strum_macros::EnumIter;
 
 #[derive(Default)]
 pub struct KeyState {
@@ -127,10 +127,7 @@ impl Drop for ControllerComponent {
 }
 
 impl ControllerComponent {
-    pub fn new(char: Entity,
-               x: f32,
-               z: f32,
-               projection: &Matrix4<f32>) -> ControllerComponent {
+    pub fn new(char: Entity, x: f32, z: f32, projection: &Matrix4<f32>) -> ControllerComponent {
         let pitch = -60.0;
         let yaw = 270.0;
         let mut camera = Camera::new(Point3::new(x, 40.0, z));
@@ -170,7 +167,7 @@ impl ControllerComponent {
                 forced_duration: None,
                 direction: 0,
                 fps_multiplier: 1.0,
-            }
+            },
         }
     }
 
@@ -180,8 +177,11 @@ impl ControllerComponent {
             for (entity_id, bounding_rect) in &self.bounding_rect_2d {
                 let mx = self.last_mouse_x as i32;
                 let my = self.last_mouse_y as i32;
-                if  mx >= bounding_rect.bottom_left[0] && mx <= bounding_rect.top_right[0] &&
-                    my <= bounding_rect.bottom_left[1] && my >= bounding_rect.top_right[1] {
+                if mx >= bounding_rect.bottom_left[0]
+                    && mx <= bounding_rect.top_right[0]
+                    && my <= bounding_rect.bottom_left[1]
+                    && my >= bounding_rect.top_right[1]
+                {
                     entity_below_cursor = Some(*entity_id);
                     break;
                 }
@@ -190,7 +190,6 @@ impl ControllerComponent {
         };
         self.bounding_rect_2d.clear();
     }
-
 
     pub fn is_selecting_target(&self) -> Option<(SkillKey, Skills)> {
         match self.next_action {

@@ -1,17 +1,17 @@
 extern crate rand;
 
-use websocket::stream::sync::TcpStream;
-use std::sync::Mutex;
-use nalgebra::{Vector2, Isometry2};
+use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
-use specs::prelude::*;
-use crate::components::controller::{WorldCoords};
+use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::BodyHandle;
+use specs::prelude::*;
+use std::sync::Mutex;
+use websocket::stream::sync::TcpStream;
 
 pub mod char;
 pub mod controller;
-pub mod status;
 pub mod skills;
+pub mod status;
 
 #[derive(Component)]
 pub struct BrowserClient {
@@ -39,7 +39,7 @@ pub struct FlyingNumberComponent {
 
 #[derive(Component)]
 pub struct StrEffectComponent {
-    pub effect: String /*StrEffect*/,
+    pub effect: String, /*StrEffect*/
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
@@ -77,12 +77,14 @@ impl FlyingNumberType {
 }
 
 impl FlyingNumberComponent {
-    pub fn new(typ: FlyingNumberType,
-               value: u32,
-               target_entity_id: Entity,
-               duration: f32,
-               start_pos: Vector2<f32>,
-               sys_time: ElapsedTime) -> FlyingNumberComponent {
+    pub fn new(
+        typ: FlyingNumberType,
+        value: u32,
+        target_entity_id: Entity,
+        duration: f32,
+        start_pos: Vector2<f32>,
+        sys_time: ElapsedTime,
+    ) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,
             typ,

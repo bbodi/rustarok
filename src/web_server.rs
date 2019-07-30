@@ -14,14 +14,11 @@ pub fn start_web_server() {
         HttpServer::new(|| {
             App::new()
                 // static files
-                .service(
-                    actix_files::Files::new("/", "web_server")
-                        .index_file("index.html")
-                )
+                .service(actix_files::Files::new("/", "web_server").index_file("index.html"))
         })
-            .workers(1)
-            .bind("0.0.0.0:6868")?
-            .start();
+        .workers(1)
+        .bind("0.0.0.0:6868")?
+        .start();
 
         log::info!("Starting http server: 0.0.0.0:6868");
         sys.run()

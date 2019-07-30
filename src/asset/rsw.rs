@@ -1,7 +1,7 @@
-use std::borrow::ToOwned;
-use nalgebra::{Vector3};
-use crate::ModelName;
 use crate::asset::BinaryReader;
+use crate::ModelName;
+use nalgebra::Vector3;
+use std::borrow::ToOwned;
 
 #[derive(Debug)]
 pub struct GroundData {
@@ -193,29 +193,47 @@ impl Rsw {
         for _i in 0..count {
             let typ = buf.next_i32();
             match typ {
-                1 => {
-                    models.push(ModelInstance {
-                        name: if version >= 1.3 { buf.string(40) } else { "".to_owned() },
-                        anim_type: if version >= 1.3 { buf.next_i32() } else { 0 },
-                        anim_speed: if version >= 1.3 { buf.next_f32() } else { 0.0 },
-                        block_type: if version >= 1.3 { buf.next_i32() } else { 0 },
-                        filename: ModelName(buf.string(80)),
-                        node_name: buf.string(80),
-                        pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
-                        rot: Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32()),
-                        scale: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
-                    })
-                }
+                1 => models.push(ModelInstance {
+                    name: if version >= 1.3 {
+                        buf.string(40)
+                    } else {
+                        "".to_owned()
+                    },
+                    anim_type: if version >= 1.3 { buf.next_i32() } else { 0 },
+                    anim_speed: if version >= 1.3 { buf.next_f32() } else { 0.0 },
+                    block_type: if version >= 1.3 { buf.next_i32() } else { 0 },
+                    filename: ModelName(buf.string(80)),
+                    node_name: buf.string(80),
+                    pos: Vector3::<f32>::new(
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                    ),
+                    rot: Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32()),
+                    scale: Vector3::<f32>::new(
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                    ),
+                }),
                 2 => lights.push(MapLight {
                     name: buf.string(80),
-                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                    ),
                     color: [buf.next_i32(), buf.next_i32(), buf.next_i32()],
                     range: buf.next_f32(),
                 }),
                 3 => sounds.push(MapSound {
                     name: buf.string(80),
                     file: buf.string(80),
-                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                    ),
                     vol: buf.next_f32(),
                     width: buf.next_i32(),
                     height: buf.next_i32(),
@@ -224,12 +242,21 @@ impl Rsw {
                 }),
                 4 => effects.push(MapEffect {
                     name: buf.string(80),
-                    pos: Vector3::<f32>::new(buf.next_f32() / 5.0, buf.next_f32() / 5.0, buf.next_f32() / 5.0),
+                    pos: Vector3::<f32>::new(
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                        buf.next_f32() / 5.0,
+                    ),
                     id: buf.next_i32(),
                     delay: buf.next_f32() * 10.0,
-                    param: [buf.next_f32(), buf.next_f32(), buf.next_f32(), buf.next_f32()],
+                    param: [
+                        buf.next_f32(),
+                        buf.next_f32(),
+                        buf.next_f32(),
+                        buf.next_f32(),
+                    ],
                 }),
-                _ => panic!("Wrong entity type: {}", typ)
+                _ => panic!("Wrong entity type: {}", typ),
             }
         }
         models.shrink_to_fit();

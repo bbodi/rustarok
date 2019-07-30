@@ -1,16 +1,18 @@
-use ncollide2d::shape::ShapeHandle;
-use nalgebra::{Vector2, Point2};
-use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
-use ncollide2d::world::CollisionGroups;
-use crate::{LIVING_COLLISION_GROUP, PhysicsWorld, CharActionIndex, ElapsedTime, MonsterActionIndex};
-use specs::Entity;
-use specs::prelude::*;
-use crate::consts::{MonsterId, JobId};
-use crate::systems::{Sex, Sprites, SystemVariables};
-use crate::components::controller::WorldCoords;
-use crate::components::status::Statuses;
 use crate::asset::SpriteResource;
+use crate::components::controller::WorldCoords;
 use crate::components::skills::skill::Skills;
+use crate::components::status::Statuses;
+use crate::consts::{JobId, MonsterId};
+use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::{
+    CharActionIndex, ElapsedTime, MonsterActionIndex, PhysicsWorld, LIVING_COLLISION_GROUP,
+};
+use nalgebra::{Point2, Vector2};
+use ncollide2d::shape::ShapeHandle;
+use ncollide2d::world::CollisionGroups;
+use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
+use specs::prelude::*;
+use specs::Entity;
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,
@@ -29,8 +31,7 @@ pub fn create_char(
                 sex,
             },
         );
-        let mut entity_builder = ecs_world.create_entity()
-            .with(char_comp);
+        let mut entity_builder = ecs_world.create_entity().with(char_comp);
 
         entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
@@ -44,7 +45,12 @@ pub fn create_char(
     };
     let mut storage = ecs_world.write_storage();
     let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-    let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
+    let physics_component = PhysicsComponent::new(
+        physics_world,
+        pos2d.coords,
+        ComponentRadius(radius),
+        entity_id,
+    );
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
 }
@@ -56,9 +62,10 @@ pub fn create_monster(
     radius: i32,
 ) -> Entity {
     let entity_id = {
-        let mut entity_builder = ecs_world.create_entity()
-            .with(CharacterStateComponent::new(CharType::Minion,
-                                               CharOutlook::Monster(monster_id)));
+        let mut entity_builder = ecs_world.create_entity().with(CharacterStateComponent::new(
+            CharType::Minion,
+            CharOutlook::Monster(monster_id),
+        ));
         entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: ElapsedTime(0.0),
@@ -71,11 +78,15 @@ pub fn create_monster(
     };
     let mut storage = ecs_world.write_storage();
     let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-    let physics_component = PhysicsComponent::new(physics_world, pos2d.coords, ComponentRadius(radius), entity_id);
+    let physics_component = PhysicsComponent::new(
+        physics_world,
+        pos2d.coords,
+        ComponentRadius(radius),
+        entity_id,
+    );
     storage.insert(entity_id, physics_component).unwrap();
     return entity_id;
 }
-
 
 // radius = ComponentRadius * 0.5f32
 #[derive(Eq, PartialEq, Hash)]
@@ -102,9 +113,10 @@ impl PhysicsComponent {
     ) -> PhysicsComponent {
         let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
         let collider_desc = ColliderDesc::new(capsule)
-            .collision_groups(CollisionGroups::new()
-                .with_membership(&[LIVING_COLLISION_GROUP])
-                .with_blacklist(&[])
+            .collision_groups(
+                CollisionGroups::new()
+                    .with_membership(&[LIVING_COLLISION_GROUP])
+                    .with_blacklist(&[]),
             )
             .density(radius.0 as f32 * 5.0);
         let rb_desc = RigidBodyDesc::new()
@@ -140,7 +152,10 @@ pub enum CharState {
     Sitting,
     PickingItem,
     StandBy,
-    Attacking { attack_ends: ElapsedTime, target: Entity },
+    Attacking {
+        attack_ends: ElapsedTime,
+        target: Entity,
+    },
     ReceivingDamage,
     Freeze,
     Dead,
@@ -162,36 +177,39 @@ impl Eq for CharState {}
 impl CharState {
     pub fn is_attacking(&self) -> bool {
         match self {
-            CharState::Attacking { attack_ends: _, target: _ } => true,
-            _ => false
+            CharState::Attacking {
+                attack_ends: _,
+                target: _,
+            } => true,
+            _ => false,
         }
     }
 
     pub fn is_casting(&self) -> bool {
         match self {
             CharState::CastingSkill { .. } => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_walking(&self) -> bool {
         match self {
             CharState::Walking(_pos) => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_alive(&self) -> bool {
         match self {
             CharState::Dead => false,
-            _ => true
+            _ => true,
         }
     }
 
     pub fn is_dead(&self) -> bool {
         match self {
             CharState::Dead => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -202,7 +220,13 @@ impl CharState {
             (CharState::Sitting, false) => CharActionIndex::Sitting as usize,
             (CharState::PickingItem, false) => CharActionIndex::PickingItem as usize,
             (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
-            (CharState::Attacking { attack_ends: _, target: _ }, false) => CharActionIndex::Attacking1 as usize,
+            (
+                CharState::Attacking {
+                    attack_ends: _,
+                    target: _,
+                },
+                false,
+            ) => CharActionIndex::Attacking1 as usize,
             (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
             (CharState::Freeze, false) => CharActionIndex::Freeze1 as usize,
             (CharState::Dead, false) => CharActionIndex::Dead as usize,
@@ -214,7 +238,13 @@ impl CharState {
             (CharState::Sitting, true) => MonsterActionIndex::Idle as usize,
             (CharState::PickingItem, true) => MonsterActionIndex::Idle as usize,
             (CharState::StandBy, true) => MonsterActionIndex::Idle as usize,
-            (CharState::Attacking { attack_ends: _, target: _ }, true) => MonsterActionIndex::Attack as usize,
+            (
+                CharState::Attacking {
+                    attack_ends: _,
+                    target: _,
+                },
+                true,
+            ) => MonsterActionIndex::Attack as usize,
             (CharState::ReceivingDamage, true) => MonsterActionIndex::ReceivingDamage as usize,
             (CharState::Freeze, true) => MonsterActionIndex::Idle as usize,
             (CharState::Dead, true) => MonsterActionIndex::Die as usize,
@@ -342,13 +372,21 @@ impl CharOutlook {
         char_state: &CharState,
     ) -> (&'a SpriteResource, usize) {
         return match self {
-            CharOutlook::Player { job_id, head_index: _, sex } => {
+            CharOutlook::Player {
+                job_id,
+                head_index: _,
+                sex,
+            } => {
                 let sprites = &sprites.character_sprites;
-                (&sprites[&job_id][*sex as usize], char_state.get_sprite_index(false))
+                (
+                    &sprites[&job_id][*sex as usize],
+                    char_state.get_sprite_index(false),
+                )
             }
-            CharOutlook::Monster(monster_id) => {
-                (&sprites.monster_sprites[&monster_id], char_state.get_sprite_index(true))
-            }
+            CharOutlook::Monster(monster_id) => (
+                &sprites.monster_sprites[&monster_id],
+                char_state.get_sprite_index(true),
+            ),
         };
     }
 }
@@ -410,13 +448,8 @@ impl CharacterStateComponent {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        self.statuses.update(
-            self_char_id,
-            &self.pos(),
-            system_vars,
-            entities,
-            updater,
-        )
+        self.statuses
+            .update(self_char_id, &self.pos(), system_vars, entities, updater)
     }
 
     pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {
@@ -443,7 +476,10 @@ impl CharacterStateComponent {
             CharState::Sitting => true,
             CharState::PickingItem => false,
             CharState::StandBy => true,
-            CharState::Attacking { attack_ends: _, target: _ } => false,
+            CharState::Attacking {
+                attack_ends: _,
+                target: _,
+            } => false,
             CharState::ReceivingDamage => true,
             CharState::Freeze => false,
             CharState::Dead => false,
@@ -461,15 +497,11 @@ impl CharacterStateComponent {
 
     pub fn went_from_casting_to_idle(&self) -> bool {
         match self.state {
-            CharState::Idle => {
-                match self.prev_state {
-                    CharState::CastingSkill(_) => {
-                        true
-                    }
-                    _ => false
-                }
-            }
-            _ => false
+            CharState::Idle => match self.prev_state {
+                CharState::CastingSkill(_) => true,
+                _ => false,
+            },
+            _ => false,
         }
     }
 
@@ -477,9 +509,7 @@ impl CharacterStateComponent {
         self.dir
     }
 
-    pub fn set_state(&mut self,
-                     state: CharState,
-                     dir: usize) {
+    pub fn set_state(&mut self, state: CharState, dir: usize) {
         self.state = state;
         self.dir = dir;
     }

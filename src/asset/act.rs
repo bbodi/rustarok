@@ -35,10 +35,11 @@ pub struct Layer {
     pub height: i32,
 }
 
-
 impl ActionFile {
-
-    pub fn remove_frames_in_every_direction<R>(&mut self, action_index: usize, range: R) where R: RangeBounds<usize> + Clone {
+    pub fn remove_frames_in_every_direction<R>(&mut self, action_index: usize, range: R)
+    where
+        R: RangeBounds<usize> + Clone,
+    {
         for i in 0..8 {
             self.actions[action_index + i].frames.drain(range.clone());
         }
@@ -55,18 +56,18 @@ impl ActionFile {
         let action_acount = buf.next_u16() as usize;
         buf.skip(10);
 
-        let mut actions: Vec<Action> = (0..action_acount).map(|_i| {
-            Action {
+        let mut actions: Vec<Action> = (0..action_acount)
+            .map(|_i| Action {
                 frames: ActionFile::read_animations(&mut buf, version),
                 delay: 150,
-                duration: 0.0
-            }
-        }).collect();
+                duration: 0.0,
+            })
+            .collect();
         let sounds = if version >= 2.1 {
-            (0..buf.next_i32()).map(|_i| {
-                buf.string(40)
-            }).collect()
-        } else { vec![] };
+            (0..buf.next_i32()).map(|_i| buf.string(40)).collect()
+        } else {
+            vec![]
+        };
         actions.iter_mut().for_each(|a| {
             if version >= 2.2 {
                 a.delay = (buf.next_f32() * 25f32) as u32;
@@ -78,61 +79,76 @@ impl ActionFile {
 
     fn read_animations(buf: &mut BinaryReader, version: f32) -> Vec<ActionFrame> {
         let animation_count = buf.next_u32() as usize;
-        (0..animation_count).map(|_i| {
-            let _unknown = buf.skip(32);
-            ActionFrame {
-                layers: ActionFile::read_layers(buf, version),
-                sound: if version >= 2.0 { buf.next_i32() } else { -1 },
-                positions: if version >= 2.3 {
-                    (0..buf.next_i32()).map(|_i| {
-                        buf.skip(4);
-                        let pos = [buf.next_i32(), buf.next_i32()];
-                        buf.skip(4);
-                        pos
-                    }).collect()
-                } else { vec![] },
-            }
-        }).collect()
+        (0..animation_count)
+            .map(|_i| {
+                let _unknown = buf.skip(32);
+                ActionFrame {
+                    layers: ActionFile::read_layers(buf, version),
+                    sound: if version >= 2.0 { buf.next_i32() } else { -1 },
+                    positions: if version >= 2.3 {
+                        (0..buf.next_i32())
+                            .map(|_i| {
+                                buf.skip(4);
+                                let pos = [buf.next_i32(), buf.next_i32()];
+                                buf.skip(4);
+                                pos
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    },
+                }
+            })
+            .collect()
     }
 
     fn read_layers(buf: &mut BinaryReader, version: f32) -> Vec<Layer> {
         let layer_count = buf.next_u32() as usize;
-        (0..layer_count).map(|_i| {
-            let pos = [buf.next_i32(), buf.next_i32()];
-            let sprite_frame_index = buf.next_i32();
-            let is_mirror = buf.next_i32() != 0;
-            let color = if version >= 2.0 {
-                [
-                    buf.next_u8() as f32 / 255.0,
-                    buf.next_u8() as f32 / 255.0,
-                    buf.next_u8() as f32 / 255.0,
-                    buf.next_u8() as f32 / 255.0,
-                ]
-            } else { [1.0, 1.0, 1.0, 1.0] };
-            let scale = if version >= 2.0 {
-                let scale_0 = buf.next_f32();
-                [
-                    scale_0,
-                    if version <= 2.3 { scale_0 } else { buf.next_f32() }
-                ]
-            } else { [1.0, 1.0] };
-            let angle = if version >= 2.0 { buf.next_i32() } else { 0 };
-            let spr_type = if version >= 2.0 { buf.next_i32() } else { 0 };
-            let width = if version >= 2.5 { buf.next_i32() } else { 0 };
-            let height = if version >= 2.5 { buf.next_i32() } else { 0 };
+        (0..layer_count)
+            .map(|_i| {
+                let pos = [buf.next_i32(), buf.next_i32()];
+                let sprite_frame_index = buf.next_i32();
+                let is_mirror = buf.next_i32() != 0;
+                let color = if version >= 2.0 {
+                    [
+                        buf.next_u8() as f32 / 255.0,
+                        buf.next_u8() as f32 / 255.0,
+                        buf.next_u8() as f32 / 255.0,
+                        buf.next_u8() as f32 / 255.0,
+                    ]
+                } else {
+                    [1.0, 1.0, 1.0, 1.0]
+                };
+                let scale = if version >= 2.0 {
+                    let scale_0 = buf.next_f32();
+                    [
+                        scale_0,
+                        if version <= 2.3 {
+                            scale_0
+                        } else {
+                            buf.next_f32()
+                        },
+                    ]
+                } else {
+                    [1.0, 1.0]
+                };
+                let angle = if version >= 2.0 { buf.next_i32() } else { 0 };
+                let spr_type = if version >= 2.0 { buf.next_i32() } else { 0 };
+                let width = if version >= 2.5 { buf.next_i32() } else { 0 };
+                let height = if version >= 2.5 { buf.next_i32() } else { 0 };
 
-            Layer {
-                pos,
-                sprite_frame_index,
-                is_mirror,
-                scale,
-                color,
-                angle,
-                spr_type,
-                width,
-                height,
-            }
-        })
+                Layer {
+                    pos,
+                    sprite_frame_index,
+                    is_mirror,
+                    scale,
+                    color,
+                    angle,
+                    spr_type,
+                    width,
+                    height,
+                }
+            })
             .filter(|it| it.sprite_frame_index >= 0) // for head sprites, the first layer refers to sprite '-1', which is skipped anyway during rendering
             .collect()
     }

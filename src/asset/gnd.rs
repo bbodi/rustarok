@@ -1,9 +1,9 @@
 use nalgebra::{Rotation3, Vector3};
-use sdl2::pixels::{PixelFormatEnum};
+use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 
+use crate::asset::{AssetLoader, BinaryReader};
 use crate::video::GlTexture;
-use crate::asset::{BinaryReader, AssetLoader};
 
 pub struct Gnd {
     pub version: f32,
@@ -81,9 +81,7 @@ impl Gnd {
         let lightmaps = Gnd::load_lightmaps(&mut buf);
         let tiles = Gnd::load_tiles(&mut buf, texture_names.len(), &texture_indices);
         let surfaces = Gnd::load_surfaces(&mut buf, width, height);
-        let normals = Gnd::smooth_normal(width as usize,
-                                         height as usize,
-                                         &surfaces);
+        let normals = Gnd::smooth_normal(width as usize, height as usize, &surfaces);
 
         let l_count_w = (lightmaps.count as f32).sqrt().round() as usize;
         let l_count_h = (lightmaps.count as f32).sqrt().ceil() as usize;
@@ -116,11 +114,8 @@ impl Gnd {
                 if cell_a.tile_up > -1 {
                     let tile = &tiles[cell_a.tile_up as usize];
                     let n = &normals[(y as u32 * width + x as u32) as usize];
-                    let (u1, u2, v1, v2) = Gnd::lightmap_atlas(tile.light,
-                                                               l_count_w,
-                                                               l_count_h,
-                                                               l_width,
-                                                               l_height);
+                    let (u1, u2, v1, v2) =
+                        Gnd::lightmap_atlas(tile.light, l_count_w, l_count_h, l_width, l_height);
                     mesh.push(MeshVertex {
                         pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_a[0], (y + 0.0) * 2.0]),
                         normal: [n[0][0], n[0][1], n[0][1]],
@@ -164,46 +159,56 @@ impl Gnd {
                         tile_color_coord: [(x + 0.5) / width as f32, (y + 0.5) / height as f32],
                     });
 
-
                     fn one_if_zero(i: f32) -> f32 {
-                        if i == 0.0 { 1.0 } else { i }
+                        if i == 0.0 {
+                            1.0
+                        } else {
+                            i
+                        }
                     }
                     // Add water only if it's upper than the ground.
-                    if h_a[0] > water_level - water_height ||
-                        h_a[1] > water_level - water_height ||
-                        h_a[2] > water_level - water_height ||
-                        h_a[3] > water_level - water_height {
+                    if h_a[0] > water_level - water_height
+                        || h_a[1] > water_level - water_height
+                        || h_a[2] > water_level - water_height
+                        || h_a[3] > water_level - water_height
+                    {
                         water.push(WaterVertex {
                             pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, (y) * 2.0]),
                             texcoord: [x % 5.0 / 5.0, y % 5.0 / 5.0],
                         });
                         water.push(WaterVertex {
                             pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, y * 2.0]),
-                            texcoord: [
-                                one_if_zero((x + 1.0) % 5.0 / 5.0),
-                                y % 5.0 / 5.0,
-                            ],
+                            texcoord: [one_if_zero((x + 1.0) % 5.0 / 5.0), y % 5.0 / 5.0],
                         });
                         water.push(WaterVertex {
-                            pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0]),
-                            texcoord: [
-                                one_if_zero((x + 1.0) % 5.0 / 5.0),
-                                one_if_zero((y + 1.0) % 5.0 / 5.0),
-                            ],
-                        });
-                        water.push(WaterVertex {
-                            pos: rotate_around_x_axis([(x + 1.0) * 2.0, water_level, (y + 1.0) * 2.0]),
+                            pos: rotate_around_x_axis([
+                                (x + 1.0) * 2.0,
+                                water_level,
+                                (y + 1.0) * 2.0,
+                            ]),
                             texcoord: [
                                 one_if_zero((x + 1.0) % 5.0 / 5.0),
                                 one_if_zero((y + 1.0) % 5.0 / 5.0),
                             ],
                         });
                         water.push(WaterVertex {
-                            pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, (y + 1.0) * 2.0]),
+                            pos: rotate_around_x_axis([
+                                (x + 1.0) * 2.0,
+                                water_level,
+                                (y + 1.0) * 2.0,
+                            ]),
                             texcoord: [
-                                x % 5.0 / 5.0,
+                                one_if_zero((x + 1.0) % 5.0 / 5.0),
                                 one_if_zero((y + 1.0) % 5.0 / 5.0),
                             ],
+                        });
+                        water.push(WaterVertex {
+                            pos: rotate_around_x_axis([
+                                (x + 0.0) * 2.0,
+                                water_level,
+                                (y + 1.0) * 2.0,
+                            ]),
+                            texcoord: [x % 5.0 / 5.0, one_if_zero((y + 1.0) % 5.0 / 5.0)],
                         });
                         water.push(WaterVertex {
                             pos: rotate_around_x_axis([(x + 0.0) * 2.0, water_level, y * 2.0]),
@@ -217,11 +222,8 @@ impl Gnd {
 
                     let cell_b = &surfaces[(x + (y + 1.0) * width as f32) as usize];
                     let h_b = cell_b.height;
-                    let (u1, u2, v1, v2) = Gnd::lightmap_atlas(tile.light,
-                                                               l_count_w,
-                                                               l_count_h,
-                                                               l_width,
-                                                               l_height);
+                    let (u1, u2, v1, v2) =
+                        Gnd::lightmap_atlas(tile.light, l_count_w, l_count_h, l_width, l_height);
                     mesh.push(MeshVertex {
                         pos: rotate_around_x_axis([(x + 0.0) * 2.0, h_b[0], (y + 1.0) * 2.0]),
                         normal: [0.0, 0.0, 1.0],
@@ -271,11 +273,8 @@ impl Gnd {
 
                     let cell_b = &surfaces[((x + 1.0) + y * width as f32) as usize];
                     let h_b = cell_b.height;
-                    let (u1, u2, v1, v2) = Gnd::lightmap_atlas(tile.light,
-                                                               l_count_w,
-                                                               l_count_h,
-                                                               l_width,
-                                                               l_height);
+                    let (u1, u2, v1, v2) =
+                        Gnd::lightmap_atlas(tile.light, l_count_w, l_count_h, l_width, l_height);
                     mesh.push(MeshVertex {
                         pos: rotate_around_x_axis([(x + 1.0) * 2.0, h_a[1], (y + 0.0) * 2.0]),
                         normal: [1.0, 0.0, 0.0],
@@ -327,12 +326,8 @@ impl Gnd {
 
         let water_vert_count = water.len() / 5;
         let lightmap_image = Gnd::create_lightmap_image(&lightmaps);
-        let tiles_color_image = Gnd::create_tiles_color_image(
-            width as usize,
-            height as usize,
-            &surfaces,
-            &tiles,
-        );
+        let tiles_color_image =
+            Gnd::create_tiles_color_image(width as usize, height as usize, &surfaces, &tiles);
 
         let shadowmap_image = Gnd::create_shadowmap_image(
             width as usize,
@@ -369,56 +364,79 @@ impl Gnd {
         GlTexture::from_data(&lightmap, width as i32, height as i32)
     }
 
-    pub fn create_tile_color_texture(tiles_color_buffer: &mut Vec<u8>, width: u32, height: u32) -> GlTexture {
+    pub fn create_tile_color_texture(
+        tiles_color_buffer: &mut Vec<u8>,
+        width: u32,
+        height: u32,
+    ) -> GlTexture {
         let tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,
-            width, height,
+            width,
+            height,
             4 * width,
             PixelFormatEnum::BGRA32,
-        ).unwrap();
+        )
+        .unwrap();
 
         let scaled_w = (width as u32).next_power_of_two();
         let scaled_h = (height as u32).next_power_of_two();
 
-        let mut scaled_tiles_color_surface = sdl2::surface::Surface::new(
-            scaled_w,
-            scaled_h,
-            PixelFormatEnum::BGRA32,
-        ).unwrap().convert(&tile_color_surface.pixel_format()).unwrap();
-        tile_color_surface.blit_scaled(
-            None,
-            &mut scaled_tiles_color_surface,
-            Rect::new(0, 0, scaled_w, scaled_h),
-        ).unwrap();
+        let mut scaled_tiles_color_surface =
+            sdl2::surface::Surface::new(scaled_w, scaled_h, PixelFormatEnum::BGRA32)
+                .unwrap()
+                .convert(&tile_color_surface.pixel_format())
+                .unwrap();
+        tile_color_surface
+            .blit_scaled(
+                None,
+                &mut scaled_tiles_color_surface,
+                Rect::new(0, 0, scaled_w, scaled_h),
+            )
+            .unwrap();
 
         GlTexture::from_surface(scaled_tiles_color_surface, gl::LINEAR)
     }
 
-    fn lightmap_atlas(i: u16,
-                      l_count_w: usize,
-                      l_count_h: usize,
-                      l_width: usize,
-                      l_height: usize) -> (f32, f32, f32, f32) /*u1, u2, v1, v2*/ {
+    fn lightmap_atlas(
+        i: u16,
+        l_count_w: usize,
+        l_count_h: usize,
+        l_width: usize,
+        l_height: usize,
+    ) -> (f32, f32, f32, f32) /*u1, u2, v1, v2*/ {
         (
-            (((i % l_count_w as u16) as f32 + 0.125) / l_count_w as f32) * ((l_count_w as f32 * 8.0) / l_width as f32),
-            (((i % l_count_w as u16) as f32 + 0.875) / l_count_w as f32) * ((l_count_w as f32 * 8.0) / l_width as f32),
-            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.125) / l_count_h as f32) * ((l_count_h as f32 * 8.0) / l_height as f32),
-            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.875) / l_count_h as f32) * ((l_count_h as f32 * 8.0) / l_height as f32)
+            (((i % l_count_w as u16) as f32 + 0.125) / l_count_w as f32)
+                * ((l_count_w as f32 * 8.0) / l_width as f32),
+            (((i % l_count_w as u16) as f32 + 0.875) / l_count_w as f32)
+                * ((l_count_w as f32 * 8.0) / l_width as f32),
+            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.125) / l_count_h as f32)
+                * ((l_count_h as f32 * 8.0) / l_height as f32),
+            ((i.checked_div(l_count_w as u16).unwrap_or(0) as f32 + 0.875) / l_count_h as f32)
+                * ((l_count_h as f32 * 8.0) / l_height as f32),
         )
     }
 
     fn load_surfaces(buf: &mut BinaryReader, width: u32, height: u32) -> Vec<Surface> {
-        (0..width * height).map(|_i| {
-            Surface {
-                height: [buf.next_f32() / 5f32, buf.next_f32() / 5f32, buf.next_f32() / 5f32, buf.next_f32() / 5f32],
+        (0..width * height)
+            .map(|_i| Surface {
+                height: [
+                    buf.next_f32() / 5f32,
+                    buf.next_f32() / 5f32,
+                    buf.next_f32() / 5f32,
+                    buf.next_f32() / 5f32,
+                ],
                 tile_up: buf.next_i32() as isize,
                 tile_front: buf.next_i32() as isize,
                 tile_right: buf.next_i32() as isize,
-            }
-        }).collect()
+            })
+            .collect()
     }
 
-    fn load_tiles(buf: &mut BinaryReader, texture_count: usize, texture_indices: &Vec<usize>) -> Vec<Tile> {
+    fn load_tiles(
+        buf: &mut BinaryReader,
+        texture_count: usize,
+        texture_indices: &Vec<usize>,
+    ) -> Vec<Tile> {
         let count = buf.next_u32();
         // Texture atlas stuff
         let atlas_cols: f32 = (texture_count as f32).sqrt().round();
@@ -430,34 +448,44 @@ impl Gnd {
         let atlas_px_u: f32 = 1f32 / 258f32;
         let atlas_px_v: f32 = 1f32 / 258f32;
 
-        (0..count).map(|_i| {
-            let u1 = buf.next_f32();
-            let u2 = buf.next_f32();
-            let u3 = buf.next_f32();
-            let u4 = buf.next_f32();
-            let v1 = buf.next_f32();
-            let v2 = buf.next_f32();
-            let v3 = buf.next_f32();
-            let v4 = buf.next_f32();
-            let texture = texture_indices[buf.next_u16() as usize];
+        (0..count)
+            .map(|_i| {
+                let u1 = buf.next_f32();
+                let u2 = buf.next_f32();
+                let u3 = buf.next_f32();
+                let u4 = buf.next_f32();
+                let v1 = buf.next_f32();
+                let v2 = buf.next_f32();
+                let v3 = buf.next_f32();
+                let v4 = buf.next_f32();
+                let texture = texture_indices[buf.next_u16() as usize];
 
-            let u = (texture % atlas_cols as usize) as f32;
-            let v = (texture as f32 / atlas_cols as f32).floor();
+                let u = (texture % atlas_cols as usize) as f32;
+                let v = (texture as f32 / atlas_cols as f32).floor();
 
-            Tile {
-                u1: (u + u1 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u / atlas_cols,
-                u2: (u + u2 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u / atlas_cols,
-                u3: (u + u3 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u / atlas_cols,
-                u4: (u + u4 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u / atlas_cols,
-                v1: (v + v1 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v / atlas_rows,
-                v2: (v + v2 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v / atlas_rows,
-                v3: (v + v3 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v / atlas_rows,
-                v4: (v + v4 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v / atlas_rows,
-                texture,
-                light: buf.next_u16(),
-                color: [buf.next_u8(), buf.next_u8(), buf.next_u8(), buf.next_u8()],
-            }
-        }).collect()
+                Tile {
+                    u1: (u + u1 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u
+                        / atlas_cols,
+                    u2: (u + u2 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u
+                        / atlas_cols,
+                    u3: (u + u3 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u
+                        / atlas_cols,
+                    u4: (u + u4 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u
+                        / atlas_cols,
+                    v1: (v + v1 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v
+                        / atlas_rows,
+                    v2: (v + v2 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v
+                        / atlas_rows,
+                    v3: (v + v3 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v
+                        / atlas_rows,
+                    v4: (v + v4 * (1f32 - atlas_px_v * 2f32) + atlas_px_v) * atlas_factor_v
+                        / atlas_rows,
+                    texture,
+                    light: buf.next_u16(),
+                    color: [buf.next_u8(), buf.next_u8(), buf.next_u8(), buf.next_u8()],
+                }
+            })
+            .collect()
     }
 
     fn create_lightmap_image(lightmap: &LightmapData) -> Vec<u8> {
@@ -485,11 +513,13 @@ impl Gnd {
         return out;
     }
 
-    fn create_shadowmap_image(width: usize,
-                              height: usize,
-                              surfaces: &Vec<Surface>,
-                              tiles: &Vec<Tile>,
-                              lightmap: &LightmapData) -> Vec<u8> {
+    fn create_shadowmap_image(
+        width: usize,
+        height: usize,
+        surfaces: &Vec<Surface>,
+        tiles: &Vec<Tile>,
+        lightmap: &LightmapData,
+    ) -> Vec<u8> {
         let per_cell = lightmap.per_cell as usize;
         let data = &lightmap.data;
         let mut out = vec![0; width * 8 * height * 8];
@@ -519,10 +549,12 @@ impl Gnd {
         return out;
     }
 
-    fn create_tiles_color_image(width: usize,
-                                height: usize,
-                                surfaces: &Vec<Surface>,
-                                tiles: &Vec<Tile>) -> Vec<u8> {
+    fn create_tiles_color_image(
+        width: usize,
+        height: usize,
+        surfaces: &Vec<Surface>,
+        tiles: &Vec<Tile>,
+    ) -> Vec<u8> {
         let mut data = vec![0; width * height * 4];
         for y in 0..height {
             for x in 0..width {
@@ -539,26 +571,41 @@ impl Gnd {
         return data;
     }
 
-    fn smooth_normal(width: usize,
-                     height: usize,
-                     surfaces: &Vec<Surface>) -> Vec<[Vector3<f32>; 4]> {
+    fn smooth_normal(
+        width: usize,
+        height: usize,
+        surfaces: &Vec<Surface>,
+    ) -> Vec<[Vector3<f32>; 4]> {
         // Calculate normal for each cells
         let mut tmp: Vec<Vector3<f32>> = vec![Vector3::zeros(); width * height];
         let mut normals: Vec<[Vector3<f32>; 4]> = vec![
-            [Vector3::zeros(), Vector3::zeros(), Vector3::zeros(), Vector3::zeros()];
+            [
+                Vector3::zeros(),
+                Vector3::zeros(),
+                Vector3::zeros(),
+                Vector3::zeros()
+            ];
             (width * height) as usize
         ];
-        pub fn triangle_normal(p1: &Vector3<f32>, p2: &Vector3<f32>, p3: &Vector3<f32>) -> Vector3<f32> {
+        pub fn triangle_normal(
+            p1: &Vector3<f32>,
+            p2: &Vector3<f32>,
+            p3: &Vector3<f32>,
+        ) -> Vector3<f32> {
             (p2 - p1).cross(&(p3 - p1)).normalize()
         }
         for y in 0..height {
             for x in 0..width {
                 let cell = &surfaces[(y * width + x) as usize];
                 if cell.tile_up > -1 {
-                    let a: Vector3<f32> = Vector3::new(((x + 0) * 2) as f32, cell.height[0], ((y + 0) * 2) as f32);
-                    let b: Vector3<f32> = Vector3::new(((x + 1) * 2) as f32, cell.height[1], ((y + 0) * 2) as f32);
-                    let c: Vector3<f32> = Vector3::new(((x + 1) * 2) as f32, cell.height[3], ((y + 1) * 2) as f32);
-                    let d: Vector3<f32> = Vector3::new(((x + 0) * 2) as f32, cell.height[2], ((y + 1) * 2) as f32);
+                    let a: Vector3<f32> =
+                        Vector3::new(((x + 0) * 2) as f32, cell.height[0], ((y + 0) * 2) as f32);
+                    let b: Vector3<f32> =
+                        Vector3::new(((x + 1) * 2) as f32, cell.height[1], ((y + 0) * 2) as f32);
+                    let c: Vector3<f32> =
+                        Vector3::new(((x + 1) * 2) as f32, cell.height[3], ((y + 1) * 2) as f32);
+                    let d: Vector3<f32> =
+                        Vector3::new(((x + 0) * 2) as f32, cell.height[2], ((y + 1) * 2) as f32);
                     let t1 = triangle_normal(&a, &b, &c);
                     let t2 = triangle_normal(&c, &d, &a);
                     tmp[(y * width + x) as usize] = (t1 + t2).normalize();
@@ -649,36 +696,46 @@ impl Gnd {
         (texture_names, texture_indices)
     }
 
-    pub fn create_gl_texture_atlas(asset_loader: &AssetLoader, texture_names: &Vec<String>) -> GlTexture {
-        let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names.iter().map(|texture_name| {
-            let path = format!("data\\texture\\{}", texture_name);
-            let surface = asset_loader.load_sdl_surface(&path);
-            surface.unwrap_or_else(|e| {
-                log::warn!("Missing: {}, {}", path, e);
-                asset_loader.backup_surface()
+    pub fn create_gl_texture_atlas(
+        asset_loader: &AssetLoader,
+        texture_names: &Vec<String>,
+    ) -> GlTexture {
+        let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names
+            .iter()
+            .map(|texture_name| {
+                let path = format!("data\\texture\\{}", texture_name);
+                let surface = asset_loader.load_sdl_surface(&path);
+                surface.unwrap_or_else(|e| {
+                    log::warn!("Missing: {}, {}", path, e);
+                    asset_loader.backup_surface()
+                })
             })
-        }).collect();
+            .collect();
         let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
         GlTexture::from_surface(surface_atlas, gl::NEAREST)
     }
 
-    fn create_texture_atlas(texture_surfaces: Vec<sdl2::surface::Surface>) -> sdl2::surface::Surface<'static> {
+    fn create_texture_atlas(
+        texture_surfaces: Vec<sdl2::surface::Surface>,
+    ) -> sdl2::surface::Surface<'static> {
         let _width = (texture_surfaces.len() as f32).sqrt().round() as i32;
         let width = ((_width * 258) as u32).next_power_of_two();
-        let height = ((texture_surfaces.len() as f32).sqrt().ceil() as u32 * 258).next_power_of_two();
-        let mut surface_atlas = sdl2::surface::Surface::new(width, height, PixelFormatEnum::RGB888).unwrap();
+        let height =
+            ((texture_surfaces.len() as f32).sqrt().ceil() as u32 * 258).next_power_of_two();
+        let mut surface_atlas =
+            sdl2::surface::Surface::new(width, height, PixelFormatEnum::RGB888).unwrap();
         for (i, texture_surface) in texture_surfaces.iter().enumerate() {
             let x = (i as i32 % _width) * 258;
             let y = ((i as i32 / _width) as f32).floor() as i32 * 258;
-            let optimized = texture_surface.convert(&surface_atlas.pixel_format()).unwrap();
-            optimized.blit_scaled(None,
-                                  &mut surface_atlas,
-                                  Rect::new(x, y, 258, 258),
-            ).unwrap();
-            optimized.blit_scaled(None,
-                                  &mut surface_atlas,
-                                  Rect::new(x + 1, y + 1, 256, 256),
-            ).unwrap();
+            let optimized = texture_surface
+                .convert(&surface_atlas.pixel_format())
+                .unwrap();
+            optimized
+                .blit_scaled(None, &mut surface_atlas, Rect::new(x, y, 258, 258))
+                .unwrap();
+            optimized
+                .blit_scaled(None, &mut surface_atlas, Rect::new(x + 1, y + 1, 256, 256))
+                .unwrap();
         }
         surface_atlas
     }
