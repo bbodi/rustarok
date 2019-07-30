@@ -275,7 +275,7 @@ pub enum EntityTarget {
     Pos(WorldCoords),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Percentage(f32);
 
 impl Percentage {
@@ -287,56 +287,47 @@ impl Percentage {
         Percentage(percentage)
     }
 
+    pub fn is_not_zero(&self) -> bool {
+        self.0 != 0.0
+    }
+
+    pub fn as_i16(&self) -> i16 {
+        (self.0 * 100.0) as i16
+    }
+
+    pub fn apply(&mut self, modifier: &CharAttributeModifier) {
+        match modifier {
+            CharAttributeModifier::AddPercentage(p) => {
+                self.0 += p.0;
+            }
+            CharAttributeModifier::AddValue(v) => panic!(
+                "{:?} += {:?}, you cannot add value to a percentage",
+                self, modifier
+            ),
+            CharAttributeModifier::IncreaseByPercentage(p) => {
+                self.increase_by(*p);
+            }
+        }
+    }
+
+    pub fn add_to_i32(&self, num: i32) -> i32 {
+        num + (self.0 * num as f32) as i32
+    }
+
+    pub fn add_to_u16(&self, num: u16) -> u16 {
+        num + (self.0 * num as f32) as u16
+    }
+
     pub fn as_f32(&self) -> f32 {
         self.0
     }
-}
 
-/// Representing f32 values from 0 to 1.0 or 0% to 100%, with 0.1% increments
-/// e.g. U16Float(550).as_f32() == 55% == 0.55
-/// e.g. U16Float(10).as_f32() == 1% == 0.01
-/// e.g. U16Float(12).as_f32() == 1.2% == 0.012
-/// e.g. U16Float(60000).as_f32() == 600% == 60.0
-#[derive(Copy, Clone, Debug)]
-pub struct U16Float(u16);
-
-impl U16Float {
-    pub fn new(p: Percentage) -> U16Float {
-        U16Float((p.as_f32() * 1000.0) as u16)
+    pub fn increase_by(&mut self, p: Percentage) {
+        self.0 = p.add_me_to_as_percentage(self.0);
     }
 
-    pub fn as_f32(&self) -> f32 {
-        self.0 as f32 / 1000.0
-    }
-}
-
-/// Representing f32 values from 0 to 5.1 or 0% to 510%, with 0.1% increments
-/// e.g. U8Float(250).as_f32() == 500% == 5
-/// e.g. U8Float(10).as_f32() == 20% == 0.2
-/// e.g. U8Float(12).as_f32() == 24% == 0.24
-/// e.g. U8Float(1).as_f32() == 2% == 0.02
-#[derive(Copy, Clone, Debug)]
-pub struct U8Float(u8);
-
-impl U8Float {
-    pub fn new(p: Percentage) -> U8Float {
-        U8Float((p.as_f32() * 50.0) as u8)
-    }
-
-    pub fn as_f32(&self) -> f32 {
-        self.0 as f32 / 50.0
-    }
-
-    pub fn multiply(&self, num: f32) -> f32 {
-        self.as_f32() * num
-    }
-
-    pub fn increase_by(&mut self, by: Percentage) {
-        self.0 = (self.0 as f32 * (1.0 + by.as_f32())) as u8;
-    }
-
-    pub fn decrease_by(&mut self, by: Percentage) {
-        self.0 = (self.0 as f32 * (1.0 - by.as_f32())) as u8;
+    pub fn add(&mut self, p: Percentage) {
+        self.0 += p.0;
     }
 
     pub fn add_me_to_as_percentage(&self, num: f32) -> f32 {
@@ -345,6 +336,10 @@ impl U8Float {
 
     pub fn subtract_me_from_as_percentage(&self, num: f32) -> f32 {
         num - (self.as_f32() * num)
+    }
+
+    pub fn subtract(&self, other: Percentage) -> Percentage {
+        Percentage(self.0 - other.0)
     }
 }
 
@@ -391,14 +386,244 @@ impl CharOutlook {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CharAttributes {
     pub max_hp: i32,
-    pub walking_speed: U8Float,
-    pub attack_range: U8Float,
-    pub attack_speed: U8Float,
     pub attack_damage: u16,
-    pub armor: U8Float,
+    pub walking_speed: Percentage,
+    pub attack_range: Percentage,
+    pub attack_speed: Percentage,
+    pub armor: Percentage,
+    pub healing: Percentage,
+    pub hp_regen: Percentage,
+    pub mana_regen: Percentage,
+}
+
+#[derive(Clone, Debug)]
+pub struct CharAttributesBonuses {
+    pub attrs: CharAttributes,
+    pub durations: BonusDurations,
+}
+
+impl CharAttributes {
+    pub fn zero() -> CharAttributes {
+        CharAttributes {
+            walking_speed: Percentage::new(0.0),
+            attack_range: Percentage::new(0.0),
+            attack_speed: Percentage::new(0.0),
+            attack_damage: 0,
+            armor: Percentage::new(0.0),
+            healing: Percentage(0.0),
+            hp_regen: Percentage(0.0),
+            max_hp: 0,
+            mana_regen: Percentage(0.0),
+        }
+    }
+
+    pub fn differences(
+        &self,
+        other: &CharAttributes,
+        collector: &CharAttributeModifierCollector,
+    ) -> CharAttributesBonuses {
+        return CharAttributesBonuses {
+            attrs: CharAttributes {
+                max_hp: self.max_hp - other.max_hp,
+                attack_damage: self.attack_damage - other.attack_damage,
+                walking_speed: self.walking_speed.subtract(other.walking_speed),
+                attack_range: self.attack_range.subtract(other.attack_range),
+                attack_speed: self.attack_speed.subtract(other.attack_speed),
+                armor: self.armor.subtract(other.armor),
+                healing: self.healing.subtract(other.healing),
+                hp_regen: self.hp_regen.subtract(other.hp_regen),
+                mana_regen: self.mana_regen.subtract(other.mana_regen),
+            },
+            durations: collector.durations.clone(),
+        };
+    }
+
+    pub fn apply(&self, modifiers: &CharAttributeModifierCollector) -> CharAttributes {
+        let mut attr = self.clone();
+        for m in &modifiers.max_hp {
+            match m {
+                CharAttributeModifier::AddPercentage(p) => {
+                    panic!("max_hp += {:?}, you cannot add percentage to a value", m)
+                }
+                CharAttributeModifier::AddValue(v) => {
+                    attr.max_hp += *v as i32;
+                }
+                CharAttributeModifier::IncreaseByPercentage(p) => {
+                    p.add_to_i32(attr.max_hp);
+                }
+            }
+        }
+        for m in &modifiers.attack_damage {
+            match m {
+                CharAttributeModifier::AddPercentage(p) => panic!(
+                    "attack_damage += {:?}, you cannot add percentage to a value",
+                    m
+                ),
+                CharAttributeModifier::AddValue(v) => {
+                    attr.attack_damage += *v as u16;
+                }
+                CharAttributeModifier::IncreaseByPercentage(p) => {
+                    p.add_to_u16(attr.attack_damage);
+                }
+            }
+        }
+
+        for m in &modifiers.walking_speed {
+            attr.walking_speed.apply(m);
+        }
+        for m in &modifiers.attack_range {
+            attr.attack_range.apply(m);
+        }
+        for m in &modifiers.attack_speed {
+            attr.attack_speed.apply(m);
+        }
+        for m in &modifiers.armor {
+            attr.armor.apply(m);
+        }
+        for m in &modifiers.healing {
+            attr.healing.apply(m);
+        }
+        for m in &modifiers.hp_regen {
+            attr.hp_regen.apply(m);
+        }
+        for m in &modifiers.mana_regen {
+            attr.mana_regen.apply(m);
+        }
+        return attr;
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum CharAttributeModifier {
+    AddPercentage(Percentage),
+    AddValue(f32),
+    IncreaseByPercentage(Percentage),
+}
+
+#[derive(Clone, Debug)]
+pub struct BonusDurations {
+    pub max_hp_bonus_ends_at: ElapsedTime,
+    pub walking_speed_bonus_ends_at: ElapsedTime,
+    pub attack_range_bonus_ends_at: ElapsedTime,
+    pub attack_speed_bonus_ends_at: ElapsedTime,
+    pub attack_damage_bonus_ends_at: ElapsedTime,
+    pub armor_bonus_ends_at: ElapsedTime,
+    pub healing_bonus_ends_at: ElapsedTime,
+    pub hp_regen_bonus_ends_at: ElapsedTime,
+    pub mana_regen_bonus_ends_at: ElapsedTime,
+
+    pub max_hp_bonus_started_at: ElapsedTime,
+    pub walking_speed_bonus_started_at: ElapsedTime,
+    pub attack_range_bonus_started_at: ElapsedTime,
+    pub attack_speed_bonus_started_at: ElapsedTime,
+    pub attack_damage_bonus_started_at: ElapsedTime,
+    pub armor_bonus_started_at: ElapsedTime,
+    pub healing_bonus_started_at: ElapsedTime,
+    pub hp_regen_bonus_started_at: ElapsedTime,
+    pub mana_regen_bonus_started_at: ElapsedTime,
+}
+
+impl BonusDurations {
+    pub fn with_invalid_times() -> BonusDurations {
+        BonusDurations {
+            max_hp_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            walking_speed_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            attack_range_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            attack_speed_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            attack_damage_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            armor_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            healing_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            hp_regen_bonus_ends_at: ElapsedTime(std::f32::MAX),
+            mana_regen_bonus_ends_at: ElapsedTime(std::f32::MAX),
+
+            max_hp_bonus_started_at: ElapsedTime(std::f32::MAX),
+            walking_speed_bonus_started_at: ElapsedTime(std::f32::MAX),
+            attack_range_bonus_started_at: ElapsedTime(std::f32::MAX),
+            attack_speed_bonus_started_at: ElapsedTime(std::f32::MAX),
+            attack_damage_bonus_started_at: ElapsedTime(std::f32::MAX),
+            armor_bonus_started_at: ElapsedTime(std::f32::MAX),
+            healing_bonus_started_at: ElapsedTime(std::f32::MAX),
+            hp_regen_bonus_started_at: ElapsedTime(std::f32::MAX),
+            mana_regen_bonus_started_at: ElapsedTime(std::f32::MAX),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CharAttributeModifierCollector {
+    max_hp: Vec<CharAttributeModifier>,
+    walking_speed: Vec<CharAttributeModifier>,
+    attack_range: Vec<CharAttributeModifier>,
+    attack_speed: Vec<CharAttributeModifier>,
+    attack_damage: Vec<CharAttributeModifier>,
+    armor: Vec<CharAttributeModifier>,
+    healing: Vec<CharAttributeModifier>,
+    hp_regen: Vec<CharAttributeModifier>,
+    mana_regen: Vec<CharAttributeModifier>,
+    durations: BonusDurations,
+}
+
+impl CharAttributeModifierCollector {
+    pub fn new() -> CharAttributeModifierCollector {
+        CharAttributeModifierCollector {
+            max_hp: Vec::with_capacity(8),
+            walking_speed: Vec::with_capacity(8),
+            attack_range: Vec::with_capacity(8),
+            attack_speed: Vec::with_capacity(8),
+            attack_damage: Vec::with_capacity(8),
+            armor: Vec::with_capacity(8),
+            healing: Vec::with_capacity(8),
+            hp_regen: Vec::with_capacity(8),
+            mana_regen: Vec::with_capacity(8),
+            durations: BonusDurations::with_invalid_times(),
+        }
+    }
+
+    pub fn change_armor(
+        &mut self,
+        modifier: CharAttributeModifier,
+        started: ElapsedTime,
+        until: ElapsedTime,
+    ) {
+        if self.durations.armor_bonus_ends_at.is_later_than(until) {
+            self.durations.armor_bonus_ends_at = until;
+            self.durations.armor_bonus_started_at = started;
+        }
+        self.armor.push(modifier);
+    }
+
+    pub fn change_walking_speed(
+        &mut self,
+        modifier: CharAttributeModifier,
+        started: ElapsedTime,
+        until: ElapsedTime,
+    ) {
+        if self
+            .durations
+            .walking_speed_bonus_ends_at
+            .is_later_than(until)
+        {
+            self.durations.walking_speed_bonus_ends_at = until;
+            self.durations.walking_speed_bonus_started_at = started;
+        }
+        self.walking_speed.push(modifier);
+    }
+
+    pub fn clear(&mut self) {
+        self.max_hp.clear();
+        self.walking_speed.clear();
+        self.attack_range.clear();
+        self.attack_speed.clear();
+        self.attack_damage.clear();
+        self.armor.clear();
+        self.healing.clear();
+        self.hp_regen.clear();
+        self.mana_regen.clear();
+        self.durations = BonusDurations::with_invalid_times();
+    }
 }
 
 #[derive(Component)]
@@ -412,7 +637,9 @@ pub struct CharacterStateComponent {
     pub cannot_control_until: ElapsedTime,
     pub outlook: CharOutlook,
     pub hp: i32,
-    pub calculated_attribs: CharAttributes,
+    base_attributes: CharAttributes,
+    calculated_attribs: CharAttributes,
+    attrib_bonuses: CharAttributesBonuses,
     pub statuses: Statuses,
 }
 
@@ -425,7 +652,8 @@ impl Drop for CharacterStateComponent {
 impl CharacterStateComponent {
     pub fn new(typ: CharType, outlook: CharOutlook) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let calculated_attribs = statuses.calc_attribs(&outlook);
+        let base_attributes = Statuses::get_base_attributes(&outlook);
+        let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             pos: v2!(0, 0),
             typ,
@@ -436,9 +664,33 @@ impl CharacterStateComponent {
             dir: 0,
             cannot_control_until: ElapsedTime(0.0),
             hp: 2000,
+            base_attributes,
             calculated_attribs,
+            attrib_bonuses: CharAttributesBonuses {
+                attrs: CharAttributes::zero(),
+                durations: BonusDurations::with_invalid_times(),
+            },
             statuses,
         }
+    }
+
+    pub fn base_attributes(&self) -> &CharAttributes {
+        &self.base_attributes
+    }
+    pub fn calculated_attribs(&self) -> &CharAttributes {
+        &self.calculated_attribs
+    }
+    pub fn attrib_bonuses(&self) -> &CharAttributesBonuses {
+        &self.attrib_bonuses
+    }
+
+    pub fn update_attributes(&mut self) {
+        let modifier_collector = self.statuses.calc_attributes();
+        self.calculated_attribs = self.base_attributes.apply(modifier_collector);
+
+        self.attrib_bonuses = self
+            .calculated_attribs
+            .differences(&self.base_attributes, modifier_collector);
     }
 
     pub fn update_statuses(
@@ -448,8 +700,18 @@ impl CharacterStateComponent {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        self.statuses
-            .update(self_char_id, &self.pos(), system_vars, entities, updater)
+        let changed =
+            self.statuses
+                .update(self_char_id, &self.pos(), system_vars, entities, updater);
+        if changed {
+            self.update_attributes();
+            log::trace!(
+                "Status expired. Attributes({:?}): mod: {:?}, attribs: {:?}",
+                self_char_id,
+                self.attrib_bonuses(),
+                self.calculated_attribs()
+            );
+        }
     }
 
     pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {

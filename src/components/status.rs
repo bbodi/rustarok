@@ -1,5 +1,7 @@
 use crate::asset::SpriteResource;
-use crate::components::char::{CharAttributes, CharOutlook, Percentage, U8Float};
+use crate::components::char::{
+    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, Percentage,
+};
 use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::consts::JobId;
@@ -9,17 +11,20 @@ use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Matrix4};
 use specs::{Entity, LazyUpdate};
+use std::any::Any;
+use std::collections::HashSet;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use strum_macros::EnumCount;
 
-pub trait Status {
+pub trait Status: Any {
     fn dupl(&self) -> Box<dyn Status>;
     fn can_target_move(&self) -> bool;
     fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
     fn get_render_color(&self) -> [f32; 4];
     fn get_render_size(&self) -> f32;
-    fn calc_attribs(&self, attributes: &mut CharAttributes);
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
     fn calc_render_sprite<'a>(
         &self,
         job_id: JobId,
@@ -45,7 +50,8 @@ pub trait Status {
         system_vars: &mut SystemVariables,
         view_matrix: &Matrix4<f32>,
     );
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32>;
+    // (ElapsedTime, f32) == ends_at, percentage
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)>;
 }
 
 // TODO: should 'Dead' be a status?
@@ -62,6 +68,7 @@ struct MountedStatus;
 pub struct Statuses {
     statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; 32],
     first_free_index: usize,
+    cached_modifier_collector: CharAttributeModifierCollector,
 }
 
 unsafe impl Sync for Statuses {}
@@ -73,6 +80,7 @@ impl Statuses {
         Statuses {
             statuses: Default::default(),
             first_free_index: MAINSTATUSES_COUNT,
+            cached_modifier_collector: CharAttributeModifierCollector::new(),
         }
     }
 
@@ -103,7 +111,8 @@ impl Statuses {
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
-    ) {
+    ) -> bool {
+        let mut changed = false;
         for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
@@ -115,6 +124,7 @@ impl Statuses {
             match result {
                 StatusUpdateResult::RemoveIt => {
                     *status = None;
+                    changed = true;
                 }
                 StatusUpdateResult::KeepIt => {}
             }
@@ -124,6 +134,7 @@ impl Statuses {
         {
             self.first_free_index -= 1;
         }
+        return changed;
     }
 
     pub fn render(
@@ -132,13 +143,14 @@ impl Statuses {
         system_vars: &mut SystemVariables,
         view_matrix: &Matrix4<f32>,
     ) {
+        let mut already_rendered = HashSet::with_capacity(self.statuses.len());
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .render(char_pos, system_vars, view_matrix);
+            let guard = status.as_ref().unwrap().lock().unwrap();
+            let type_id = guard.deref().as_ref().type_id();
+            if !already_rendered.contains(&type_id) {
+                guard.render(char_pos, system_vars, view_matrix);
+                already_rendered.insert(type_id);
+            }
         }
     }
 
@@ -146,38 +158,44 @@ impl Statuses {
         return match outlook {
             CharOutlook::Player { job_id, .. } => match job_id {
                 _ => CharAttributes {
-                    walking_speed: U8Float::new(Percentage::new(100.0)),
-                    attack_range: U8Float::new(Percentage::new(100.0)),
-                    attack_speed: U8Float::new(Percentage::new(100.0)),
+                    walking_speed: Percentage::new(100.0),
+                    attack_range: Percentage::new(100.0),
+                    attack_speed: Percentage::new(100.0),
                     attack_damage: 76,
-                    armor: U8Float::new(Percentage::new(10.0)),
+                    armor: Percentage::new(10.0),
+                    healing: Percentage::new(100.0),
+                    hp_regen: Percentage::new(100.0),
                     max_hp: 2000,
+                    mana_regen: Percentage::new(100.0),
                 },
             },
             CharOutlook::Monster(monster_id) => match monster_id {
                 _ => CharAttributes {
-                    walking_speed: U8Float::new(Percentage::new(100.0)),
-                    attack_range: U8Float::new(Percentage::new(100.0)),
-                    attack_speed: U8Float::new(Percentage::new(100.0)),
+                    walking_speed: Percentage::new(100.0),
+                    attack_range: Percentage::new(100.0),
+                    attack_speed: Percentage::new(100.0),
                     attack_damage: 76,
-                    armor: U8Float::new(Percentage::new(0.0)),
+                    armor: Percentage::new(0.0),
+                    healing: Percentage::new(100.0),
+                    hp_regen: Percentage::new(100.0),
                     max_hp: 2000,
+                    mana_regen: Percentage::new(100.0),
                 },
             },
         };
     }
 
-    pub fn calc_attribs(&self, outlook: &CharOutlook) -> CharAttributes {
-        let mut calculated_attribs = Statuses::get_base_attributes(outlook);
+    pub fn calc_attributes(&mut self) -> &CharAttributeModifierCollector {
+        self.cached_modifier_collector.clear();
         for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
-            status
+            let modifier = status
                 .as_ref()
                 .unwrap()
                 .lock()
                 .unwrap()
-                .calc_attribs(&mut calculated_attribs);
+                .calc_attribs(&mut self.cached_modifier_collector);
         }
-        return calculated_attribs;
+        return &self.cached_modifier_collector;
     }
 
     pub fn calc_render_sprite<'a>(
@@ -217,17 +235,21 @@ impl Statuses {
     }
 
     pub fn calc_largest_remaining_status_time_percent(&self, now: ElapsedTime) -> Option<f32> {
-        let mut ret = None;
+        let mut ret: Option<(ElapsedTime, f32)> = None;
         for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
-            let rem = status
+            let rem: Option<(ElapsedTime, f32)> = status
                 .as_ref()
                 .unwrap()
                 .lock()
                 .unwrap()
                 .get_status_completion_percent(now);
-            ret = if let Some(status_remaining_time) = rem {
-                if let Some(current_rem_time) = ret {
-                    Some(status_remaining_time.max(current_rem_time))
+            ret = if let Some((status_ends_at, status_remaining_time)) = rem {
+                if let Some((current_ends_at, current_rem_time)) = ret {
+                    if current_ends_at.is_later_than(status_ends_at) {
+                        rem
+                    } else {
+                        ret
+                    }
                 } else {
                     rem
                 }
@@ -235,7 +257,7 @@ impl Statuses {
                 ret
             };
         }
-        return ret;
+        return ret.map(|it| it.1);
     }
 
     pub fn is_mounted(&self) -> bool {
@@ -343,9 +365,13 @@ impl Status for MountedStatus {
         1.0
     }
 
-    fn calc_attribs(&self, attributes: &mut CharAttributes) {
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         // it is applied directly on the base moving speed, since it is called first
-        attributes.walking_speed.increase_by(Percentage::new(200.0));
+        modifiers.change_walking_speed(
+            CharAttributeModifier::IncreaseByPercentage(Percentage::new(200.0)),
+            ElapsedTime(0.0),
+            ElapsedTime(0.0),
+        );
     }
 
     fn calc_render_sprite<'a>(
@@ -385,17 +411,17 @@ impl Status for MountedStatus {
     ) {
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         None
     }
 }
 
 #[derive(Clone)]
-struct PoisonStatus {
-    poison_caster_entity_id: Entity,
-    started: ElapsedTime,
-    until: ElapsedTime,
-    next_damage_at: ElapsedTime,
+pub struct PoisonStatus {
+    pub poison_caster_entity_id: Entity,
+    pub started: ElapsedTime,
+    pub until: ElapsedTime,
+    pub next_damage_at: ElapsedTime,
 }
 
 impl Status for PoisonStatus {
@@ -423,7 +449,7 @@ impl Status for PoisonStatus {
         1.0
     }
 
-    fn calc_attribs(&self, attributes: &mut CharAttributes) {}
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
@@ -481,8 +507,8 @@ impl Status for PoisonStatus {
         true
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
-        Some(now.percentage_between(self.started, self.until))
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+        Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }
 
@@ -492,6 +518,10 @@ pub enum ApplyStatusComponentPayload {
 }
 
 impl ApplyStatusComponentPayload {
+    pub fn from_main_status(m: MainStatuses) -> ApplyStatusComponentPayload {
+        ApplyStatusComponentPayload::MainStatus(m)
+    }
+
     pub fn from_secondary(status: Box<dyn Status>) -> ApplyStatusComponentPayload {
         ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status)))
     }

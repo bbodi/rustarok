@@ -1,38 +1,33 @@
 use crate::asset::SpriteResource;
-use crate::components::char::CharAttributeModifierCollector;
+use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
 use crate::components::controller::WorldCoords;
 use crate::components::status::{Status, StatusType, StatusUpdateResult};
-use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::components::ApplyForceComponent;
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Matrix4;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
-pub struct AbsorbStatus {
-    pub caster_entity_id: Entity,
+pub struct ArmorModifierStatus {
     pub started: ElapsedTime,
-    pub animation_started: ElapsedTime,
     pub until: ElapsedTime,
-    pub absorbed_damage: u32,
+    pub modifier: Percentage,
 }
 
-impl AbsorbStatus {
-    pub fn new(caster_entity_id: Entity, now: ElapsedTime) -> AbsorbStatus {
-        AbsorbStatus {
-            caster_entity_id,
+impl ArmorModifierStatus {
+    pub fn new(now: ElapsedTime, modifier: Percentage) -> ArmorModifierStatus {
+        ArmorModifierStatus {
             started: now,
-            animation_started: now.add_seconds(-1.9),
-            until: now.add_seconds(3.0),
-            absorbed_damage: 0,
+            until: now.add_seconds(10.0),
+            modifier,
         }
     }
 }
 
-impl Status for AbsorbStatus {
+impl Status for ArmorModifierStatus {
     fn dupl(&self) -> Box<dyn Status> {
         Box::new(self.clone())
     }
@@ -42,7 +37,7 @@ impl Status for AbsorbStatus {
     }
 
     fn typ(&self) -> StatusType {
-        StatusType::Supportive
+        StatusType::Supportive // depends
     }
 
     fn can_target_cast(&self) -> bool {
@@ -57,7 +52,13 @@ impl Status for AbsorbStatus {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+        modifiers.change_armor(
+            CharAttributeModifier::AddPercentage(self.modifier),
+            self.started,
+            self.until,
+        );
+    }
 
     fn calc_render_sprite<'a>(
         &self,
@@ -78,22 +79,8 @@ impl Status for AbsorbStatus {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
-            if self.absorbed_damage > 0 {
-                system_vars.attacks.push(AttackComponent {
-                    src_entity: self.caster_entity_id,
-                    dst_entity: self_char_id,
-                    typ: AttackType::Heal(self.absorbed_damage),
-                });
-            }
             StatusUpdateResult::RemoveIt
         } else {
-            if self
-                .animation_started
-                .add_seconds(2.0)
-                .has_passed(system_vars.time)
-            {
-                self.animation_started = system_vars.time.add_seconds(-1.9);
-            }
             StatusUpdateResult::KeepIt
         }
     }
@@ -104,32 +91,18 @@ impl Status for AbsorbStatus {
         system_vars: &mut SystemVariables,
         view_matrix: &Matrix4<f32>,
     ) {
-        RenderDesktopClientSystem::render_str(
-            "ramadan",
-            self.animation_started,
-            char_pos,
-            system_vars,
-            view_matrix,
-        );
+
     }
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        match outcome {
-            AttackOutcome::Damage(value)
-            | AttackOutcome::Poison(value)
-            | AttackOutcome::Crit(value) => {
-                self.absorbed_damage += value;
-                AttackOutcome::Absorb
-            }
-            _ => outcome,
-        }
+        outcome
     }
 
     fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
-        false
+        true
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-        Some((self.until, now.percentage_between(self.started, self.until)))
+        None
     }
 }

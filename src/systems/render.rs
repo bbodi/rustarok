@@ -32,6 +32,7 @@ pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0;
 pub struct RenderDesktopClientSystem {
     rectangle_vao: VertexArray,
     capsule_vertex_arrays: HashMap<ComponentRadius, VertexArray>,
+    circle_vertex_arrays: HashMap<i32, VertexArray>,
     // radius to vertexArray
     damage_render_sys: DamageRenderSystem,
     render_ui_sys: RenderUI,
@@ -63,6 +64,29 @@ impl RenderDesktopClientSystem {
             })
             .collect();
 
+        let circle_vertex_arrays = (1..=100)
+            .map(|i| {
+                let nsubdivs = 100;
+                let two_pi = std::f32::consts::PI * 2.0;
+                let dtheta = two_pi / nsubdivs as f32;
+
+                let mut pts = Vec::with_capacity((nsubdivs - i) as usize);
+                let r = 12.0;
+                ncollide2d::procedural::utils::push_xy_arc(r, nsubdivs - i, dtheta, &mut pts);
+                (
+                    i as i32,
+                    VertexArray::new(
+                        gl::LINE_STRIP,
+                        &pts,
+                        pts.len(),
+                        vec![VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 0,
+                        }],
+                    ),
+                )
+            })
+            .collect();
         RenderDesktopClientSystem {
             capsule_vertex_arrays,
             rectangle_vao: VertexArray::new(
@@ -76,6 +100,7 @@ impl RenderDesktopClientSystem {
             ),
             damage_render_sys: DamageRenderSystem::new(),
             render_ui_sys: RenderUI::new(),
+            circle_vertex_arrays,
         }
     }
 
@@ -259,7 +284,7 @@ impl RenderDesktopClientSystem {
                     body_bounding_rect.merge(&head_bounding_rect);
 
                     if !is_dead {
-                        draw_health_bar(
+                        self.draw_health_bar(
                             &system_vars.shaders.trimesh2d_shader,
                             &self.rectangle_vao,
                             &system_vars.matrices.ortho,
@@ -267,6 +292,7 @@ impl RenderDesktopClientSystem {
                             &char_state,
                             system_vars.time,
                             &body_bounding_rect,
+                            system_vars,
                         );
                     }
 
@@ -312,7 +338,7 @@ impl RenderDesktopClientSystem {
                         &color,
                     );
                     if !is_dead {
-                        draw_health_bar(
+                        self.draw_health_bar(
                             &system_vars.shaders.trimesh2d_shader,
                             &self.rectangle_vao,
                             &system_vars.matrices.ortho,
@@ -320,6 +346,7 @@ impl RenderDesktopClientSystem {
                             &char_state,
                             system_vars.time,
                             &bounding_rect,
+                            system_vars,
                         );
                     }
 
@@ -479,78 +506,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &system_vars,
             );
         }
-    }
-}
-
-fn draw_health_bar(
-    shader: &ShaderProgram,
-    vao: &VertexArray,
-    ortho: &Matrix4<f32>,
-    is_self: bool,
-    char_state: &CharacterStateComponent,
-    now: ElapsedTime,
-    bounding_rect_2d: &SpriteBoundingRect,
-) {
-    let shader = shader.gl_use();
-    shader.set_mat4("projection", &ortho);
-    let vao = vao.bind();
-    let bar_w = match char_state.typ {
-        CharType::Player => 80,
-        CharType::Minion => 70,
-        _ => 100,
-    };
-    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-        let mut matrix = Matrix4::<f32>::identity();
-        let spr_x = bounding_rect_2d.bottom_left[0];
-        let spr_w = bounding_rect_2d.top_right[0] - bounding_rect_2d.bottom_left[0];
-        let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
-        let pos = Vector3::new(
-            bar_x + x as f32,
-            bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
-            0.0,
-        );
-        matrix.prepend_translation_mut(&pos);
-        shader.set_mat4("model", &matrix);
-        shader.set_vec4("color", color);
-        shader.set_vec2("size", &[w as f32, h as f32]);
-        vao.draw();
-    };
-
-    let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs.max_hp as f32;
-    let health_color = if is_self {
-        [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
-    } else {
-        [0.79, 0.00, 0.21, 1.0] // for enemies, red
-                                // [0.2, 0.46, 0.9] // for friends, blue
-    };
-    let mana_color = [0.23, 0.79, 0.88, 1.0];
-    let bottom_bar_y = match char_state.typ {
-        CharType::Player => {
-            draw_rect(0, 0, bar_w, 9, &[0.0, 0.0, 0.0, 1.0]); // black border
-            draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // center separator
-            let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
-            draw_rect(1, 1, inner_w, 4, &health_color);
-            draw_rect(1, 6, bar_w - 2, 2, &mana_color);
-            9
-        }
-        _ => {
-            draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // black border
-            let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
-            draw_rect(1, 1, inner_w, 3, &health_color);
-            5
-        }
-    };
-
-    // draw status remaining time indicator
-    if let Some(perc) = char_state
-        .statuses
-        .calc_largest_remaining_status_time_percent(now)
-    {
-        let orange = [1.0, 0.55, 0.0, 1.0];
-        let w = bar_w - 4;
-        draw_rect(2, bottom_bar_y + 2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
-        let inner_w = (w as f32 * (1.0 - perc)) as i32;
-        draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
     }
 }
 
@@ -1143,6 +1098,156 @@ impl DamageRenderSystem {
 }
 
 impl RenderDesktopClientSystem {
+    fn draw_health_bar(
+        &self,
+        shader: &ShaderProgram,
+        vao: &VertexArray,
+        ortho: &Matrix4<f32>,
+        is_self: bool,
+        char_state: &CharacterStateComponent,
+        now: ElapsedTime,
+        bounding_rect_2d: &SpriteBoundingRect,
+        system_vars: &SystemVariables,
+    ) {
+        let shader = shader.gl_use();
+        shader.set_mat4("projection", &ortho);
+        let vao = vao.bind();
+        let bar_w = match char_state.typ {
+            CharType::Player => 80,
+            CharType::Minion => 70,
+            _ => 100,
+        };
+        let spr_x = bounding_rect_2d.bottom_left[0];
+        let spr_w = bounding_rect_2d.top_right[0] - bounding_rect_2d.bottom_left[0];
+        let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
+        let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+            let mut matrix = Matrix4::<f32>::identity();
+            let pos = Vector3::new(
+                bar_x + x as f32,
+                bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
+                0.0,
+            );
+            matrix.prepend_translation_mut(&pos);
+            shader.set_mat4("model", &matrix);
+            shader.set_vec4("color", color);
+            shader.set_vec2("size", &[w as f32, h as f32]);
+            vao.draw();
+        };
+
+        let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
+        let health_color = if is_self {
+            [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
+        } else {
+            [0.79, 0.00, 0.21, 1.0] // for enemies, red
+                                    // [0.2, 0.46, 0.9] // for friends, blue
+        };
+        let mana_color = [0.23, 0.79, 0.88, 1.0];
+        let bottom_bar_y = match char_state.typ {
+            CharType::Player => {
+                draw_rect(0, 0, bar_w, 9, &[0.0, 0.0, 0.0, 1.0]); // black border
+                draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // center separator
+                let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
+                draw_rect(1, 1, inner_w, 4, &health_color);
+                draw_rect(1, 6, bar_w - 2, 2, &mana_color);
+                9
+            }
+            _ => {
+                draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // black border
+                let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
+                draw_rect(1, 1, inner_w, 3, &health_color);
+                5
+            }
+        };
+
+        // draw status remaining time indicator
+        if let Some(perc) = char_state
+            .statuses
+            .calc_largest_remaining_status_time_percent(now)
+        {
+            let orange = [1.0, 0.55, 0.0, 1.0];
+            let w = bar_w - 4;
+            draw_rect(2, bottom_bar_y + 2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
+            let inner_w = (w as f32 * (1.0 - perc)) as i32;
+            draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
+        }
+
+        // draw status indicator icons
+        if char_state.attrib_bonuses().attrs.armor.is_not_zero() {
+            let armor_bonus = char_state.attrib_bonuses().attrs.armor.as_i16();
+            let shader = system_vars.shaders.sprite2d_shader.gl_use();
+            let texture = &system_vars.status_icons["shield"];
+            shader.set_vec2("size", &[texture.width as f32, -texture.height as f32]);
+            let mut matrix = Matrix4::<f32>::identity();
+            let x = bar_x + bar_w as f32 + texture.width as f32 / 2.0 + 1.0;
+            let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
+            matrix.prepend_translation_mut(&v3!(x, y, 0));
+            shader.set_mat4("model", &matrix);
+            shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
+            shader.set_vec2("offset", &[0.0, 0.0]);
+            shader.set_mat4("projection", &ortho);
+            shader.set_int("model_texture", 0);
+            texture.bind(TEXTURE_0);
+            system_vars
+                .map_render_data
+                .centered_sprite_vertex_array
+                .bind()
+                .draw();
+            // progress bar
+            let color = if armor_bonus > 0 {
+                [0.0, 1.0, 0.0, 1.0]
+            } else {
+                [1.0, 0.0, 0.0, 1.0]
+            };
+
+            let shader = system_vars.shaders.trimesh2d_shader.gl_use();
+            shader.set_mat4("projection", &ortho);
+
+            let perc = (system_vars.time.percentage_between(
+                char_state.attrib_bonuses().durations.armor_bonus_started_at,
+                char_state.attrib_bonuses().durations.armor_bonus_ends_at,
+            ) * 100.0) as i32;
+            let perc = perc.max(1);
+            let circle_vao = &self.circle_vertex_arrays[&perc];
+
+            let mut prog_bar_matrix = Matrix4::<f32>::identity();
+            let rotation = Rotation3::from_axis_angle(
+                &nalgebra::Unit::new_normalize(Vector3::z()),
+                -std::f32::consts::FRAC_PI_2,
+            )
+            .to_homogeneous();
+            let x = bar_x + bar_w as f32 + texture.width as f32 / 2.0 + 1.0;
+            let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
+            prog_bar_matrix.prepend_translation_mut(&v3!(x, y, 0));
+            prog_bar_matrix = prog_bar_matrix * rotation;
+            shader.set_mat4("model", &prog_bar_matrix);
+            shader.set_vec4("color", &color);
+            shader.set_vec2("size", &[1.0, 1.0]);
+            circle_vao.bind().draw();
+            // text
+            let shader = system_vars.shaders.sprite2d_shader.gl_use();
+            shader.set_vec4("color", &color);
+            shader.set_mat4("model", &matrix);
+            shader.set_vec4("color", &color);
+            shader.set_mat4("projection", &ortho);
+            shader.set_int("model_texture", 0);
+            shader.set_vec2(
+                "offset",
+                &[(texture.width / 4) as f32, (texture.height / 4) as f32],
+            );
+            let text_texture = &system_vars.texts.custom_texts[&armor_bonus.to_string()];
+            shader.set_vec2(
+                "size",
+                &[text_texture.width as f32, -text_texture.height as f32],
+            );
+            text_texture.bind(TEXTURE_0);
+            system_vars
+                .map_render_data
+                .centered_sprite_vertex_array
+                .bind()
+                .draw();
+        }
+    }
+
     pub fn render_str(
         effect_name: &str,
         start_time: ElapsedTime,

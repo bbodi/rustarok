@@ -21,12 +21,12 @@ pub struct Video {
     pub imgui_sdl2: ImguiSdl2,
     pub renderer: Renderer,
     pub event_pump: EventPump,
-    // these two variables must be in scope, so don't remove their variables
+    // this variable must be in scope, so don't remove it
     _gl_context: GLContext,
 }
 
-pub const VIDEO_WIDTH: u32 = 640;
-pub const VIDEO_HEIGHT: u32 = 480;
+pub const VIDEO_WIDTH: u32 = 1024;
+pub const VIDEO_HEIGHT: u32 = 768;
 
 impl Video {
     pub fn init() -> Video {
@@ -55,6 +55,9 @@ impl Video {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::LineWidth(2.0);
         }
+        //        az input kezelés és a camera mozgás külön legyenm
+        //        szóal lehet olyan implementáció ami free fly meg olyan ami follow
+        //        tag componenttel?
         let mut imgui = imgui::ImGui::init();
         imgui.set_ini_filename(None);
         let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
@@ -118,7 +121,12 @@ impl Video {
             .blit(
                 None,
                 &mut bg_surface,
-                sdl2::rect::Rect::new(2, 2, fg_surface.width(), fg_surface.height()),
+                sdl2::rect::Rect::new(
+                    outline_font.get_outline_width() as i32,
+                    outline_font.get_outline_width() as i32,
+                    fg_surface.width(),
+                    fg_surface.height(),
+                ),
             )
             .unwrap();
         return GlTexture::from_surface(bg_surface, gl::NEAREST);

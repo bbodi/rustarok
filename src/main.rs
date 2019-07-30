@@ -45,7 +45,8 @@ use crate::asset::rsw::Rsw;
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
-    CharOutlook, CharacterStateComponent, PhysicsComponent, SpriteRenderDescriptorComponent,
+    CharOutlook, CharacterStateComponent, Percentage, PhysicsComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
 use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
@@ -82,7 +83,12 @@ mod components;
 mod systems;
 
 use crate::common::p3_to_p2;
+use crate::components::skills::absorb_shield::AbsorbStatus;
+use crate::components::skills::attrib_mod::ArmorModifierStatus;
+use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
+use crate::components::skills::status_applier_area::StatusApplierArea;
+use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
 use crate::web_server::start_web_server;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -185,6 +191,9 @@ impl PartialEq for ElapsedTime {
 impl Eq for ElapsedTime {}
 
 impl ElapsedTime {
+    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
+        self.0 > other.0
+    }
     pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
     }
@@ -195,8 +204,8 @@ impl ElapsedTime {
 
     pub fn percentage_between(&self, from: ElapsedTime, to: ElapsedTime) -> f32 {
         let current = self.0 - from.0;
-        let end = to.0 - from.0;
-        return current / end;
+        let range = to.0 - from.0;
+        return current / range;
     }
 
     pub fn add(&self, other: ElapsedTime) -> ElapsedTime {
@@ -225,6 +234,10 @@ impl ElapsedTime {
 
     pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
         ElapsedTime(self.0.max(other.0))
+    }
+
+    pub fn min(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0.min(other.0))
     }
 
     pub fn as_f32(&self) -> f32 {
@@ -432,8 +445,10 @@ fn main() {
             head_sprites: [
                 (1..=25)
                     .map(|i| {
-                        let male_file_name =
-                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²", i.to_string());
+                        let male_file_name = format!(
+                            "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²",
+                            i.to_string()
+                        );
                         let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
                             let mut head = asset_loader
                                 .load_spr_and_act(&male_file_name)
@@ -453,8 +468,10 @@ fn main() {
                     .collect::<Vec<SpriteResource>>(),
                 (1..=25)
                     .map(|i| {
-                        let female_file_name =
-                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©", i.to_string());
+                        let female_file_name = format!(
+                            "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©",
+                            i.to_string()
+                        );
                         let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
                             let mut head = asset_loader
                                 .load_spr_and_act(&female_file_name)
@@ -560,24 +577,54 @@ fn main() {
 
     let skill_key_font =
         Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 20).unwrap();
+    let mut skill_key_font_bold_outline =
+        Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 20).unwrap();
+    skill_key_font_bold_outline.set_outline_width(2);
+
     let mut skill_key_font_outline =
         Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 20).unwrap();
-    skill_key_font_outline.set_outline_width(2);
+    skill_key_font_outline.set_outline_width(1);
+
+    let small_font = Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 14).unwrap();
+    let mut small_font_outline =
+        Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 14).unwrap();
+    small_font_outline.set_outline_width(1);
 
     let mut texts = Texts {
         skill_name_texts: HashMap::new(),
         skill_key_texts: HashMap::new(),
+        custom_texts: HashMap::new(),
         attack_absorbed: Video::create_outline_text_texture(
             &skill_key_font,
-            &skill_key_font_outline,
+            &skill_key_font_bold_outline,
             "absorb",
         ),
         attack_blocked: Video::create_outline_text_texture(
             &skill_key_font,
-            &skill_key_font_outline,
+            &skill_key_font_bold_outline,
             "block",
         ),
+        minus: Video::create_outline_text_texture(&small_font, &small_font_outline, "-"),
+        plus: Video::create_outline_text_texture(&small_font, &small_font_outline, "+"),
     };
+
+    for name in &["Poison", "AbsorbShield", "FireBomb", "ArmorUp", "ArmorDown"] {
+        texts.custom_texts.insert(
+            name.to_string(),
+            Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
+        );
+    }
+    for i in -200..=200 {
+        texts.custom_texts.insert(
+            i.to_string(),
+            Video::create_outline_text_texture(
+                &small_font,
+                &small_font_outline,
+                &format!("{:+}", i),
+            ),
+        );
+    }
+
     let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
         let texture = Video::create_outline_text_texture(
@@ -593,10 +640,23 @@ fn main() {
         skill_icons.insert(skill, GlTexture::from_surface(skill_icon, gl::NEAREST));
     }
 
+    let mut status_icons = HashMap::new();
+    status_icons.insert(
+        "shield",
+        GlTexture::from_surface(
+            asset_loader
+                .load_sdl_surface(
+                    "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\pa_shieldchain.bmp",
+                )
+                .unwrap(),
+            gl::NEAREST,
+        ),
+    );
+
     for skill_key in SkillKey::iter() {
         let texture = Video::create_outline_text_texture(
             &skill_key_font,
-            &skill_key_font_outline,
+            &skill_key_font_bold_outline,
             &format!("{:?}", skill_key),
         );
         texts.skill_key_texts.insert(skill_key, texture);
@@ -617,6 +677,7 @@ fn main() {
         apply_area_statuses: Vec::with_capacity(128),
         remove_statuses: Vec::with_capacity(128),
         skill_icons,
+        status_icons,
         str_effect_vao: DynamicVertexArray::new(
             gl::TRIANGLE_STRIP,
             vec![
@@ -646,7 +707,7 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let desktop_client_entity = {
+    let (desktop_client_controller, desktop_client_char) = {
         let desktop_client_char = components::char::create_char(
             &mut ecs_world,
             Point2::new(250.0, -200.0),
@@ -669,7 +730,10 @@ fn main() {
         player.assign_skill(SkillKey::E, Skills::Heal);
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
         player.assign_skill(SkillKey::Y, Skills::Mounting);
-        ecs_world.create_entity().with(player).build()
+        (
+            ecs_world.create_entity().with(player).build(),
+            desktop_client_char,
+        )
     };
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
@@ -692,6 +756,104 @@ fn main() {
     let mut player_count = 0;
     let mut monster_count = 0;
 
+    // Add static skill manifestations
+    {
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(StatusApplierArea::new(
+                    "Poison",
+                    move |_now| ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison),
+                    &v2!(251, -213),
+                    v2!(2, 3),
+                    desktop_client_char,
+                )),
+            ),
+        );
+
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(StatusApplierArea::new(
+                    "AbsorbShield",
+                    move |now| {
+                        ApplyStatusComponentPayload::from_secondary(Box::new(AbsorbStatus::new(
+                            desktop_client_char,
+                            now,
+                        )))
+                    },
+                    &v2!(255, -213),
+                    v2!(2, 3),
+                    desktop_client_char,
+                )),
+            ),
+        );
+
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(StatusApplierArea::new(
+                    "FireBomb",
+                    move |now| {
+                        ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
+                            caster_entity_id: desktop_client_char,
+                            started: now,
+                            until: now.add_seconds(2.0),
+                        }))
+                    },
+                    &v2!(260, -213),
+                    v2!(2, 3),
+                    desktop_client_char,
+                )),
+            ),
+        );
+
+        // armor up
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(StatusApplierArea::new(
+                    "ArmorUp",
+                    move |now| {
+                        ApplyStatusComponentPayload::from_secondary(Box::new(
+                            ArmorModifierStatus::new(now, Percentage::new(70.0)),
+                        ))
+                    },
+                    &v2!(265, -213),
+                    v2!(2, 3),
+                    desktop_client_char,
+                )),
+            ),
+        );
+
+        // armor down
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(StatusApplierArea::new(
+                    "ArmorDown",
+                    move |now| {
+                        ApplyStatusComponentPayload::from_secondary(Box::new(
+                            ArmorModifierStatus::new(now, Percentage::new(-30.0)),
+                        ))
+                    },
+                    &v2!(270, -213),
+                    v2!(2, 3),
+                    desktop_client_char,
+                )),
+            ),
+        );
+    }
     start_web_server();
 
     'running: loop {
@@ -746,7 +908,7 @@ fn main() {
 
         {
             let mut storage = ecs_world.write_storage::<ControllerComponent>();
-            let inputs = storage.get_mut(desktop_client_entity).unwrap();
+            let inputs = storage.get_mut(desktop_client_controller).unwrap();
 
             for event in video.event_pump.poll_iter() {
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
@@ -769,7 +931,7 @@ fn main() {
         ecs_world.maintain();
 
         let (new_map, new_str, show_cursor) = imgui_frame(
-            desktop_client_entity,
+            desktop_client_controller,
             &mut video,
             &mut ecs_world,
             rng.clone(),
@@ -837,7 +999,7 @@ fn main() {
             }
             let hero_pos = {
                 let storage = ecs_world.write_storage::<ControllerComponent>();
-                let controller = storage.get(desktop_client_entity).unwrap();
+                let controller = storage.get(desktop_client_controller).unwrap();
                 let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
                 let char_state = char_state_storage
                     .get_mut(controller.char_entity_id)
@@ -1072,7 +1234,7 @@ fn imgui_frame(
                     let char_state = char_state_storage
                         .get_mut(controller.char_entity_id)
                         .unwrap();
-                    let mut aspd: f32 = char_state.calculated_attribs.attack_speed.as_f32();
+                    let mut aspd: f32 = char_state.calculated_attribs().attack_speed.as_f32();
                     ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
                         .build();
                     // TODO:

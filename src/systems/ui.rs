@@ -33,7 +33,7 @@ impl RenderUI {
 
     pub fn run(
         &self,
-        entities: &specs::Entities,
+        _entities: &specs::Entities,
         controller: &mut ControllerComponent,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         system_vars: &specs::WriteExpect<SystemVariables>,
@@ -245,8 +245,8 @@ fn render_sprite_2d(
         shader.set_int("model_texture", 0);
         shader.set_mat4("model", &matrix);
         shader.set_vec2("offset", &offset);
+        shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
         shader.set_vec2("size", &[width, -height as f32]);
-        shader.set_f32("alpha", 1.0);
         system_vars
             .map_render_data
             .centered_sprite_vertex_array
@@ -297,7 +297,7 @@ fn render_texture_2d(
     shader.set_mat4("model", &matrix);
     shader.set_vec2("offset", &[0.0, 0.0]);
     shader.set_vec2("size", &[width * size, height as f32 * size]);
-    shader.set_f32("alpha", 1.0);
+    shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
     system_vars
         .map_render_data
         .sprite_vertex_array
