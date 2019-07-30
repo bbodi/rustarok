@@ -57,14 +57,14 @@ impl Status for AbsorbStatus {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
+        _job_id: JobId,
+        _head_index: usize,
+        _sex: Sex,
+        _sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
         None
     }
@@ -72,10 +72,10 @@ impl Status for AbsorbStatus {
     fn update(
         &mut self,
         self_char_id: Entity,
-        char_pos: &WorldCoords,
+        _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        _entities: &specs::Entities,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
             if self.absorbed_damage > 0 {
@@ -125,7 +125,7 @@ impl Status for AbsorbStatus {
         }
     }
 
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
         false
     }
 

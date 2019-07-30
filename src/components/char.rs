@@ -307,7 +307,7 @@ impl Percentage {
             CharAttributeModifier::AddPercentage(p) => {
                 self.value += p.value;
             }
-            CharAttributeModifier::AddValue(v) => panic!(
+            CharAttributeModifier::AddValue(_v) => panic!(
                 "{:?} += {:?}, you cannot add value to a percentage",
                 self, modifier
             ),
@@ -485,7 +485,7 @@ impl CharAttributes {
         let mut attr = self.clone();
         for m in &modifiers.max_hp {
             match m {
-                CharAttributeModifier::AddPercentage(p) => {
+                CharAttributeModifier::AddPercentage(_p) => {
                     panic!("max_hp += {:?}, you cannot add percentage to a value", m)
                 }
                 CharAttributeModifier::AddValue(v) => {
@@ -498,7 +498,7 @@ impl CharAttributes {
         }
         for m in &modifiers.attack_damage {
             match m {
-                CharAttributeModifier::AddPercentage(p) => panic!(
+                CharAttributeModifier::AddPercentage(_p) => panic!(
                     "attack_damage += {:?}, you cannot add percentage to a value",
                     m
                 ),

@@ -62,10 +62,10 @@ impl Status for ArmorModifierStatus {
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
+        _job_id: JobId,
+        _head_index: usize,
+        _sex: Sex,
+        _sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
         None
     }

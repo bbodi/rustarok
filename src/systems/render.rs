@@ -916,7 +916,12 @@ impl DamageRenderSystem {
                         .unwrap_or(number.start_pos);
                     pos.x = real_pos.x;
                     pos.z = real_pos.y;
-                    let size = ((1.0 - perc * 3.0) * 1.5).max(0.4);
+                    // the bigger the heal, the bigger the number and stays big longer
+                    let heal_value_factor = number.value as f32 / 10_000.0;
+                    let size_decrease_speed = (4.0 - heal_value_factor * 2.0).max(2.0);
+                    let initial_size = 1.0 + heal_value_factor * 1.0;
+                    let size_mult = 0.2 + heal_value_factor * 0.2;
+                    let size = ((1.0 - perc * size_decrease_speed) * initial_size).max(size_mult);
                     pos.x -= width * size / 2.0;
                     let y_offset = if perc < 0.3 { 0.0 } else { (perc - 0.3) * 3.0 };
                     pos.y += 2.0 + y_offset;

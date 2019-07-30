@@ -49,7 +49,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::{BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::{AttackType, BrowserClient, FlyingNumberComponent, StrEffectComponent};
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -86,6 +86,7 @@ use crate::common::p3_to_p2;
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::attrib_mod::ArmorModifierStatus;
 use crate::components::skills::fire_bomb::FireBombStatus;
+use crate::components::skills::heal_area::HealApplierArea;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
 use crate::components::skills::status_applier_area::StatusApplierArea;
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
@@ -612,7 +613,14 @@ fn main() {
         plus: Video::create_outline_text_texture(&small_font, &small_font_outline, "+"),
     };
 
-    for name in &["Poison", "AbsorbShield", "FireBomb", "ArmorUp", "ArmorDown"] {
+    for name in &[
+        "Poison",
+        "AbsorbShield",
+        "FireBomb",
+        "ArmorUp",
+        "ArmorDown",
+        "Heal",
+    ] {
         texts.custom_texts.insert(
             name.to_string(),
             Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
@@ -859,6 +867,24 @@ fn main() {
                     },
                     &v2!(270, -213),
                     v2!(2, 3),
+                    desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
+                )),
+            ),
+        );
+
+        // HEAL
+        let area_status_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            area_status_id,
+            SkillManifestationComponent::new(
+                area_status_id,
+                Box::new(HealApplierArea::new(
+                    "Heal",
+                    AttackType::Heal(50),
+                    &v2!(273, -213),
+                    v2!(2, 3),
+                    0.5,
                     desktop_client_char,
                     &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),

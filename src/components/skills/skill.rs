@@ -287,7 +287,7 @@ impl Skills {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity.unwrap(),
-                    typ: AttackType::Heal(200),
+                    typ: AttackType::Heal(8000),
                 });
                 None
             }
@@ -589,7 +589,7 @@ impl SkillManifestation for PushBackWallSkill {
         self_entity_id: Entity,
         all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
+        _entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
@@ -604,8 +604,8 @@ impl SkillManifestation for PushBackWallSkill {
             // TODO: wouldn't it be better to use the area push functionality?
             let my_collisions = all_collisions_in_world
                 .iter()
-                .filter(|(key, coll)| coll.other_coll_handle == self.collider_handle);
-            for (key, coll) in my_collisions {
+                .filter(|(_key, coll)| coll.other_coll_handle == self.collider_handle);
+            for (_key, coll) in my_collisions {
                 if let Some(char_body_handle) = physics_world
                     .collider(coll.character_coll_handle)
                     .map(|it| it.body())
@@ -719,8 +719,8 @@ impl SkillManifestation for BrutalSkillManifest {
         self_entity_id: Entity,
         _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _entities: &specs::Entities,
+        _char_storage: &specs::ReadStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
