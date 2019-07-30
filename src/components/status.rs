@@ -158,28 +158,28 @@ impl Statuses {
         return match outlook {
             CharOutlook::Player { job_id, .. } => match job_id {
                 _ => CharAttributes {
-                    walking_speed: Percentage::new(100.0),
-                    attack_range: Percentage::new(100.0),
-                    attack_speed: Percentage::new(100.0),
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
                     attack_damage: 76,
-                    armor: Percentage::new(10.0),
-                    healing: Percentage::new(100.0),
-                    hp_regen: Percentage::new(100.0),
+                    armor: Percentage(10),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
                     max_hp: 2000,
-                    mana_regen: Percentage::new(100.0),
+                    mana_regen: Percentage(100),
                 },
             },
             CharOutlook::Monster(monster_id) => match monster_id {
                 _ => CharAttributes {
-                    walking_speed: Percentage::new(100.0),
-                    attack_range: Percentage::new(100.0),
-                    attack_speed: Percentage::new(100.0),
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
                     attack_damage: 76,
-                    armor: Percentage::new(0.0),
-                    healing: Percentage::new(100.0),
-                    hp_regen: Percentage::new(100.0),
+                    armor: Percentage(0),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
                     max_hp: 2000,
-                    mana_regen: Percentage::new(100.0),
+                    mana_regen: Percentage(100),
                 },
             },
         };
@@ -368,7 +368,7 @@ impl Status for MountedStatus {
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         // it is applied directly on the base moving speed, since it is called first
         modifiers.change_walking_speed(
-            CharAttributeModifier::IncreaseByPercentage(Percentage::new(200.0)),
+            CharAttributeModifier::IncreaseByPercentage(Percentage(200)),
             ElapsedTime(0.0),
             ElapsedTime(0.0),
         );
@@ -429,12 +429,12 @@ impl Status for PoisonStatus {
         Box::new(self.clone())
     }
 
-    fn typ(&self) -> StatusType {
-        StatusType::Harmful
-    }
-
     fn can_target_move(&self) -> bool {
         true
+    }
+
+    fn typ(&self) -> StatusType {
+        StatusType::Harmful
     }
 
     fn can_target_cast(&self) -> bool {
@@ -484,6 +484,14 @@ impl Status for PoisonStatus {
         }
     }
 
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
+    }
+
+    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+        true
+    }
+
     fn render(
         &self,
         char_pos: &WorldCoords,
@@ -497,14 +505,6 @@ impl Status for PoisonStatus {
             system_vars,
             view_matrix,
         );
-    }
-
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
-        true
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {

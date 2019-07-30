@@ -75,13 +75,16 @@ pub struct SystemVariables {
     pub str_effect_vao: DynamicVertexArray,
 }
 
+#[derive(Debug)]
 pub struct Collision {
     pub character_coll_handle: ColliderHandle,
     pub other_coll_handle: ColliderHandle,
 }
 
+#[derive(Debug)]
 pub struct CollisionsFromPrevFrame {
-    pub collisions: Vec<Collision>,
+    pub collisions: HashMap<(ColliderHandle, ColliderHandle), Collision>,
+    //    pub collisions: Vec<Collision>,
 }
 
 pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);

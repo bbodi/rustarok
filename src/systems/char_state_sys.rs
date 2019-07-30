@@ -185,14 +185,18 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
         for (char_comp, physics_comp) in (&char_state_storage, &physics_storage).join() {
             if let CharState::Walking(target_pos) = char_comp.state() {
-                let dir = (target_pos - char_comp.pos()).normalize();
-                let speed =
-                    dir * char_comp.calculated_attribs().walking_speed.as_f32() * (600.0 * 0.01);
-                let force = speed;
-                let body = physics_world
-                    .rigid_body_mut(physics_comp.body_handle)
-                    .unwrap();
-                body.set_linear_velocity(body.velocity().linear + force);
+                if char_comp.can_move(system_vars.time) {
+                    // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the the attack)
+                    let dir = (target_pos - char_comp.pos()).normalize();
+                    let speed = dir
+                        * char_comp.calculated_attribs().walking_speed.as_f32()
+                        * (600.0 * 0.01);
+                    let force = speed;
+                    let body = physics_world
+                        .rigid_body_mut(physics_comp.body_handle)
+                        .unwrap();
+                    body.set_linear_velocity(body.velocity().linear + force);
+                }
             }
         }
 

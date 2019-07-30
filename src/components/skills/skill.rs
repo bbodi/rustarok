@@ -19,6 +19,7 @@ use ncollide2d::shape::ShapeHandle;
 use ncollide2d::world::CollisionGroups;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
 use specs::prelude::*;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use strum_macros::EnumIter;
 
@@ -26,7 +27,7 @@ pub trait SkillManifestation {
     fn update(
         &mut self,
         entity_id: Entity,
-        all_collisions_in_world: &Vec<Collision>,
+        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
@@ -58,7 +59,7 @@ impl SkillManifestationComponent {
     pub fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &Vec<Collision>,
+        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
@@ -586,7 +587,7 @@ impl SkillManifestation for PushBackWallSkill {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &Vec<Collision>,
+        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
@@ -603,36 +604,38 @@ impl SkillManifestation for PushBackWallSkill {
             // TODO: wouldn't it be better to use the area push functionality?
             let my_collisions = all_collisions_in_world
                 .iter()
-                .filter(|coll| coll.other_coll_handle == self.collider_handle);
-            for coll in my_collisions {
-                let char_body_handle = physics_world
+                .filter(|(key, coll)| coll.other_coll_handle == self.collider_handle);
+            for (key, coll) in my_collisions {
+                if let Some(char_body_handle) = physics_world
                     .collider(coll.character_coll_handle)
-                    .unwrap()
-                    .body();
-                let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
-                let char_entity_id = *char_body
-                    .user_data()
-                    .map(|v| v.downcast_ref().unwrap())
-                    .unwrap();
-                if let Some(char_state) = char_storage.get(char_entity_id) {
-                    let push_dir = self.pos - char_state.pos();
-                    let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
-                        v2!(1, 0) // "random"
-                    } else {
-                        -push_dir.normalize()
-                    };
-                    system_vars.attacks.push(AttackComponent {
-                        src_entity: self.caster_entity_id,
-                        dst_entity: char_entity_id,
-                        typ: AttackType::SpellDamage(600),
-                    });
-                    system_vars.pushes.push(ApplyForceComponent {
-                        src_entity: self.caster_entity_id,
-                        dst_entity: char_entity_id,
-                        force: push_dir * 20.0,
-                        body_handle: char_body_handle,
-                        duration: 1.0,
-                    });
+                    .map(|it| it.body())
+                {
+                    let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
+                    let char_entity_id = *char_body
+                        .user_data()
+                        .map(|v| v.downcast_ref().unwrap())
+                        .unwrap();
+                    if let Some(char_state) = char_storage.get(char_entity_id) {
+                        let push_dir = self.pos - char_state.pos();
+                        let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
+                            v2!(1, 0) // "random"
+                        } else {
+                            -push_dir.normalize()
+                        };
+                        dbg!("Firewall push attack");
+                        system_vars.attacks.push(AttackComponent {
+                            src_entity: self.caster_entity_id,
+                            dst_entity: char_entity_id,
+                            typ: AttackType::SpellDamage(600),
+                        });
+                        system_vars.pushes.push(ApplyForceComponent {
+                            src_entity: self.caster_entity_id,
+                            dst_entity: char_entity_id,
+                            force: push_dir * 20.0,
+                            body_handle: char_body_handle,
+                            duration: 1.0,
+                        });
+                    }
                 }
             }
         }
@@ -714,7 +717,7 @@ impl SkillManifestation for BrutalSkillManifest {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        _all_collisions_in_world: &Vec<Collision>,
+        _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,

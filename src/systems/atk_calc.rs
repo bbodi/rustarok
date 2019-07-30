@@ -11,6 +11,7 @@ use ncollide2d::query::Proximity;
 use specs::prelude::*;
 use specs::{Entity, LazyUpdate};
 
+#[derive(Debug)]
 pub enum AttackOutcome {
     Damage(u32),
     Poison(u32),
@@ -82,12 +83,16 @@ impl<'a> specs::System<'a> for AttackSystem {
         for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
                 let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
+                log::trace!("Try to apply push {:?}", apply_force);
                 if char_state.statuses.allow_push(apply_force) {
+                    log::trace!("Push was allowed");
                     char_body.set_linear_velocity(apply_force.force);
                     let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
                     char_state
                         .cannot_control_until
                         .run_at_least_until_seconds(system_vars.time, apply_force.duration);
+                } else {
+                    log::trace!("Push was denied");
                 }
             }
         }
@@ -97,6 +102,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,
             // so src data (or an attack specific data structure) must be copied
+            log::trace!("Process attack {:?}", attack);
             let outcomes = char_state_storage
                 .get(attack.src_entity)
                 .and_then(|src_char_state| {
@@ -111,6 +117,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                             ))
                         })
                 });
+            log::trace!("Attack outcomes: {:?}", outcomes);
 
             if let Some((src_outcomes, dst_outcomes)) = outcomes {
                 for outcome in src_outcomes.into_iter() {
@@ -119,9 +126,11 @@ impl<'a> specs::System<'a> for AttackSystem {
                         char_state_storage.get_mut(attacked_entity).unwrap();
 
                     // Allow statuses to affect incoming damages/heals
+                    log::trace!("Attack outcome: {:?}", outcome);
                     let outcome = attacked_entity_state
                         .statuses
                         .affect_incoming_damage(outcome);
+                    log::trace!("Attack outcome affected by statuses: {:?}", outcome);
 
                     AttackCalculation::apply_damage(
                         attacked_entity_state,
@@ -145,9 +154,11 @@ impl<'a> specs::System<'a> for AttackSystem {
                         char_state_storage.get_mut(attacked_entity).unwrap();
 
                     // Allow statuses to affect incoming damages/heals
+                    log::trace!("Attack outcome: {:?}", outcome);
                     let outcome = attacked_entity_state
                         .statuses
                         .affect_incoming_damage(outcome);
+                    log::trace!("Attack outcome affected by statuses: {:?}", outcome);
 
                     AttackCalculation::apply_damage(
                         attacked_entity_state,
@@ -256,12 +267,9 @@ impl AttackCalculation {
         let mut dst_outcomes = vec![];
         match typ {
             AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
-                let atk = base_dmg as f32;
-                let atk = dst
-                    .calculated_attribs()
-                    .armor
-                    .subtract_me_from_as_percentage(atk);
-                let outcome = if atk <= 0.0 {
+                let atk = base_dmg;
+                let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
+                let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
                     AttackOutcome::Damage(atk as u32)
@@ -272,11 +280,8 @@ impl AttackCalculation {
                 dst_outcomes.push(AttackOutcome::Heal(healed));
             }
             AttackType::Poison(dmg) => {
-                let atk = dst
-                    .calculated_attribs()
-                    .armor
-                    .subtract_me_from_as_percentage(dmg as f32);
-                let outcome = if atk <= 0.0 {
+                let atk = dst.calculated_attribs().armor.subtract_me_from(dmg as i32);
+                let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
                     AttackOutcome::Poison(atk as u32)

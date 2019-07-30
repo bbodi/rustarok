@@ -275,30 +275,37 @@ pub enum EntityTarget {
     Pos(WorldCoords),
 }
 
+const PERCENTAGE_FACTOR: i32 = 1000;
 #[derive(Copy, Clone, Debug)]
-pub struct Percentage(f32);
+pub struct Percentage {
+    value: i32,
+}
+
+// able to represent numbers in 0.1% discrete steps
+#[allow(non_snake_case)]
+pub fn Percentage(value: i32) -> Percentage {
+    Percentage {
+        value: value * PERCENTAGE_FACTOR,
+    }
+}
 
 impl Percentage {
-    pub fn new(percentage: f32) -> Percentage {
-        Percentage(percentage / 100.0)
-    }
-
-    pub fn from_f32(percentage: f32) -> Percentage {
-        Percentage(percentage)
-    }
-
     pub fn is_not_zero(&self) -> bool {
-        self.0 != 0.0
+        self.value != 0
     }
 
     pub fn as_i16(&self) -> i16 {
-        (self.0 * 100.0) as i16
+        (self.value / PERCENTAGE_FACTOR) as i16
+    }
+
+    pub fn limit(&mut self, min: Percentage, max: Percentage) {
+        self.value = self.value.min(max.value).max(min.value);
     }
 
     pub fn apply(&mut self, modifier: &CharAttributeModifier) {
         match modifier {
             CharAttributeModifier::AddPercentage(p) => {
-                self.0 += p.0;
+                self.value += p.value;
             }
             CharAttributeModifier::AddValue(v) => panic!(
                 "{:?} += {:?}, you cannot add value to a percentage",
@@ -310,36 +317,69 @@ impl Percentage {
         }
     }
 
-    pub fn add_to_i32(&self, num: i32) -> i32 {
-        num + (self.0 * num as f32) as i32
-    }
-
-    pub fn add_to_u16(&self, num: u16) -> u16 {
-        num + (self.0 * num as f32) as u16
-    }
-
     pub fn as_f32(&self) -> f32 {
-        self.0
+        (self.value as f32 / PERCENTAGE_FACTOR as f32) / 100.0
     }
 
-    pub fn increase_by(&mut self, p: Percentage) {
-        self.0 = p.add_me_to_as_percentage(self.0);
+    pub fn increase_by(&self, p: Percentage) -> Percentage {
+        let change = self.value / p.value;
+        Percentage {
+            value: self.value + change * PERCENTAGE_FACTOR,
+        }
+    }
+
+    pub fn add_me_to(&self, num: i32) -> i32 {
+        let change = num / 100 * self.value / PERCENTAGE_FACTOR;
+        return num + change;
+    }
+
+    pub fn subtract_me_from(&self, num: i32) -> i32 {
+        let change = num / 100 * self.value / PERCENTAGE_FACTOR;
+        return num - change;
     }
 
     pub fn add(&mut self, p: Percentage) {
-        self.0 += p.0;
+        self.value += p.value;
     }
 
-    pub fn add_me_to_as_percentage(&self, num: f32) -> f32 {
-        num + (self.as_f32() * num)
+    pub fn divp(&self, other: Percentage) -> Percentage {
+        Percentage {
+            value: self.value / other.value,
+        }
     }
 
-    pub fn subtract_me_from_as_percentage(&self, num: f32) -> f32 {
-        num - (self.as_f32() * num)
+    pub fn div(&self, other: i32) -> Percentage {
+        Percentage {
+            value: self.value / other,
+        }
     }
 
     pub fn subtract(&self, other: Percentage) -> Percentage {
-        Percentage(self.0 - other.0)
+        Percentage {
+            value: self.value - other.value,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn asd() {
+        assert_eq!(Percentage(70).increase_by(Percentage(10)).as_i16(), 77);
+        assert_eq!(Percentage(70).increase_by(Percentage(-10)).as_i16(), 63);
+        assert_eq!(Percentage(10).add_me_to(200), 220);
+        assert_eq!(Percentage(70).add_me_to(600), 1020);
+        assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
+        assert_eq!(Percentage(-10).add_me_to(200), 180);
+        assert_eq!(Percentage(10).subtract_me_from(200), 180);
+        assert_eq!(Percentage(70).subtract_me_from(600), 180);
+        assert_eq!(Percentage(100).as_f32(), 1.0);
+        assert_eq!(Percentage(50).as_f32(), 0.5);
+        assert_eq!(Percentage(5).as_f32(), 0.05);
+        assert_eq!(Percentage(5).div(10).as_f32(), 0.005);
+        assert_eq!(Percentage(-5).div(10).as_f32(), -0.005);
     }
 }
 
@@ -408,15 +448,15 @@ pub struct CharAttributesBonuses {
 impl CharAttributes {
     pub fn zero() -> CharAttributes {
         CharAttributes {
-            walking_speed: Percentage::new(0.0),
-            attack_range: Percentage::new(0.0),
-            attack_speed: Percentage::new(0.0),
+            walking_speed: Percentage(0),
+            attack_range: Percentage(0),
+            attack_speed: Percentage(0),
             attack_damage: 0,
-            armor: Percentage::new(0.0),
-            healing: Percentage(0.0),
-            hp_regen: Percentage(0.0),
+            armor: Percentage(0),
+            healing: Percentage(0),
+            hp_regen: Percentage(0),
             max_hp: 0,
-            mana_regen: Percentage(0.0),
+            mana_regen: Percentage(0),
         }
     }
 
@@ -432,7 +472,7 @@ impl CharAttributes {
                 walking_speed: self.walking_speed.subtract(other.walking_speed),
                 attack_range: self.attack_range.subtract(other.attack_range),
                 attack_speed: self.attack_speed.subtract(other.attack_speed),
-                armor: self.armor.subtract(other.armor),
+                armor: (self.armor).subtract(other.armor),
                 healing: self.healing.subtract(other.healing),
                 hp_regen: self.hp_regen.subtract(other.hp_regen),
                 mana_regen: self.mana_regen.subtract(other.mana_regen),
@@ -452,7 +492,7 @@ impl CharAttributes {
                     attr.max_hp += *v as i32;
                 }
                 CharAttributeModifier::IncreaseByPercentage(p) => {
-                    p.add_to_i32(attr.max_hp);
+                    attr.max_hp = p.add_me_to(attr.max_hp);
                 }
             }
         }
@@ -466,7 +506,7 @@ impl CharAttributes {
                     attr.attack_damage += *v as u16;
                 }
                 CharAttributeModifier::IncreaseByPercentage(p) => {
-                    p.add_to_u16(attr.attack_damage);
+                    attr.attack_damage = p.add_me_to(attr.attack_damage as i32) as u16;
                 }
             }
         }
@@ -480,9 +520,11 @@ impl CharAttributes {
         for m in &modifiers.attack_speed {
             attr.attack_speed.apply(m);
         }
+        attr.attack_speed.limit(Percentage(-300), Percentage(500));
         for m in &modifiers.armor {
             attr.armor.apply(m);
         }
+        attr.armor.limit(Percentage(-100), Percentage(100));
         for m in &modifiers.healing {
             attr.healing.apply(m);
         }

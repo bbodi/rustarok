@@ -55,7 +55,7 @@ use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
-use crate::systems::phys::{FrictionSystem, PhysicsSystem};
+use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
@@ -335,7 +335,6 @@ fn main() {
             &["browser_input_processor"],
         )
         .with(FrictionSystem, "friction_sys", &[])
-        .with(SkillSystem, "skill_sys", &[])
         .with(
             CharacterControlSystem,
             "char_control",
@@ -346,8 +345,13 @@ fn main() {
             "char_state_update",
             &["char_control"],
         )
-        .with(PhysicsSystem, "physics", &["char_state_update"])
-        .with(AttackSystem, "attack_sys", &["physics"])
+        .with(
+            PhysCollisionCollectorSystem,
+            "collision_collector",
+            &["char_state_update"],
+        )
+        .with(SkillSystem, "skill_sys", &["collision_collector"])
+        .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(RenderDesktopClientSystem::new())
         .build();
 
@@ -565,7 +569,7 @@ fn main() {
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
-    let (map_render_data, physics_world) =
+    let (map_render_data, mut physics_world) =
         load_map("prontera", &asset_loader, config.quick_startup);
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
@@ -703,7 +707,9 @@ fn main() {
         ),
     });
 
-    ecs_world.add_resource(CollisionsFromPrevFrame { collisions: vec![] });
+    ecs_world.add_resource(CollisionsFromPrevFrame {
+        collisions: HashMap::new(),
+    });
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
@@ -769,6 +775,7 @@ fn main() {
                     &v2!(251, -213),
                     v2!(2, 3),
                     desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),
             ),
         );
@@ -789,6 +796,7 @@ fn main() {
                     &v2!(255, -213),
                     v2!(2, 3),
                     desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),
             ),
         );
@@ -810,6 +818,7 @@ fn main() {
                     &v2!(260, -213),
                     v2!(2, 3),
                     desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),
             ),
         );
@@ -824,12 +833,13 @@ fn main() {
                     "ArmorUp",
                     move |now| {
                         ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage::new(70.0)),
+                            ArmorModifierStatus::new(now, Percentage(70)),
                         ))
                     },
                     &v2!(265, -213),
                     v2!(2, 3),
                     desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),
             ),
         );
@@ -844,12 +854,13 @@ fn main() {
                     "ArmorDown",
                     move |now| {
                         ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage::new(-30.0)),
+                            ArmorModifierStatus::new(now, Percentage(-30)),
                         ))
                     },
                     &v2!(270, -213),
                     v2!(2, 3),
                     desktop_client_char,
+                    &mut ecs_world.write_resource::<PhysicsWorld>(),
                 )),
             ),
         );

@@ -5,7 +5,9 @@ use crate::systems::{Collision, SystemVariables};
 use crate::video::draw_circle_inefficiently;
 use crate::{ElapsedTime, PhysicsWorld};
 use nalgebra::{Isometry2, Matrix4, Vector2};
+use nphysics2d::object::ColliderHandle;
 use specs::{Entity, LazyUpdate};
+use std::collections::HashMap;
 
 pub struct LightningSkill;
 
@@ -68,7 +70,7 @@ impl SkillManifestation for LightningManifest {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        _all_collisions_in_world: &Vec<Collision>,
+        _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,

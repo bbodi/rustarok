@@ -6,7 +6,7 @@ use ncollide2d::events::ContactEvent;
 use ncollide2d::query::Proximity;
 use specs::prelude::*;
 
-pub struct PhysicsSystem;
+pub struct PhysCollisionCollectorSystem;
 
 pub struct FrictionSystem;
 
@@ -53,7 +53,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
     }
 }
 
-impl<'a> specs::System<'a> for PhysicsSystem {
+impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::WriteExpect<'a, PhysicsWorld>,
@@ -83,71 +83,85 @@ impl<'a> specs::System<'a> for PhysicsSystem {
         physics_world.set_timestep(system_vars.dt.0);
         physics_world.step();
 
-        collisions_resource.collisions.clear();
+        for event in physics_world.proximity_events() {
+            log::trace!("{:?}", event);
+            let collider1 = physics_world.collider(event.collider1).unwrap();
+            let collider1_body = collider1.body();
+            let collider2 = physics_world.collider(event.collider2).unwrap();
+            let collider2_body = collider2.body();
+            let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
+                (collider2.handle(), collider1.handle())
+            } else {
+                (collider1.handle(), collider2.handle())
+            };
+            let collision = Collision {
+                character_coll_handle,
+                other_coll_handle,
+            };
+            match event.new_status {
+                Proximity::Intersecting => {
+                    collisions_resource
+                        .collisions
+                        .insert((collider1.handle(), collider2.handle()), collision);
+                    dbg!(&collisions_resource.collisions);
+                }
+                Proximity::WithinMargin => {
+                    if event.prev_status == Proximity::Intersecting {
+                        collisions_resource
+                            .collisions
+                            .remove(&(collider1.handle(), collider2.handle()));
+                        dbg!(&collisions_resource.collisions);
+                    }
+                }
+                Proximity::Disjoint => {
+                    collisions_resource
+                        .collisions
+                        .remove(&(collider1.handle(), collider2.handle()));
+                    dbg!(&collisions_resource.collisions);
+                }
+            }
+        }
 
-        collisions_resource.collisions.extend(
-            physics_world
-                .proximity_events()
-                .iter()
-                .map(|event| {
-                    log::trace!("{:?}", event);
-                    if event.new_status == Proximity::Intersecting {
-                        let collision = {
-                            let collider1 = physics_world.collider(event.collider1).unwrap();
-                            let collider1_body = collider1.body();
-                            let collider2 = physics_world.collider(event.collider2).unwrap();
-                            let collider2_body = collider2.body();
-                            if collider1_body.is_ground() {
-                                Collision {
-                                    character_coll_handle: collider2.handle(),
-                                    other_coll_handle: collider1.handle(),
-                                }
-                            } else {
-                                Collision {
-                                    character_coll_handle: collider1.handle(),
-                                    other_coll_handle: collider2.handle(),
-                                }
-                            }
-                        };
-                        Some(collision)
+        for event in physics_world.contact_events() {
+            log::trace!("{:?}", event);
+            match event {
+                ContactEvent::Started(handle1, handle2) => {
+                    let collider1 = physics_world.collider(*handle1).unwrap();
+                    let collider1_body = collider1.body();
+                    let collider2 = physics_world.collider(*handle2).unwrap();
+                    let collider2_body = collider2.body();
+                    let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
+                        (collider2.handle(), collider1.handle())
                     } else {
-                        None
-                    }
-                })
-                .filter(|it| it.is_some())
-                .map(|it| it.unwrap()),
-        );
-        collisions_resource.collisions.extend(
-            physics_world
-                .contact_events()
-                .iter()
-                .map(|event| {
-                    log::trace!("{:?}", event);
-                    if let ContactEvent::Started(handle1, handle2) = event {
-                        let collision = {
-                            let collider1 = physics_world.collider(*handle1).unwrap();
-                            let collider1_body = collider1.body();
-                            let collider2 = physics_world.collider(*handle2).unwrap();
-                            let collider2_body = collider2.body();
-                            if collider1_body.is_ground() {
-                                Collision {
-                                    character_coll_handle: collider2.handle(),
-                                    other_coll_handle: collider1.handle(),
-                                }
-                            } else {
-                                Collision {
-                                    character_coll_handle: collider1.handle(),
-                                    other_coll_handle: collider2.handle(),
-                                }
-                            }
-                        };
-                        Some(collision)
+                        (collider1.handle(), collider2.handle())
+                    };
+                    let collision = Collision {
+                        character_coll_handle,
+                        other_coll_handle,
+                    };
+                    collisions_resource
+                        .collisions
+                        .insert((collider1.handle(), collider2.handle()), collision);
+                }
+                ContactEvent::Stopped(handle1, handle2) => {
+                    let collider1 = physics_world.collider(*handle1).unwrap();
+                    let collider1_body = collider1.body();
+                    let collider2 = physics_world.collider(*handle2).unwrap();
+                    let collider2_body = collider2.body();
+                    let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
+                        (collider2.handle(), collider1.handle())
                     } else {
-                        None
-                    }
-                })
-                .filter(|it| it.is_some())
-                .map(|it| it.unwrap()),
-        );
+                        (collider1.handle(), collider2.handle())
+                    };
+                    let collision = Collision {
+                        character_coll_handle,
+                        other_coll_handle,
+                    };
+                    collisions_resource
+                        .collisions
+                        .remove(&(collider1.handle(), collider2.handle()));
+                }
+            }
+        }
     }
 }

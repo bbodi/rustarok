@@ -119,6 +119,7 @@ pub struct AreaAttackComponent {
     pub typ: AttackType,
 }
 
+#[derive(Debug)]
 pub struct ApplyForceComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
