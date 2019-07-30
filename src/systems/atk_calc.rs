@@ -97,7 +97,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,
             // so src data (or an attack specific data structure) must be copied
-            let outcome = char_state_storage
+            let outcomes = char_state_storage
                 .get(attack.src_entity)
                 .and_then(|src_char_state| {
                     char_state_storage
@@ -112,7 +112,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                         })
                 });
 
-            if let Some((src_outcomes, dst_outcomes)) = outcome {
+            if let Some((src_outcomes, dst_outcomes)) = outcomes {
                 for outcome in src_outcomes.into_iter() {
                     let attacked_entity = attack.src_entity;
                     let attacked_entity_state =
@@ -258,13 +258,13 @@ impl AttackCalculation {
             AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
                 let atk = base_dmg as f32;
                 let atk = dst
-                    .calculated_attribs
+                    .calculated_attribs()
                     .armor
-                    .subtract_me_from_as_percentage(atk) as u32;
-                let outcome = if atk == 0 {
+                    .subtract_me_from_as_percentage(atk);
+                let outcome = if atk <= 0.0 {
                     AttackOutcome::Block
                 } else {
-                    AttackOutcome::Damage(atk)
+                    AttackOutcome::Damage(atk as u32)
                 };
                 dst_outcomes.push(outcome);
             }
@@ -273,13 +273,13 @@ impl AttackCalculation {
             }
             AttackType::Poison(dmg) => {
                 let atk = dst
-                    .calculated_attribs
+                    .calculated_attribs()
                     .armor
-                    .subtract_me_from_as_percentage(dmg as f32) as u32;
-                let outcome = if atk == 0 {
+                    .subtract_me_from_as_percentage(dmg as f32);
+                let outcome = if atk <= 0.0 {
                     AttackOutcome::Block
                 } else {
-                    AttackOutcome::Poison(atk)
+                    AttackOutcome::Poison(atk as u32)
                 };
                 dst_outcomes.push(outcome);
             }
@@ -295,7 +295,7 @@ impl AttackCalculation {
         match outcome {
             AttackOutcome::Heal(val) => {
                 char_comp.hp = char_comp
-                    .calculated_attribs
+                    .calculated_attribs()
                     .max_hp
                     .min(char_comp.hp + *val as i32);
             }
@@ -381,8 +381,13 @@ impl AttackSystem {
                         target_char.statuses.add(box_status);
                     }
                 }
-                target_char.calculated_attribs =
-                    target_char.statuses.calc_attribs(&target_char.outlook);
+                target_char.update_attributes();
+                log::trace!(
+                    "Status added. Attributes({:?}): bonuses: {:?}, current: {:?}",
+                    status_change.target_entity_id,
+                    target_char.attrib_bonuses(),
+                    target_char.calculated_attribs()
+                );
             }
         }
     }
@@ -407,8 +412,13 @@ impl AttackSystem {
                         target_char.statuses.remove(*status_type);
                     }
                 }
-                target_char.calculated_attribs =
-                    target_char.statuses.calc_attribs(&target_char.outlook);
+                target_char.update_attributes();
+                log::trace!(
+                    "Status removed. Attributes({:?}): bonuses: {:?}, current: {:?}",
+                    status_change.target_entity_id,
+                    target_char.attrib_bonuses(),
+                    target_char.calculated_attribs()
+                );
             }
         }
     }

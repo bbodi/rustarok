@@ -115,7 +115,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             src_entity: char_entity_id,
                             dst_entity: target,
                             typ: AttackType::Basic(
-                                char_comp.calculated_attribs.attack_damage as u32,
+                                char_comp.calculated_attribs().attack_damage as u32,
                             ),
                         });
                     }
@@ -133,9 +133,11 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                 &nalgebra::Point::from(char_pos),
                                 &v2_to_p2(&target_pos),
                             );
-                            if distance <= char_comp.calculated_attribs.attack_range.multiply(2.0) {
+                            if distance
+                                <= char_comp.calculated_attribs().attack_range.as_f32() * 2.0
+                            {
                                 let attack_anim_duration = ElapsedTime(
-                                    1.0 / char_comp.calculated_attribs.attack_speed.as_f32(),
+                                    1.0 / char_comp.calculated_attribs().attack_speed.as_f32(),
                                 );
                                 let attack_ends = system_vars.time.add(attack_anim_duration);
                                 let new_state = CharState::Attacking {
@@ -184,11 +186,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         for (char_comp, physics_comp) in (&char_state_storage, &physics_storage).join() {
             if let CharState::Walking(target_pos) = char_comp.state() {
                 let dir = (target_pos - char_comp.pos()).normalize();
-                let speed = dir
-                    * char_comp
-                        .calculated_attribs
-                        .walking_speed
-                        .multiply(600.0 * 0.01);
+                let speed =
+                    dir * char_comp.calculated_attribs().walking_speed.as_f32() * (600.0 * 0.01);
                 let force = speed;
                 let body = physics_world
                     .rigid_body_mut(physics_comp.body_handle)
@@ -237,7 +236,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 };
                 sprite.forced_duration = forced_duration;
                 sprite.fps_multiplier = if state.is_walking() {
-                    char_comp.calculated_attribs.walking_speed.as_f32()
+                    char_comp.calculated_attribs().walking_speed.as_f32()
                 } else {
                     1.0
                 };

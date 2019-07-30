@@ -1,5 +1,5 @@
 use crate::asset::SpriteResource;
-use crate::components::char::CharAttributes;
+use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::WorldCoords;
 use crate::components::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusType, StatusUpdateResult,
@@ -45,7 +45,7 @@ impl Status for FireBombStatus {
         1.0
     }
 
-    fn calc_attribs(&self, attributes: &mut CharAttributes) {}
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
@@ -125,7 +125,7 @@ impl Status for FireBombStatus {
         true
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<f32> {
-        Some(now.percentage_between(self.started, self.until))
+    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+        Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

@@ -3,7 +3,7 @@
 log_level = "TRACE"
 
 # if true, many resources won't be loaded (static models, gat data etc)
-quick_startup = false
+quick_startup = true
 
 grf_paths = [
   "d:\\Games\\TalonRO\\rdata.grf",

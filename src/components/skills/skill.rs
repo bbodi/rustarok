@@ -40,17 +40,17 @@ pub trait SkillManifestation {
 #[storage(HashMapStorage)]
 #[derive(Component)]
 pub struct SkillManifestationComponent {
-    pub entity_id: Entity,
+    pub self_entity_id: Entity,
     pub skill: Arc<Mutex<Box<dyn SkillManifestation>>>,
 }
 
 impl SkillManifestationComponent {
     pub fn new(
-        entity_id: Entity,
+        self_entity_id: Entity,
         skill: Box<dyn SkillManifestation>,
     ) -> SkillManifestationComponent {
         SkillManifestationComponent {
-            entity_id,
+            self_entity_id,
             skill: Arc::new(Mutex::new(skill)),
         }
     }
@@ -103,15 +103,27 @@ pub enum Skills {
 impl Skills {
     pub fn get_icon_path(&self) -> &'static str {
         match self {
-            Skills::FireWall => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mg_firewall.bmp",
-            Skills::BrutalTestSkill => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wz_meteor.bmp",
-            Skills::Lightning => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp",
+            Skills::FireWall => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mg_firewall.bmp"
+            }
+            Skills::BrutalTestSkill => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wz_meteor.bmp"
+            }
+            Skills::Lightning => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp"
+            }
             Skills::Heal => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp",
-            Skills::Mounting => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\su_pickypeck.bmp",
+            Skills::Mounting => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\su_pickypeck.bmp"
+            }
             Skills::Poison => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\tf_poison.bmp",
             Skills::Cure => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\so_el_cure.bmp",
-            Skills::FireBomb => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp",
-            Skills::AbsorbShield => "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp",
+            Skills::FireBomb => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp"
+            }
+            Skills::AbsorbShield => {
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
+            }
         }
     }
 
@@ -617,7 +629,7 @@ impl SkillManifestation for PushBackWallSkill {
                     system_vars.pushes.push(ApplyForceComponent {
                         src_entity: self.caster_entity_id,
                         dst_entity: char_entity_id,
-                        force: dbg!(push_dir * 20.0),
+                        force: push_dir * 20.0,
                         body_handle: char_body_handle,
                         duration: 1.0,
                     });
@@ -702,7 +714,7 @@ impl SkillManifestation for BrutalSkillManifest {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &Vec<Collision>,
+        _all_collisions_in_world: &Vec<Collision>,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,

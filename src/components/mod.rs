@@ -97,7 +97,7 @@ impl FlyingNumberComponent {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum AttackType {
     Basic(u32),
     SpellDamage(u32),
@@ -105,6 +105,7 @@ pub enum AttackType {
     Poison(u32),
 }
 
+#[derive(Debug)]
 pub struct AttackComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,

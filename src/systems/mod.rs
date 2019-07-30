@@ -45,8 +45,11 @@ pub struct Sprites {
 pub struct Texts {
     pub skill_name_texts: HashMap<Skills, GlTexture>,
     pub skill_key_texts: HashMap<SkillKey, GlTexture>,
+    pub custom_texts: HashMap<String, GlTexture>,
     pub attack_absorbed: GlTexture,
     pub attack_blocked: GlTexture,
+    pub minus: GlTexture,
+    pub plus: GlTexture,
 }
 
 pub struct SystemVariables {
@@ -61,6 +64,7 @@ pub struct SystemVariables {
     pub map_render_data: MapRenderData,
     pub texts: Texts,
     pub skill_icons: HashMap<Skills, GlTexture>,
+    pub status_icons: HashMap<&'static str, GlTexture>,
     pub attacks: Vec<AttackComponent>,
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
