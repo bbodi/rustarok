@@ -90,6 +90,7 @@ use crate::components::skills::heal_area::HealApplierArea;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
 use crate::components::skills::status_applier_area::StatusApplierArea;
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
+use crate::systems::opengl_render_sys::{OpenGlRenderSystem, RenderCommandCollectorComponent};
 use crate::web_server::start_web_server;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -173,9 +174,6 @@ pub struct RenderMatrices {
     pub projection: Matrix4<f32>,
     pub ortho: Matrix4<f32>,
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Tick(u64);
 
 #[derive(Copy, Clone, Debug)]
 pub struct DeltaTime(pub f32);
@@ -320,12 +318,12 @@ fn main() {
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<RenderCommandCollectorComponent>();
     ecs_world.register::<SpriteRenderDescriptorComponent>();
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
     ecs_world.register::<StrEffectComponent>();
-
     ecs_world.register::<SkillManifestationComponent>();
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
@@ -354,6 +352,7 @@ fn main() {
         .with(SkillSystem, "skill_sys", &["collision_collector"])
         .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(RenderDesktopClientSystem::new())
+        .with_thread_local(OpenGlRenderSystem::new())
         .build();
 
     let rng = rand::thread_rng();
@@ -676,7 +675,7 @@ fn main() {
     ecs_world.add_resource(SystemVariables {
         shaders,
         sprites,
-        tick: Tick(0),
+        tick: 0,
         dt: DeltaTime(0.0),
         time: ElapsedTime(0.0),
         matrices: render_matrices,
@@ -745,7 +744,11 @@ fn main() {
         player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
         player.assign_skill(SkillKey::Y, Skills::Mounting);
         (
-            ecs_world.create_entity().with(player).build(),
+            ecs_world
+                .create_entity()
+                .with(RenderCommandCollectorComponent::new())
+                .with(player)
+                .build(),
             desktop_client_char,
         )
     };
@@ -1092,7 +1095,7 @@ fn main() {
             }
         }
         fps_counter += 1;
-        ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
+        ecs_world.write_resource::<SystemVariables>().tick += 1;
         ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
         ecs_world.write_resource::<SystemVariables>().time.0 +=
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);

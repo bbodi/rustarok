@@ -6,7 +6,7 @@ use crate::components::status::{
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::consts::{JobId, MonsterId};
 use crate::video::{DynamicVertexArray, GlTexture};
-use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource, Tick};
+use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
 use nphysics2d::object::ColliderHandle;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -15,6 +15,7 @@ pub mod atk_calc;
 pub mod char_state_sys;
 pub mod control_sys;
 pub mod input;
+pub mod opengl_render_sys;
 pub mod phys;
 pub mod render;
 pub mod skill_sys;
@@ -55,7 +56,7 @@ pub struct Texts {
 pub struct SystemVariables {
     pub sprites: Sprites,
     pub shaders: Shaders,
-    pub tick: Tick,
+    pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
     /// extract from the struct?

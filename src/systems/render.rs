@@ -10,6 +10,7 @@ use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetT
 use crate::components::{
     BrowserClient, FlyingNumberComponent, FlyingNumberType, StrEffectComponent,
 };
+use crate::systems::opengl_render_sys::RenderCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::VertexAttribDefinition;
@@ -107,6 +108,7 @@ impl RenderDesktopClientSystem {
     pub fn render_for_controller<'a>(
         &self,
         controller: &mut ControllerComponent,
+        render_commands: &mut RenderCommandCollectorComponent,
         physics_storage: &specs::ReadStorage<'a, PhysicsComponent>,
         physics_world: &specs::ReadExpect<'a, PhysicsWorld>,
         system_vars: &mut SystemVariables,
@@ -293,6 +295,7 @@ impl RenderDesktopClientSystem {
                             system_vars.time,
                             &body_bounding_rect,
                             system_vars,
+                            render_commands,
                         );
                     }
 
@@ -347,6 +350,7 @@ impl RenderDesktopClientSystem {
                             system_vars.time,
                             &bounding_rect,
                             system_vars,
+                            render_commands,
                         );
                     }
 
@@ -363,6 +367,7 @@ impl RenderDesktopClientSystem {
             skill.render(system_vars, &controller.view_matrix);
         }
 
+        // TODO: into a separate system
         for (entity_id, str_effect) in (entities, str_effect_storage).join() {
             if str_effect.die_at.has_passed(system_vars.time) {
                 updater.remove::<StrEffectComponent>(entity_id);
@@ -394,6 +399,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, PhysicsWorld>,
         specs::Write<'a, LazyUpdate>,
         specs::ReadStorage<'a, FlyingNumberComponent>,
+        specs::WriteStorage<'a, RenderCommandCollectorComponent>,
     );
 
     fn run(
@@ -412,17 +418,27 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             physics_world,
             updater,
             numbers,
+            mut render_commands_storage,
         ): Self::SystemData,
     ) {
         let stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        for (mut controller, browser) in
-            (&mut controller_storage, &mut browser_client_storage).join()
+        for mut render_commands in (&mut render_commands_storage).join() {
+            render_commands.clear();
+        }
+
+        for (mut controller, browser, mut render_commands) in (
+            &mut controller_storage,
+            &mut browser_client_storage,
+            &mut render_commands_storage,
+        )
+            .join()
         {
             self.render_for_controller(
                 &mut controller,
+                &mut render_commands,
                 &physics_storage,
                 &physics_world,
                 &mut system_vars,
@@ -474,11 +490,16 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        for (mut controller, _not_browser) in
-            (&mut controller_storage, !&browser_client_storage).join()
+        for (mut controller, _not_browser, mut render_commands) in (
+            &mut controller_storage,
+            !&browser_client_storage,
+            &mut render_commands_storage,
+        )
+            .join()
         {
             self.render_for_controller(
                 &mut controller,
+                &mut render_commands,
                 &physics_storage,
                 &physics_world,
                 &mut system_vars,
@@ -1113,6 +1134,7 @@ impl RenderDesktopClientSystem {
         now: ElapsedTime,
         bounding_rect_2d: &SpriteBoundingRect,
         system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         let shader = shader.gl_use();
         shader.set_mat4("projection", &ortho);
@@ -1197,6 +1219,7 @@ impl RenderDesktopClientSystem {
                 .centered_sprite_vertex_array
                 .bind()
                 .draw();
+
             // progress bar
             let color = if armor_bonus > 0 {
                 [0.0, 1.0, 0.0, 1.0]
@@ -1204,33 +1227,23 @@ impl RenderDesktopClientSystem {
                 [1.0, 0.0, 0.0, 1.0]
             };
 
-            let shader = system_vars.shaders.trimesh2d_shader.gl_use();
-            shader.set_mat4("projection", &ortho);
-
             let perc = (system_vars.time.percentage_between(
                 char_state.attrib_bonuses().durations.armor_bonus_started_at,
                 char_state.attrib_bonuses().durations.armor_bonus_ends_at,
             ) * 100.0) as i32;
             let perc = perc.max(1);
-            let circle_vao = &self.circle_vertex_arrays[&perc];
-
-            let mut prog_bar_matrix = Matrix4::<f32>::identity();
-            let rotation = Rotation3::from_axis_angle(
-                &nalgebra::Unit::new_normalize(Vector3::z()),
-                -std::f32::consts::FRAC_PI_2,
-            )
-            .to_homogeneous();
             let x = bar_x + bar_w as f32 + texture.width as f32 / 2.0 + 1.0;
             let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
-            prog_bar_matrix.prepend_translation_mut(&v3!(x, y, 0));
-            prog_bar_matrix = prog_bar_matrix * rotation;
-            shader.set_mat4("model", &prog_bar_matrix);
-            shader.set_vec4("color", &color);
-            shader.set_vec2("size", &[1.0, 1.0]);
-            circle_vao.bind().draw();
+
+            render_commands
+                .trimesh_2d(&self.circle_vertex_arrays[&perc])
+                .color(&color)
+                .screen_pos(x, y)
+                .rotation_rad(-std::f32::consts::FRAC_PI_2)
+                .add();
+
             // text
             let shader = system_vars.shaders.sprite2d_shader.gl_use();
-            shader.set_vec4("color", &color);
             shader.set_mat4("model", &matrix);
             shader.set_vec4("color", &color);
             shader.set_mat4("projection", &ortho);
