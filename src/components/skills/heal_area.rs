@@ -1,7 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::{SkillManifestation, Skills};
 use crate::components::{AttackComponent, AttackType};
-use crate::systems::render::ONE_SPRITE_PIXEL_SIZE_IN_3D;
+use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::systems::{Collision, SystemVariables};
 use crate::video::TEXTURE_0;
 use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};

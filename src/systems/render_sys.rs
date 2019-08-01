@@ -10,7 +10,7 @@ use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetT
 use crate::components::{
     BrowserClient, FlyingNumberComponent, FlyingNumberType, StrEffectComponent,
 };
-use crate::systems::opengl_render_sys::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::ui::RenderUI;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::VertexAttribDefinition;
@@ -226,7 +226,7 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
-                        let (pos_offset, _body_bounding_rect) = render_sprite(
+                        let (pos_offset, _body_bounding_rect) = render_action(
                             &system_vars,
                             &animated_sprite,
                             body_sprite,
@@ -240,7 +240,7 @@ impl RenderDesktopClientSystem {
                             &[0.0, 0.0, 1.0, 0.4],
                         );
 
-                        let (_head_pos_offset, _head_bounding_rect) = render_sprite(
+                        let (_head_pos_offset, _head_bounding_rect) = render_action(
                             &system_vars,
                             &animated_sprite,
                             head_res,
@@ -256,7 +256,7 @@ impl RenderDesktopClientSystem {
                     }
 
                     // todo: kell a pos_offset még mindig? (bounding rect)
-                    let (pos_offset, mut body_bounding_rect) = render_sprite(
+                    let (pos_offset, mut body_bounding_rect) = render_action(
                         &system_vars,
                         &animated_sprite,
                         body_sprite,
@@ -269,7 +269,7 @@ impl RenderDesktopClientSystem {
                         is_dead,
                         &color,
                     );
-                    let (head_pos_offset, head_bounding_rect) = render_sprite(
+                    let (head_pos_offset, head_bounding_rect) = render_action(
                         &system_vars,
                         &animated_sprite,
                         head_res,
@@ -313,7 +313,7 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
-                        let (_pos_offset, bounding_rect) = render_sprite(
+                        let (_pos_offset, bounding_rect) = render_action(
                             &system_vars,
                             &animated_sprite,
                             body_res,
@@ -327,7 +327,7 @@ impl RenderDesktopClientSystem {
                             &[0.0, 0.0, 1.0, 0.5],
                         );
                     }
-                    let (_pos_offset, bounding_rect) = render_sprite(
+                    let (_pos_offset, bounding_rect) = render_action(
                         &system_vars,
                         &animated_sprite,
                         body_res,
@@ -462,6 +462,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             self.render_ui_sys.run(
                 &entities,
                 &mut controller,
+                &mut render_commands,
                 &char_state_storage,
                 &system_vars,
             );
@@ -523,6 +524,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             self.render_ui_sys.run(
                 &entities,
                 &mut controller,
+                &mut render_commands,
                 &char_state_storage,
                 &system_vars,
             );
@@ -542,7 +544,7 @@ fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
     model_view[10] = 1.0;
 }
 
-pub fn render_sprite(
+pub fn render_action(
     system_vars: &SystemVariables,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
@@ -1240,7 +1242,7 @@ impl RenderDesktopClientSystem {
                 .color(&color)
                 .screen_pos(x, y)
                 .rotation_rad(-std::f32::consts::FRAC_PI_2)
-                .add();
+                .add(Layer2d::Layer2);
 
             // text
             let shader = system_vars.shaders.sprite2d_shader.gl_use();

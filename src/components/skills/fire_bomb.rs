@@ -7,7 +7,7 @@ use crate::components::status::{
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Matrix4};

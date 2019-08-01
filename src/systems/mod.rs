@@ -15,9 +15,9 @@ pub mod atk_calc;
 pub mod char_state_sys;
 pub mod control_sys;
 pub mod input;
-pub mod opengl_render_sys;
 pub mod phys;
 pub mod render;
+pub mod render_sys;
 pub mod skill_sys;
 pub mod ui;
 

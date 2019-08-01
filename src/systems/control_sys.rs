@@ -1,7 +1,7 @@
 use crate::components::char::{CastingSkillData, CharState, CharacterStateComponent, EntityTarget};
 use crate::components::controller::{ControllerAction, ControllerComponent, WorldCoords};
 use crate::components::skills::skill::{SkillTargetType, Skills};
-use crate::systems::render::DIRECTION_TABLE;
+use crate::systems::render_sys::DIRECTION_TABLE;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Vector2;

@@ -56,7 +56,6 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
-use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables,
@@ -90,7 +89,9 @@ use crate::components::skills::heal_area::HealApplierArea;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
 use crate::components::skills::status_applier_area::StatusApplierArea;
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
-use crate::systems::opengl_render_sys::{OpenGlRenderSystem, RenderCommandCollectorComponent};
+use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::web_server::start_web_server;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -154,7 +155,6 @@ pub struct Shaders {
     pub player_shader: ShaderProgram,
     pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
-    pub rectangle_2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
     pub trimesh2d_shader: ShaderProgram,
 }
@@ -290,16 +290,6 @@ fn main() {
             Shader::from_source(include_str!("shaders/sprite2d.vert"), gl::VERTEX_SHADER).unwrap(),
             Shader::from_source(include_str!("shaders/sprite2d.frag"), gl::FRAGMENT_SHADER)
                 .unwrap(),
-        ])
-        .unwrap(),
-        rectangle_2d_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/rectangle_2d.vert"), gl::VERTEX_SHADER)
-                .unwrap(),
-            Shader::from_source(
-                include_str!("shaders/rectangle_2d.frag"),
-                gl::FRAGMENT_SHADER,
-            )
-            .unwrap(),
         ])
         .unwrap(),
         trimesh_shader: ShaderProgram::from_shaders(&[

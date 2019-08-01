@@ -10,7 +10,7 @@ use crate::components::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
 };
-use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Collision, SystemVariables};
 use crate::video::draw_lines_inefficiently;
 use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
