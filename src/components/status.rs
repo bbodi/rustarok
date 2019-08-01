@@ -137,12 +137,6 @@ impl Statuses {
                 StatusUpdateResult::KeepIt => {}
             }
         }
-        dbg!(self.first_free_index);
-        dbg!(self
-            .statuses
-            .iter()
-            .map(|it| it.is_some())
-            .collect::<Vec<_>>());
         while self.first_free_index > MAINSTATUSES_COUNT
             && self.statuses[self.first_free_index - 1].is_none()
         {

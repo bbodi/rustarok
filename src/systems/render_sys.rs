@@ -639,10 +639,11 @@ fn project_to_screen(
 
     set_spherical_billboard(&mut model_view);
     fn sh(v: Vector4<f32>) -> [i32; 2] {
+        dbg!(&v);
         let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
         [
             ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
-            VIDEO_HEIGHT as i32 - ((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32,
+            VIDEO_HEIGHT as i32 - dbg!((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32,
         ]
     }
     let bottom_left = sh(projection * model_view * bottom_left);
@@ -697,8 +698,8 @@ fn render_client(
 
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
-        for (_i, (model_name, matrix)) in map_render_data.model_instances.iter().enumerate() {
-            let model_render_data = &map_render_data.models[&model_name];
+        for model_instance in &map_render_data.model_instances {
+            let model_render_data = &map_render_data.models[&model_instance.name];
             // TODO: before transformation, max and min is reversed
             //            min: Point {
             //                coords: Matrix {
@@ -718,8 +719,8 @@ fn render_client(
             //                    ],
             //                },
             //            },
-            let min = matrix.transform_point(&model_render_data.bounding_box.min);
-            let max = matrix.transform_point(&model_render_data.bounding_box.max);
+            let min = model_instance.min;
+            let max = model_instance.max;
             let cam_pos = camera.pos();
             if ((max.x < cam_pos.x - 40.0 || max.x > cam_pos.x + 40.0)
                 && (min.x < cam_pos.x - 40.0 || min.x > cam_pos.x + 40.0))
@@ -728,13 +729,12 @@ fn render_client(
             {
                 continue;
             }
-            shader.set_mat4("model", &matrix);
-            let alpha = if ((max.x > cam_pos.x - 10.0 && max.x < cam_pos.x + 10.0) ||
-                (min.x > cam_pos.x - 10.0 && min.x < cam_pos.x + 10.0))
-                && char_pos.y <= max.z // character is behind
-                && min.y > 5.0
+            shader.set_mat4("model", &model_instance.matrix);
+            let alpha = if (max.x > char_pos.x && min.x < char_pos.x)
+                            && char_pos.y <= max.z // character is behind
+                            && min.y > 2.0
             {
-                1.0 //0.3
+                0.3
             } else {
                 model_render_data.alpha
             };

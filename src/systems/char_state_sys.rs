@@ -64,12 +64,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 char_comp.statuses.remove_all();
                 // remove rigid bodies from the physic simulation
                 if let Some(phys_comp) = physics_storage.get(char_entity_id) {
-                    collisions_resource
-                        .collisions
-                        .retain(|(coll_1, coll_2), collision| {
-                            *coll_1 != phys_comp.collider_handle
-                                && *coll_2 != phys_comp.collider_handle
-                        });
+                    collisions_resource.remove_collider_handle(phys_comp.collider_handle);
                     physics_world.remove_bodies(&[phys_comp.body_handle]);
                     physics_storage.remove(char_entity_id);
                 }

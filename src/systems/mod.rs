@@ -89,7 +89,14 @@ pub struct Collision {
 #[derive(Debug)]
 pub struct CollisionsFromPrevFrame {
     pub collisions: HashMap<(ColliderHandle, ColliderHandle), Collision>,
-    //    pub collisions: Vec<Collision>,
+}
+
+impl CollisionsFromPrevFrame {
+    pub fn remove_collider_handle(&mut self, collider_handle: ColliderHandle) {
+        self.collisions.retain(|(coll_1, coll_2), collision| {
+            *coll_1 != collider_handle && *coll_2 != collider_handle
+        });
+    }
 }
 
 pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);

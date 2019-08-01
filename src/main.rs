@@ -1441,9 +1441,15 @@ fn imgui_frame(
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
                 entity_ids
                     .iter()
-                    .map(|entity| physic_storage.get(*entity).map(|it| it.body_handle))
+                    .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| it.unwrap())
+                    .map(|it| {
+                        let phys_comp = it.unwrap();
+                        ecs_world
+                            .write_resource::<CollisionsFromPrevFrame>()
+                            .remove_collider_handle(phys_comp.collider_handle);
+                        phys_comp.body_handle
+                    })
                     .collect()
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
@@ -1507,9 +1513,15 @@ fn imgui_frame(
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
                 entity_ids
                     .iter()
-                    .map(|entity| physic_storage.get(*entity).map(|it| it.body_handle))
+                    .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| it.unwrap())
+                    .map(|it| {
+                        let phys_comp = it.unwrap();
+                        ecs_world
+                            .write_resource::<CollisionsFromPrevFrame>()
+                            .remove_collider_handle(phys_comp.collider_handle);
+                        phys_comp.body_handle
+                    })
                     .collect()
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
@@ -1524,6 +1536,13 @@ fn imgui_frame(
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ModelName(String);
+
+pub struct ModelInstance {
+    name: ModelName,
+    matrix: Matrix4<f32>,
+    min: Point3<f32>,
+    max: Point3<f32>,
+}
 
 pub struct MapRenderData {
     pub gat: Gat,
@@ -1541,7 +1560,7 @@ pub struct MapRenderData {
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
     pub models: HashMap<ModelName, ModelRenderData>,
-    pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
+    pub model_instances: Vec<ModelInstance>,
     pub draw_models: bool,
     pub draw_ground: bool,
     pub ground_walkability_mesh: VertexArray,
@@ -1714,7 +1733,7 @@ fn load_map(
         let len = world.models.len();
         world.models.iter().take(len)
     };
-    let model_instances: Vec<(ModelName, Matrix4<f32>)> = model_instances_iter
+    let model_instances: Vec<ModelInstance> = model_instances_iter
         .map(|model_instance| {
             let mut instance_matrix = Matrix4::<f32>::identity();
             instance_matrix.prepend_translation_mut(
@@ -1751,7 +1770,13 @@ fn load_map(
                     .to_homogeneous();
             instance_matrix = rotation * instance_matrix;
 
-            (model_instance.filename.clone(), instance_matrix)
+            let model_render_data = &model_render_datas[&model_instance.filename];
+            ModelInstance {
+                name: model_instance.filename.clone(),
+                matrix: instance_matrix,
+                min: instance_matrix.transform_point(&model_render_data.bounding_box.min),
+                max: instance_matrix.transform_point(&model_render_data.bounding_box.max),
+            }
         })
         .collect();
 

@@ -583,7 +583,6 @@ impl SkillManifestation for PushBackWallSkill {
                     if let Some(char_state) = char_storage.get(char_entity_id) {
                         let push_dir = self.pos - char_state.pos();
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
-                            dbg!("Shitaka");
                             v2!(1, 0) // "random"
                         } else {
                             -push_dir.normalize()

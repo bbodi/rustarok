@@ -315,7 +315,7 @@ impl Percentage {
                 self, modifier
             ),
             CharAttributeModifier::IncreaseByPercentage(p) => {
-                self.increase_by(*p);
+                self.value = self.increase_by(dbg!(*p)).value;
             }
         }
     }
@@ -325,9 +325,9 @@ impl Percentage {
     }
 
     pub fn increase_by(&self, p: Percentage) -> Percentage {
-        let change = self.value / p.value;
+        let change = self.value / 100 * p.value;
         Percentage {
-            value: self.value + change * PERCENTAGE_FACTOR,
+            value: self.value + change / PERCENTAGE_FACTOR,
         }
     }
 
@@ -372,6 +372,7 @@ mod tests {
     fn asd() {
         assert_eq!(Percentage(70).increase_by(Percentage(10)).as_i16(), 77);
         assert_eq!(Percentage(70).increase_by(Percentage(-10)).as_i16(), 63);
+        assert_eq!(Percentage(100).increase_by(Percentage(200)).as_i16(), 300);
         assert_eq!(Percentage(10).add_me_to(200), 220);
         assert_eq!(Percentage(70).add_me_to(600), 1020);
         assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
