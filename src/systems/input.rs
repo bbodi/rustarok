@@ -47,7 +47,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
 
     fn run(
         &mut self,
-        (entities, mut input_storage, mut browser_client_storage, updater): Self::SystemData,
+        (entities, mut input_storage, mut browser_client_storage, _updater): Self::SystemData,
     ) {
         for (entity_id, client, input_producer) in
             (&entities, &mut browser_client_storage, &mut input_storage).join()
@@ -219,7 +219,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 
     fn run(
         &mut self,
-        (entities, char_state_storage, mut controller_storage, system_vars): Self::SystemData,
+        (_entities, char_state_storage, mut controller_storage, system_vars): Self::SystemData,
     ) {
         for controller in (&mut controller_storage).join() {
             // for autocompletion...
@@ -459,11 +459,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         Some(ControllerAction::Casting(skill, alt_down))
                     }
                 }
-            } else if let Some((skill_key, skill)) = just_released_skill_key.and_then(|skill_key| {
-                controller
-                    .get_skill_for_key(skill_key)
-                    .map(|skill| (skill_key, skill))
-            }) {
+            } else if let Some((_skill_key, skill)) =
+                just_released_skill_key.and_then(|skill_key| {
+                    controller
+                        .get_skill_for_key(skill_key)
+                        .map(|skill| (skill_key, skill))
+                })
+            {
                 // can get here only when alt was down and OnKeyRelease
                 if alt_down {
                     log::debug!("Player wants to cast {:?}, SELF", skill);

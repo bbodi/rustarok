@@ -1,10 +1,10 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::{SkillManifestation, SkillManifestationComponent};
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
-use crate::systems::{Collision, SystemVariables};
-use crate::video::draw_circle_inefficiently;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld};
-use nalgebra::{Isometry2, Matrix4, Vector2};
+use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::ColliderHandle;
 use specs::{Entity, LazyUpdate};
 use std::collections::HashMap;
@@ -15,19 +15,17 @@ impl LightningSkill {
     pub fn render_target_selection(
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         for i in 0..3 {
-            draw_circle_inefficiently(
-                &system_vars.shaders.trimesh_shader,
-                &system_vars.matrices.projection,
-                view_matrix,
-                &(skill_pos + char_to_skill_dir * i as f32 * 2.2),
-                0.0,
-                1.0,
-                &[0.0, 1.0, 0.0, 1.0],
-            );
+            let pos = skill_pos + char_to_skill_dir * i as f32 * 2.2;
+            render_commands
+                .prepare_for_3d()
+                .pos_2d(&pos)
+                .y(0.0)
+                .radius(1.0)
+                .color(&[0.0, 1.0, 0.0, 1.0])
+                .add_circle_command()
         }
     }
 }
@@ -72,9 +70,9 @@ impl SkillManifestation for LightningManifest {
         self_entity_id: Entity,
         _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicsWorld,
+        _entities: &specs::Entities,
+        _char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
         if self
@@ -164,30 +162,33 @@ impl SkillManifestation for LightningManifest {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
+    fn render(
+        &self,
+        _now: ElapsedTime,
+        _assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
         for i in self.action_count..3 {
-            draw_circle_inefficiently(
-                &system_vars.shaders.trimesh_shader,
-                &system_vars.matrices.projection,
-                view_matrix,
-                &(self.pos + self.dir_vector * i as f32 * 2.2),
-                0.0,
-                1.0,
-                &[0.0, 1.0, 0.0, 1.0],
-            );
+            let pos = self.pos + self.dir_vector * i as f32 * 2.2;
+            render_commands
+                .prepare_for_3d()
+                .pos_2d(&pos)
+                .y(0.0)
+                .radius(1.0)
+                .color(&[0.0, 1.0, 0.0, 1.0])
+                .add_circle_command();
         }
         // backwards
         if self.action_count >= 4 {
             for i in self.action_count..6 {
-                draw_circle_inefficiently(
-                    &system_vars.shaders.trimesh_shader,
-                    &system_vars.matrices.projection,
-                    view_matrix,
-                    &(self.pos + self.dir_vector * (5 - i) as f32 * 2.2),
-                    0.0,
-                    1.0,
-                    &[0.0, 1.0, 0.0, 1.0],
-                );
+                let pos = self.pos + self.dir_vector * (5 - i) as f32 * 2.2;
+                render_commands
+                    .prepare_for_3d()
+                    .pos_2d(&pos)
+                    .y(0.0)
+                    .radius(1.0)
+                    .color(&[0.0, 1.0, 0.0, 1.0])
+                    .add_circle_command();
             }
         }
     }

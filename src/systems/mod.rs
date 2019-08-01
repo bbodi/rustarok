@@ -53,9 +53,16 @@ pub struct Texts {
     pub plus: GlTexture,
 }
 
-pub struct SystemVariables {
+pub struct AssetResources {
     pub sprites: Sprites,
     pub shaders: Shaders,
+    pub texts: Texts,
+    pub skill_icons: HashMap<Skills, GlTexture>,
+    pub status_icons: HashMap<&'static str, GlTexture>,
+}
+
+pub struct SystemVariables {
+    pub assets: AssetResources,
     pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
@@ -63,9 +70,6 @@ pub struct SystemVariables {
     pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
-    pub texts: Texts,
-    pub skill_icons: HashMap<Skills, GlTexture>,
-    pub status_icons: HashMap<&'static str, GlTexture>,
     pub attacks: Vec<AttackComponent>,
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,

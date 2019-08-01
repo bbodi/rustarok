@@ -1,9 +1,7 @@
 use specs::prelude::*;
 
-use crate::components::char::{CharacterStateComponent, PhysicsComponent};
-use crate::components::controller::ControllerComponent;
+use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::SkillManifestationComponent;
-use crate::components::BrowserClient;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicsWorld;
 
@@ -13,9 +11,6 @@ impl<'a> specs::System<'a> for SkillSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, ControllerComponent>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, PhysicsComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -29,9 +24,6 @@ impl<'a> specs::System<'a> for SkillSystem {
         (
             entities,
             char_storage,
-            input_storage,
-            browser_client_storage,
-            physics_storage,
             mut system_vars,
             collisions_resource,
             mut system_benchmark,
@@ -40,7 +32,7 @@ impl<'a> specs::System<'a> for SkillSystem {
             mut updater,
         ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("SkillSystem");
+        let _stopwatch = system_benchmark.start_measurement("SkillSystem");
         for (entity_id, skill) in (&entities, &mut skill_storage).join() {
             skill.update(
                 entity_id,

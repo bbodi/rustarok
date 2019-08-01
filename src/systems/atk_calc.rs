@@ -44,7 +44,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             mut updater,
         ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("AttackSystem");
+        let _stopwatch = system_benchmark.start_measurement("AttackSystem");
 
         let mut new_attacks = system_vars
             .area_attacks
@@ -186,7 +186,7 @@ impl<'a> specs::System<'a> for AttackSystem {
 
         let status_changes =
             std::mem::replace(&mut system_vars.remove_statuses, Vec::with_capacity(128));
-        AttackSystem::remove_statuses(status_changes, &mut char_state_storage, system_vars.time);
+        AttackSystem::remove_statuses(status_changes, &mut char_state_storage);
         system_vars.remove_statuses.clear();
     }
 }
@@ -259,11 +259,11 @@ impl AttackCalculation {
     }
 
     pub fn attack(
-        src: &CharacterStateComponent,
+        _src: &CharacterStateComponent,
         dst: &CharacterStateComponent,
         typ: AttackType,
     ) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
-        let mut src_outcomes = vec![];
+        let src_outcomes = vec![];
         let mut dst_outcomes = vec![];
         match typ {
             AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
@@ -400,7 +400,6 @@ impl AttackSystem {
     fn remove_statuses(
         status_changes: Vec<RemoveStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
-        now: ElapsedTime,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {

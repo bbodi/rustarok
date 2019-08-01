@@ -1,7 +1,7 @@
 use crate::asset::SpriteResource;
 use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
 use crate::components::controller::WorldCoords;
-use crate::components::status::{Status, StatusType, StatusUpdateResult};
+use crate::components::status::{Status, StatusStackingResult, StatusType, StatusUpdateResult};
 use crate::components::ApplyForceComponent;
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
@@ -72,11 +72,11 @@ impl Status for ArmorModifierStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
-        char_pos: &WorldCoords,
+        _self_char_id: Entity,
+        _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        _entities: &specs::Entities,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt
@@ -85,24 +85,28 @@ impl Status for ArmorModifierStatus {
         }
     }
 
-    fn render(
-        &self,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
-    ) {
-
-    }
-
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         outcome
     }
 
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
         true
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    fn render(
+        &self,
+        _char_pos: &WorldCoords,
+        _system_vars: &mut SystemVariables,
+        _view_matrix: &Matrix4<f32>,
+    ) {
+
+    }
+
+    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         None
+    }
+
+    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::AddTheNewStatus
     }
 }

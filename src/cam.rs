@@ -10,6 +10,7 @@ pub struct Camera {
     pub visible_z_range: f32,
 }
 
+#[allow(dead_code)]
 impl Camera {
     pub fn new(pos: Point3<f32>) -> Camera {
         let front = Vector3::<f32>::new(0.0, 0.0, -1.0);

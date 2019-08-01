@@ -102,6 +102,7 @@ impl ComponentRadius {
 pub struct PhysicsComponent {
     pub radius: ComponentRadius,
     pub body_handle: nphysics2d::object::BodyHandle,
+    pub collider_handle: nphysics2d::object::ColliderHandle,
 }
 
 impl PhysicsComponent {
@@ -112,24 +113,26 @@ impl PhysicsComponent {
         entity_id: Entity,
     ) -> PhysicsComponent {
         let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
-        let collider_desc = ColliderDesc::new(capsule)
+        let body_handle = RigidBodyDesc::new()
+            .user_data(entity_id)
+            .gravity_enabled(false)
+            .set_translation(pos)
+            .build(world)
+            .part_handle();
+        let collider_handle = ColliderDesc::new(capsule)
             .collision_groups(
                 CollisionGroups::new()
                     .with_membership(&[LIVING_COLLISION_GROUP])
                     .with_blacklist(&[]),
             )
-            .density(radius.0 as f32 * 5.0);
-        let rb_desc = RigidBodyDesc::new()
-            .user_data(entity_id)
-            .collider(&collider_desc);
-        let handle = rb_desc
-            .gravity_enabled(false)
-            .set_translation(pos)
-            .build(world)
+            .density(radius.0 as f32 * 5.0)
+            .build_with_parent(body_handle, world)
+            .unwrap()
             .handle();
         PhysicsComponent {
             radius,
-            body_handle: handle,
+            body_handle: body_handle.0,
+            collider_handle,
         }
     }
 }

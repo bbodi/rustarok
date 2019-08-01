@@ -9,7 +9,7 @@ use crate::components::controller::WorldCoords;
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::{AttackComponent, AttackType};
 use crate::systems::control_sys::CharacterControlSystem;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld};
 use std::collections::HashMap;
 
@@ -23,6 +23,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicsWorld>,
+        specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
     );
@@ -36,11 +37,12 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             mut sprite_storage,
             mut system_vars,
             mut physics_world,
+            mut collisions_resource,
             mut system_benchmark,
             mut updater,
         ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("CharacterStateUpdateSystem");
+        let _stopwatch = system_benchmark.start_measurement("CharacterStateUpdateSystem");
 
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
@@ -62,8 +64,13 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 char_comp.statuses.remove_all();
                 // remove rigid bodies from the physic simulation
                 if let Some(phys_comp) = physics_storage.get(char_entity_id) {
-                    let body_handle = phys_comp.body_handle;
-                    physics_world.remove_bodies(&[body_handle]);
+                    collisions_resource
+                        .collisions
+                        .retain(|(coll_1, coll_2), collision| {
+                            *coll_1 != phys_comp.collider_handle
+                                && *coll_2 != phys_comp.collider_handle
+                        });
+                    physics_world.remove_bodies(&[phys_comp.body_handle]);
                     physics_storage.remove(char_entity_id);
                 }
                 continue;
@@ -246,7 +253,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 };
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.sprites, &state);
+                    .get_sprite_and_action_index(&system_vars.assets.sprites, &state);
                 sprite.action_index = action_index;
                 sprite.animation_ends_at =
                     system_vars.time.add(forced_duration.unwrap_or_else(|| {
@@ -260,7 +267,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 sprite.forced_duration = None;
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.sprites, &prev_state);
+                    .get_sprite_and_action_index(&system_vars.assets.sprites, &prev_state);
                 let duration = sprite_res.action.actions[action_index].duration;
                 sprite.animation_ends_at = sprite.animation_started.add_seconds(duration);
             }

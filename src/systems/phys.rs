@@ -29,7 +29,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
         system_vars,
     ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("FrictionSystem");
+        let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for (physics, char_state) in (&physics_storage, &mut char_storage).join() {
             let body = physics_world.rigid_body_mut(physics.body_handle).unwrap();
             if char_state.cannot_control_until.has_passed(system_vars.time) {
@@ -58,27 +58,21 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
         specs::Entities<'a>,
         specs::WriteExpect<'a, PhysicsWorld>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, PhysicsComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
-        specs::Write<'a, LazyUpdate>,
     );
 
     fn run(
         &mut self,
         (
-            entities,
+            _entities,
             mut physics_world,
             mut system_benchmark,
-            char_storage,
-            physics_storage,
             system_vars,
             mut collisions_resource,
-            updater,
         ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("PhysicsSystem");
+        let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
         physics_world.set_timestep(system_vars.dt.0);
         physics_world.step();
@@ -86,10 +80,9 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
         for event in physics_world.proximity_events() {
             log::trace!("{:?}", event);
             let collider1 = physics_world.collider(event.collider1).unwrap();
-            let collider1_body = collider1.body();
+            let collider1_body_handle = collider1.body();
             let collider2 = physics_world.collider(event.collider2).unwrap();
-            let collider2_body = collider2.body();
-            let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
+            let (character_coll_handle, other_coll_handle) = if collider1_body_handle.is_ground() {
                 (collider2.handle(), collider1.handle())
             } else {
                 (collider1.handle(), collider2.handle())
@@ -129,7 +122,6 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
                     let collider1 = physics_world.collider(*handle1).unwrap();
                     let collider1_body = collider1.body();
                     let collider2 = physics_world.collider(*handle2).unwrap();
-                    let collider2_body = collider2.body();
                     let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
                         (collider2.handle(), collider1.handle())
                     } else {
@@ -147,13 +139,12 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
                     let collider1 = physics_world.collider(*handle1).unwrap();
                     let collider1_body = collider1.body();
                     let collider2 = physics_world.collider(*handle2).unwrap();
-                    let collider2_body = collider2.body();
                     let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
                         (collider2.handle(), collider1.handle())
                     } else {
                         (collider1.handle(), collider2.handle())
                     };
-                    let collision = Collision {
+                    let _collision = Collision {
                         character_coll_handle,
                         other_coll_handle,
                     };

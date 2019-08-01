@@ -10,11 +10,11 @@ use crate::components::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
 };
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{Collision, SystemVariables};
-use crate::video::draw_lines_inefficiently;
+use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
-use nalgebra::{Isometry2, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Isometry2, Matrix4, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
 use ncollide2d::world::CollisionGroups;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
@@ -35,7 +35,12 @@ pub trait SkillManifestation {
         updater: &mut specs::Write<LazyUpdate>,
     );
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>);
+    fn render(
+        &self,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    );
 }
 
 #[storage(HashMapStorage)]
@@ -78,9 +83,14 @@ impl SkillManifestationComponent {
         );
     }
 
-    pub fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
+    pub fn render(
+        &self,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
         let skill = self.skill.lock().unwrap();
-        skill.render(system_vars, view_matrix);
+        skill.render(now, assets, render_commands);
     }
 }
 
@@ -143,77 +153,22 @@ impl Skills {
         casting_area_size: &Vector2<f32>,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
-        let half = casting_area_size / 2.0;
-        let bottom_left = v2!(-half.x, -half.y);
-        let top_left = v2!(-half.x, half.y);
-        let top_right = v2!(half.x, half.y);
-        let bottom_right = v2!(half.x, -half.y);
-        // rotate
-        let rot_matrix = Matrix4::<f32>::identity();
         let angle = char_to_skill_dir.angle(&Vector2::y());
         let angle = if char_to_skill_dir.x > 0.0 {
             angle
         } else {
             -angle
         };
-        let rotation =
-            Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), angle)
-                .to_homogeneous();
-        let rot_matrix = rot_matrix * rotation;
-
-        let bottom_left = rot_matrix.transform_point(&p3!(bottom_left.x, 1, bottom_left.y));
-        let top_left = rot_matrix.transform_point(&p3!(top_left.x, 1, top_left.y));
-        let top_right = rot_matrix.transform_point(&p3!(top_right.x, 1, top_right.y));
-        let bottom_right = rot_matrix.transform_point(&p3!(bottom_right.x, 1, bottom_right.y));
-
         let skill_pos = v2_to_v3(skill_pos);
-        draw_lines_inefficiently(
-            &system_vars.shaders.trimesh_shader,
-            &system_vars.matrices.projection,
-            view_matrix,
-            &[
-                skill_pos + bottom_left.coords,
-                skill_pos + top_left.coords,
-                skill_pos + top_right.coords,
-                skill_pos + bottom_right.coords,
-            ],
-            &[0.0, 1.0, 0.0, 1.0],
-        );
-    }
 
-    pub fn render_casting_box2(
-        pos: &Vector2<f32>,
-        half: &Vector2<f32>,
-        rot_angle_in_rad: f32,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
-    ) {
-        let rot_matrix = Matrix4::<f32>::identity();
-        let rotation = Rotation3::from_axis_angle(
-            &nalgebra::Unit::new_normalize(Vector3::y()),
-            rot_angle_in_rad,
-        )
-        .to_homogeneous();
-        let rot_matrix = rot_matrix * rotation;
-
-        let self_pos_3d = v2_to_v3(&pos);
-        let bottom_left =
-            self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, -half.y)).coords;
-        let top_left = self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, half.y)).coords;
-        let top_right = self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, half.y)).coords;
-        let bottom_right =
-            self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, -half.y)).coords;
-
-        draw_lines_inefficiently(
-            &system_vars.shaders.trimesh_shader,
-            &system_vars.matrices.projection,
-            view_matrix,
-            &[bottom_left, top_left, top_right, bottom_right],
-            &[0.0, 1.0, 0.0, 1.0],
-        );
+        render_commands
+            .prepare_for_3d()
+            .pos(&skill_pos)
+            .rotation_rad(Vector3::y(), angle)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(casting_area_size)
     }
 }
 
@@ -423,6 +378,7 @@ impl Skills {
         casting_state: &CastingSkillData,
         system_vars: &mut SystemVariables,
         view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
             _ => {
@@ -437,8 +393,7 @@ impl Skills {
                     self.render_target_selection(
                         &target_area_pos,
                         &casting_state.char_to_skill_dir_when_casted,
-                        system_vars,
-                        view_matrix,
+                        render_commands,
                     );
                 }
             }
@@ -475,8 +430,7 @@ impl Skills {
         &self,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
             Skills::FireWall => {
@@ -484,8 +438,7 @@ impl Skills {
                     &v2!(3.0, 1.0),
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::BrutalTestSkill => {
@@ -493,16 +446,14 @@ impl Skills {
                     &v2!(10.0, 10.0),
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::Lightning => {
                 LightningSkill::render_target_selection(
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::Heal => {}
@@ -524,9 +475,12 @@ pub struct PushBackWallSkill {
     pub rot_angle_in_rad: f32,
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
+    cannot_damage_until: HashMap<Entity, ElapsedTime>,
 }
 
 impl PushBackWallSkill {
+    const DAMAGE_DURATION_SECONDS: f32 = 1.0;
+
     pub fn new(
         caster_entity_id: Entity,
         physics_world: &mut PhysicsWorld,
@@ -579,6 +533,7 @@ impl PushBackWallSkill {
             half_extents,
             created_at: system_time.clone(),
             die_at: system_time.add_seconds(2.0),
+            cannot_damage_until: HashMap::new(),
         }
     }
 }
@@ -594,8 +549,10 @@ impl SkillManifestation for PushBackWallSkill {
         physics_world: &mut PhysicsWorld,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        if self.die_at.has_passed(system_vars.time) {
-            physics_world.remove_colliders(&[self.collider_handle]);
+        let now = system_vars.time;
+        let self_collider_handle = self.collider_handle;
+        if self.die_at.has_passed(now) {
+            physics_world.remove_colliders(&[self_collider_handle]);
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             for effect_id in &self.effect_ids {
                 updater.remove::<StrEffectComponent>(*effect_id);
@@ -604,7 +561,7 @@ impl SkillManifestation for PushBackWallSkill {
             // TODO: wouldn't it be better to use the area push functionality?
             let my_collisions = all_collisions_in_world
                 .iter()
-                .filter(|(_key, coll)| coll.other_coll_handle == self.collider_handle);
+                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
             for (_key, coll) in my_collisions {
                 if let Some(char_body_handle) = physics_world
                     .collider(coll.character_coll_handle)
@@ -615,9 +572,18 @@ impl SkillManifestation for PushBackWallSkill {
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
+                    if !self
+                        .cannot_damage_until
+                        .get(&char_entity_id)
+                        .unwrap_or(&now)
+                        .has_passed(now)
+                    {
+                        continue;
+                    }
                     if let Some(char_state) = char_storage.get(char_entity_id) {
                         let push_dir = self.pos - char_state.pos();
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
+                            dbg!("Shitaka");
                             v2!(1, 0) // "random"
                         } else {
                             -push_dir.normalize()
@@ -633,22 +599,30 @@ impl SkillManifestation for PushBackWallSkill {
                             dst_entity: char_entity_id,
                             force: push_dir * 20.0,
                             body_handle: char_body_handle,
-                            duration: 1.0,
+                            duration: PushBackWallSkill::DAMAGE_DURATION_SECONDS,
                         });
+                        self.cannot_damage_until.insert(
+                            char_entity_id,
+                            now.add_seconds(PushBackWallSkill::DAMAGE_DURATION_SECONDS),
+                        );
                     }
                 }
             }
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
-        Skills::render_casting_box2(
-            &self.pos,
-            &self.half_extents,
-            self.rot_angle_in_rad,
-            &system_vars,
-            view_matrix,
-        );
+    fn render(
+        &self,
+        _now: ElapsedTime,
+        _assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(&(self.half_extents * 2.0));
     }
 }
 
@@ -743,13 +717,17 @@ impl SkillManifestation for BrutalSkillManifest {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
-        Skills::render_casting_box2(
-            &self.pos,
-            &self.half_extents,
-            self.rot_angle_in_rad,
-            &system_vars,
-            view_matrix,
-        );
+    fn render(
+        &self,
+        _now: ElapsedTime,
+        _assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(&(self.half_extents * 2.0));
     }
 }

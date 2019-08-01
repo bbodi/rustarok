@@ -1,11 +1,10 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::skills::skill::{SkillManifestation, Skills};
+use crate::components::skills::skill::SkillManifestation;
 use crate::components::{AttackComponent, AttackType};
-use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::systems::{Collision, SystemVariables};
-use crate::video::TEXTURE_0;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
-use nalgebra::{Matrix4, Vector2, Vector3};
+use nalgebra::Vector2;
 use ncollide2d::shape::ShapeHandle;
 use ncollide2d::world::CollisionGroups;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
@@ -63,20 +62,20 @@ impl HealApplierArea {
 impl SkillManifestation for HealApplierArea {
     fn update(
         &mut self,
-        self_entity_id: Entity,
+        _self_entity_id: Entity,
         all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _entities: &specs::Entities,
+        _char_storage: &specs::ReadStorage<CharacterStateComponent>,
         physics_world: &mut PhysicsWorld,
-        updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) {
         if self.next_action_at.has_passed(system_vars.time) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = all_collisions_in_world
                 .iter()
-                .filter(|(key, coll)| coll.other_coll_handle == self_collider_handle);
-            for (key, coll) in my_collisions {
+                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
+            for (_key, coll) in my_collisions {
                 let char_body_handle = physics_world
                     .collider(coll.character_coll_handle)
                     .unwrap()
@@ -86,66 +85,37 @@ impl SkillManifestation for HealApplierArea {
                     .user_data()
                     .map(|v| v.downcast_ref().unwrap())
                     .unwrap();
-                if let Some(char_state) = char_storage.get(char_entity_id) {
-                    system_vars.attacks.push(AttackComponent {
-                        src_entity: self.caster_entity_id,
-                        dst_entity: char_entity_id,
-                        typ: self.attack_type,
-                    });
-                    self.next_action_at = system_vars.time.add_seconds(self.interval);
-                }
+                system_vars.attacks.push(AttackComponent {
+                    src_entity: self.caster_entity_id,
+                    dst_entity: char_entity_id,
+                    typ: self.attack_type,
+                });
+                self.next_action_at = system_vars.time.add_seconds(self.interval);
             }
-
-            //            system_vars
-            //                .apply_area_statuses
-            //                .push(ApplyStatusInAreaComponent {
-            //                    source_entity_id: self.caster_entity_id,
-            //                    status: (self.status_creator)(system_vars.time),
-            //                    area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
-            //                    area_isom: Isometry2::new(self.pos, 0.0),
-            //                    except: None,
-            //                });
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
-        Skills::render_casting_box2(
-            &self.pos,
-            &self.half_extents,
-            0.0,
-            &system_vars,
-            view_matrix,
-        );
-        let shader = system_vars.shaders.sprite_shader.gl_use();
-        let texture = &system_vars.texts.custom_texts[self.name];
-        shader.set_vec2(
-            "size",
-            &[
-                texture.width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            ],
-        );
-        let mut matrix = Matrix4::<f32>::identity();
-        matrix.prepend_translation_mut(&v3!(self.pos.x, 3.0, self.pos.y));
-        shader.set_mat4("model", &matrix);
-        shader.set_vec3(
-            "color",
-            &if self.next_action_at.has_passed(system_vars.time) {
-                [0.0, 1.0, 0.0]
+    fn render(
+        &self,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(&(self.half_extents * 2.0));
+
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .y(3.0)
+            .color(&if self.next_action_at.has_passed(now) {
+                [0.0, 1.0, 0.0, 1.0]
             } else {
-                [0.3, 0.3, 0.3]
-            },
-        );
-        shader.set_vec2("offset", &[0.0, 0.0]);
-        shader.set_mat4("projection", &system_vars.matrices.projection);
-        shader.set_mat4("view", &view_matrix);
-        shader.set_int("model_texture", 0);
-        shader.set_f32("alpha", 1.0);
-        texture.bind(TEXTURE_0);
-        system_vars
-            .map_render_data
-            .centered_sprite_vertex_array
-            .bind()
-            .draw();
+                [0.3, 0.3, 0.3, 1.0]
+            })
+            .add_sprite_command(&assets.texts.custom_texts[self.name], false);
     }
 }

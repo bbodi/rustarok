@@ -2,7 +2,8 @@ use crate::asset::SpriteResource;
 use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::WorldCoords;
 use crate::components::status::{
-    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusType, StatusUpdateResult,
+    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
+    StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::consts::JobId;
@@ -45,14 +46,14 @@ impl Status for FireBombStatus {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
+        _job_id: JobId,
+        _head_index: usize,
+        _sex: Sex,
+        _sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
         None
     }
@@ -102,6 +103,14 @@ impl Status for FireBombStatus {
         }
     }
 
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
+    }
+
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+        true
+    }
+
     fn render(
         &self,
         char_pos: &WorldCoords,
@@ -117,15 +126,11 @@ impl Status for FireBombStatus {
         );
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
-        true
-    }
-
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
+    }
+
+    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::AddTheNewStatus
     }
 }

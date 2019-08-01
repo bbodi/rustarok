@@ -1,7 +1,7 @@
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
-use nalgebra::{Matrix3, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Matrix3, Matrix4};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
@@ -145,81 +145,6 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
     mat[(2, 3)] = -(zfar + znear) / (zfar - znear);
 
     mat
-}
-
-pub fn draw_lines_inefficiently2(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    points: &[Point3<f32>],
-    color: &[f32; 4],
-) {
-    let points: Vec<Vector3<f32>> = points.iter().map(|&p| p.coords).collect();
-    draw_lines_inefficiently(trimesh_shader, projection, view, points.as_slice(), color);
-}
-
-pub fn draw_lines_inefficiently(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    points: &[Vector3<f32>],
-    color: &[f32; 4],
-) {
-    let shader = trimesh_shader.gl_use();
-    shader.set_mat4("projection", &projection);
-    shader.set_mat4("view", view);
-    shader.set_vec4("color", color);
-    shader.set_mat4("model", &Matrix4::identity());
-    VertexArray::new(
-        gl::LINE_LOOP,
-        points,
-        points.len(),
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    )
-    .bind()
-    .draw();
-}
-
-pub fn draw_circle_inefficiently(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    center: &Vector2<f32>,
-    y: f32,
-    r: f32,
-    color: &[f32; 4],
-) {
-    let shader = trimesh_shader.gl_use();
-    shader.set_mat4("projection", &projection);
-    shader.set_mat4("view", view);
-    shader.set_vec4("color", color);
-    let mut matrix = Matrix4::identity();
-    let center = Vector3::new(center.x, y, center.y);
-    matrix.prepend_translation_mut(&center);
-    let rotation = Rotation3::from_axis_angle(
-        &nalgebra::Unit::new_normalize(Vector3::x()),
-        std::f32::consts::FRAC_PI_2,
-    )
-    .to_homogeneous();
-    matrix = matrix * rotation;
-    shader.set_mat4("model", &matrix);
-    let capsule_mesh = ncollide2d::procedural::circle(&(r * 2.0), 32);
-
-    let coords = capsule_mesh.coords();
-    VertexArray::new(
-        gl::LINE_LOOP,
-        coords,
-        coords.len(),
-        vec![VertexAttribDefinition {
-            number_of_components: 2,
-            offset_of_first_element: 0,
-        }],
-    )
-    .bind()
-    .draw();
 }
 
 #[derive(Hash, Eq, PartialEq, Debug)]

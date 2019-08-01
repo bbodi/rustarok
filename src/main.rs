@@ -58,8 +58,8 @@ use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
-    CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables,
-    Texts,
+    AssetResources, CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations,
+    SystemVariables, Texts,
 };
 use crate::video::{
     ortho, DynamicVertexArray, GlTexture, Shader, ShaderProgram, VertexArray,
@@ -559,7 +559,7 @@ fn main() {
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
-    let (map_render_data, mut physics_world) =
+    let (map_render_data, physics_world) =
         load_map("prontera", &asset_loader, config.quick_startup);
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
@@ -663,22 +663,24 @@ fn main() {
         texts.skill_key_texts.insert(skill_key, texture);
     }
     ecs_world.add_resource(SystemVariables {
-        shaders,
-        sprites,
+        assets: AssetResources {
+            shaders,
+            sprites,
+            texts,
+            skill_icons,
+            status_icons,
+        },
         tick: 0,
         dt: DeltaTime(0.0),
         time: ElapsedTime(0.0),
         matrices: render_matrices,
         map_render_data,
-        texts,
         attacks: Vec::with_capacity(128),
         area_attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
         apply_statuses: Vec::with_capacity(128),
         apply_area_statuses: Vec::with_capacity(128),
         remove_statuses: Vec::with_capacity(128),
-        skill_icons,
-        status_icons,
         str_effect_vao: DynamicVertexArray::new(
             gl::TRIANGLE_STRIP,
             vec![
@@ -766,123 +768,142 @@ fn main() {
     // Add static skill manifestations
     {
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "Poison",
-                    move |_now| ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison),
-                    &v2!(251, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "Poison",
+                        move |_now| {
+                            ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison)
+                        },
+                        &v2!(251, -213),
+                        v2!(2, 3),
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "AbsorbShield",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(AbsorbStatus::new(
-                            desktop_client_char,
-                            now,
-                        )))
-                    },
-                    &v2!(255, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "AbsorbShield",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                AbsorbStatus::new(desktop_client_char, now),
+                            ))
+                        },
+                        &v2!(255, -213),
+                        v2!(2, 3),
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "FireBomb",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
-                            caster_entity_id: desktop_client_char,
-                            started: now,
-                            until: now.add_seconds(2.0),
-                        }))
-                    },
-                    &v2!(260, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "FireBomb",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
+                                caster_entity_id: desktop_client_char,
+                                started: now,
+                                until: now.add_seconds(2.0),
+                            }))
+                        },
+                        &v2!(260, -213),
+                        v2!(2, 3),
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // armor up
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "ArmorUp",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage(70)),
-                        ))
-                    },
-                    &v2!(265, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "ArmorUp",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                ArmorModifierStatus::new(now, Percentage(70)),
+                            ))
+                        },
+                        &v2!(265, -213),
+                        v2!(2, 3),
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // armor down
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "ArmorDown",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage(-30)),
-                        ))
-                    },
-                    &v2!(270, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "ArmorDown",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                ArmorModifierStatus::new(now, Percentage(-30)),
+                            ))
+                        },
+                        &v2!(270, -213),
+                        v2!(2, 3),
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // HEAL
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(HealApplierArea::new(
-                    "Heal",
-                    AttackType::Heal(50),
-                    &v2!(273, -213),
-                    v2!(2, 3),
-                    0.5,
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(HealApplierArea::new(
+                        "Heal",
+                        AttackType::Heal(50),
+                        &v2!(273, -213),
+                        v2!(2, 3),
+                        0.5,
+                        desktop_client_char,
+                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                    )),
+                ),
+            )
+            .unwrap();
     }
     start_web_server();
 
@@ -1396,6 +1417,7 @@ fn imgui_frame(
                 };
                 let head_count = ecs_world
                     .read_resource::<SystemVariables>()
+                    .assets
                     .sprites
                     .head_sprites[Sex::Male as usize]
                     .len();
@@ -1686,7 +1708,7 @@ fn load_map(
     });
     log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
-    let mut model_instances_iter = if quick_loading {
+    let model_instances_iter = if quick_loading {
         world.models.iter().take(0)
     } else {
         let len = world.models.len();

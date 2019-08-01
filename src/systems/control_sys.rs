@@ -22,15 +22,14 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     fn run(
         &mut self,
         (
-        entities,
+            _entities,
         mut char_state_storage,
         controller_storage,
         system_vars,
         mut system_benchmark,
     ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
-        let rng = rand::thread_rng();
+        let _stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
         for controller in (&controller_storage).join() {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
@@ -39,7 +38,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 .get_mut(controller.char_entity_id)
                 .unwrap();
             match controller.next_action {
-                Some(ControllerAction::MoveOrAttackTo(pos)) => {
+                Some(ControllerAction::MoveOrAttackTo(_pos)) => {
                     char_state.target = if let Some(target_entity) = controller.entity_below_cursor
                     {
                         if target_entity != controller.char_entity_id {
@@ -51,7 +50,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         Some(EntityTarget::Pos(controller.mouse_world_pos))
                     };
                 }
-                Some(ControllerAction::MoveTowardsMouse(pos)) => {
+                Some(ControllerAction::MoveTowardsMouse(_pos)) => {
                     char_state.target = Some(EntityTarget::Pos(controller.mouse_world_pos));
                 }
                 Some(ControllerAction::AttackTo(_)) => {}
