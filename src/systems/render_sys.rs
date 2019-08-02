@@ -77,7 +77,7 @@ impl RenderDesktopClientSystem {
         str_effect_storage: &specs::ReadStorage<'a, StrEffectComponent>,
         updater: &specs::Write<'a, LazyUpdate>,
     ) {
-        render_commands.set_view_matrix(&controller.view_matrix);
+        render_commands.set_view_matrix(&controller.view_matrix, &controller.normal_matrix);
         // Draw physics colliders
         for physics in (&physics_storage).join() {
             let body = physics_world.rigid_body(physics.body_handle);
@@ -103,6 +103,7 @@ impl RenderDesktopClientSystem {
             &char_pos,
             &controller.camera,
             &controller.view_matrix,
+            &controller.normal_matrix,
             &system_vars.assets.shaders,
             &system_vars.matrices.projection,
             &system_vars.map_render_data,
@@ -685,68 +686,27 @@ fn render_client(
     char_pos: &Vector2<f32>,
     camera: &Camera,
     view: &Matrix4<f32>,
+    normal_matrix: &Matrix3<f32>,
     shaders: &Shaders,
     projection_matrix: &Matrix4<f32>,
     map_render_data: &MapRenderData,
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
-    let model = Matrix4::<f32>::identity();
-    let model_view = view * model;
-    let normal_matrix = {
-        let inverted = model_view.try_inverse().unwrap();
-        let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
-        m3x3.transpose()
-    };
-
     if map_render_data.draw_ground {
         render_ground(
             shaders,
             projection_matrix,
             map_render_data,
-            &model_view,
+            &view,
             &normal_matrix,
         );
     }
-
-    let shader = shaders.model_shader.gl_use();
-    shader.set_mat4("projection", &projection_matrix);
-    shader.set_mat4("view", &view);
-    shader.set_mat3("normal_matrix", &normal_matrix);
-    shader.set_int("model_texture", 0);
-
-    shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-
-    shader.set_int(
-        "use_lighting",
-        if map_render_data.use_lighting { 1 } else { 0 },
-    );
 
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
         for model_instance in &map_render_data.model_instances {
             let model_render_data = &map_render_data.models[&model_instance.name];
-            // TODO: before transformation, max and min is reversed
-            //            min: Point {
-            //                coords: Matrix {
-            //                    data: [
-            //                        -32.90765,
-            //                        -70.0698,
-            //                        -30.87375,
-            //                    ],
-            //                },
-            //            },
-            //            max: Point {
-            //                coords: Matrix {
-            //                    data: [
-            //                        32.90765,
-            //                        0.0,
-            //                        30.87375,
-            //                    ],
-            //                },
-            //            },
+
             let min = model_instance.bottom_left_front;
             let max = model_instance.top_right_back;
 
@@ -758,7 +718,6 @@ fn render_client(
             {
                 continue;
             }
-            shader.set_mat4("model", &model_instance.matrix);
             let alpha = if (max.x > char_pos.x && min.x < char_pos.x)
                             && char_pos.y <= min.z // character is behind
                             && max.y > 2.0
@@ -767,14 +726,11 @@ fn render_client(
             } else {
                 model_render_data.alpha
             };
-            shader.set_f32("alpha", alpha);
-            for node_render_data in &model_render_data.model {
-                // TODO: optimize this
-                for face_render_data in node_render_data {
-                    face_render_data.texture.bind(TEXTURE_0);
-                    face_render_data.vao.bind().draw();
-                }
-            }
+
+            render_commands
+                .prepare_for_3d()
+                .alpha(alpha)
+                .add_model_command(&model_instance.name, &model_instance.matrix);
         }
     }
 }

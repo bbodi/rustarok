@@ -2,7 +2,8 @@ use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
-use nalgebra::{Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use crate::ModelName;
+use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
 
@@ -43,9 +44,11 @@ pub struct RenderCommandCollectorComponent {
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
     pub(super) billboard_commands: Vec<BillboardRenderCommand>,
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
+    pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Matrix4<f32>>>,
     //    pub(super) effect_commands: Vec<(EffectFrameCacheKey, Matrix4<f32>)>,
     pub(super) view_matrix: Matrix4<f32>,
+    pub(super) normal_matrix: Matrix3<f32>,
 }
 
 impl<'a> RenderCommandCollectorComponent {
@@ -59,12 +62,15 @@ impl<'a> RenderCommandCollectorComponent {
             billboard_commands: Vec::with_capacity(128),
             number_3d_commands: Vec::with_capacity(128),
             effect_commands: HashMap::with_capacity(128),
+            model_commands: Vec::with_capacity(128),
             view_matrix: Matrix4::identity(),
+            normal_matrix: Matrix3::identity(),
         }
     }
 
-    pub fn set_view_matrix(&mut self, view_matrix: &Matrix4<f32>) {
+    pub fn set_view_matrix(&mut self, view_matrix: &Matrix4<f32>, normal_matrix: &Matrix3<f32>) {
         self.view_matrix = *view_matrix;
+        self.normal_matrix = *normal_matrix;
     }
 
     pub fn clear(&mut self) {
@@ -76,6 +82,7 @@ impl<'a> RenderCommandCollectorComponent {
         self.billboard_commands.clear();
         self.number_3d_commands.clear();
         self.effect_commands.clear();
+        self.model_commands.clear();
     }
 
     pub fn prepare_for_3d(&'a mut self) -> Common3DPropBuilder {
@@ -419,6 +426,14 @@ impl<'a> Common3DPropBuilder<'a> {
             });
     }
 
+    pub fn add_model_command(&'a mut self, name: &ModelName, matrix: &Matrix4<f32>) {
+        self.collector.model_commands.push(ModelRenderCommand {
+            name: name.to_owned(),
+            matrix: *matrix,
+            alpha: self.color[3],
+        });
+    }
+
     pub fn add_billboard_command(&'a mut self, texture: &GlTexture, flip_vertically: bool) {
         let flipped_width = (1 - flip_vertically as i32 * 2) * texture.width;
         let command = BillboardRenderCommand {
@@ -453,4 +468,11 @@ pub struct Number3dRenderCommand {
     pub(super) common: Common3DProperties,
     pub(super) value: u32,
     pub(super) digit_count: u8,
+}
+
+#[derive(Debug)]
+pub struct ModelRenderCommand {
+    pub(super) alpha: f32,
+    pub(super) name: ModelName,
+    pub(super) matrix: Matrix4<f32>,
 }

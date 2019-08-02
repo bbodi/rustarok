@@ -2,7 +2,7 @@ use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
 use crate::components::skills::skill::Skills;
 use crate::ElapsedTime;
-use nalgebra::{Matrix4, Point3, Vector2};
+use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use specs::Entity;
@@ -92,6 +92,7 @@ pub enum CastMode {
 #[derive(Component)]
 pub struct ControllerComponent {
     pub view_matrix: Matrix4<f32>,
+    pub normal_matrix: Matrix3<f32>,
     pub char_entity_id: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
@@ -135,6 +136,7 @@ impl ControllerComponent {
         camera.update_visible_z_range(projection);
         ControllerComponent {
             view_matrix: Matrix4::identity(), // it is filled before every frame
+            normal_matrix: Matrix3::identity(), // it is filled before every frame
             char_entity_id: char,
             camera,
             cast_mode: CastMode::Normal,

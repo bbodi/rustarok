@@ -374,6 +374,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 controller.camera.set_z(pos.y + z_range);
             }
             controller.view_matrix = controller.camera.create_view_matrix();
+            controller.normal_matrix = {
+                let inverted = controller.view_matrix.try_inverse().unwrap();
+                let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
+                m3x3.transpose()
+            };
             // setup next action based on input
             // TODO: optimize
             let just_pressed_skill_key = SkillKey::iter()

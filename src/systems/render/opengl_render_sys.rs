@@ -428,6 +428,36 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     gl::Enable(gl::DEPTH_TEST);
                 }
             }
+
+            /////////////////////////////////
+            // MODELS
+            /////////////////////////////////
+            {
+                let map_render_data = &system_vars.map_render_data;
+                let shader = system_vars.assets.shaders.model_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_mat3("normal_matrix", &render_commands.normal_matrix);
+                shader.set_int("model_texture", 0);
+                shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+                shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+                shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+                shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+                shader.set_int("use_lighting", map_render_data.use_lighting as i32);
+
+                for render_command in &render_commands.model_commands {
+                    shader.set_mat4("model", &render_command.matrix);
+                    shader.set_f32("alpha", render_command.alpha);
+                    let model_render_data = &map_render_data.models[&render_command.name];
+                    for node_render_data in &model_render_data.model {
+                        // TODO: optimize this
+                        for face_render_data in node_render_data {
+                            face_render_data.texture.bind(TEXTURE_0);
+                            face_render_data.vao.bind().draw();
+                        }
+                    }
+                }
+            }
         }
     }
 }
