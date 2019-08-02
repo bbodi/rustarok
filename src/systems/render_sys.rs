@@ -1,6 +1,4 @@
-use crate::asset::str::KeyFrameType;
 use crate::cam::Camera;
-use crate::common::v2_to_v3;
 use crate::components::char::{
     CharOutlook, CharState, CharType, CharacterStateComponent, PhysicsComponent,
     SpriteBoundingRect, SpriteRenderDescriptorComponent,
@@ -16,7 +14,7 @@ use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::VertexAttribDefinition;
 use crate::video::{VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{ElapsedTime, MapRenderData, PhysicsWorld, Shaders, SpriteResource};
-use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
 
@@ -35,8 +33,6 @@ pub struct RenderDesktopClientSystem {
 
 impl RenderDesktopClientSystem {
     pub fn new() -> RenderDesktopClientSystem {
-        let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
-
         let circle_vertex_arrays = (1..=100)
             .map(|i| {
                 let nsubdivs = 100;
@@ -110,6 +106,7 @@ impl RenderDesktopClientSystem {
             &system_vars.assets.shaders,
             &system_vars.matrices.projection,
             &system_vars.map_render_data,
+            render_commands,
         );
 
         if let Some((_skill_key, skill)) = controller.is_selecting_target() {
@@ -134,13 +131,7 @@ impl RenderDesktopClientSystem {
             let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
             if let CharState::CastingSkill(casting_info) = char_state.state() {
                 let skill = casting_info.skill;
-                skill.render_casting(
-                    &char_pos,
-                    casting_info,
-                    system_vars,
-                    &controller.view_matrix,
-                    render_commands,
-                );
+                skill.render_casting(&char_pos, casting_info, system_vars, render_commands);
             }
         }
 
@@ -175,11 +166,10 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
-                        let (pos_offset, _body_bounding_rect) = render_action(
-                            &system_vars,
+                        let body_pos_offset = render_single_layer_action(
+                            system_vars.time,
                             &animated_sprite,
                             body_sprite,
-                            &controller.view_matrix,
                             controller.yaw,
                             &pos,
                             [0, 0],
@@ -187,29 +177,29 @@ impl RenderDesktopClientSystem {
                             1.1,
                             is_dead,
                             &[0.0, 0.0, 1.0, 0.4],
+                            render_commands,
                         );
 
-                        let (_head_pos_offset, _head_bounding_rect) = render_action(
-                            &system_vars,
+                        let _head_pos_offset = render_single_layer_action(
+                            system_vars.time,
                             &animated_sprite,
                             head_res,
-                            &controller.view_matrix,
                             controller.yaw,
                             &pos,
-                            pos_offset,
+                            body_pos_offset,
                             false,
                             1.1,
                             is_dead,
                             &[0.0, 0.0, 1.0, 0.5],
+                            render_commands,
                         );
                     }
 
-                    // todo: kell a pos_offset még mindig? (bounding rect)
-                    let (pos_offset, mut body_bounding_rect) = render_action(
-                        &system_vars,
+                    // todo: kell a body_pos_offset még mindig? (bounding rect)
+                    let body_pos_offset = render_single_layer_action(
+                        system_vars.time,
                         &animated_sprite,
                         body_sprite,
-                        &controller.view_matrix,
                         controller.yaw,
                         &pos,
                         [0, 0],
@@ -217,22 +207,39 @@ impl RenderDesktopClientSystem {
                         1.0,
                         is_dead,
                         &color,
+                        render_commands,
                     );
-                    let (_head_pos_offset, head_bounding_rect) = render_action(
-                        &system_vars,
+
+                    let mut body_bounding_rect = {
+                        let render_command = render_commands.get_last_billboard_command();
+
+                        render_command.project_to_screen(
+                            &controller.view_matrix,
+                            &system_vars.matrices.projection,
+                        )
+                    };
+                    let _head_pos_offset = render_single_layer_action(
+                        system_vars.time,
                         &animated_sprite,
                         head_res,
-                        &controller.view_matrix,
                         controller.yaw,
                         &pos,
-                        pos_offset,
+                        body_pos_offset,
                         false,
                         1.0,
                         is_dead,
                         &color,
+                        render_commands,
                     );
-
-                    body_bounding_rect.merge(&head_bounding_rect);
+                    // TODO: heads are quite similar, use fixed pixel size for it and remove this projection?
+                    {
+                        let render_command = render_commands.get_last_billboard_command();
+                        let head_bounding_rect = render_command.project_to_screen(
+                            &controller.view_matrix,
+                            &system_vars.matrices.projection,
+                        );
+                        body_bounding_rect.merge(&head_bounding_rect);
+                    };
 
                     if !is_dead {
                         self.draw_health_bar(
@@ -259,11 +266,10 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
-                        let (_pos_offset, _bounding_rect) = render_action(
-                            &system_vars,
+                        let _pos_offset = render_single_layer_action(
+                            system_vars.time,
                             &animated_sprite,
                             body_res,
-                            &controller.view_matrix,
                             controller.yaw,
                             &pos,
                             [0, 0],
@@ -271,13 +277,13 @@ impl RenderDesktopClientSystem {
                             1.1,
                             is_dead,
                             &[0.0, 0.0, 1.0, 0.5],
+                            render_commands,
                         );
                     }
-                    let (_pos_offset, bounding_rect) = render_action(
-                        &system_vars,
+                    let _pos_offset = render_single_layer_action(
+                        system_vars.time,
                         &animated_sprite,
                         body_res,
-                        &controller.view_matrix,
                         controller.yaw,
                         &pos,
                         [0, 0],
@@ -285,7 +291,16 @@ impl RenderDesktopClientSystem {
                         1.0,
                         is_dead,
                         &color,
+                        render_commands,
                     );
+                    let bounding_rect = {
+                        let render_command = render_commands.get_last_billboard_command();
+
+                        render_command.project_to_screen(
+                            &controller.view_matrix,
+                            &system_vars.matrices.projection,
+                        )
+                    };
                     if !is_dead {
                         self.draw_health_bar(
                             controller.char_entity_id == entity_id,
@@ -303,7 +318,7 @@ impl RenderDesktopClientSystem {
 
             char_state
                 .statuses
-                .render(&char_state.pos(), system_vars, &controller.view_matrix);
+                .render(&char_state.pos(), system_vars, render_commands);
         }
 
         for skill in (&skill_storage).join() {
@@ -320,7 +335,7 @@ impl RenderDesktopClientSystem {
                     str_effect.start_time,
                     &str_effect.pos,
                     system_vars,
-                    &controller.view_matrix,
+                    render_commands,
                 );
             }
         }
@@ -477,23 +492,10 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     }
 }
 
-fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
-    model_view[0] = 1.0;
-    model_view[1] = 0.0;
-    model_view[2] = 0.0;
-    model_view[4] = 0.0;
-    model_view[5] = 1.0;
-    model_view[6] = 0.0;
-    model_view[8] = 0.0;
-    model_view[9] = 0.0;
-    model_view[10] = 1.0;
-}
-
-pub fn render_action(
-    system_vars: &SystemVariables,
+pub fn render_single_layer_action<'a>(
+    now: ElapsedTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
-    view: &Matrix4<f32>,
     camera_yaw: f32,
     pos: &Vector2<f32>,
     pos_offset: [i32; 2],
@@ -501,16 +503,8 @@ pub fn render_action(
     size_multiplier: f32,
     is_dead: bool,
     color: &[f32; 4],
-) -> ([i32; 2], SpriteBoundingRect) {
-    let shader = system_vars.assets.shaders.player_shader.gl_use();
-    shader.set_mat4("projection", &system_vars.matrices.projection);
-    shader.set_mat4("view", &view);
-    shader.set_int("model_texture", 0);
-    let binded_sprite_vertex_array = system_vars
-        .map_render_data
-        .centered_sprite_vertex_array
-        .bind();
-
+    render_commands: &'a mut RenderCommandCollectorComponent,
+) -> [i32; 2] {
     let idx = {
         let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
         animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
@@ -544,33 +538,110 @@ pub fn render_action(
         } else {
             time_needed_for_one_frame
         };
-        let elapsed_time = system_vars.time.elapsed_since(animation.animation_started);
+        let elapsed_time = now.elapsed_since(animation.animation_started);
         ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
     };
     let frame = &action.frames[frame_index];
 
-    // TODO: refactor: ugly, valahol csak 1 layert kell irajzolni (player), valahol többet is (effektek)
-    let mut width = 0.0;
-    let mut height = 0.0;
-    let mut offset = [0.0, 0.0];
-    let matrix = {
-        let mut matrix = Matrix4::<f32>::identity();
-        let pos = v2_to_v3(&pos);
-        matrix.prepend_translation_mut(&pos);
-        shader.set_mat4("model", &matrix);
-        matrix
+    let layer = &frame.layers[0];
+
+    let offset = if !frame.positions.is_empty() && !is_main {
+        [
+            (pos_offset[0] - frame.positions[0][0]) as f32,
+            (pos_offset[1] - frame.positions[0][1]) as f32,
+        ]
+    } else {
+        [0.0, 0.0]
     };
+    let offset = [
+        layer.pos[0] as f32 + offset[0],
+        layer.pos[1] as f32 + offset[1],
+    ];
+
+    let mut color = color.clone();
+    for i in 0..4 {
+        color[i] *= layer.color[i];
+    }
+
+    let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
+    render_commands
+        .prepare_for_3d()
+        .pos_2d(&pos)
+        .scale(layer.scale[0] * size_multiplier)
+        .offset(offset)
+        .color(&color)
+        .add_billboard_command(&sprite_texture.texture, layer.is_mirror);
+
+    // TODO: put 0,0 manually on startup if it is empty
+    let anim_pos = frame
+        .positions
+        .get(0)
+        .map(|it| it.clone())
+        .unwrap_or([0, 0]);
+
+    return [
+        (anim_pos[0] as f32 * size_multiplier) as i32,
+        (anim_pos[1] as f32 * size_multiplier) as i32,
+    ];
+}
+
+pub fn render_action(
+    now: ElapsedTime,
+    animation: &SpriteRenderDescriptorComponent,
+    sprite_res: &SpriteResource,
+    camera_yaw: f32,
+    pos: &Vector2<f32>,
+    pos_offset: [i32; 2],
+    is_main: bool,
+    size_multiplier: f32,
+    is_dead: bool,
+    color: &[f32; 4],
+    render_commands: &mut RenderCommandCollectorComponent,
+) -> [i32; 2] {
+    let idx = {
+        let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
+        animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
+    };
+
+    // TODO: if debug
+    let action = sprite_res
+        .action
+        .actions
+        .get(idx)
+        .or_else(|| {
+            log::error!(
+                "Invalid action action index: {} idx: {}",
+                animation.action_index,
+                idx
+            );
+            Some(&sprite_res.action.actions[0])
+        })
+        .unwrap();
+    let frame_index = if is_dead {
+        action.frames.len() - 1
+    } else {
+        let frame_count = action.frames.len();
+        let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
+            duration.div(frame_count as f32)
+        } else {
+            action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
+        };
+        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 {
+            0.1
+        } else {
+            time_needed_for_one_frame
+        };
+        let elapsed_time = now.elapsed_since(animation.animation_started);
+        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
+    };
+    let frame = &action.frames[frame_index];
+
     for layer in frame.layers.iter() {
         if layer.sprite_frame_index < 0 {
             continue;
         }
-        let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
 
-        width = sprite_texture.original_width as f32 * layer.scale[0] * size_multiplier;
-        height = sprite_texture.original_height as f32 * layer.scale[1] * size_multiplier;
-        sprite_texture.texture.bind(TEXTURE_0);
-
-        offset = if !frame.positions.is_empty() && !is_main {
+        let offset = if !frame.positions.is_empty() && !is_main {
             [
                 (pos_offset[0] - frame.positions[0][0]) as f32,
                 (pos_offset[1] - frame.positions[0][1]) as f32,
@@ -578,80 +649,36 @@ pub fn render_action(
         } else {
             [0.0, 0.0]
         };
-        offset = [
+        let offset = [
             layer.pos[0] as f32 + offset[0],
             layer.pos[1] as f32 + offset[1],
         ];
-        offset = [
-            offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D - 0.1,
-        ];
-        shader.set_vec2("offset", &offset);
-
-        width = width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
-        width = if layer.is_mirror { -width } else { width };
-        height = height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D;
-        shader.set_vec2("size", &[width, height]);
 
         let mut color = color.clone();
         for i in 0..4 {
             color[i] *= layer.color[i];
         }
-        shader.set_vec4("color", &color);
 
-        binded_sprite_vertex_array.draw();
+        let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&pos)
+            .scale(layer.scale[0] * size_multiplier)
+            .offset(offset)
+            .color(&color)
+            .add_billboard_command(&sprite_texture.texture, layer.is_mirror);
     }
+    // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
         .positions
         .get(0)
         .map(|it| it.clone())
         .unwrap_or([0, 0]);
 
-    let size = [width.abs(), height];
-    let bb = project_to_screen(
-        &size,
-        &offset,
-        view * matrix,
-        &system_vars.matrices.projection,
-    );
-    return (
-        [
-            (anim_pos[0] as f32 * size_multiplier) as i32,
-            (anim_pos[1] as f32 * size_multiplier) as i32,
-        ],
-        bb,
-    );
-}
-
-fn project_to_screen(
-    size: &[f32; 2],
-    offset: &[f32; 2],
-    mut model_view: Matrix4<f32>,
-    projection: &Matrix4<f32>,
-) -> SpriteBoundingRect {
-    let mut top_right = Vector4::new(0.5 * size[0], 0.5 * size[1], 0.0, 1.0);
-    top_right.x += offset[0];
-    top_right.y -= offset[1]; // itt régen + 0.5
-
-    let mut bottom_left = Vector4::new(-0.5 * size[0], -0.5 * size[1], 0.0, 1.0);
-    bottom_left.x += offset[0];
-    bottom_left.y -= offset[1]; // itt régen + 0.5
-
-    set_spherical_billboard(&mut model_view);
-    fn sh(v: Vector4<f32>) -> [i32; 2] {
-        dbg!(&v);
-        let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
-        [
-            ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
-            VIDEO_HEIGHT as i32 - dbg!((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32,
-        ]
-    }
-    let bottom_left = sh(projection * model_view * bottom_left);
-    let top_right = sh(projection * model_view * top_right);
-    return SpriteBoundingRect {
-        bottom_left,
-        top_right,
-    };
+    return [
+        (anim_pos[0] as f32 * size_multiplier) as i32,
+        (anim_pos[1] as f32 * size_multiplier) as i32,
+    ];
 }
 
 fn render_client(
@@ -661,6 +688,7 @@ fn render_client(
     shaders: &Shaders,
     projection_matrix: &Matrix4<f32>,
     map_render_data: &MapRenderData,
+    render_commands: &mut RenderCommandCollectorComponent,
 ) {
     let model = Matrix4::<f32>::identity();
     let model_view = view * model;
@@ -719,8 +747,9 @@ fn render_client(
             //                    ],
             //                },
             //            },
-            let min = model_instance.min;
-            let max = model_instance.max;
+            let min = model_instance.bottom_left_front;
+            let max = model_instance.top_right_back;
+
             let cam_pos = camera.pos();
             if ((max.x < cam_pos.x - 40.0 || max.x > cam_pos.x + 40.0)
                 && (min.x < cam_pos.x - 40.0 || min.x > cam_pos.x + 40.0))
@@ -731,8 +760,8 @@ fn render_client(
             }
             shader.set_mat4("model", &model_instance.matrix);
             let alpha = if (max.x > char_pos.x && min.x < char_pos.x)
-                            && char_pos.y <= max.z // character is behind
-                            && min.y > 2.0
+                            && char_pos.y <= min.z // character is behind
+                            && max.y > 2.0
             {
                 0.3
             } else {
@@ -923,7 +952,7 @@ impl DamageRenderSystem {
                 | FlyingNumberType::Crit => {
                     render_commands
                         .prepare_for_3d()
-                        .size(size)
+                        .scale(size)
                         .pos(&pos)
                         .color_rgb(
                             &number
@@ -943,7 +972,7 @@ impl DamageRenderSystem {
                                 .color(controller.char_entity_id == number.target_entity_id),
                         )
                         .alpha(1.3 - (perc + 0.3 * perc))
-                        .add_sprite_command(&system_vars.assets.texts.attack_blocked, false);
+                        .add_billboard_command(&system_vars.assets.texts.attack_blocked, false);
                 }
                 FlyingNumberType::Absorb => {
                     render_commands
@@ -955,7 +984,7 @@ impl DamageRenderSystem {
                                 .color(controller.char_entity_id == number.target_entity_id),
                         )
                         .alpha(1.3 - (perc + 0.3 * perc))
-                        .add_sprite_command(&system_vars.assets.texts.attack_absorbed, false);
+                        .add_billboard_command(&system_vars.assets.texts.attack_absorbed, false);
                 }
             };
 
@@ -1112,16 +1141,8 @@ impl RenderDesktopClientSystem {
         start_time: ElapsedTime,
         world_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
-        unsafe {
-            gl::Disable(gl::DEPTH_TEST);
-        }
-        let shader = system_vars.assets.shaders.str_effect_shader.gl_use();
-        shader.set_mat4("projection", &system_vars.matrices.projection);
-        shader.set_mat4("view", view_matrix);
-        shader.set_int("model_texture", 0);
-
         let str_file = &system_vars.map_render_data.str_effects[effect_name];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
@@ -1131,107 +1152,13 @@ impl RenderDesktopClientSystem {
             .div(seconds_needed_for_one_frame) as i32
             % max_key as i32;
 
-        let mut from_id = None;
-        let mut to_id = None;
-        let mut last_source_id = 0;
-        let mut last_frame_id = 0;
-        for layer in str_file.layers.iter() {
-            for (i, key_frame) in layer.key_frames.iter().enumerate() {
-                if key_frame.frame <= key_index {
-                    match key_frame.typ {
-                        KeyFrameType::Start => from_id = Some(i),
-                        KeyFrameType::End => to_id = Some(i),
-                    };
-                }
-                last_frame_id = last_frame_id.max(key_frame.frame);
-                if key_frame.typ == KeyFrameType::Start {
-                    last_source_id = last_source_id.max(key_frame.frame);
-                }
-            }
-            if from_id.is_none() || to_id.is_none() || last_frame_id < key_index {
-                continue;
-            }
-            let from_id = from_id.unwrap();
-            let to_id = to_id.unwrap();
-            if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
-                continue;
-            }
-            let from_frame = &layer.key_frames[from_id];
-            let to_frame = &layer.key_frames[to_id];
-
-            let (color, pos, xy, angle) =
-                if to_id != from_id + 1 || to_frame.frame != from_frame.frame {
-                    // no other source
-                    if last_source_id <= from_frame.frame {
-                        continue;
-                    }
-                    (
-                        from_frame.color,
-                        from_frame.pos,
-                        from_frame.xy,
-                        from_frame.angle,
-                    )
-                } else {
-                    let delta = (key_index - from_frame.frame) as f32;
-                    // morphing
-                    let color = [
-                        from_frame.color[0] + to_frame.color[0] * delta,
-                        from_frame.color[1] + to_frame.color[1] * delta,
-                        from_frame.color[2] + to_frame.color[2] * delta,
-                        from_frame.color[3] + to_frame.color[3] * delta,
-                    ];
-                    let xy = [
-                        from_frame.xy[0] + to_frame.xy[0] * delta,
-                        from_frame.xy[1] + to_frame.xy[1] * delta,
-                        from_frame.xy[2] + to_frame.xy[2] * delta,
-                        from_frame.xy[3] + to_frame.xy[3] * delta,
-                        from_frame.xy[4] + to_frame.xy[4] * delta,
-                        from_frame.xy[5] + to_frame.xy[5] * delta,
-                        from_frame.xy[6] + to_frame.xy[6] * delta,
-                        from_frame.xy[7] + to_frame.xy[7] * delta,
-                    ];
-                    let angle = from_frame.angle + to_frame.angle * delta;
-                    let pos = [
-                        from_frame.pos[0] + to_frame.pos[0] * delta,
-                        from_frame.pos[1] + to_frame.pos[1] * delta,
-                    ];
-                    (color, pos, xy, angle)
-                };
-
-            {
-                let mut matrix = Matrix4::<f32>::identity();
-                matrix.prepend_translation_mut(&v2_to_v3(world_pos));
-                let rotation = Rotation3::from_axis_angle(
-                    &nalgebra::Unit::new_normalize(Vector3::z()),
-                    -angle,
-                )
-                .to_homogeneous();
-                matrix = matrix * rotation;
-                shader.set_mat4("model", &matrix);
-            }
-
-            let offset = [pos[0] - 320.0, pos[1] - 320.0];
-
-            shader.set_vec2("offset", &offset);
-            shader.set_vec4("color", &color);
-            system_vars.str_effect_vao[0] = xy[0];
-            system_vars.str_effect_vao[1] = xy[4];
-            system_vars.str_effect_vao[4] = xy[1];
-            system_vars.str_effect_vao[5] = xy[5];
-            system_vars.str_effect_vao[8] = xy[3];
-            system_vars.str_effect_vao[9] = xy[7];
-            system_vars.str_effect_vao[12] = xy[2];
-            system_vars.str_effect_vao[13] = xy[6];
-
-            unsafe {
-                gl::BlendFunc(from_frame.src_alpha, from_frame.dst_alpha);
-            }
-            str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
-            system_vars.str_effect_vao.bind().draw();
-        }
-        unsafe {
-            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-            gl::Enable(gl::DEPTH_TEST);
+        for layer_index in 0..str_file.layers.len() {
+            render_commands.prepare_for_3d().add_effect_command(
+                world_pos,
+                effect_name,
+                key_index,
+                layer_index,
+            );
         }
     }
 }

@@ -5,9 +5,9 @@ use crate::components::status::{Status, StatusStackingResult, StatusType, Status
 use crate::components::ApplyForceComponent;
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::Matrix4;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
@@ -97,7 +97,7 @@ impl Status for ArmorModifierStatus {
         &self,
         _char_pos: &WorldCoords,
         _system_vars: &mut SystemVariables,
-        _view_matrix: &Matrix4<f32>,
+        _render_commands: &mut RenderCommandCollectorComponent,
     ) {
 
     }
@@ -106,7 +106,7 @@ impl Status for ArmorModifierStatus {
         None
     }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::AddTheNewStatus
     }
 }

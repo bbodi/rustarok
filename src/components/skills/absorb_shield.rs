@@ -5,10 +5,10 @@ use crate::components::status::{Status, StatusStackingResult, StatusType, Status
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::Matrix4;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
@@ -118,14 +118,14 @@ impl Status for AbsorbStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
             "ramadan",
             self.animation_started,
             char_pos,
             system_vars,
-            view_matrix,
+            render_commands,
         );
     }
 
@@ -133,7 +133,7 @@ impl Status for AbsorbStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         // I think it should be overwritten only when the caster_entity_id is the same
         // otherwise other players should get the healed credits for their armors
         //        let other_absorb = unsafe { Statuses::hack_cast::<AbsorbStatus>(&other) };

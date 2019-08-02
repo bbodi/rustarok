@@ -8,10 +8,11 @@ use crate::components::status::{
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Matrix4};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
@@ -115,14 +116,14 @@ impl Status for FireBombStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
             "firewall",
             self.started,
             char_pos,
             system_vars,
-            view_matrix,
+            render_commands,
         );
     }
 
@@ -130,7 +131,7 @@ impl Status for FireBombStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::AddTheNewStatus
     }
 }

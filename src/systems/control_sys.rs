@@ -1,5 +1,5 @@
 use crate::components::char::{CastingSkillData, CharState, CharacterStateComponent, EntityTarget};
-use crate::components::controller::{ControllerAction, ControllerComponent, WorldCoords};
+use crate::components::controller::{ControllerComponent, PlayerIntention, WorldCoords};
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render_sys::DIRECTION_TABLE;
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -38,7 +38,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                 .get_mut(controller.char_entity_id)
                 .unwrap();
             match controller.next_action {
-                Some(ControllerAction::MoveOrAttackTo(_pos)) => {
+                Some(PlayerIntention::MoveOrAttackTo(_pos)) => {
                     char_state.target = if let Some(target_entity) = controller.entity_below_cursor
                     {
                         if target_entity != controller.char_entity_id {
@@ -50,13 +50,13 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         Some(EntityTarget::Pos(controller.mouse_world_pos))
                     };
                 }
-                Some(ControllerAction::MoveTowardsMouse(_pos)) => {
+                Some(PlayerIntention::MoveTowardsMouse(_pos)) => {
                     char_state.target = Some(EntityTarget::Pos(controller.mouse_world_pos));
                 }
-                Some(ControllerAction::AttackTo(_)) => {}
-                Some(ControllerAction::CastingSelectTarget(..)) => {}
-                Some(ControllerAction::CancelCastingSelectTarget) => {}
-                Some(ControllerAction::Casting(skill, is_self_cast)) => {
+                Some(PlayerIntention::AttackTo(_)) => {}
+                Some(PlayerIntention::CastingSelectTarget(..)) => {}
+                Some(PlayerIntention::CancelCastingSelectTarget) => {}
+                Some(PlayerIntention::Casting(skill, is_self_cast)) => {
                     CharacterControlSystem::try_cast_skill(
                         skill,
                         system_vars.time,
@@ -65,7 +65,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
                         is_self_cast,
                     );
                 }
-                Some(ControllerAction::LeftClick) => {}
+                Some(PlayerIntention::LeftClick) => {}
                 None => {}
             }
         }

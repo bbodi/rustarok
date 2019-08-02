@@ -116,6 +116,6 @@ impl SkillManifestation for HealApplierArea {
             } else {
                 [0.3, 0.3, 0.3, 1.0]
             })
-            .add_sprite_command(&assets.texts.custom_texts[self.name], false);
+            .add_billboard_command(&assets.texts.custom_texts[self.name], false);
     }
 }

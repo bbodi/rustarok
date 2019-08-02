@@ -1,9 +1,13 @@
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
-use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
+use crate::asset::str::{KeyFrameType, StrLayer};
+use crate::systems::render::render_command::{
+    EffectFrameCacheKey, RenderCommandCollectorComponent,
+};
+use crate::systems::render_sys::DamageRenderSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{VertexArray, VertexAttribDefinition, TEXTURE_0};
-use nalgebra::Vector3;
+use nalgebra::{Matrix4, Rotation3, Vector3};
 use specs::prelude::*;
+use std::collections::HashMap;
 
 pub struct OpenGlRenderSystem {
     centered_rectangle_vao: VertexArray,
@@ -11,6 +15,18 @@ pub struct OpenGlRenderSystem {
     // damage rendering
     single_digit_u_coord: f32,
     texture_u_coords: [f32; 10],
+
+    str_effect_cache: HashMap<EffectFrameCacheKey, Option<EffectFrameCache>>,
+}
+
+struct EffectFrameCache {
+    pub pos_vao: VertexArray,
+    pub offset: [f32; 2],
+    pub color: [f32; 4],
+    pub rotation_matrix: Matrix4<f32>,
+    pub src_alpha: u32,
+    pub dst_alpha: u32,
+    pub texture_index: usize,
 }
 
 impl OpenGlRenderSystem {
@@ -65,6 +81,7 @@ impl OpenGlRenderSystem {
                     }],
                 )
             },
+            str_effect_cache: HashMap::new(),
         }
     }
 
@@ -114,6 +131,120 @@ impl OpenGlRenderSystem {
                 },
             ],
         );
+    }
+
+    fn prepare_effect(layer: &StrLayer, key_index: i32) -> Option<EffectFrameCache> {
+        let mut from_id = None;
+        let mut to_id = None;
+        let mut last_source_id = 0;
+        let mut last_frame_id = 0;
+        for (i, key_frame) in layer.key_frames.iter().enumerate() {
+            if key_frame.frame <= key_index {
+                match key_frame.typ {
+                    KeyFrameType::Start => from_id = Some(i),
+                    KeyFrameType::End => to_id = Some(i),
+                };
+            }
+            last_frame_id = last_frame_id.max(key_frame.frame);
+            if key_frame.typ == KeyFrameType::Start {
+                last_source_id = last_source_id.max(key_frame.frame);
+            }
+        }
+        if from_id.is_none() || to_id.is_none() || last_frame_id < key_index {
+            return None;
+        }
+        let from_id = from_id.unwrap();
+        let to_id = to_id.unwrap();
+        if from_id >= layer.key_frames.len() || to_id >= layer.key_frames.len() {
+            return None;
+        }
+        let from_frame = &layer.key_frames[from_id];
+        let to_frame = &layer.key_frames[to_id];
+
+        let (color, pos, xy, angle) = if to_id != from_id + 1 || to_frame.frame != from_frame.frame
+        {
+            // no other source
+            if last_source_id <= from_frame.frame {
+                return None;
+            }
+            (
+                from_frame.color,
+                from_frame.pos,
+                from_frame.xy,
+                from_frame.angle,
+            )
+        } else {
+            let delta = (key_index - from_frame.frame) as f32;
+            // morphing
+            let color = [
+                from_frame.color[0] + to_frame.color[0] * delta,
+                from_frame.color[1] + to_frame.color[1] * delta,
+                from_frame.color[2] + to_frame.color[2] * delta,
+                from_frame.color[3] + to_frame.color[3] * delta,
+            ];
+            let xy = [
+                from_frame.xy[0] + to_frame.xy[0] * delta,
+                from_frame.xy[1] + to_frame.xy[1] * delta,
+                from_frame.xy[2] + to_frame.xy[2] * delta,
+                from_frame.xy[3] + to_frame.xy[3] * delta,
+                from_frame.xy[4] + to_frame.xy[4] * delta,
+                from_frame.xy[5] + to_frame.xy[5] * delta,
+                from_frame.xy[6] + to_frame.xy[6] * delta,
+                from_frame.xy[7] + to_frame.xy[7] * delta,
+            ];
+            let angle = from_frame.angle + to_frame.angle * delta;
+            let pos = [
+                from_frame.pos[0] + to_frame.pos[0] * delta,
+                from_frame.pos[1] + to_frame.pos[1] * delta,
+            ];
+            (color, pos, xy, angle)
+        };
+
+        let offset = [pos[0] - 320.0, pos[1] - 320.0];
+
+        return Some(EffectFrameCache {
+            pos_vao: VertexArray::new(
+                gl::TRIANGLE_STRIP,
+                &[
+                    [xy[0], xy[4], 0.0, 0.0],
+                    [xy[1], xy[5], 1.0, 0.0],
+                    [xy[3], xy[7], 0.0, 1.0],
+                    [xy[2], xy[6], 1.0, 1.0],
+                ],
+                4,
+                vec![
+                    VertexAttribDefinition {
+                        // xy
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    },
+                    VertexAttribDefinition {
+                        // uv
+                        number_of_components: 2,
+                        offset_of_first_element: 2,
+                    },
+                ],
+            ),
+            offset,
+            color,
+            rotation_matrix: Rotation3::from_axis_angle(
+                &nalgebra::Unit::new_normalize(Vector3::z()),
+                -angle,
+            )
+            .to_homogeneous(),
+            src_alpha: from_frame.src_alpha,
+            dst_alpha: from_frame.dst_alpha,
+            texture_index: from_frame.texture_index,
+        });
+        //        unsafe {
+        //            gl::BlendFunc(from_frame.src_alpha, from_frame.dst_alpha);
+        //        }
+        //        //        str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
+        //        //        system_vars.str_effect_vao.bind().draw();
+        //        unsafe {
+        //            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        //            gl::Enable(gl::DEPTH_TEST);
+        //        }
     }
 }
 
@@ -219,14 +350,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 unsafe {
                     gl::ActiveTexture(gl::TEXTURE0);
                 }
-                for command in &render_commands.sprite_commands {
-                    shader.set_vec2(
-                        "size",
-                        &[
-                            command.texture_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                            command.texture_height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                        ],
-                    );
+                for command in &render_commands.billboard_commands {
+                    shader.set_vec2("size", &[command.texture_width, command.texture_height]);
                     shader.set_mat4("model", &command.common.matrix);
                     shader.set_vec4("color", &command.common.color);
                     shader.set_vec2("offset", &command.common.offset);
@@ -254,6 +379,53 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     shader.set_vec2("offset", &command.common.offset);
 
                     self.create_number_vertex_array(command.value).bind().draw();
+                }
+            }
+
+            /////////////////////////////////
+            // EFFECTS
+            /////////////////////////////////
+            {
+                unsafe {
+                    gl::Disable(gl::DEPTH_TEST);
+                }
+                let shader = system_vars.assets.shaders.str_effect_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_int("model_texture", 0);
+                unsafe {
+                    gl::ActiveTexture(gl::TEXTURE0);
+                }
+
+                for (command, commands) in &render_commands.effect_commands {
+                    let cached_frame = self.str_effect_cache.get(&command);
+                    let str_file = &system_vars.map_render_data.str_effects[&command.effect_name];
+                    if let None = cached_frame {
+                        let layer = &str_file.layers[command.layer_index];
+                        let cached_effect_frame =
+                            OpenGlRenderSystem::prepare_effect(layer, command.key_index);
+                        self.str_effect_cache
+                            .insert(command.clone(), cached_effect_frame);
+                    } else if let Some(None) = cached_frame {
+                        continue;
+                    } else if let Some(Some(cached_frame)) = cached_frame {
+                        shader.set_vec2("offset", &cached_frame.offset);
+                        shader.set_vec4("color", &cached_frame.color);
+                        unsafe {
+                            gl::BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
+                        }
+                        str_file.textures[cached_frame.texture_index].bind(TEXTURE_0);
+                        let bind = cached_frame.pos_vao.bind();
+                        for matrix in commands {
+                            shader.set_mat4("model", &(matrix * cached_frame.rotation_matrix));
+                            bind.draw();
+                        }
+                    }
+                }
+
+                unsafe {
+                    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+                    gl::Enable(gl::DEPTH_TEST);
                 }
             }
         }

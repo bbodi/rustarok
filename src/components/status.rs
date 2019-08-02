@@ -6,10 +6,11 @@ use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Matrix4};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
 use std::any::Any;
 use std::collections::HashSet;
@@ -53,7 +54,7 @@ pub trait Status: Any {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     );
     // (ElapsedTime, f32) == ends_at, percentage
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)>;
@@ -149,14 +150,14 @@ impl Statuses {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
         for status in self.statuses.iter().filter(|it| it.is_some()) {
             let guard = status.as_ref().unwrap().lock().unwrap();
             let type_id = guard.deref().as_ref().type_id();
             if !already_rendered.contains(&type_id) {
-                guard.render(char_pos, system_vars, view_matrix);
+                guard.render(char_pos, system_vars, render_commands);
                 already_rendered.insert(type_id);
             }
         }
@@ -321,7 +322,7 @@ impl Statuses {
     pub unsafe fn hack_cast<T>(boxx: &Box<dyn Status>) -> &T {
         // TODO: I could not get back a PosionStatus struct from a Status trait without unsafe, HELP
         // hacky as hell, nothing guarantees that the first pointer in a Trait is the value pointer
-        let raw_object: *const T = unsafe { std::mem::transmute(boxx) };
+        let raw_object: *const T = std::mem::transmute(boxx);
         return &*raw_object;
     }
 
@@ -423,7 +424,7 @@ impl Status for MountedStatus {
         &self,
         _char_pos: &WorldCoords,
         _system_vars: &mut SystemVariables,
-        _view_matrix: &Matrix4<f32>,
+        _render_commands: &mut RenderCommandCollectorComponent,
     ) {
     }
 
@@ -431,7 +432,7 @@ impl Status for MountedStatus {
         None
     }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 }
@@ -516,14 +517,14 @@ impl Status for PoisonStatus {
         &self,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
             "quagmire",
             self.started,
             char_pos,
             system_vars,
-            view_matrix,
+            render_commands,
         );
     }
 
@@ -531,7 +532,7 @@ impl Status for PoisonStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::AddTheNewStatus
     }
 }

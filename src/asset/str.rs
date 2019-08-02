@@ -25,13 +25,13 @@ pub struct StrKeyFrame {
     pub pos: [f32; 2],
     pub uv: [f32; 8],
     pub xy: [f32; 8],
-    pub texture_index: usize,
-    pub anitype: u32,
-    pub angle: f32,
-    pub delay: f32,
     pub color: [f32; 4],
+    pub angle: f32,
     pub src_alpha: u32,
     pub dst_alpha: u32,
+    pub texture_index: usize,
+    pub anitype: u32,
+    pub delay: f32,
     pub mtpreset: u32,
 }
 

@@ -14,7 +14,7 @@ use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
-use nalgebra::{Isometry2, Matrix4, Vector2, Vector3};
+use nalgebra::{Isometry2, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
 use ncollide2d::world::CollisionGroups;
 use nphysics2d::object::{ColliderDesc, ColliderHandle};
@@ -377,7 +377,6 @@ impl Skills {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
@@ -387,7 +386,7 @@ impl Skills {
                     casting_state.cast_started,
                     char_pos,
                     system_vars,
-                    view_matrix,
+                    render_commands,
                 );
                 if let Some(target_area_pos) = casting_state.target_area_pos {
                     self.render_target_selection(
@@ -647,32 +646,35 @@ impl BrutalSkillManifest {
     ) -> BrutalSkillManifest {
         let half_extents = v2!(5.0, 5.0);
 
-        //        let effect_ids = (0..11*11).map(|i| {
-        //            let x = (-5.0 + (i%10) as f32);
-        //            let y = (-5.0 + (i/10) as f32);
-        //            skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
-        //        }).map(|effect_coords| {
-        //            let effect_comp = StrEffectComponent {
-        //                effect: "firewall".to_owned(),
-        //                pos: Point2::new(effect_coords.x, effect_coords.y),
-        //                start_time: system_time,
-        //                die_at: system_time.add_seconds(3.0),
-        //                duration: ElapsedTime(3.0),
-        //            };
-        //            let effect_entity = entities.create();
-        //            updater.insert(effect_entity, effect_comp);
-        //            effect_entity
-        //        }).collect();
-        let effect_comp = StrEffectComponent {
-            effect: "StrEffect::LordOfVermilion".to_owned(),
-            pos: *skill_center,
-            start_time: system_time,
-            die_at: system_time.add_seconds(3.0),
-            duration: ElapsedTime(3.0),
-        };
-        let effect_entity = entities.create();
-        updater.insert(effect_entity, effect_comp);
-        let effect_ids = vec![effect_entity];
+        let effect_ids = (0..11 * 11)
+            .map(|i| {
+                let x = -5.0 + (i % 10) as f32;
+                let y = -5.0 + (i / 10) as f32;
+                skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
+            })
+            .map(|effect_coords| {
+                let effect_comp = StrEffectComponent {
+                    effect: "firewall".to_owned(),
+                    pos: effect_coords,
+                    start_time: system_time,
+                    die_at: system_time.add_seconds(3.0),
+                    duration: ElapsedTime(3.0),
+                };
+                let effect_entity = entities.create();
+                updater.insert(effect_entity, effect_comp);
+                effect_entity
+            })
+            .collect();
+        //        let effect_comp = StrEffectComponent {
+        //            effect: "StrEffect::LordOfVermilion".to_owned(),
+        //            pos: *skill_center,
+        //            start_time: system_time,
+        //            die_at: system_time.add_seconds(3.0),
+        //            duration: ElapsedTime(3.0),
+        //        };
+        //        let effect_entity = entities.create();
+        //        updater.insert(effect_entity, effect_comp);
+        //        let effect_ids = vec![effect_entity];
         BrutalSkillManifest {
             caster_entity_id,
             effect_ids,

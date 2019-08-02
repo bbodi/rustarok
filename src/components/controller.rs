@@ -64,7 +64,7 @@ impl SkillKey {
     }
 }
 
-pub enum ControllerAction {
+pub enum PlayerIntention {
     MoveTowardsMouse(ScreenCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.
     MoveOrAttackTo(ScreenCoords),
@@ -95,8 +95,8 @@ pub struct ControllerComponent {
     pub char_entity_id: Entity,
     pub camera: Camera,
     pub inputs: Vec<sdl2::event::Event>,
-    pub next_action: Option<ControllerAction>,
-    pub last_action: Option<ControllerAction>,
+    pub next_action: Option<PlayerIntention>,
+    pub last_action: Option<PlayerIntention>,
     skills_for_keys: [Option<Skills>; 8],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
@@ -193,9 +193,9 @@ impl ControllerComponent {
 
     pub fn is_selecting_target(&self) -> Option<(SkillKey, Skills)> {
         match self.next_action {
-            Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
+            Some(PlayerIntention::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
             None /*there is no new action*/ => match self.last_action {
-                Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
+                Some(PlayerIntention::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
                 _ => None,
             },
             _ => None

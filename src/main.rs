@@ -67,15 +67,14 @@ use crate::video::{
 };
 use encoding::DecoderTrap;
 
+#[macro_use]
+mod common;
 mod asset;
 mod cam;
 mod consts;
 mod cursor;
 mod video;
 mod web_server;
-
-#[macro_use]
-mod common;
 
 #[macro_use]
 mod components;
@@ -152,7 +151,6 @@ pub struct Shaders {
     pub ground_shader: ShaderProgram,
     pub model_shader: ShaderProgram,
     pub sprite_shader: ShaderProgram,
-    pub player_shader: ShaderProgram,
     pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
@@ -272,11 +270,6 @@ fn main() {
         sprite_shader: ShaderProgram::from_shaders(&[
             Shader::from_source(include_str!("shaders/sprite.vert"), gl::VERTEX_SHADER).unwrap(),
             Shader::from_source(include_str!("shaders/sprite.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
-        .unwrap(),
-        player_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/player.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/player.frag"), gl::FRAGMENT_SHADER).unwrap(),
         ])
         .unwrap(),
         str_effect_shader: ShaderProgram::from_shaders(&[
@@ -684,11 +677,7 @@ fn main() {
         str_effect_vao: DynamicVertexArray::new(
             gl::TRIANGLE_STRIP,
             vec![
-                1.0, 1.0, // xy
-                0.0, 0.0, // uv
-                1.0, 1.0, 1.0, 0.0, // uv
-                1.0, 1.0, 0.0, 1.0, // uv
-                1.0, 1.0, 1.0, 1.0, // uv
+                1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             ],
             4,
             vec![
@@ -1398,7 +1387,8 @@ fn imgui_frame(
                     let (x, y) = loop {
                         let x = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
                         let y = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
+                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
+                            + x.max(0.0) as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type
                             & CellType::Walkable as u8)
                             != 0;
@@ -1486,7 +1476,8 @@ fn imgui_frame(
                     let (x, y) = loop {
                         let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
                         let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
+                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
+                            + x.max(0.0) as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type
                             & CellType::Walkable as u8)
                             != 0;
@@ -1540,8 +1531,8 @@ pub struct ModelName(String);
 pub struct ModelInstance {
     name: ModelName,
     matrix: Matrix4<f32>,
-    min: Point3<f32>,
-    max: Point3<f32>,
+    bottom_left_front: Vector3<f32>,
+    top_right_back: Vector3<f32>,
 }
 
 pub struct MapRenderData {
@@ -1735,12 +1726,13 @@ fn load_map(
     };
     let model_instances: Vec<ModelInstance> = model_instances_iter
         .map(|model_instance| {
-            let mut instance_matrix = Matrix4::<f32>::identity();
-            instance_matrix.prepend_translation_mut(
+            let mut only_transition_matrix = Matrix4::<f32>::identity();
+            only_transition_matrix.prepend_translation_mut(
                 &(model_instance.pos
                     + Vector3::new(ground.width as f32, 0f32, ground.height as f32)),
             );
 
+            let mut instance_matrix = only_transition_matrix.clone();
             // rot_z
             let rotation = Rotation3::from_axis_angle(
                 &Unit::new_normalize(Vector3::z()),
@@ -1764,18 +1756,36 @@ fn load_map(
             instance_matrix = instance_matrix * rotation;
 
             instance_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
+            only_transition_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
 
             let rotation =
                 Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), 180f32.to_radians())
                     .to_homogeneous();
             instance_matrix = rotation * instance_matrix;
+            only_transition_matrix = rotation * only_transition_matrix;
 
             let model_render_data = &model_render_datas[&model_instance.filename];
+            let mut tmin = only_transition_matrix
+                .transform_point(&model_render_data.bounding_box.min)
+                .coords;
+            let mut tmax = only_transition_matrix
+                .transform_point(&model_render_data.bounding_box.max)
+                .coords;
+            let min = Vector3::new(
+                tmin[0].min(tmax[0]),
+                tmin[1].min(tmax[1]),
+                tmin[2].max(tmax[2]),
+            );
+            let max = Vector3::new(
+                tmax[0].max(tmin[0]),
+                tmax[1].max(tmin[1]),
+                tmax[2].min(tmin[2]),
+            );
             ModelInstance {
                 name: model_instance.filename.clone(),
                 matrix: instance_matrix,
-                min: instance_matrix.transform_point(&model_render_data.bounding_box.min),
-                max: instance_matrix.transform_point(&model_render_data.bounding_box.max),
+                bottom_left_front: min,
+                top_right_back: max,
             }
         })
         .collect();

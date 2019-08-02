@@ -93,7 +93,7 @@ pub struct CollisionsFromPrevFrame {
 
 impl CollisionsFromPrevFrame {
     pub fn remove_collider_handle(&mut self, collider_handle: ColliderHandle) {
-        self.collisions.retain(|(coll_1, coll_2), collision| {
+        self.collisions.retain(|(coll_1, coll_2), _collision| {
             *coll_1 != collider_handle && *coll_2 != collider_handle
         });
     }

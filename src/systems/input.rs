@@ -1,6 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CastMode, ControllerAction, ControllerComponent, SkillKey, WorldCoords,
+    CastMode, ControllerComponent, PlayerIntention, SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
@@ -399,9 +399,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     CastMode::Normal => {
                         if controller.left_mouse_released {
                             log::debug!("Player wants to cast {:?}", skill);
-                            Some(ControllerAction::Casting(skill, false))
+                            Some(PlayerIntention::Casting(skill, false))
                         } else if controller.right_mouse_pressed {
-                            Some(ControllerAction::CancelCastingSelectTarget)
+                            Some(PlayerIntention::CancelCastingSelectTarget)
                         } else if let Some((skill_key, skill)) =
                             just_pressed_skill_key.and_then(|skill_key| {
                                 controller
@@ -421,14 +421,14 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         if controller.is_key_just_released(casting_skill_key.scancode()) {
                             log::debug!("Player wants to cast {:?}", skill);
                             Some(
-                                ControllerAction::Casting(
+                                PlayerIntention::Casting(
                                     controller.get_skill_for_key(casting_skill_key)
                                         .expect("'is_casting_selection' must be Some only if the casting skill is valid! "),
                                     false,
                                 )
                             )
                         } else if controller.right_mouse_pressed {
-                            Some(ControllerAction::CancelCastingSelectTarget)
+                            Some(PlayerIntention::CancelCastingSelectTarget)
                         } else {
                             None
                         }
@@ -456,7 +456,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     }
                     CastMode::OnKeyPress => {
                         log::debug!("Player wants to cast {:?}, alt={:?}", skill, alt_down);
-                        Some(ControllerAction::Casting(skill, alt_down))
+                        Some(PlayerIntention::Casting(skill, alt_down))
                     }
                 }
             } else if let Some((_skill_key, skill)) =
@@ -469,17 +469,17 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 // can get here only when alt was down and OnKeyRelease
                 if alt_down {
                     log::debug!("Player wants to cast {:?}, SELF", skill);
-                    Some(ControllerAction::Casting(skill, true))
+                    Some(PlayerIntention::Casting(skill, true))
                 } else {
                     None
                 }
             } else if controller.right_mouse_pressed {
-                Some(ControllerAction::MoveTowardsMouse(controller.mouse_pos()))
+                Some(PlayerIntention::MoveTowardsMouse(controller.mouse_pos()))
             } else if controller.right_mouse_down {
-                Some(ControllerAction::MoveTowardsMouse(controller.mouse_pos()))
-            } else if let Some(ControllerAction::MoveTowardsMouse(pos)) = &controller.last_action {
+                Some(PlayerIntention::MoveTowardsMouse(controller.mouse_pos()))
+            } else if let Some(PlayerIntention::MoveTowardsMouse(pos)) = &controller.last_action {
                 // user released the mouse, so it is not a MoveTowardsMouse but a move to command
-                Some(ControllerAction::MoveOrAttackTo((*pos).clone()))
+                Some(PlayerIntention::MoveOrAttackTo((*pos).clone()))
             } else {
                 None
             };
@@ -533,13 +533,13 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-    pub fn target_selection_or_casting(skill_key: SkillKey, skill: Skills) -> ControllerAction {
+    pub fn target_selection_or_casting(skill_key: SkillKey, skill: Skills) -> PlayerIntention {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            ControllerAction::Casting(skill, true)
+            PlayerIntention::Casting(skill, true)
         } else {
-            ControllerAction::CastingSelectTarget(skill_key, skill)
+            PlayerIntention::CastingSelectTarget(skill_key, skill)
         }
     }
 
