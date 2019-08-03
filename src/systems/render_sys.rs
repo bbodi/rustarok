@@ -413,8 +413,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &entities,
                 &numbers,
                 &char_state_storage,
-                &controller,
-                &system_vars,
+                controller.char_entity_id,
+                system_vars.time,
+                &system_vars.assets,
                 &updater,
                 render_commands,
             );
@@ -476,8 +477,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &entities,
                 &numbers,
                 &char_state_storage,
-                &controller,
-                &system_vars,
+                controller.char_entity_id,
+                system_vars.time,
+                &system_vars.assets,
                 &updater,
                 render_commands,
             );
@@ -719,8 +721,8 @@ fn render_client(
                 continue;
             }
             let alpha = if (max.x > char_pos.x && min.x < char_pos.x)
-                            && char_pos.y <= min.z // character is behind
-                            && max.y > 2.0
+                && char_pos.y <= min.z // character is behind
+                && max.y > 2.0
             {
                 0.3
             } else {
@@ -797,160 +799,286 @@ impl DamageRenderSystem {
 }
 
 impl DamageRenderSystem {
+    const COMBO_DELAY_BETWEEN_SUBS: f32 = 0.1;
+
     pub fn run(
         &self,
         entities: &specs::Entities,
         numbers: &specs::ReadStorage<FlyingNumberComponent>,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
-        controller: &ControllerComponent,
-        system_vars: &specs::WriteExpect<SystemVariables>,
+        desktop_entity_id: Entity,
+        now: ElapsedTime,
+        assets: &AssetResources,
         updater: &specs::Write<LazyUpdate>,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
-        unsafe {
-            gl::Disable(gl::DEPTH_TEST);
-        }
-        // for autocompletion
-        let controller: &ControllerComponent = controller;
-
         for (entity_id, number) in (entities, numbers).join() {
-            let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
-            let digit_count = DamageRenderSystem::get_digits(number.value).len();
+            DamageRenderSystem::add_render_command(
+                number,
+                char_state_storage,
+                desktop_entity_id,
+                now,
+                assets,
+                render_commands,
+            );
 
-            let width = match number.typ {
-                FlyingNumberType::Poison
-                | FlyingNumberType::Heal
-                | FlyingNumberType::Damage
-                | FlyingNumberType::Mana
-                | FlyingNumberType::Crit => digit_count as f32,
-                FlyingNumberType::Block => system_vars.assets.texts.attack_blocked.width as f32,
-                FlyingNumberType::Absorb => system_vars.assets.texts.attack_absorbed.width as f32,
-            };
-
-            let perc = system_vars
-                .time
-                .elapsed_since(number.start_time)
-                .div(number.duration as f32);
-            // TODO: don't render more than 1 damage in a single frame for the same target
-            let size = match number.typ {
-                FlyingNumberType::Heal => {
-                    // follow the target
-                    let real_pos = char_state_storage
-                        .get(number.target_entity_id)
-                        .map(|it| it.pos())
-                        .unwrap_or(number.start_pos);
-                    pos.x = real_pos.x;
-                    pos.z = real_pos.y;
-                    // the bigger the heal, the bigger the number and stays big longer
-                    let heal_value_factor = number.value as f32 / 10_000.0;
-                    let size_decrease_speed = (4.0 - heal_value_factor * 2.0).max(2.0);
-                    let initial_size = 1.0 + heal_value_factor * 1.0;
-                    let size_mult = 0.2 + heal_value_factor * 0.2;
-                    let size = ((1.0 - perc * size_decrease_speed) * initial_size).max(size_mult);
-                    pos.x -= width * size / 2.0;
-                    let y_offset = if perc < 0.3 { 0.0 } else { (perc - 0.3) * 3.0 };
-                    pos.y += 2.0 + y_offset;
-                    // a small hack to mitigate the distortion effect of perspective projection
-                    // at the edge of the screens
-                    pos.z -= y_offset;
-                    size
-                }
-                FlyingNumberType::Damage => {
-                    pos.x += perc * 6.0;
-                    pos.z -= perc * 4.0;
-                    pos.y += 2.0
-                        + (-std::f32::consts::FRAC_PI_2
-                            + (std::f32::consts::PI * (0.5 + perc * 1.5)))
-                            .sin()
-                            * 5.0;
-                    let size = (1.0 - perc) * 1.0;
-                    size
-                }
-                FlyingNumberType::Poison => {
-                    let real_pos = char_state_storage
-                        .get(number.target_entity_id)
-                        .map(|it| it.pos())
-                        .unwrap_or(number.start_pos);
-                    pos.x = real_pos.x;
-                    pos.z = real_pos.y;
-                    let size = 0.4;
-                    pos.x -= width * size / 2.0;
-                    let y_offset = (perc - 0.3) * 3.0;
-                    pos.y += 2.0 + y_offset;
-                    pos.z -= y_offset;
-                    size
-                }
-                FlyingNumberType::Block | FlyingNumberType::Absorb => {
-                    let real_pos = char_state_storage
-                        .get(number.target_entity_id)
-                        .map(|it| it.pos())
-                        .unwrap_or(number.start_pos);
-                    pos.x = real_pos.x;
-                    pos.z = real_pos.y;
-                    let y_offset = (perc - 0.3) * 3.0;
-                    pos.y += 2.0 + y_offset;
-                    pos.z -= y_offset;
-                    1.0
-                }
-                _ => {
-                    pos.y += 4.0 * perc;
-                    pos.z -= 2.0 * perc;
-                    pos.x += 2.0 * perc;
-                    let size = (1.0 - perc) * 4.0;
-                    size
-                }
-            };
-            match number.typ {
-                FlyingNumberType::Poison
-                | FlyingNumberType::Heal
-                | FlyingNumberType::Damage
-                | FlyingNumberType::Mana
-                | FlyingNumberType::Crit => {
-                    render_commands
-                        .prepare_for_3d()
-                        .scale(size)
-                        .pos(&pos)
-                        .color_rgb(
-                            &number
-                                .typ
-                                .color(controller.char_entity_id == number.target_entity_id),
-                        )
-                        .alpha(1.3 - (perc + 0.3 * perc))
-                        .add_number_command(number.value, digit_count as u8);
-                }
-                FlyingNumberType::Block => {
-                    render_commands
-                        .prepare_for_3d()
-                        .pos(&pos)
-                        .color_rgb(
-                            &number
-                                .typ
-                                .color(controller.char_entity_id == number.target_entity_id),
-                        )
-                        .alpha(1.3 - (perc + 0.3 * perc))
-                        .add_billboard_command(&system_vars.assets.texts.attack_blocked, false);
-                }
-                FlyingNumberType::Absorb => {
-                    render_commands
-                        .prepare_for_3d()
-                        .pos(&pos)
-                        .color_rgb(
-                            &number
-                                .typ
-                                .color(controller.char_entity_id == number.target_entity_id),
-                        )
-                        .alpha(1.3 - (perc + 0.3 * perc))
-                        .add_billboard_command(&system_vars.assets.texts.attack_absorbed, false);
-                }
-            };
-
-            if number.die_at.has_passed(system_vars.time) {
+            if number.die_at.has_passed(now) {
                 updater.remove::<FlyingNumberComponent>(entity_id);
             }
         }
-        unsafe {
-            gl::Enable(gl::DEPTH_TEST);
+    }
+
+    fn add_render_command(
+        number: &FlyingNumberComponent,
+        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
+        desktop_entity_id: Entity,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        let (number_value, digit_count) = match number.typ {
+            FlyingNumberType::Combo {
+                single_attack_damage,
+                attack_count,
+            } => {
+                let index = ((now
+                    .elapsed_since(number.start_time)
+                    .div(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS)
+                    as u32)
+                    + 1)
+                .min(attack_count as u32);
+                let number = index * single_attack_damage;
+                (number, DamageRenderSystem::get_digits(number).len())
+            }
+            _ => (
+                number.value,
+                DamageRenderSystem::get_digits(number.value).len(),
+            ),
+        };
+
+        let width = match number.typ {
+            FlyingNumberType::Poison
+            | FlyingNumberType::Heal
+            | FlyingNumberType::Damage
+            | FlyingNumberType::SubCombo
+            | FlyingNumberType::Combo { .. }
+            | FlyingNumberType::Mana
+            | FlyingNumberType::Crit => digit_count as f32,
+            FlyingNumberType::Block => assets.texts.attack_blocked.width as f32,
+            FlyingNumberType::Absorb => assets.texts.attack_absorbed.width as f32,
+        };
+
+        let perc = now
+            .elapsed_since(number.start_time)
+            .div(number.duration as f32);
+
+        // render sub damages for combo
+        if let FlyingNumberType::Combo {
+            single_attack_damage,
+            attack_count,
+        } = number.typ
+        {
+            let elapsed_attack_count = ((now
+                .elapsed_since(number.start_time)
+                .div(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS)
+                as i32)
+                + 1)
+            .min(attack_count as i32);
+            for i in 0..elapsed_attack_count {
+                let sub_number = FlyingNumberComponent {
+                    value: single_attack_damage,
+                    target_entity_id: number.target_entity_id,
+                    typ: FlyingNumberType::SubCombo,
+                    start_pos: number.start_pos,
+                    start_time: number
+                        .start_time
+                        .add_seconds(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS * i as f32),
+                    die_at: ElapsedTime(0.0), // it is ignored
+                    duration: 3.0,
+                };
+                DamageRenderSystem::add_render_command(
+                    &sub_number,
+                    char_state_storage,
+                    desktop_entity_id,
+                    now,
+                    assets,
+                    render_commands,
+                );
+            }
         }
+
+        // TODO: don't render more than 1 damage in a single frame for the same target
+        let (size, pos) = match number.typ {
+            FlyingNumberType::Heal | FlyingNumberType::Mana => {
+                DamageRenderSystem::calc_heal_size_pos(char_state_storage, number, width, perc)
+            }
+            FlyingNumberType::Combo { .. } => {
+                let size = 1.0;
+                let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+                pos.x -= width * size / 2.0;
+                let y_offset = perc * 1.2;
+                pos.y += 4.0 + y_offset;
+                // a small hack to mitigate the distortion effect of perspective projection
+                // at the edge of the screens
+                pos.z -= y_offset;
+                (size, pos)
+            }
+            FlyingNumberType::Damage => DamageRenderSystem::calc_damage_size_pos(number, perc, 1.0),
+            FlyingNumberType::SubCombo => {
+                DamageRenderSystem::calc_damage_size_pos(number, perc, 2.0)
+            }
+            FlyingNumberType::Poison => {
+                DamageRenderSystem::calc_poison_size_pos(char_state_storage, number, width, perc)
+            }
+            FlyingNumberType::Block | FlyingNumberType::Absorb => {
+                let real_pos = char_state_storage
+                    .get(number.target_entity_id)
+                    .map(|it| it.pos())
+                    .unwrap_or(number.start_pos);
+                let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
+                let y_offset = (perc - 0.3) * 3.0;
+                pos.y += 2.0 + y_offset;
+                pos.z -= y_offset;
+                (1.0, pos)
+            }
+            FlyingNumberType::Crit => {
+                let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+                pos.y += 4.0 * perc;
+                pos.z -= 2.0 * perc;
+                pos.x += 2.0 * perc;
+                let size = (1.0 - perc) * 4.0;
+                (size, pos)
+            }
+        };
+        let alpha = match number.typ {
+            FlyingNumberType::Combo { .. } => {
+                //                let y_offset = if perc < 0.3 { 0.0 } else { (perc - 0.3) * 3.0 };
+                1.6 - (perc + 0.6 * perc)
+            }
+            _ => 1.3 - (perc + 0.3 * perc),
+        };
+        match number.typ {
+            FlyingNumberType::Poison
+            | FlyingNumberType::Heal
+            | FlyingNumberType::Damage
+            | FlyingNumberType::Combo { .. }
+            | FlyingNumberType::SubCombo
+            | FlyingNumberType::Mana
+            | FlyingNumberType::Crit => {
+                render_commands
+                    .prepare_for_3d()
+                    .scale(size)
+                    .pos(&pos)
+                    .color_rgb(
+                        &number
+                            .typ
+                            .color(desktop_entity_id == number.target_entity_id),
+                    )
+                    .alpha(alpha)
+                    .add_number_command(number_value, digit_count as u8);
+            }
+            FlyingNumberType::Block => {
+                render_commands
+                    .prepare_for_3d()
+                    .pos(&pos)
+                    .color_rgb(
+                        &number
+                            .typ
+                            .color(desktop_entity_id == number.target_entity_id),
+                    )
+                    .alpha(alpha)
+                    .add_billboard_command(&assets.texts.attack_blocked, false);
+            }
+            FlyingNumberType::Absorb => {
+                render_commands
+                    .prepare_for_3d()
+                    .pos(&pos)
+                    .color_rgb(
+                        &number
+                            .typ
+                            .color(desktop_entity_id == number.target_entity_id),
+                    )
+                    .alpha(alpha)
+                    .add_billboard_command(&assets.texts.attack_absorbed, false);
+            }
+        };
+    }
+
+    fn calc_damage_size_pos(
+        number: &FlyingNumberComponent,
+        perc: f32,
+        speed: f32,
+    ) -> (f32, Vector3<f32>) {
+        let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+        pos.x += perc * 6.0;
+        pos.z -= perc * 4.0;
+        pos.y += 2.0
+            + (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5 * speed)))
+                .sin()
+                * 5.0;
+        let size = (1.0 - perc * speed) * 1.0;
+        return (size.max(0.0), pos);
+    }
+
+    fn calc_poison_size_pos(
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        number: &FlyingNumberComponent,
+        width: f32,
+        perc: f32,
+    ) -> (f32, Vector3<f32>) {
+        let real_pos = char_state_storage
+            .get(number.target_entity_id)
+            .map(|it| it.pos())
+            .unwrap_or(number.start_pos);
+        let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
+        let size = 0.4;
+        pos.x -= width * size / 2.0;
+        let y_offset = (perc - 0.3) * 3.0;
+        pos.y += 2.0 + y_offset;
+        pos.z -= y_offset;
+        return (size, pos);
+    }
+
+    fn calc_heal_size_pos(
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        number: &FlyingNumberComponent,
+        width: f32,
+        perc: f32,
+    ) -> (f32, Vector3<f32>) {
+        // follow the target
+        let real_pos = char_state_storage
+            .get(number.target_entity_id)
+            .map(|it| it.pos())
+            .unwrap_or(number.start_pos);
+        // the bigger the heal, the bigger the number and stays big longer
+        let heal_value_factor = number.value as f32 / 10_000.0;
+        let size_decrease_speed = (4.0 - heal_value_factor * 2.0).max(2.0);
+        let initial_size = 1.0 + heal_value_factor * 1.0;
+        let size_mult = 0.2 + heal_value_factor * 0.2;
+        let size = ((1.0 - perc * size_decrease_speed) * initial_size).max(size_mult);
+        let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
+        pos.x -= width * size / 2.0;
+        let y_offset = if perc < 0.3 { 0.0 } else { (perc - 0.3) * 3.0 };
+        pos.y += 2.0 + y_offset;
+        // a small hack to mitigate the distortion effect of perspective projection
+        // at the edge of the screens
+        pos.z -= y_offset;
+        return (size, pos);
+    }
+
+    //    pub value: u32,
+    //    pub target_entity_id: Entity,
+    //    pub typ: FlyingNumberType,
+    //    pub start_pos: Vector2<f32>,
+    //    pub start_time: ElapsedTime,
+    //    pub die_at: ElapsedTime,
+    //    pub duration: f32,
+    pub fn render_single_number(
+        value: u32,
+        typ: FlyingNumberType,
+        target_entity_id: Entity,
+        start_time: ElapsedTime,
+    ) {
     }
 }
 

@@ -8,6 +8,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
+use rand::Rng;
 use specs::prelude::*;
 use specs::{Entity, LazyUpdate};
 
@@ -19,6 +20,44 @@ pub enum AttackOutcome {
     Heal(u32),
     Block,
     Absorb,
+    Combo {
+        single_attack_damage: u32,
+        attack_count: u8,
+        sum_damage: u32,
+    },
+}
+impl AttackOutcome {
+    pub fn create_combo() -> ComboAttackOutcomeBuilder {
+        ComboAttackOutcomeBuilder {
+            base_atk: 0,
+            attack_count: 0,
+        }
+    }
+}
+
+pub struct ComboAttackOutcomeBuilder {
+    base_atk: u32,
+    attack_count: u8,
+}
+
+impl ComboAttackOutcomeBuilder {
+    pub fn base_atk(mut self, base_atk: u32) -> ComboAttackOutcomeBuilder {
+        self.base_atk = base_atk;
+        self
+    }
+
+    pub fn attack_count(mut self, attack_count: u8) -> ComboAttackOutcomeBuilder {
+        self.attack_count = attack_count;
+        self
+    }
+
+    pub fn build(self) -> AttackOutcome {
+        AttackOutcome::Combo {
+            single_attack_damage: self.base_atk,
+            attack_count: self.attack_count,
+            sum_damage: self.base_atk * self.attack_count as u32,
+        }
+    }
 }
 
 pub struct AttackSystem;
@@ -266,13 +305,34 @@ impl AttackCalculation {
         let src_outcomes = vec![];
         let mut dst_outcomes = vec![];
         match typ {
-            AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
+            AttackType::SpellDamage(base_dmg) => {
                 let atk = base_dmg;
                 let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
                 let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
-                    AttackOutcome::Damage(atk as u32)
+                    AttackOutcome::create_combo()
+                        .base_atk(120)
+                        .attack_count(10)
+                        .build()
+                };
+                dst_outcomes.push(outcome);
+            }
+            AttackType::Basic(base_dmg) => {
+                let atk = base_dmg;
+                let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
+                let outcome = if atk <= 0 {
+                    AttackOutcome::Block
+                } else {
+                    let mut rng = rand::thread_rng();
+                    if rng.gen::<usize>() % 5 == 0 {
+                        AttackOutcome::create_combo()
+                            .base_atk(atk as u32)
+                            .attack_count(2)
+                            .build()
+                    } else {
+                        AttackOutcome::Damage(atk as u32)
+                    }
                 };
                 dst_outcomes.push(outcome);
             }
@@ -311,6 +371,17 @@ impl AttackCalculation {
                 char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
                 char_comp.hp -= dbg!(*val) as i32;
             }
+            AttackOutcome::Combo {
+                single_attack_damage: _,
+                attack_count: _,
+                sum_damage,
+            } => {
+                char_comp
+                    .cannot_control_until
+                    .run_at_least_until_seconds(now, 0.1);
+                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
+                char_comp.hp -= dbg!(*sum_damage) as i32;
+            }
             AttackOutcome::Poison(val) => {
                 char_comp.hp -= *val as i32;
             }
@@ -337,6 +408,17 @@ impl AttackCalculation {
         let damage_entity = entities.create();
         let (typ, value) = match outcome {
             AttackOutcome::Damage(value) => (FlyingNumberType::Damage, *value),
+            AttackOutcome::Combo {
+                single_attack_damage,
+                attack_count,
+                sum_damage,
+            } => (
+                FlyingNumberType::Combo {
+                    single_attack_damage: *single_attack_damage,
+                    attack_count: *attack_count,
+                },
+                *sum_damage,
+            ),
             AttackOutcome::Poison(value) => (FlyingNumberType::Poison, *value),
             AttackOutcome::Crit(value) => (FlyingNumberType::Damage, *value),
             AttackOutcome::Heal(value) => (FlyingNumberType::Heal, *value),

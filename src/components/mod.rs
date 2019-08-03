@@ -48,6 +48,11 @@ pub struct StrEffectComponent {
 
 pub enum FlyingNumberType {
     Damage,
+    Combo {
+        single_attack_damage: u32,
+        attack_count: u8,
+    },
+    SubCombo,
     Poison,
     Heal,
     Block,
@@ -59,13 +64,14 @@ pub enum FlyingNumberType {
 impl FlyingNumberType {
     pub fn color(&self, target_is_current_user: bool) -> [f32; 3] {
         match self {
-            FlyingNumberType::Damage => {
+            FlyingNumberType::Damage | FlyingNumberType::SubCombo => {
                 if target_is_current_user {
                     [1.0, 0.0, 0.0]
                 } else {
                     [1.0, 1.0, 1.0]
                 }
             }
+            FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
             FlyingNumberType::Heal => [0.0, 1.0, 0.0],
             FlyingNumberType::Poison => [0.55, 0.0, 0.55],
             FlyingNumberType::Mana => [0.0, 0.0, 1.0],

@@ -95,14 +95,24 @@ impl Statuses {
 
     pub fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
         let mut allow = true;
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             allow &= status.as_ref().unwrap().lock().unwrap().allow_push(push);
         }
         return allow;
     }
 
     pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             outcome = status
                 .as_ref()
                 .unwrap()
@@ -122,7 +132,12 @@ impl Statuses {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> bool {
         let mut changed = false;
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
                 char_pos,
@@ -196,7 +211,12 @@ impl Statuses {
 
     pub fn calc_attributes(&mut self) -> &CharAttributeModifierCollector {
         self.cached_modifier_collector.clear();
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             status
                 .as_ref()
                 .unwrap()
@@ -218,7 +238,12 @@ impl Statuses {
             let sprites = &sprites.character_sprites;
             &sprites[&job_id][sex as usize]
         };
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             if let Some(spr) = status
                 .as_ref()
                 .unwrap()
@@ -234,7 +259,12 @@ impl Statuses {
 
     pub fn calc_render_color(&self) -> [f32; 4] {
         let mut ret = [1.0, 1.0, 1.0, 1.0];
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let status_color = status.as_ref().unwrap().lock().unwrap().get_render_color();
             for i in 0..4 {
                 ret[i] *= status_color[i];
@@ -245,7 +275,12 @@ impl Statuses {
 
     pub fn calc_largest_remaining_status_time_percent(&self, now: ElapsedTime) -> Option<f32> {
         let mut ret: Option<(ElapsedTime, f32)> = None;
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let rem: Option<(ElapsedTime, f32)> = status
                 .as_ref()
                 .unwrap()
@@ -297,14 +332,14 @@ impl Statuses {
     }
 
     pub fn remove_all(&mut self) {
-        for status in &mut self.statuses {
+        for status in self.statuses.iter_mut().take(self.first_free_index) {
             *status = None;
         }
         self.first_free_index = MAINSTATUSES_COUNT;
     }
 
     pub fn remove(&mut self, status_type: StatusType) {
-        for arc_status in &mut self.statuses {
+        for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
             let should_remove = arc_status
                 .as_ref()
                 .map(|it| it.lock().unwrap().typ() == status_type)
