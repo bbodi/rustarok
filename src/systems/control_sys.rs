@@ -22,7 +22,7 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     fn run(
         &mut self,
         (
-            _entities,
+            entities,
         mut char_state_storage,
         controller_storage,
         system_vars,
@@ -30,42 +30,40 @@ impl<'a> specs::System<'a> for CharacterControlSystem {
     ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("CharacterControlSystem");
-        for controller in (&controller_storage).join() {
+        for (entity_id, controller, char_state) in
+            (&entities, &controller_storage, &mut char_state_storage).join()
+        {
             // for autocompletion...
             let controller: &ControllerComponent = controller;
+            let char_state: &mut CharacterStateComponent = char_state;
 
-            let char_state = char_state_storage
-                .get_mut(controller.char_entity_id)
-                .unwrap();
             match controller.next_action {
-                Some(PlayerIntention::MoveOrAttackTo(_pos)) => {
-                    char_state.target = if let Some(target_entity) = controller.entity_below_cursor
-                    {
-                        if target_entity != controller.char_entity_id {
-                            Some(EntityTarget::OtherEntity(target_entity))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some(EntityTarget::Pos(controller.mouse_world_pos))
-                    };
+                Some(PlayerIntention::MoveTo(pos)) => {
+                    char_state.target = Some(EntityTarget::Pos(pos));
                 }
-                Some(PlayerIntention::MoveTowardsMouse(_pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(controller.mouse_world_pos));
+                Some(PlayerIntention::Attack(entity)) => {
+                    char_state.target = Some(EntityTarget::OtherEntity(entity))
                 }
-                Some(PlayerIntention::AttackTo(_)) => {}
-                Some(PlayerIntention::CastingSelectTarget(..)) => {}
-                Some(PlayerIntention::CancelCastingSelectTarget) => {}
-                Some(PlayerIntention::Casting(skill, is_self_cast)) => {
+                Some(PlayerIntention::MoveTowardsMouse(pos)) => {
+                    char_state.target = Some(EntityTarget::Pos(pos));
+                }
+                Some(PlayerIntention::AttackTowards(_)) => {}
+                Some(PlayerIntention::Casting(
+                    skill,
+                    is_self_cast,
+                    world_coords,
+                    target_entity,
+                )) => {
                     CharacterControlSystem::try_cast_skill(
                         skill,
                         system_vars.time,
                         char_state,
-                        controller,
+                        &world_coords,
+                        target_entity,
+                        entity_id,
                         is_self_cast,
                     );
                 }
-                Some(PlayerIntention::LeftClick) => {}
                 None => {}
             }
         }
@@ -77,16 +75,18 @@ impl CharacterControlSystem {
         skill: Skills,
         now: ElapsedTime,
         char_state: &mut CharacterStateComponent,
-        controller: &ControllerComponent,
+        world_coords: &WorldCoords,
+        target_entity: Option<Entity>,
+        self_id: Entity,
         is_self_cast: bool,
     ) {
         let (target_pos, target_entity) = if is_self_cast {
-            (char_state.pos(), Some(controller.char_entity_id))
+            (char_state.pos(), Some(self_id))
         } else {
-            (controller.mouse_world_pos, controller.entity_below_cursor)
+            (*world_coords, target_entity)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
-        let allowed = skill.is_casting_allowed(controller.char_entity_id, target_entity, distance);
+        let allowed = skill.is_casting_allowed(self_id, target_entity, distance);
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
@@ -109,12 +109,7 @@ impl CharacterControlSystem {
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if is_self_cast
-                && controller
-                    .entity_below_cursor
-                    .map(|it| it == controller.char_entity_id)
-                    .is_some()
-            {
+            let dir = if is_self_cast && target_entity.map(|it| it == self_id).is_some() {
                 // skill on self, don't change direction
                 char_state.dir()
             } else {

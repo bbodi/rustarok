@@ -363,7 +363,13 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 }
             }
 
+            /////////////////////////////////
+            // NUMBERS
+            /////////////////////////////////
             {
+                unsafe {
+                    gl::Disable(gl::DEPTH_TEST);
+                }
                 let shader = system_vars.assets.shaders.sprite_shader.gl_use();
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &render_commands.view_matrix);
@@ -379,6 +385,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     shader.set_vec2("offset", &command.common.offset);
 
                     self.create_number_vertex_array(command.value).bind().draw();
+                }
+                unsafe {
+                    gl::Enable(gl::DEPTH_TEST);
                 }
             }
 

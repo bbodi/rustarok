@@ -1,8 +1,11 @@
 use crate::asset::SpriteResource;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{
+    CameraComponent, ControllerComponent, HumanInputComponent, SkillKey, WorldCoords,
+};
 use crate::components::skills::skill::Skills;
 use crate::components::status::Statuses;
 use crate::consts::{JobId, MonsterId};
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::{
     CharActionIndex, ElapsedTime, MonsterActionIndex, PhysicsWorld, LIVING_COLLISION_GROUP,
@@ -13,6 +16,59 @@ use ncollide2d::world::CollisionGroups;
 use nphysics2d::object::{ColliderDesc, RigidBodyDesc};
 use specs::prelude::*;
 use specs::Entity;
+
+pub fn create_human_player(
+    ecs_world: &mut specs::world::World,
+    pos2d: Point2<f32>,
+    sex: Sex,
+    job_id: JobId,
+    head_index: usize,
+    radius: i32,
+) -> Entity {
+    let desktop_client_entity = create_char(ecs_world, pos2d, sex, job_id, head_index, radius);
+    let mut human_player = HumanInputComponent::new();
+    human_player.assign_skill(SkillKey::Q, Skills::FireWall);
+    human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
+    human_player.assign_skill(SkillKey::E, Skills::Heal);
+    human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+    human_player.assign_skill(SkillKey::Y, Skills::Mounting);
+
+    let controller = ControllerComponent {
+        //        char_entity_id: desktop_client_entity,
+        next_action: None,
+        last_action: None,
+    };
+    ecs_world
+        .write_storage()
+        .insert(
+            desktop_client_entity,
+            RenderCommandCollectorComponent::new(),
+        )
+        .unwrap();
+    ecs_world
+        .write_storage()
+        .insert(desktop_client_entity, human_player)
+        .unwrap();
+    ecs_world
+        .write_storage()
+        .insert(desktop_client_entity, controller)
+        .unwrap();
+    // camera
+    {
+        let mut camera_component = CameraComponent::new();
+        camera_component.reset_y_and_angle(
+            &ecs_world
+                .read_resource::<SystemVariables>()
+                .matrices
+                .projection,
+        );
+        ecs_world
+            .write_storage()
+            .insert(desktop_client_entity, camera_component)
+            .unwrap();
+    }
+    return desktop_client_entity;
+}
 
 pub fn create_char(
     ecs_world: &mut specs::world::World,

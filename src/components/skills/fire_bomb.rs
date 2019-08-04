@@ -115,7 +115,7 @@ impl Status for FireBombStatus {
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(

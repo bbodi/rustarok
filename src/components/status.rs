@@ -53,7 +53,7 @@ pub trait Status: Any {
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     );
     // (ElapsedTime, f32) == ends_at, percentage
@@ -164,7 +164,7 @@ impl Statuses {
     pub fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
@@ -458,7 +458,7 @@ impl Status for MountedStatus {
     fn render(
         &self,
         _char_pos: &WorldCoords,
-        _system_vars: &mut SystemVariables,
+        _system_vars: &SystemVariables,
         _render_commands: &mut RenderCommandCollectorComponent,
     ) {
     }
@@ -551,7 +551,7 @@ impl Status for PoisonStatus {
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(

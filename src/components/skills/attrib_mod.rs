@@ -96,7 +96,7 @@ impl Status for ArmorModifierStatus {
     fn render(
         &self,
         _char_pos: &WorldCoords,
-        _system_vars: &mut SystemVariables,
+        _system_vars: &SystemVariables,
         _render_commands: &mut RenderCommandCollectorComponent,
     ) {
 

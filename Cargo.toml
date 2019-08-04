@@ -19,7 +19,6 @@ sublime_fuzzy = "0.6.0"
 websocket = "0.22.4"
 log = "0.4.6"
 simple-logging = "2.0.2"
-specs = "0.14.3"
 specs-derive = "0.4.0"
 strum = "0.15.0" # for iterating over enums
 strum_macros = "0.15.0"
@@ -29,6 +28,11 @@ serde = {version = "1.0.97", features = ["derive"]}
 actix-web = "1.0.5"
 actix-rt = "0.2.4"
 actix-files = "0.1.4"
+
+[dependencies.specs]
+version = "0.14.3"
+default-features = false
+features = []
 
 [dependencies.sdl2]
 version = "0.32.2"

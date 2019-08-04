@@ -102,11 +102,14 @@ impl Status for AbsorbStatus {
         match outcome {
             AttackOutcome::Damage(value)
             | AttackOutcome::Poison(value)
+            | AttackOutcome::Combo {
+                sum_damage: value, ..
+            }
             | AttackOutcome::Crit(value) => {
                 self.absorbed_damage += value;
                 AttackOutcome::Absorb
             }
-            _ => outcome,
+            AttackOutcome::Heal(_) | AttackOutcome::Block | AttackOutcome::Absorb => outcome,
         }
     }
 
@@ -117,7 +120,7 @@ impl Status for AbsorbStatus {
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(

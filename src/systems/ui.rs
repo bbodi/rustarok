@@ -1,11 +1,7 @@
 use nalgebra::Vector2;
 
-use crate::components::char::{
-    CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
-};
-use crate::components::controller::{ControllerComponent, SkillKey};
-use crate::components::skills::skill::SkillTargetType;
-use crate::cursor::{CURSOR_ATTACK, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
+use crate::components::char::{CharState, SpriteRenderDescriptorComponent};
+use crate::components::controller::{HumanInputComponent, SkillKey};
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -20,15 +16,13 @@ impl RenderUI {
 
     pub fn run(
         &self,
-        _entities: &specs::Entities,
-        controller: &mut ControllerComponent,
+        char_state: &CharState,
+        input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
-        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
         // Draw casting bar
-        let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
-        match char_state.state() {
+        match char_state {
             CharState::CastingSkill(casting_info) => {
                 // for really short skills, don't render it
                 if casting_info
@@ -65,8 +59,6 @@ impl RenderUI {
             _ => {}
         }
 
-        let selecting_target = controller.is_selecting_target();
-
         // draw skill bar
         let single_icon_size = 48;
         let inner_border = 3;
@@ -90,9 +82,10 @@ impl RenderUI {
 
         let mut x = start_x + outer_border;
         for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
-            if let Some(skill) = controller.get_skill_for_key(*skill_key) {
+            if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
-                let border_color = selecting_target
+                let border_color = input
+                    .select_skill_target
                     .filter(|it| it.0 == *skill_key)
                     .map(|_it| [0.0, 1.0, 0.0, 1.0])
                     .unwrap_or([0.0, 0.0, 0.0, 1.0]);
@@ -135,46 +128,23 @@ impl RenderUI {
             }
         }
 
-        // Draw cursor
-        let cursor = if let Some((_skill_key, skill)) = selecting_target {
+        // render targeting skill name
+        if let Some((_skill_key, skill)) = input.select_skill_target {
             let texture = &system_vars.assets.texts.skill_name_texts[&skill];
             render_commands
                 .prepare_for_2d()
                 .screen_pos(
-                    controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
-                    controller.last_mouse_y as f32 + 32.0,
+                    input.last_mouse_x as f32 - texture.width as f32 / 2.0,
+                    input.last_mouse_y as f32 + 32.0,
                 )
                 .add_texture_command(texture, Layer2d::Layer9);
-            if skill.get_skill_target_type() != SkillTargetType::Area {
-                CURSOR_TARGET
-            } else {
-                CURSOR_CLICK
-            }
-        } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
-            let ent_is_dead = char_state_storage
-                .get(entity_below_cursor)
-                .map(|it| !it.state().is_alive())
-                .unwrap_or(false);
-            if entity_below_cursor == controller.char_entity_id || ent_is_dead {
-                // self or dead
-                CURSOR_NORMAL
-            } else {
-                CURSOR_ATTACK
-            }
-        } else if !controller.cell_below_cursor_walkable {
-            CURSOR_STOP
-        } else {
-            CURSOR_NORMAL
-        };
-        controller.cursor_anim_descr.action_index = cursor.1;
+        }
+
         render_action_2d(
             &system_vars,
-            &controller.cursor_anim_descr,
+            &input.cursor_anim_descr,
             &system_vars.assets.sprites.cursors,
-            &Vector2::new(
-                controller.last_mouse_x as f32,
-                controller.last_mouse_y as f32,
-            ),
+            &Vector2::new(input.last_mouse_x as f32, input.last_mouse_y as f32),
             render_commands,
         );
     }

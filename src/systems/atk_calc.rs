@@ -325,7 +325,7 @@ impl AttackCalculation {
                     AttackOutcome::Block
                 } else {
                     let mut rng = rand::thread_rng();
-                    if rng.gen::<usize>() % 5 == 0 {
+                    if rng.gen::<usize>() % 2 == 0 {
                         AttackOutcome::create_combo()
                             .base_atk(atk as u32)
                             .attack_count(2)

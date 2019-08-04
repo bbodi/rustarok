@@ -376,7 +376,7 @@ impl Skills {
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
-        system_vars: &mut SystemVariables,
+        system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
