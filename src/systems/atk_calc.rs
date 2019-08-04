@@ -147,7 +147,13 @@ impl<'a> specs::System<'a> for AttackSystem {
                 .and_then(|src_char_state| {
                     char_state_storage
                         .get(attack.dst_entity)
-                        .filter(|it| it.state().is_alive())
+                        .filter(|it| {
+                            it.state().is_alive()
+                                && match attack.typ {
+                                    AttackType::Heal(_) => src_char_state.team == it.team,
+                                    _ => src_char_state.team != it.team,
+                                }
+                        })
                         .and_then(|dst_char_state| {
                             Some(AttackCalculation::attack(
                                 src_char_state,
@@ -160,6 +166,7 @@ impl<'a> specs::System<'a> for AttackSystem {
 
             if let Some((src_outcomes, dst_outcomes)) = outcomes {
                 for outcome in src_outcomes.into_iter() {
+                    let attacker_entity = attack.dst_entity;
                     let attacked_entity = attack.src_entity;
                     let attacked_entity_state =
                         char_state_storage.get_mut(attacked_entity).unwrap();
@@ -182,12 +189,14 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &outcome,
                         &entities,
                         &mut updater,
+                        attacker_entity,
                         attacked_entity,
                         &char_pos,
                         system_vars.time,
                     );
                 }
                 for outcome in dst_outcomes.into_iter() {
+                    let attacker_entity = attack.src_entity;
                     let attacked_entity = attack.dst_entity;
                     let attacked_entity_state =
                         char_state_storage.get_mut(attacked_entity).unwrap();
@@ -210,6 +219,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &outcome,
                         &entities,
                         &mut updater,
+                        attacker_entity,
                         attacked_entity,
                         &char_pos,
                         system_vars.time,
@@ -312,7 +322,7 @@ impl AttackCalculation {
                     AttackOutcome::Block
                 } else {
                     AttackOutcome::create_combo()
-                        .base_atk(120)
+                        .base_atk((atk / 10) as u32)
                         .attack_count(10)
                         .build()
                 };
@@ -325,7 +335,7 @@ impl AttackCalculation {
                     AttackOutcome::Block
                 } else {
                     let mut rng = rand::thread_rng();
-                    if rng.gen::<usize>() % 2 == 0 {
+                    if rng.gen::<usize>() % 10 == 0 {
                         AttackOutcome::create_combo()
                             .base_atk(atk as u32)
                             .attack_count(2)
@@ -401,6 +411,7 @@ impl AttackCalculation {
         outcome: &AttackOutcome,
         entities: &Entities,
         updater: &mut specs::Write<LazyUpdate>,
+        src_entity_id: Entity,
         target_entity_id: Entity,
         char_pos: &Vector2<f32>,
         sys_time: ElapsedTime,
@@ -427,7 +438,15 @@ impl AttackCalculation {
         };
         updater.insert(
             damage_entity,
-            FlyingNumberComponent::new(typ, value, target_entity_id, 3.0, *char_pos, sys_time),
+            FlyingNumberComponent::new(
+                typ,
+                value,
+                src_entity_id,
+                target_entity_id,
+                3.0,
+                *char_pos,
+                sys_time,
+            ),
         );
     }
 }

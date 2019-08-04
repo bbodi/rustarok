@@ -24,8 +24,18 @@ pub fn create_human_player(
     job_id: JobId,
     head_index: usize,
     radius: i32,
+    team: Team,
 ) -> Entity {
-    let desktop_client_entity = create_char(ecs_world, pos2d, sex, job_id, head_index, radius);
+    let desktop_client_entity = create_char(
+        ecs_world,
+        pos2d,
+        sex,
+        job_id,
+        head_index,
+        radius,
+        team,
+        CharType::Player,
+    );
     let mut human_player = HumanInputComponent::new();
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
@@ -33,11 +43,6 @@ pub fn create_human_player(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    let controller = ControllerComponent {
-        //        char_entity_id: desktop_client_entity,
-        next_action: None,
-        last_action: None,
-    };
     ecs_world
         .write_storage()
         .insert(
@@ -48,10 +53,6 @@ pub fn create_human_player(
     ecs_world
         .write_storage()
         .insert(desktop_client_entity, human_player)
-        .unwrap();
-    ecs_world
-        .write_storage()
-        .insert(desktop_client_entity, controller)
         .unwrap();
     // camera
     {
@@ -77,15 +78,18 @@ pub fn create_char(
     job_id: JobId,
     head_index: usize,
     radius: i32,
+    team: Team,
+    typ: CharType,
 ) -> Entity {
     let entity_id = {
         let char_comp = CharacterStateComponent::new(
-            CharType::Player,
+            typ,
             CharOutlook::Player {
                 job_id,
                 head_index,
                 sex,
             },
+            team,
         );
         let mut entity_builder = ecs_world.create_entity().with(char_comp);
 
@@ -99,7 +103,6 @@ pub fn create_char(
         });
         entity_builder.build()
     };
-    let mut storage = ecs_world.write_storage();
     let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
     let physics_component = PhysicsComponent::new(
         physics_world,
@@ -107,7 +110,22 @@ pub fn create_char(
         ComponentRadius(radius),
         entity_id,
     );
-    storage.insert(entity_id, physics_component).unwrap();
+    ecs_world
+        .write_storage()
+        .insert(entity_id, physics_component)
+        .unwrap();
+
+    // controller
+    ecs_world
+        .write_storage()
+        .insert(
+            entity_id,
+            ControllerComponent {
+                next_action: None,
+                last_action: None,
+            },
+        )
+        .unwrap();
     return entity_id;
 }
 
@@ -116,11 +134,13 @@ pub fn create_monster(
     pos2d: Point2<f32>,
     monster_id: MonsterId,
     radius: i32,
+    team: Team,
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity().with(CharacterStateComponent::new(
             CharType::Minion,
             CharOutlook::Monster(monster_id),
+            team,
         ));
         entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
@@ -328,7 +348,7 @@ impl SpriteBoundingRect {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EntityTarget {
     OtherEntity(Entity),
     Pos(WorldCoords),
@@ -728,9 +748,25 @@ impl CharAttributeModifierCollector {
     }
 }
 
+#[derive(Eq, Debug, PartialEq, Clone, Copy)]
+pub enum Team {
+    Left,
+    Right,
+}
+
+impl Team {
+    pub fn other(&self) -> Team {
+        match self {
+            Team::Left => Team::Right,
+            Team::Right => Team::Left,
+        }
+    }
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pos: WorldCoords,
+    pub team: Team,
     pub target: Option<EntityTarget>,
     pub typ: CharType,
     state: CharState,
@@ -752,12 +788,13 @@ impl Drop for CharacterStateComponent {
 }
 
 impl CharacterStateComponent {
-    pub fn new(typ: CharType, outlook: CharOutlook) -> CharacterStateComponent {
+    pub fn new(typ: CharType, outlook: CharOutlook, team: Team) -> CharacterStateComponent {
         let statuses = Statuses::new();
         let base_attributes = Statuses::get_base_attributes(&outlook);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             pos: v2!(0, 0),
+            team,
             typ,
             outlook,
             target: None,

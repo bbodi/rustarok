@@ -30,6 +30,7 @@ impl Drop for BrowserClient {
 pub struct FlyingNumberComponent {
     pub value: u32,
     pub target_entity_id: Entity,
+    pub src_entity_id: Entity,
     pub typ: FlyingNumberType,
     pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
@@ -44,6 +45,11 @@ pub struct StrEffectComponent {
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: ElapsedTime,
+}
+
+#[derive(Component)]
+pub struct MinionComponent {
+    pub fountain_up: bool,
 }
 
 pub enum FlyingNumberType {
@@ -62,13 +68,22 @@ pub enum FlyingNumberType {
 }
 
 impl FlyingNumberType {
-    pub fn color(&self, target_is_current_user: bool) -> [f32; 3] {
+    pub fn color(
+        &self,
+        target_is_current_user: bool,
+        target_is_friend: bool,
+        damage_was_initiated_by_current_user: bool,
+    ) -> [f32; 3] {
         match self {
             FlyingNumberType::Damage | FlyingNumberType::SubCombo => {
                 if target_is_current_user {
                     [1.0, 0.0, 0.0]
-                } else {
+                } else if target_is_friend {
+                    [1.0, 0.55, 0.0]
+                } else if damage_was_initiated_by_current_user {
                     [1.0, 1.0, 1.0]
+                } else {
+                    [0.73, 0.73, 0.73] // simple damage by other, greyish
                 }
             }
             FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
@@ -86,6 +101,7 @@ impl FlyingNumberComponent {
     pub fn new(
         typ: FlyingNumberType,
         value: u32,
+        src_entity_id: Entity,
         target_entity_id: Entity,
         duration: f32,
         start_pos: Vector2<f32>,
@@ -95,6 +111,7 @@ impl FlyingNumberComponent {
             value,
             typ,
             target_entity_id,
+            src_entity_id,
             start_pos,
             start_time: sys_time,
             die_at: sys_time.add_seconds(duration),

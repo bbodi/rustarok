@@ -78,7 +78,6 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
         physics_world.step();
 
         for event in physics_world.proximity_events() {
-            log::trace!("{:?}", event);
             let collider1 = physics_world.collider(event.collider1).unwrap();
             let collider1_body_handle = collider1.body();
             let collider2 = physics_world.collider(event.collider2).unwrap();
@@ -116,7 +115,6 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
         }
 
         for event in physics_world.contact_events() {
-            log::trace!("{:?}", event);
             match event {
                 ContactEvent::Started(handle1, handle2) => {
                     let collider1 = physics_world.collider(*handle1).unwrap();

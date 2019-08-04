@@ -45,18 +45,20 @@ use crate::asset::rsw::Rsw;
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
-    CharOutlook, CharacterStateComponent, Percentage, PhysicsComponent,
-    SpriteRenderDescriptorComponent,
+    CharOutlook, CharType, CharacterStateComponent, Percentage, PhysicsComponent,
+    SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
 };
-use crate::components::{AttackType, BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::{
+    AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, StrEffectComponent,
+};
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
-use crate::systems::control_sys::CharacterControlSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
+use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
@@ -92,6 +94,7 @@ use crate::components::skills::status_applier_area::StatusApplierArea;
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
+use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
@@ -313,6 +316,7 @@ fn main() {
     ecs_world.register::<SkillManifestationComponent>();
     ecs_world.register::<CameraComponent>();
     ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<MinionComponent>();
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
@@ -328,8 +332,9 @@ fn main() {
             "input_to_next_action_sys",
             &["input_handler", "browser_input_processor"],
         )
+        .with(MinionAiSystem, "minion_ai_sys", &[])
         .with(
-            CharacterControlSystem,
+            NextActionApplierSystem,
             "char_control",
             &[
                 "friction_sys",
@@ -723,6 +728,7 @@ fn main() {
         JobId::CRUSADER,
         1,
         1,
+        Team::Right,
     );
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
@@ -732,6 +738,7 @@ fn main() {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
+    let mut next_minion_spawn = ElapsedTime(2.0);
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
@@ -910,6 +917,7 @@ fn main() {
                     JobId::CRUSADER,
                     2,
                     1,
+                    Team::Right,
                 );
                 log::info!("Client connected: {:?}", browser_client_entity);
             }
@@ -1054,6 +1062,31 @@ fn main() {
         ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
         ecs_world.write_resource::<SystemVariables>().time.0 +=
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+
+        let now = ecs_world.read_resource::<SystemVariables>().time;
+        if next_minion_spawn.has_passed(now) {
+            next_minion_spawn = now.add_seconds(2.0);
+            let team = match rand::thread_rng().gen::<usize>() % 2 {
+                0 => Team::Right,
+                _ => Team::Left,
+            };
+            let start_pos = if team == Team::Right {
+                MinionAiSystem::CHECKPOINTS[0]
+            } else {
+                MinionAiSystem::CHECKPOINTS[5]
+            };
+            let entity_id =
+                create_random_char(&mut ecs_world, p2!(start_pos[0], start_pos[1]), team);
+            let mut storage = ecs_world.write_storage();
+            storage
+                .insert(
+                    entity_id,
+                    MinionComponent {
+                        fountain_up: (rand::thread_rng().gen::<usize>() % 2) != 0,
+                    },
+                )
+                .unwrap();
+        }
     }
 }
 
@@ -1352,26 +1385,7 @@ fn imgui_frame(
                     p3!(x, 0.5, -y)
                 };
                 let pos2d = p3_to_p2(&pos);
-                let mut rng = rand::thread_rng();
-                let sex = if rng.gen::<usize>() % 2 == 0 {
-                    Sex::Male
-                } else {
-                    Sex::Female
-                };
-                let head_count = ecs_world
-                    .read_resource::<SystemVariables>()
-                    .assets
-                    .sprites
-                    .head_sprites[Sex::Male as usize]
-                    .len();
-                let entity_id = components::char::create_char(
-                    &mut ecs_world,
-                    pos2d,
-                    sex,
-                    JobId::SWORDMAN,
-                    rng.gen::<usize>() % head_count,
-                    rng.gen_range(1, 3),
-                );
+                let entity_id = create_random_char(&mut ecs_world, pos2d, Team::Right);
 
                 other_players.push(entity_id);
             }
@@ -1441,6 +1455,7 @@ fn imgui_frame(
                     pos2d,
                     MonsterId::Baphomet,
                     rng.gen_range(1, 3),
+                    Team::Right,
                 );
                 other_monsters.push(entity_id);
             }
@@ -1470,6 +1485,32 @@ fn imgui_frame(
     }
     video.renderer.render(ui);
     return ret;
+}
+
+fn create_random_char(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> Entity {
+    let mut rng = rand::thread_rng();
+    let sex = if rng.gen::<usize>() % 2 == 0 {
+        Sex::Male
+    } else {
+        Sex::Female
+    };
+    let head_count = ecs_world
+        .read_resource::<SystemVariables>()
+        .assets
+        .sprites
+        .head_sprites[Sex::Male as usize]
+        .len();
+    let entity_id = components::char::create_char(
+        ecs_world,
+        pos2d,
+        sex,
+        JobId::SWORDMAN,
+        rng.gen::<usize>() % head_count,
+        rng.gen_range(1, 3),
+        team,
+        CharType::Minion,
+    );
+    entity_id
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

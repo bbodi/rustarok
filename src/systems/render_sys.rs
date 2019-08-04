@@ -1,7 +1,7 @@
 use crate::cam::Camera;
 use crate::components::char::{
     CharOutlook, CharState, CharType, CharacterStateComponent, PhysicsComponent,
-    SpriteBoundingRect, SpriteRenderDescriptorComponent,
+    SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{CameraComponent, HumanInputComponent, WorldCoords};
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
@@ -63,9 +63,11 @@ impl RenderDesktopClientSystem {
         }
     }
 
+    // TODO: wtf is this argument list
     pub fn render_for_controller<'a>(
         &self,
         self_id: Entity,
+        self_team: Team,
         char_state: &CharState,
         char_pos: &WorldCoords,
         camera: &CameraComponent,
@@ -148,6 +150,7 @@ impl RenderDesktopClientSystem {
             let _stopwatch = system_benchmark.start_measurement("render.draw_characters");
             self.draw_characters(
                 self_id,
+                self_team,
                 &camera,
                 input,
                 render_commands,
@@ -184,6 +187,7 @@ impl RenderDesktopClientSystem {
     fn draw_characters(
         &self,
         self_id: Entity,
+        self_team: Team,
         camera: &CameraComponent,
         input: &mut HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
@@ -301,6 +305,7 @@ impl RenderDesktopClientSystem {
                     if !is_dead {
                         self.draw_health_bar(
                             self_id == entity_id,
+                            self_team == char_state.team,
                             &char_state,
                             system_vars.time,
                             &body_bounding_rect,
@@ -359,6 +364,7 @@ impl RenderDesktopClientSystem {
                     if !is_dead {
                         self.draw_health_bar(
                             self_id == entity_id,
+                            self_team == char_state.team,
                             &char_state,
                             system_vars.time,
                             &bounding_rect,
@@ -425,7 +431,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             render_commands.clear();
         }
 
-        for (entity_id, mut input, browser, mut render_commands, char_comp, camera) in (
+        for (entity_id, mut input, browser, mut render_commands, desktop_char, camera) in (
             &entities,
             &mut input_storage,
             &mut browser_client_storage,
@@ -437,8 +443,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         {
             self.render_for_controller(
                 entity_id,
-                char_comp.state(),
-                &char_comp.pos(),
+                desktop_char.team,
+                desktop_char.state(),
+                &desktop_char.pos(),
                 camera,
                 &mut input,
                 &mut render_commands,
@@ -459,6 +466,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &numbers,
                 &char_state_storage,
                 entity_id,
+                desktop_char.team,
                 system_vars.time,
                 &system_vars.assets,
                 &updater,
@@ -466,7 +474,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             );
 
             self.render_ui_sys.run(
-                char_comp.state(),
+                desktop_char.state(),
                 &input,
                 &mut render_commands,
                 &system_vars,
@@ -508,12 +516,14 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             )
                 .join()
         };
-        for (entity_id, mut input, _not_browser, mut render_commands, char_comp, camera) in join {
+        for (entity_id, mut input, _not_browser, mut render_commands, desktop_char, camera) in join
+        {
             {
                 self.render_for_controller(
                     entity_id,
-                    char_comp.state(),
-                    &char_comp.pos(),
+                    desktop_char.team,
+                    desktop_char.state(),
+                    &desktop_char.pos(),
                     camera,
                     &mut input,
                     &mut render_commands,
@@ -535,6 +545,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &numbers,
                 &char_state_storage,
                 entity_id,
+                desktop_char.team,
                 system_vars.time,
                 &system_vars.assets,
                 &updater,
@@ -542,7 +553,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             );
 
             self.render_ui_sys.run(
-                char_comp.state(),
+                desktop_char.state(),
                 &input,
                 &mut render_commands,
                 &system_vars,
@@ -862,6 +873,7 @@ impl DamageRenderSystem {
         numbers: &specs::ReadStorage<FlyingNumberComponent>,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         desktop_entity_id: Entity,
+        desktop_entity_team: Team,
         now: ElapsedTime,
         assets: &AssetResources,
         updater: &specs::Write<LazyUpdate>,
@@ -872,6 +884,7 @@ impl DamageRenderSystem {
                 number,
                 char_state_storage,
                 desktop_entity_id,
+                desktop_entity_team,
                 now,
                 assets,
                 render_commands,
@@ -887,6 +900,7 @@ impl DamageRenderSystem {
         number: &FlyingNumberComponent,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         desktop_entity_id: Entity,
+        desktop_entity_team: Team,
         now: ElapsedTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
@@ -942,6 +956,7 @@ impl DamageRenderSystem {
             for i in 0..elapsed_attack_count {
                 let sub_number = FlyingNumberComponent {
                     value: single_attack_damage,
+                    src_entity_id: number.src_entity_id,
                     target_entity_id: number.target_entity_id,
                     typ: FlyingNumberType::SubCombo,
                     start_pos: number.start_pos,
@@ -955,6 +970,7 @@ impl DamageRenderSystem {
                     &sub_number,
                     char_state_storage,
                     desktop_entity_id,
+                    desktop_entity_team,
                     now,
                     assets,
                     render_commands,
@@ -1012,6 +1028,22 @@ impl DamageRenderSystem {
             }
             _ => 1.3 - (perc + 0.3 * perc),
         };
+        let is_friend = char_state_storage
+            .get(number.target_entity_id)
+            .map(|it| it.team == desktop_entity_team)
+            .unwrap_or(true);
+        let size_mult = if desktop_entity_id == number.target_entity_id
+            || desktop_entity_id == number.src_entity_id
+        {
+            1.0
+        } else {
+            0.5
+        };
+        let color = number.typ.color(
+            desktop_entity_id == number.target_entity_id,
+            is_friend,
+            desktop_entity_id == number.src_entity_id,
+        );
         match number.typ {
             FlyingNumberType::Poison
             | FlyingNumberType::Heal
@@ -1022,13 +1054,9 @@ impl DamageRenderSystem {
             | FlyingNumberType::Crit => {
                 render_commands
                     .prepare_for_3d()
-                    .scale(size)
+                    .scale(size * size_mult)
                     .pos(&pos)
-                    .color_rgb(
-                        &number
-                            .typ
-                            .color(desktop_entity_id == number.target_entity_id),
-                    )
+                    .color_rgb(&color)
                     .alpha(alpha)
                     .add_number_command(number_value, digit_count as u8);
             }
@@ -1036,11 +1064,8 @@ impl DamageRenderSystem {
                 render_commands
                     .prepare_for_3d()
                     .pos(&pos)
-                    .color_rgb(
-                        &number
-                            .typ
-                            .color(desktop_entity_id == number.target_entity_id),
-                    )
+                    .scale(size_mult)
+                    .color_rgb(&color)
                     .alpha(alpha)
                     .add_billboard_command(&assets.texts.attack_blocked, false);
             }
@@ -1048,11 +1073,8 @@ impl DamageRenderSystem {
                 render_commands
                     .prepare_for_3d()
                     .pos(&pos)
-                    .color_rgb(
-                        &number
-                            .typ
-                            .color(desktop_entity_id == number.target_entity_id),
-                    )
+                    .scale(size_mult)
+                    .color_rgb(&color)
                     .alpha(alpha)
                     .add_billboard_command(&assets.texts.attack_absorbed, false);
             }
@@ -1134,6 +1156,7 @@ impl RenderDesktopClientSystem {
     fn draw_health_bar(
         &self,
         is_self: bool,
+        is_same_team: bool,
         char_state: &CharacterStateComponent,
         now: ElapsedTime,
         bounding_rect_2d: &SpriteBoundingRect,
@@ -1163,9 +1186,10 @@ impl RenderDesktopClientSystem {
         let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
         let health_color = if is_self {
             [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
+        } else if is_same_team {
+            [0.2, 0.46, 0.9, 1.0] // for friends, blue
         } else {
             [0.79, 0.00, 0.21, 1.0] // for enemies, red
-                                    // [0.2, 0.46, 0.9] // for friends, blue
         };
         let mana_color = [0.23, 0.79, 0.88, 1.0];
         let bottom_bar_y = match char_state.typ {

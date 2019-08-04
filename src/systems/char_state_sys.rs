@@ -8,7 +8,7 @@ use crate::components::char::{
 use crate::components::controller::WorldCoords;
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::{AttackComponent, AttackType};
-use crate::systems::control_sys::CharacterControlSystem;
+use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicsWorld};
 use std::collections::HashMap;
@@ -56,6 +56,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             // for autocompletion...
             let char_comp: &mut CharacterStateComponent = char_comp;
 
+            // pakold külön componensbe augy a dolgokat, hogy innen be tudjam álltiani a
+            // target et None-ra ha az halott, meg a fenti position hack se kelllejn
             if char_comp.hp <= 0 && *char_comp.state() != CharState::Dead {
                 log::debug!("Entity has died {:?}", char_entity_id);
                 char_comp.set_state(CharState::Dead, char_comp.dir());
@@ -148,13 +150,13 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                 };
                                 char_comp.set_state(
                                     new_state,
-                                    CharacterControlSystem::determine_dir(target_pos, &char_pos),
+                                    NextActionApplierSystem::determine_dir(target_pos, &char_pos),
                                 );
                             } else {
                                 // move closer
                                 char_comp.set_state(
                                     CharState::Walking(*target_pos),
-                                    CharacterControlSystem::determine_dir(target_pos, &char_pos),
+                                    NextActionApplierSystem::determine_dir(target_pos, &char_pos),
                                 );
                             }
                         } else {
@@ -174,7 +176,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             // move closer
                             char_comp.set_state(
                                 CharState::Walking(*target_pos),
-                                CharacterControlSystem::determine_dir(target_pos, &char_pos),
+                                NextActionApplierSystem::determine_dir(target_pos, &char_pos),
                             );
                         }
                     }
