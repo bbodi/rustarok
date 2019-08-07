@@ -1,11 +1,13 @@
 use nalgebra::Vector2;
 
-use crate::components::char::{CharState, SpriteRenderDescriptorComponent};
+use crate::components::char::{
+    CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
+};
 use crate::components::controller::{HumanInputComponent, SkillKey};
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::SpriteResource;
+use crate::{ElapsedTime, SpriteResource};
 
 pub struct RenderUI {}
 
@@ -16,13 +18,13 @@ impl RenderUI {
 
     pub fn run(
         &self,
-        char_state: &CharState,
+        char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
         // Draw casting bar
-        match char_state {
+        match char_state.state() {
             CharState::CastingSkill(casting_info) => {
                 // for really short skills, don't render it
                 if casting_info
@@ -84,11 +86,20 @@ impl RenderUI {
         for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
-                let border_color = input
-                    .select_skill_target
-                    .filter(|it| it.0 == *skill_key)
-                    .map(|_it| [0.0, 1.0, 0.0, 1.0])
-                    .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+                let not_castable = char_state
+                    .skill_cast_allowed_at
+                    .get(&skill)
+                    .unwrap_or(&ElapsedTime(0.0))
+                    .is_later_than(system_vars.time);
+                let border_color = if not_castable {
+                    [0.7, 0.7, 0.7, 1.0] // grey
+                } else {
+                    input
+                        .select_skill_target
+                        .filter(|it| it.0 == *skill_key)
+                        .map(|_it| [0.0, 1.0, 0.0, 1.0])
+                        .unwrap_or([0.0, 0.0, 0.0, 1.0])
+                };
                 render_commands
                     .prepare_for_2d()
                     .screen_pos(x as f32, (y + outer_border) as f32)
@@ -106,7 +117,13 @@ impl RenderUI {
                     .prepare_for_2d()
                     .screen_pos(x as f32, icon_y)
                     .size2(single_icon_size as f32, single_icon_size as f32)
-                    .color(&[0.11, 0.25, 0.48, 1.0])
+                    .color(
+                        &(if not_castable {
+                            [0.7, 0.7, 0.7, 1.0] // grey if not castable
+                        } else {
+                            [0.11, 0.25, 0.48, 1.0]
+                        }),
+                    )
                     .add_rectangle_command(Layer2d::Layer0);
 
                 render_commands
@@ -131,8 +148,20 @@ impl RenderUI {
         // render targeting skill name
         if let Some((_skill_key, skill)) = input.select_skill_target {
             let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+            let not_castable = char_state
+                .skill_cast_allowed_at
+                .get(&skill)
+                .unwrap_or(&ElapsedTime(0.0))
+                .is_later_than(system_vars.time);
             render_commands
                 .prepare_for_2d()
+                .color(
+                    &(if not_castable {
+                        [0.7, 0.7, 0.7, 1.0]
+                    } else {
+                        [1.0, 1.0, 1.0, 1.0]
+                    }),
+                )
                 .screen_pos(
                     input.last_mouse_x as f32 - texture.width as f32 / 2.0,
                     input.last_mouse_y as f32 + 32.0,
@@ -145,6 +174,7 @@ impl RenderUI {
             &input.cursor_anim_descr,
             &system_vars.assets.sprites.cursors,
             &Vector2::new(input.last_mouse_x as f32, input.last_mouse_y as f32),
+            &input.cursor_color,
             render_commands,
         );
     }
@@ -155,6 +185,7 @@ fn render_action_2d(
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector2<f32>,
+    color: &[f32; 3],
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
     let idx = animated_sprite.action_index;
@@ -188,6 +219,7 @@ fn render_action_2d(
         render_commands
             .prepare_for_2d()
             .screen_pos(pos.x, pos.y)
+            .color_rgb(color)
             .add_sprite_command(&texture.texture, offset, layer.is_mirror, Layer2d::Layer9);
     }
 }

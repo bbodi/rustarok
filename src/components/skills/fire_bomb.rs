@@ -67,7 +67,7 @@ impl Status for FireBombStatus {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
             let area_isom = Isometry2::new(*char_pos, 0.0);
             system_vars.area_attacks.push(AreaAttackComponent {

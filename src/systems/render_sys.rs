@@ -13,7 +13,7 @@ use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::{VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2};
 use crate::video::{VertexAttribDefinition, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::{ElapsedTime, MapRenderData, PhysicsWorld, Shaders, SpriteResource};
+use crate::{ElapsedTime, MapRenderData, PhysicEngine, Shaders, SpriteResource};
 use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -68,13 +68,13 @@ impl RenderDesktopClientSystem {
         &self,
         self_id: Entity,
         self_team: Team,
-        char_state: &CharState,
+        char_state: &CharacterStateComponent,
         char_pos: &WorldCoords,
         camera: &CameraComponent,
         input: &mut HumanInputComponent, // mut: we have to store bounding rects of drawed entities :(
         render_commands: &mut RenderCommandCollectorComponent,
         physics_storage: &specs::ReadStorage<'a, PhysicsComponent>,
-        physics_world: &specs::ReadExpect<'a, PhysicsWorld>,
+        physics_world: &specs::ReadExpect<'a, PhysicEngine>,
         system_vars: &SystemVariables,
         char_state_storage: &specs::ReadStorage<'a, CharacterStateComponent>,
         entities: &specs::Entities<'a>,
@@ -89,19 +89,17 @@ impl RenderDesktopClientSystem {
             let _stopwatch = system_benchmark.start_measurement("render.draw_physics_coll");
             // Draw physics colliders
             for physics in (&physics_storage).join() {
-                let body = physics_world.rigid_body(physics.body_handle);
-                if body.is_none() {
-                    continue;
-                }
-                let pos = body.unwrap().position().translation.vector;
+                if let Some(body) = physics_world.bodies.rigid_body(physics.body_handle) {
+                    let pos = body.position().translation.vector;
 
-                render_commands
-                    .prepare_for_3d()
-                    .radius(physics.radius.get())
-                    .color(&[1.0, 0.0, 1.0, 1.0])
-                    .pos_2d(&pos)
-                    .y(0.05)
-                    .add_circle_command();
+                    render_commands
+                        .prepare_for_3d()
+                        .radius(physics.radius.get())
+                        .color(&[1.0, 0.0, 1.0, 1.0])
+                        .pos_2d(&pos)
+                        .y(0.05)
+                        .add_circle_command();
+                }
             }
         }
 
@@ -131,15 +129,25 @@ impl RenderDesktopClientSystem {
                     .add_circle_command();
 
                 if skill.get_skill_target_type() == SkillTargetType::Area {
+                    let is_castable = char_state
+                        .skill_cast_allowed_at
+                        .get(&skill)
+                        .unwrap_or(&ElapsedTime(0.0))
+                        .is_earlier_than(system_vars.time);
                     let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
                         char_pos,
                         &input.mouse_world_pos,
                         skill.get_casting_range(),
                     );
-                    skill.render_target_selection(&skill_3d_pos, &dir_vector, render_commands);
+                    skill.render_target_selection(
+                        is_castable,
+                        &skill_3d_pos,
+                        &dir_vector,
+                        render_commands,
+                    );
                 }
             } else {
-                if let CharState::CastingSkill(casting_info) = char_state {
+                if let CharState::CastingSkill(casting_info) = char_state.state() {
                     let skill = casting_info.skill;
                     skill.render_casting(&char_pos, &casting_info, system_vars, render_commands);
                 }
@@ -169,7 +177,7 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.str_effect");
             for (entity_id, str_effect) in (entities, str_effect_storage).join() {
-                if str_effect.die_at.has_passed(system_vars.time) {
+                if str_effect.die_at.is_earlier_than(system_vars.time) {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
                     RenderDesktopClientSystem::render_str(
@@ -227,6 +235,11 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
+                        let color = if self_team == char_state.team {
+                            &[0.0, 0.0, 1.0, 0.7]
+                        } else {
+                            &[1.0, 0.0, 0.0, 0.7]
+                        };
                         let body_pos_offset = render_single_layer_action(
                             system_vars.time,
                             &animated_sprite,
@@ -235,9 +248,9 @@ impl RenderDesktopClientSystem {
                             &pos,
                             [0, 0],
                             true,
-                            1.1,
+                            1.2,
                             is_dead,
-                            &[0.0, 0.0, 1.0, 0.4],
+                            color,
                             render_commands,
                         );
 
@@ -249,9 +262,9 @@ impl RenderDesktopClientSystem {
                             &pos,
                             body_pos_offset,
                             false,
-                            1.1,
+                            1.2,
                             is_dead,
-                            &[0.0, 0.0, 1.0, 0.5],
+                            color,
                             render_commands,
                         );
                     }
@@ -326,6 +339,11 @@ impl RenderDesktopClientSystem {
                         .filter(|it| *it == entity_id)
                         .is_some()
                     {
+                        let color = if self_team == char_state.team {
+                            &[0.0, 0.0, 1.0, 0.7]
+                        } else {
+                            &[1.0, 0.0, 0.0, 0.7]
+                        };
                         let _pos_offset = render_single_layer_action(
                             system_vars.time,
                             &animated_sprite,
@@ -334,9 +352,9 @@ impl RenderDesktopClientSystem {
                             &pos,
                             [0, 0],
                             true,
-                            1.1,
+                            1.2,
                             is_dead,
-                            &[0.0, 0.0, 1.0, 0.5],
+                            color,
                             render_commands,
                         );
                     }
@@ -397,7 +415,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
         specs::ReadStorage<'a, CameraComponent>,
-        specs::ReadExpect<'a, PhysicsWorld>,
+        specs::ReadExpect<'a, PhysicEngine>,
         specs::Write<'a, LazyUpdate>,
         specs::ReadStorage<'a, FlyingNumberComponent>,
         specs::WriteStorage<'a, RenderCommandCollectorComponent>,
@@ -444,7 +462,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             self.render_for_controller(
                 entity_id,
                 desktop_char.team,
-                desktop_char.state(),
+                &desktop_char,
                 &desktop_char.pos(),
                 camera,
                 &mut input,
@@ -473,12 +491,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 render_commands,
             );
 
-            self.render_ui_sys.run(
-                desktop_char.state(),
-                &input,
-                &mut render_commands,
-                &system_vars,
-            );
+            self.render_ui_sys
+                .run(&desktop_char, &input, &mut render_commands, &system_vars);
 
             // now the back buffer contains the rendered image for this client
             unsafe {
@@ -522,7 +536,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 self.render_for_controller(
                     entity_id,
                     desktop_char.team,
-                    desktop_char.state(),
+                    &desktop_char,
                     &desktop_char.pos(),
                     camera,
                     &mut input,
@@ -552,12 +566,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 render_commands,
             );
 
-            self.render_ui_sys.run(
-                desktop_char.state(),
-                &input,
-                &mut render_commands,
-                &system_vars,
-            );
+            self.render_ui_sys
+                .run(&desktop_char, &input, &mut render_commands, &system_vars);
         }
     }
 }
@@ -890,7 +900,7 @@ impl DamageRenderSystem {
                 render_commands,
             );
 
-            if number.die_at.has_passed(now) {
+            if number.die_at.is_earlier_than(now) {
                 updater.remove::<FlyingNumberComponent>(entity_id);
             }
         }
@@ -1035,9 +1045,9 @@ impl DamageRenderSystem {
         let size_mult = if desktop_entity_id == number.target_entity_id
             || desktop_entity_id == number.src_entity_id
         {
-            1.0
-        } else {
             0.5
+        } else {
+            0.3
         };
         let color = number.typ.color(
             desktop_entity_id == number.target_entity_id,
@@ -1092,7 +1102,7 @@ impl DamageRenderSystem {
         pos.y += 2.0
             + (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5 * speed)))
                 .sin()
-                * 5.0;
+                * 2.0;
         let size = (1.0 - perc * speed) * 1.0;
         return (size.max(0.0), pos);
     }

@@ -7,7 +7,7 @@ use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponen
 use crate::consts::{JobId, MonsterId};
 use crate::video::{DynamicVertexArray, GlTexture};
 use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
-use nphysics2d::object::ColliderHandle;
+use nphysics2d::object::{ColliderHandle, DefaultColliderHandle};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -85,17 +85,17 @@ pub struct SystemVariables {
 
 #[derive(Debug)]
 pub struct Collision {
-    pub character_coll_handle: ColliderHandle,
-    pub other_coll_handle: ColliderHandle,
+    pub character_coll_handle: DefaultColliderHandle,
+    pub other_coll_handle: DefaultColliderHandle,
 }
 
 #[derive(Debug)]
 pub struct CollisionsFromPrevFrame {
-    pub collisions: HashMap<(ColliderHandle, ColliderHandle), Collision>,
+    pub collisions: HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>,
 }
 
 impl CollisionsFromPrevFrame {
-    pub fn remove_collider_handle(&mut self, collider_handle: ColliderHandle) {
+    pub fn remove_collider_handle(&mut self, collider_handle: DefaultColliderHandle) {
         self.collisions.retain(|(coll_1, coll_2), _collision| {
             *coll_1 != collider_handle && *coll_2 != collider_handle
         });

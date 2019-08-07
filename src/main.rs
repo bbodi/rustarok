@@ -28,8 +28,10 @@ use imgui::{ImString, ImVec2};
 use log::LevelFilter;
 use nalgebra::{Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
-use ncollide2d::world::CollisionGroups;
-use nphysics2d::object::{BodyHandle, ColliderDesc};
+use nphysics2d::object::{
+    BodyHandle, BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultBodySet,
+    DefaultColliderHandle, DefaultColliderSet, RigidBodyDesc,
+};
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -99,10 +101,12 @@ use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::web_server::start_web_server;
+use ncollide2d::pipeline::CollisionGroups;
+use nphysics2d::force_generator::DefaultForceGeneratorSet;
+use nphysics2d::joint::DefaultJointConstraintSet;
+use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
 use serde::Deserialize;
 use std::str::FromStr;
-
-pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
@@ -149,9 +153,13 @@ pub enum MonsterActionIndex {
     Die = 32,
 }
 
-const STATIC_MODELS_COLLISION_GROUP: usize = 1;
-const LIVING_COLLISION_GROUP: usize = 2;
-const SKILL_AREA_COLLISION_GROUP: usize = 3;
+#[derive(Clone, Copy)]
+pub enum CollisionGroup {
+    StaticModel,
+    Player,
+    NonPlayer,
+    SkillArea,
+}
 
 pub struct Shaders {
     pub ground_shader: ShaderProgram,
@@ -194,9 +202,6 @@ impl PartialEq for ElapsedTime {
 impl Eq for ElapsedTime {}
 
 impl ElapsedTime {
-    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
-        self.0 > other.0
-    }
     pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
     }
@@ -227,12 +232,12 @@ impl ElapsedTime {
         self.0 = self.0.max(system_time.0 + seconds);
     }
 
-    pub fn has_passed(&self, system_time: ElapsedTime) -> bool {
+    pub fn is_earlier_than(&self, system_time: ElapsedTime) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn has_not_passed(&self, system_time: ElapsedTime) -> bool {
-        self.0 > system_time.0
+    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
+        self.0 > other.0
     }
 
     pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
@@ -771,7 +776,7 @@ fn main() {
                         &v2!(251, -213),
                         v2!(2, 3),
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -794,7 +799,7 @@ fn main() {
                         &v2!(255, -213),
                         v2!(2, 3),
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -819,7 +824,7 @@ fn main() {
                         &v2!(260, -213),
                         v2!(2, 3),
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -843,7 +848,7 @@ fn main() {
                         &v2!(265, -213),
                         v2!(2, 3),
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -867,7 +872,7 @@ fn main() {
                         &v2!(270, -213),
                         v2!(2, 3),
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -888,7 +893,7 @@ fn main() {
                         v2!(2, 3),
                         0.5,
                         desktop_client_entity,
-                        &mut ecs_world.write_resource::<PhysicsWorld>(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
             )
@@ -1059,33 +1064,44 @@ fn main() {
         }
         fps_counter += 1;
         ecs_world.write_resource::<SystemVariables>().tick += 1;
-        ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
+        ecs_world.write_resource::<SystemVariables>().dt.0 =
+            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
         ecs_world.write_resource::<SystemVariables>().time.0 +=
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
-        if next_minion_spawn.has_passed(now) {
+        if next_minion_spawn.is_earlier_than(now) {
             next_minion_spawn = now.add_seconds(2.0);
-            let team = match rand::thread_rng().gen::<usize>() % 2 {
-                0 => Team::Right,
-                _ => Team::Left,
-            };
-            let start_pos = if team == Team::Right {
-                MinionAiSystem::CHECKPOINTS[0]
-            } else {
-                MinionAiSystem::CHECKPOINTS[5]
-            };
-            let entity_id =
-                create_random_char(&mut ecs_world, p2!(start_pos[0], start_pos[1]), team);
-            let mut storage = ecs_world.write_storage();
-            storage
-                .insert(
-                    entity_id,
-                    MinionComponent {
-                        fountain_up: (rand::thread_rng().gen::<usize>() % 2) != 0,
-                    },
-                )
-                .unwrap();
+
+            {
+                let entity_id = create_random_char_minion(
+                    &mut ecs_world,
+                    p2!(
+                        MinionAiSystem::CHECKPOINTS[0][0],
+                        MinionAiSystem::CHECKPOINTS[0][1]
+                    ),
+                    Team::Right,
+                );
+                let mut storage = ecs_world.write_storage();
+                storage
+                    .insert(entity_id, MinionComponent { fountain_up: false })
+                    .unwrap();
+            }
+
+            {
+                let entity_id = create_random_char_minion(
+                    &mut ecs_world,
+                    p2!(
+                        MinionAiSystem::CHECKPOINTS[5][0],
+                        MinionAiSystem::CHECKPOINTS[5][1]
+                    ),
+                    Team::Left,
+                );
+                let mut storage = ecs_world.write_storage();
+                storage
+                    .insert(entity_id, MinionComponent { fountain_up: false })
+                    .unwrap();
+            }
         }
     }
 }
@@ -1385,7 +1401,7 @@ fn imgui_frame(
                     p3!(x, 0.5, -y)
                 };
                 let pos2d = p3_to_p2(&pos);
-                let entity_id = create_random_char(&mut ecs_world, pos2d, Team::Right);
+                let entity_id = create_random_char_minion(&mut ecs_world, pos2d, Team::Left);
 
                 other_players.push(entity_id);
             }
@@ -1394,25 +1410,23 @@ fn imgui_frame(
             let to_remove = (current_player_count - *player_count - current_user_count) as usize;
             let to_remove = to_remove.min(other_players.len());
             let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
-            let body_handles: Vec<BodyHandle> = {
+            {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                // remove rigid bodies from the physic simulation
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
                 entity_ids
                     .iter()
                     .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| {
+                    .for_each(|it| {
                         let phys_comp = it.unwrap();
                         ecs_world
                             .write_resource::<CollisionsFromPrevFrame>()
                             .remove_collider_handle(phys_comp.collider_handle);
-                        phys_comp.body_handle
-                    })
-                    .collect()
+                        physics_world.bodies.remove(phys_comp.body_handle);
+                    });
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
-            // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-            physics_world.remove_bodies(body_handles.as_slice());
         }
         // add monsters
         let current_monster_count = ecs_world
@@ -1455,39 +1469,39 @@ fn imgui_frame(
                     pos2d,
                     MonsterId::Baphomet,
                     rng.gen_range(1, 3),
-                    Team::Right,
+                    Team::Left,
+                    CollisionGroup::Player,
+                    &[CollisionGroup::NonPlayer],
                 );
                 other_monsters.push(entity_id);
             }
         } else if current_monster_count > *monster_count {
             let to_remove = (current_monster_count - *monster_count) as usize;
             let entity_ids: Vec<Entity> = other_monsters.drain(0..to_remove).collect();
-            let body_handles: Vec<BodyHandle> = {
+            {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                // remove rigid bodies from the physic simulation
                 entity_ids
                     .iter()
                     .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| {
+                    .for_each(|it| {
                         let phys_comp = it.unwrap();
                         ecs_world
                             .write_resource::<CollisionsFromPrevFrame>()
                             .remove_collider_handle(phys_comp.collider_handle);
-                        phys_comp.body_handle
-                    })
-                    .collect()
+                        physics_world.bodies.remove(phys_comp.body_handle);
+                    });
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
-            // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-            physics_world.remove_bodies(body_handles.as_slice());
         }
     }
     video.renderer.render(ui);
     return ret;
 }
 
-fn create_random_char(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> Entity {
+fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> Entity {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male
@@ -1506,9 +1520,15 @@ fn create_random_char(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> 
         sex,
         JobId::SWORDMAN,
         rng.gen::<usize>() % head_count,
-        rng.gen_range(1, 3),
+        1,
         team,
         CharType::Minion,
+        CollisionGroup::NonPlayer,
+        &[
+            CollisionGroup::NonPlayer,
+            CollisionGroup::Player,
+            CollisionGroup::StaticModel,
+        ],
     );
     entity_id
 }
@@ -1577,7 +1597,7 @@ fn load_map(
     map_name: &str,
     asset_loader: &AssetLoader,
     quick_loading: bool,
-) -> (MapRenderData, PhysicsWorld) {
+) -> (MapRenderData, PhysicEngine) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
@@ -1874,8 +1894,20 @@ fn load_map(
             },
         ],
     );
-    let mut physics_world = nphysics2d::world::World::new();
-    physics_world.set_contact_model(SignoriniModel::new());
+
+    let mut physics_world = PhysicEngine {
+        mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
+        geometrical_world: DefaultGeometricalWorld::new(),
+
+        bodies: DefaultBodySet::new(),
+        colliders: DefaultColliderSet::new(),
+        joint_constraints: DefaultJointConstraintSet::new(),
+        force_generators: DefaultForceGeneratorSet::new(),
+    };
+    physics_world
+        .mechanical_world
+        .solver
+        .set_contact_model(Box::new(SignoriniModel::new()));
     let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
         .rectangles
         .iter()
@@ -1890,16 +1922,20 @@ fn load_map(
             let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
             let v = rot * Vector3::new(x, 0.0, y);
             let v2 = Vector2::new(v.x, v.z);
+            let parent_rigid_body = RigidBodyDesc::new().build();
+            let parent_handle = physics_world.bodies.insert(parent_rigid_body);
             let cuboid = ColliderDesc::new(cuboid)
                 .density(10.0)
                 .translation(v2)
                 .collision_groups(
                     CollisionGroups::new()
-                        .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
-                        .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP]),
+                        .with_membership(&[CollisionGroup::StaticModel as usize])
+                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
                 )
-                .build(&mut physics_world);
-            (half_extents, cuboid.position_wrt_body().translation.vector)
+                .build(BodyPartHandle(parent_handle, 0));
+            let cuboid_pos = cuboid.position_wrt_body().translation.vector;
+            physics_world.colliders.insert(cuboid);
+            (half_extents, cuboid_pos)
         })
         .collect();
     let vertices: Vec<Point3<f32>> = colliders
@@ -2007,6 +2043,51 @@ fn load_map(
         },
         physics_world,
     )
+}
+
+pub struct PhysicEngine {
+    mechanical_world: DefaultMechanicalWorld<f32>,
+    geometrical_world: DefaultGeometricalWorld<f32>,
+
+    bodies: DefaultBodySet<f32>,
+    colliders: DefaultColliderSet<f32>,
+    joint_constraints: DefaultJointConstraintSet<f32>,
+    force_generators: DefaultForceGeneratorSet<f32>,
+}
+
+impl PhysicEngine {
+    pub fn step(&mut self, dt: f32) {
+        self.mechanical_world.set_timestep(dt);
+        self.mechanical_world.step(
+            &mut self.geometrical_world,
+            &mut self.bodies,
+            &mut self.colliders,
+            &mut self.joint_constraints,
+            &mut self.force_generators,
+        );
+    }
+
+    pub fn add_cuboid_skill(
+        &mut self,
+        pos: Vector2<f32>,
+        rot_angle_in_rad: f32,
+        extent: Vector2<f32>,
+    ) -> DefaultColliderHandle {
+        let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(extent / 2.0));
+        let body_handle = self.bodies.insert(RigidBodyDesc::new().build());
+        return self.colliders.insert(
+            ColliderDesc::new(cuboid)
+                .translation(pos)
+                .rotation(rot_angle_in_rad.to_degrees())
+                .collision_groups(
+                    CollisionGroups::new()
+                        .with_membership(&[CollisionGroup::SkillArea as usize])
+                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
+                )
+                .sensor(true)
+                .build(BodyPartHandle(body_handle, 0)),
+        );
+    }
 }
 
 #[derive(Eq, Hash, PartialEq, Debug)]

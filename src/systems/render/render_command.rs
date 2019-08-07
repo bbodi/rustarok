@@ -186,6 +186,13 @@ impl<'a> Common2DPropBuilder<'a> {
         self
     }
 
+    pub fn color_rgb(&mut self, color: &[f32; 3]) -> &'a mut Common2DPropBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
     pub fn screen_pos(&'a mut self, x: f32, y: f32) -> &'a mut Common2DPropBuilder {
         self.screen_pos = [x, y];
         self

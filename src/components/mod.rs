@@ -3,7 +3,7 @@ extern crate rand;
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::BodyHandle;
+use nphysics2d::object::{BodyHandle, DefaultBodyHandle};
 use specs::prelude::*;
 use std::sync::Mutex;
 use websocket::stream::sync::TcpStream;
@@ -79,11 +79,12 @@ impl FlyingNumberType {
                 if target_is_current_user {
                     [1.0, 0.0, 0.0]
                 } else if target_is_friend {
-                    [1.0, 0.55, 0.0]
+                    [1.0, 0.0, 0.0] // [1.0, 0.55, 0.0] orange
                 } else if damage_was_initiated_by_current_user {
                     [1.0, 1.0, 1.0]
                 } else {
-                    [0.73, 0.73, 0.73] // simple damage by other, greyish
+                    [1.0, 1.0, 1.0]
+                    //                    [0.73, 0.73, 0.73] // simple damage by other, greyish
                 }
             }
             FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
@@ -147,6 +148,6 @@ pub struct ApplyForceComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
     pub force: Vector2<f32>,
-    pub body_handle: BodyHandle,
+    pub body_handle: DefaultBodyHandle,
     pub duration: f32,
 }

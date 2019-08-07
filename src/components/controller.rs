@@ -157,6 +157,7 @@ pub struct HumanInputComponent {
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
+    pub cursor_color: [f32; 3],
     pub bounding_rect_2d: HashMap<Entity, SpriteBoundingRect>,
 }
 
@@ -189,6 +190,7 @@ impl HumanInputComponent {
             cell_below_cursor_walkable: false,
             mouse_world_pos: v2!(0, 0),
             bounding_rect_2d: HashMap::new(),
+            cursor_color: [1.0, 1.0, 1.0],
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),

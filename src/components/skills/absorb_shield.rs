@@ -77,7 +77,7 @@ impl Status for AbsorbStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             if self.absorbed_damage > 0 {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
@@ -90,7 +90,7 @@ impl Status for AbsorbStatus {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .has_passed(system_vars.time)
+                .is_earlier_than(system_vars.time)
             {
                 self.animation_started = system_vars.time.add_seconds(-1.9);
             }

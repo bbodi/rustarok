@@ -3,7 +3,7 @@ use specs::prelude::*;
 use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
-use crate::PhysicsWorld;
+use crate::PhysicEngine;
 
 pub struct SkillSystem;
 
@@ -14,7 +14,7 @@ impl<'a> specs::System<'a> for SkillSystem {
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::WriteExpect<'a, PhysicsWorld>,
+        specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteStorage<'a, SkillManifestationComponent>,
         specs::Write<'a, LazyUpdate>,
     );

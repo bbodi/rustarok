@@ -1,11 +1,11 @@
-use crate::components::char::{CharState, CharacterStateComponent};
+use crate::components::char::CharacterStateComponent;
 use crate::components::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
 };
 use crate::components::{AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::{ElapsedTime, PhysicsWorld};
+use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
 use rand::Rng;
@@ -67,7 +67,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, PhysicsWorld>,
+        specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
     );
@@ -120,7 +120,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         system_vars.apply_area_statuses.clear();
 
         for apply_force in &system_vars.pushes {
-            if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
+            if let Some(char_body) = physics_world.bodies.rigid_body_mut(apply_force.body_handle) {
                 let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
                 log::trace!("Try to apply push {:?}", apply_force);
                 if char_state.statuses.allow_push(apply_force) {
@@ -378,8 +378,8 @@ impl AttackCalculation {
                 char_comp
                     .cannot_control_until
                     .run_at_least_until_seconds(now, 0.1);
-                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
-                char_comp.hp -= dbg!(*val) as i32;
+                char_comp.set_receiving_damage();
+                char_comp.hp -= *val as i32;
             }
             AttackOutcome::Combo {
                 single_attack_damage: _,
@@ -389,8 +389,8 @@ impl AttackCalculation {
                 char_comp
                     .cannot_control_until
                     .run_at_least_until_seconds(now, 0.1);
-                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
-                char_comp.hp -= dbg!(*sum_damage) as i32;
+                char_comp.set_receiving_damage();
+                char_comp.hp -= *sum_damage as i32;
             }
             AttackOutcome::Poison(val) => {
                 char_comp.hp -= *val as i32;
@@ -399,7 +399,7 @@ impl AttackCalculation {
                 char_comp
                     .cannot_control_until
                     .run_at_least_until_seconds(now, 0.1);
-                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
+                char_comp.set_receiving_damage();
                 char_comp.hp -= *val as i32;
             }
             AttackOutcome::Block => {}

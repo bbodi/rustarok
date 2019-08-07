@@ -1,9 +1,11 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::skills::skill::{SkillManifestation, SkillManifestationComponent};
+use crate::components::skills::skill::{
+    SkillManifestation, SkillManifestationComponent, WorldCollisions,
+};
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
-use crate::{ElapsedTime, PhysicsWorld};
+use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::ColliderHandle;
 use specs::{Entity, LazyUpdate};
@@ -68,22 +70,22 @@ impl SkillManifestation for LightningManifest {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
+        _all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicsWorld,
+        _physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
         if self
             .created_at
             .add_seconds(12.0)
-            .has_passed(system_vars.time)
+            .is_earlier_than(system_vars.time)
         {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             updater.remove::<StrEffectComponent>(self.effect_id);
         } else {
-            if self.next_action_at.has_passed(system_vars.time) {
+            if self.next_action_at.is_earlier_than(system_vars.time) {
                 updater.remove::<StrEffectComponent>(self.effect_id);
                 let effect_comp = match self.action_count {
                     0 => StrEffectComponent {
@@ -150,7 +152,7 @@ impl SkillManifestation for LightningManifest {
                 self.next_action_at = system_vars.time.add_seconds(1.5);
                 self.next_damage_at = system_vars.time.add_seconds(1.0);
             }
-            if self.next_damage_at.has_passed(system_vars.time) {
+            if self.next_damage_at.is_earlier_than(system_vars.time) {
                 system_vars.area_attacks.push(AreaAttackComponent {
                     area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),

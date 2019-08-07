@@ -525,10 +525,10 @@ impl Status for PoisonStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.has_passed(system_vars.time) {
+            if self.next_damage_at.is_earlier_than(system_vars.time) {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,

@@ -78,7 +78,7 @@ impl Status for ArmorModifierStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
