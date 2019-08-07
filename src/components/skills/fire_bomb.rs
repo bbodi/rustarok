@@ -2,15 +2,17 @@ use crate::asset::SpriteResource;
 use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::WorldCoords;
 use crate::components::status::{
-    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusType, StatusUpdateResult,
+    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
+    StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Matrix4};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
@@ -45,14 +47,14 @@ impl Status for FireBombStatus {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
+        _job_id: JobId,
+        _head_index: usize,
+        _sex: Sex,
+        _sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
         None
     }
@@ -65,7 +67,7 @@ impl Status for FireBombStatus {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
             let area_isom = Isometry2::new(*char_pos, 0.0);
             system_vars.area_attacks.push(AreaAttackComponent {
@@ -102,30 +104,34 @@ impl Status for FireBombStatus {
         }
     }
 
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
+    }
+
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+        true
+    }
+
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
             "firewall",
             self.started,
             char_pos,
             system_vars,
-            view_matrix,
+            render_commands,
         );
-    }
-
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
-        true
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
+    }
+
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::AddTheNewStatus
     }
 }

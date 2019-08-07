@@ -6,17 +6,21 @@ use crate::components::status::{
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::consts::{JobId, MonsterId};
 use crate::video::{DynamicVertexArray, GlTexture};
-use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource, Tick};
-use nphysics2d::object::ColliderHandle;
+use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
+use nphysics2d::object::{ColliderHandle, DefaultColliderHandle};
 use std::collections::HashMap;
 use std::time::Instant;
 
 pub mod atk_calc;
+pub mod camera_system;
 pub mod char_state_sys;
-pub mod control_sys;
-pub mod input;
+pub mod input_sys;
+pub mod input_to_next_action;
+pub mod minion_ai_sys;
+pub mod next_action_applier_sys;
 pub mod phys;
 pub mod render;
+pub mod render_sys;
 pub mod skill_sys;
 pub mod ui;
 
@@ -52,19 +56,23 @@ pub struct Texts {
     pub plus: GlTexture,
 }
 
-pub struct SystemVariables {
+pub struct AssetResources {
     pub sprites: Sprites,
     pub shaders: Shaders,
-    pub tick: Tick,
+    pub texts: Texts,
+    pub skill_icons: HashMap<Skills, GlTexture>,
+    pub status_icons: HashMap<&'static str, GlTexture>,
+}
+
+pub struct SystemVariables {
+    pub assets: AssetResources,
+    pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
     /// extract from the struct?
     pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub map_render_data: MapRenderData,
-    pub texts: Texts,
-    pub skill_icons: HashMap<Skills, GlTexture>,
-    pub status_icons: HashMap<&'static str, GlTexture>,
     pub attacks: Vec<AttackComponent>,
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
@@ -77,22 +85,44 @@ pub struct SystemVariables {
 
 #[derive(Debug)]
 pub struct Collision {
-    pub character_coll_handle: ColliderHandle,
-    pub other_coll_handle: ColliderHandle,
+    pub character_coll_handle: DefaultColliderHandle,
+    pub other_coll_handle: DefaultColliderHandle,
 }
 
 #[derive(Debug)]
 pub struct CollisionsFromPrevFrame {
-    pub collisions: HashMap<(ColliderHandle, ColliderHandle), Collision>,
-    //    pub collisions: Vec<Collision>,
+    pub collisions: HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>,
 }
 
-pub struct SystemFrameDurations(pub HashMap<&'static str, u32>);
+impl CollisionsFromPrevFrame {
+    pub fn remove_collider_handle(&mut self, collider_handle: DefaultColliderHandle) {
+        self.collisions.retain(|(coll_1, coll_2), _collision| {
+            *coll_1 != collider_handle && *coll_2 != collider_handle
+        });
+    }
+}
+
+#[derive(Clone)]
+pub struct SystemFrameDurationsFrame {
+    pub min: u32,
+    pub max: u32,
+    pub avg: u32,
+}
+
+#[derive(Clone)]
+pub struct SystemFrameDurations(pub HashMap<&'static str, SystemFrameDurationsFrame>);
 
 impl SystemFrameDurations {
     pub fn system_finished(&mut self, started: Instant, name: &'static str) {
-        let duration = Instant::now().duration_since(started).as_millis() as u32;
-        self.0.insert(name, duration);
+        let duration = Instant::now().duration_since(started).as_micros() as u32;
+        let mut durs = self.0.entry(name).or_insert(SystemFrameDurationsFrame {
+            min: 100_000,
+            max: 0,
+            avg: 0,
+        });
+        durs.min = durs.min.min(duration);
+        durs.max = durs.max.max(duration);
+        durs.avg = (durs.avg + duration) / 2;
     }
 
     pub fn start_measurement(&mut self, name: &'static str) -> SystemStopwatch {

@@ -2,7 +2,7 @@ use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
 use crate::components::skills::skill::Skills;
 use crate::ElapsedTime;
-use nalgebra::{Matrix4, Point3, Vector2};
+use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use specs::Entity;
@@ -64,17 +64,15 @@ impl SkillKey {
     }
 }
 
-pub enum ControllerAction {
-    MoveTowardsMouse(ScreenCoords),
+pub enum PlayerIntention {
+    MoveTowardsMouse(WorldCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.
-    MoveOrAttackTo(ScreenCoords),
+    MoveTo(WorldCoords),
+    Attack(Entity),
     /// Move to the coordination, attack any enemy on the way.
-    AttackTo(ScreenCoords),
-    CastingSelectTarget(SkillKey, Skills),
-    CancelCastingSelectTarget,
+    AttackTowards(WorldCoords),
     /// bool = is self cast
-    Casting(Skills, bool),
-    LeftClick,
+    Casting(Skills, bool, WorldCoords, Option<Entity>),
 }
 
 #[derive(PartialEq, Eq)]
@@ -91,18 +89,60 @@ pub enum CastMode {
 
 #[derive(Component)]
 pub struct ControllerComponent {
+    pub next_action: Option<PlayerIntention>,
+    pub last_action: Option<PlayerIntention>,
+    //    pub char_entity_id: Entity,
+}
+
+#[derive(Component, Clone)]
+pub struct CameraComponent {
     pub view_matrix: Matrix4<f32>,
-    pub char_entity_id: Entity,
+    pub normal_matrix: Matrix3<f32>,
     pub camera: Camera,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl CameraComponent {
+    const YAW: f32 = 270.0;
+    const PITCH: f32 = -60.0;
+    pub fn new() -> CameraComponent {
+        let camera = Camera::new(Point3::new(0.0, 40.0, 0.0));
+        return CameraComponent {
+            view_matrix: Matrix4::identity(), // it is filled before every frame
+            normal_matrix: Matrix3::identity(), // it is filled before every frame
+            camera,
+            yaw: 0.0,
+            pitch: 0.0,
+        };
+    }
+
+    pub fn reset_y_and_angle(&mut self, projection: &Matrix4<f32>) {
+        self.pitch = CameraComponent::PITCH;
+        self.yaw = CameraComponent::YAW;
+        self.camera.set_y(40.0);
+        self.camera.rotate(self.pitch, self.yaw);
+        self.camera.update_visible_z_range(projection);
+    }
+}
+
+pub enum CameraMode {
+    Free,
+    FreeMoveButFixedAngle,
+    FollowChar,
+}
+
+#[derive(Component)]
+pub struct HumanInputComponent {
+    pub select_skill_target: Option<(SkillKey, Skills)>,
     pub inputs: Vec<sdl2::event::Event>,
-    pub next_action: Option<ControllerAction>,
-    pub last_action: Option<ControllerAction>,
     skills_for_keys: [Option<Skills>; 8],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
     keys_pressed_in_prev_frame: Vec<Scancode>,
-    pub camera_follows_char: bool,
+    pub mouse_wheel: i32,
+    pub camera_movement_mode: CameraMode,
     pub left_mouse_down: bool,
     pub right_mouse_down: bool,
     pub left_mouse_pressed: bool,
@@ -111,37 +151,31 @@ pub struct ControllerComponent {
     pub right_mouse_released: bool,
     pub last_mouse_x: u16,
     pub last_mouse_y: u16,
+    pub delta_mouse_x: i32,
+    pub delta_mouse_y: i32,
     pub mouse_world_pos: WorldCoords,
     pub entity_below_cursor: Option<Entity>,
     pub cell_below_cursor_walkable: bool,
-    pub yaw: f32,
-    pub pitch: f32,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
+    pub cursor_color: [f32; 3],
     pub bounding_rect_2d: HashMap<Entity, SpriteBoundingRect>,
 }
 
-impl Drop for ControllerComponent {
+impl Drop for HumanInputComponent {
     fn drop(&mut self) {
         log::info!("ControllerComponent DROPPED");
     }
 }
 
-impl ControllerComponent {
-    pub fn new(char: Entity, x: f32, z: f32, projection: &Matrix4<f32>) -> ControllerComponent {
-        let pitch = -60.0;
-        let yaw = 270.0;
-        let mut camera = Camera::new(Point3::new(x, 40.0, z));
-        camera.rotate(pitch, yaw);
-        camera.update_visible_z_range(projection);
-        ControllerComponent {
-            view_matrix: Matrix4::identity(), // it is filled before every frame
-            char_entity_id: char,
-            camera,
+impl HumanInputComponent {
+    pub fn new() -> HumanInputComponent {
+        HumanInputComponent {
+            select_skill_target: None,
             cast_mode: CastMode::Normal,
             inputs: vec![],
             skills_for_keys: Default::default(),
-            camera_follows_char: true,
-            keys: ControllerComponent::init_keystates(),
+            camera_movement_mode: CameraMode::FollowChar,
+            keys: HumanInputComponent::init_keystates(),
             keys_released_in_prev_frame: vec![],
             keys_pressed_in_prev_frame: vec![],
             left_mouse_down: false,
@@ -152,14 +186,11 @@ impl ControllerComponent {
             right_mouse_released: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
-            yaw,
-            pitch,
-            next_action: None,
-            last_action: None,
             entity_below_cursor: None,
             cell_below_cursor_walkable: false,
             mouse_world_pos: v2!(0, 0),
             bounding_rect_2d: HashMap::new(),
+            cursor_color: [1.0, 1.0, 1.0],
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
@@ -168,6 +199,9 @@ impl ControllerComponent {
                 direction: 0,
                 fps_multiplier: 1.0,
             },
+            mouse_wheel: 0,
+            delta_mouse_x: 0,
+            delta_mouse_y: 0,
         }
     }
 
@@ -189,17 +223,6 @@ impl ControllerComponent {
             entity_below_cursor
         };
         self.bounding_rect_2d.clear();
-    }
-
-    pub fn is_selecting_target(&self) -> Option<(SkillKey, Skills)> {
-        match self.next_action {
-            Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
-            None /*there is no new action*/ => match self.last_action {
-                Some(ControllerAction::CastingSelectTarget(skill_key, skill)) => Some((skill_key, skill)),
-                _ => None,
-            },
-            _ => None
-        }
     }
 
     pub fn get_skill_for_key(&self, skill_key: SkillKey) -> Option<Skills> {

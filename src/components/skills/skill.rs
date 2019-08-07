@@ -10,32 +10,39 @@ use crate::components::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
 };
-use crate::systems::render::RenderDesktopClientSystem;
-use crate::systems::{Collision, SystemVariables};
-use crate::video::draw_lines_inefficiently;
-use crate::{ElapsedTime, PhysicsWorld, SKILL_AREA_COLLISION_GROUP, STATIC_MODELS_COLLISION_GROUP};
-use nalgebra::{Isometry2, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
+use crate::systems::{AssetResources, Collision, SystemVariables};
+use crate::{ElapsedTime, PhysicEngine};
+use nalgebra::{Isometry2, Vector2, Vector3};
+use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
-use ncollide2d::world::CollisionGroups;
-use nphysics2d::object::{ColliderDesc, ColliderHandle};
+use nphysics2d::object::{ColliderDesc, ColliderHandle, DefaultColliderHandle};
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use strum_macros::EnumIter;
 
+pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
+
 pub trait SkillManifestation {
     fn update(
         &mut self,
         entity_id: Entity,
-        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
+        all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicsWorld,
+        physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     );
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>);
+    fn render(
+        &self,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    );
 }
 
 #[storage(HashMapStorage)]
@@ -59,11 +66,11 @@ impl SkillManifestationComponent {
     pub fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
+        all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicsWorld,
+        physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
         let mut skill = self.skill.lock().unwrap();
@@ -78,9 +85,14 @@ impl SkillManifestationComponent {
         );
     }
 
-    pub fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
+    pub fn render(
+        &self,
+        now: ElapsedTime,
+        assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
         let skill = self.skill.lock().unwrap();
-        skill.render(system_vars, view_matrix);
+        skill.render(now, assets, render_commands);
     }
 }
 
@@ -140,80 +152,32 @@ impl Skills {
     }
 
     pub fn render_casting_box(
+        is_castable: bool,
         casting_area_size: &Vector2<f32>,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
-        let half = casting_area_size / 2.0;
-        let bottom_left = v2!(-half.x, -half.y);
-        let top_left = v2!(-half.x, half.y);
-        let top_right = v2!(half.x, half.y);
-        let bottom_right = v2!(half.x, -half.y);
-        // rotate
-        let rot_matrix = Matrix4::<f32>::identity();
         let angle = char_to_skill_dir.angle(&Vector2::y());
         let angle = if char_to_skill_dir.x > 0.0 {
             angle
         } else {
             -angle
         };
-        let rotation =
-            Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), angle)
-                .to_homogeneous();
-        let rot_matrix = rot_matrix * rotation;
-
-        let bottom_left = rot_matrix.transform_point(&p3!(bottom_left.x, 1, bottom_left.y));
-        let top_left = rot_matrix.transform_point(&p3!(top_left.x, 1, top_left.y));
-        let top_right = rot_matrix.transform_point(&p3!(top_right.x, 1, top_right.y));
-        let bottom_right = rot_matrix.transform_point(&p3!(bottom_right.x, 1, bottom_right.y));
-
         let skill_pos = v2_to_v3(skill_pos);
-        draw_lines_inefficiently(
-            &system_vars.shaders.trimesh_shader,
-            &system_vars.matrices.projection,
-            view_matrix,
-            &[
-                skill_pos + bottom_left.coords,
-                skill_pos + top_left.coords,
-                skill_pos + top_right.coords,
-                skill_pos + bottom_right.coords,
-            ],
-            &[0.0, 1.0, 0.0, 1.0],
-        );
-    }
 
-    pub fn render_casting_box2(
-        pos: &Vector2<f32>,
-        half: &Vector2<f32>,
-        rot_angle_in_rad: f32,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
-    ) {
-        let rot_matrix = Matrix4::<f32>::identity();
-        let rotation = Rotation3::from_axis_angle(
-            &nalgebra::Unit::new_normalize(Vector3::y()),
-            rot_angle_in_rad,
-        )
-        .to_homogeneous();
-        let rot_matrix = rot_matrix * rotation;
-
-        let self_pos_3d = v2_to_v3(&pos);
-        let bottom_left =
-            self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, -half.y)).coords;
-        let top_left = self_pos_3d + rot_matrix.transform_point(&p3!(-half.x, 1, half.y)).coords;
-        let top_right = self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, half.y)).coords;
-        let bottom_right =
-            self_pos_3d + rot_matrix.transform_point(&p3!(half.x, 1, -half.y)).coords;
-
-        draw_lines_inefficiently(
-            &system_vars.shaders.trimesh_shader,
-            &system_vars.matrices.projection,
-            view_matrix,
-            &[bottom_left, top_left, top_right, bottom_right],
-            &[0.0, 1.0, 0.0, 1.0],
-        );
+        render_commands
+            .prepare_for_3d()
+            .pos(&skill_pos)
+            .rotation_rad(Vector3::y(), angle)
+            .color(
+                &(if is_castable {
+                    [0.0, 1.0, 0.0, 1.0]
+                } else {
+                    [0.7, 0.7, 0.7, 1.0]
+                }),
+            )
+            .add_rectangle_command(casting_area_size)
     }
 }
 
@@ -237,7 +201,7 @@ impl Skills {
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<Entity>,
-        physics_world: &mut PhysicsWorld,
+        physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
@@ -370,10 +334,10 @@ impl Skills {
 
     pub fn get_casting_time(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
         let t = match self {
-            Skills::FireWall => 0.3,
-            Skills::BrutalTestSkill => 1.0,
-            Skills::Lightning => 0.7,
-            Skills::Heal => 0.3,
+            Skills::FireWall => 0.0,
+            Skills::BrutalTestSkill => 0.0,
+            Skills::Lightning => 0.0,
+            Skills::Heal => 0.0,
             Skills::Mounting => {
                 if char_state.statuses.is_mounted() {
                     0.0
@@ -381,10 +345,31 @@ impl Skills {
                     2.0
                 }
             }
-            Skills::Poison => 0.5,
-            Skills::Cure => 0.5,
-            Skills::FireBomb => 0.5,
-            Skills::AbsorbShield => 0.1,
+            Skills::Poison => 0.0,
+            Skills::Cure => 0.0,
+            Skills::FireBomb => 0.0,
+            Skills::AbsorbShield => 0.0,
+        };
+        return ElapsedTime(t);
+    }
+
+    pub fn get_cast_delay(&self, char_state: &CharacterStateComponent) -> ElapsedTime {
+        let t = match self {
+            Skills::FireWall => 3.0,
+            Skills::BrutalTestSkill => 3.0,
+            Skills::Lightning => 3.0,
+            Skills::Heal => 1.0,
+            Skills::Mounting => {
+                if char_state.statuses.is_mounted() {
+                    0.0
+                } else {
+                    4.0
+                }
+            }
+            Skills::Poison => 2.0,
+            Skills::Cure => 2.0,
+            Skills::FireBomb => 2.0,
+            Skills::AbsorbShield => 2.0,
         };
         return ElapsedTime(t);
     }
@@ -421,8 +406,8 @@ impl Skills {
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
             _ => {
@@ -431,21 +416,21 @@ impl Skills {
                     casting_state.cast_started,
                     char_pos,
                     system_vars,
-                    view_matrix,
+                    render_commands,
                 );
                 if let Some(target_area_pos) = casting_state.target_area_pos {
                     self.render_target_selection(
+                        true,
                         &target_area_pos,
                         &casting_state.char_to_skill_dir_when_casted,
-                        system_vars,
-                        view_matrix,
+                        render_commands,
                     );
                 }
             }
         }
     }
 
-    pub fn is_casting_allowed(
+    pub fn is_casting_allowed_based_on_target(
         &self,
         caster_id: Entity,
         target_entity: Option<Entity>,
@@ -473,36 +458,35 @@ impl Skills {
 
     pub fn render_target_selection(
         &self,
+        is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        system_vars: &SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         match self {
             Skills::FireWall => {
                 Skills::render_casting_box(
+                    is_castable,
                     &v2!(3.0, 1.0),
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::BrutalTestSkill => {
                 Skills::render_casting_box(
+                    is_castable,
                     &v2!(10.0, 10.0),
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::Lightning => {
                 LightningSkill::render_target_selection(
                     skill_pos,
                     char_to_skill_dir,
-                    system_vars,
-                    view_matrix,
+                    render_commands,
                 );
             }
             Skills::Heal => {}
@@ -517,26 +501,28 @@ impl Skills {
 
 pub struct PushBackWallSkill {
     pub caster_entity_id: Entity,
-    pub collider_handle: ColliderHandle,
+    pub collider_handle: DefaultColliderHandle,
     pub effect_ids: Vec<Entity>,
-    pub half_extents: Vector2<f32>,
+    pub extents: Vector2<f32>,
     pub pos: Vector2<f32>,
     pub rot_angle_in_rad: f32,
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
+    cannot_damage_until: HashMap<Entity, ElapsedTime>,
 }
 
 impl PushBackWallSkill {
+    const DAMAGE_DURATION_SECONDS: f32 = 1.0;
+
     pub fn new(
         caster_entity_id: Entity,
-        physics_world: &mut PhysicsWorld,
+        physics_world: &mut PhysicEngine,
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> PushBackWallSkill {
-        let half_extents = v2!(1.5, 0.5);
         let effect_ids = [
             skill_center + rotate_vec2(rot_angle_in_rad, &v2!(-1.0, 0.0)),
             *skill_center,
@@ -557,18 +543,9 @@ impl PushBackWallSkill {
         })
         .collect();
 
-        let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
-        let collider_handle = ColliderDesc::new(cuboid)
-            .translation(*skill_center)
-            .rotation(rot_angle_in_rad.to_degrees())
-            .collision_groups(
-                CollisionGroups::new()
-                    .with_membership(&[SKILL_AREA_COLLISION_GROUP])
-                    .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP]),
-            )
-            .sensor(true)
-            .build(physics_world)
-            .handle();
+        let extents = v2!(3.0, 1.0);
+        let collider_handle =
+            physics_world.add_cuboid_skill(*skill_center, rot_angle_in_rad, extents);
 
         PushBackWallSkill {
             caster_entity_id,
@@ -576,9 +553,10 @@ impl PushBackWallSkill {
             collider_handle,
             rot_angle_in_rad,
             pos: *skill_center,
-            half_extents,
+            extents,
             created_at: system_time.clone(),
             die_at: system_time.add_seconds(2.0),
+            cannot_damage_until: HashMap::new(),
         }
     }
 }
@@ -587,15 +565,17 @@ impl SkillManifestation for PushBackWallSkill {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
+        all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicsWorld,
+        physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        if self.die_at.has_passed(system_vars.time) {
-            physics_world.remove_colliders(&[self.collider_handle]);
+        let now = system_vars.time;
+        let self_collider_handle = self.collider_handle;
+        if self.die_at.is_earlier_than(now) {
+            physics_world.colliders.remove(self_collider_handle);
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             for effect_id in &self.effect_ids {
                 updater.remove::<StrEffectComponent>(*effect_id);
@@ -604,17 +584,22 @@ impl SkillManifestation for PushBackWallSkill {
             // TODO: wouldn't it be better to use the area push functionality?
             let my_collisions = all_collisions_in_world
                 .iter()
-                .filter(|(_key, coll)| coll.other_coll_handle == self.collider_handle);
+                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
             for (_key, coll) in my_collisions {
-                if let Some(char_body_handle) = physics_world
-                    .collider(coll.character_coll_handle)
-                    .map(|it| it.body())
+                if let Some(char_collider) = physics_world.colliders.get(coll.character_coll_handle)
                 {
-                    let char_body = physics_world.rigid_body_mut(char_body_handle).unwrap();
-                    let char_entity_id = *char_body
+                    let char_entity_id = *char_collider
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
+                    if !self
+                        .cannot_damage_until
+                        .get(&char_entity_id)
+                        .unwrap_or(&now)
+                        .is_earlier_than(now)
+                    {
+                        continue;
+                    }
                     if let Some(char_state) = char_storage.get(char_entity_id) {
                         let push_dir = self.pos - char_state.pos();
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
@@ -632,23 +617,31 @@ impl SkillManifestation for PushBackWallSkill {
                             src_entity: self.caster_entity_id,
                             dst_entity: char_entity_id,
                             force: push_dir * 20.0,
-                            body_handle: char_body_handle,
-                            duration: 1.0,
+                            body_handle: char_collider.body(),
+                            duration: PushBackWallSkill::DAMAGE_DURATION_SECONDS,
                         });
+                        self.cannot_damage_until.insert(
+                            char_entity_id,
+                            now.add_seconds(PushBackWallSkill::DAMAGE_DURATION_SECONDS),
+                        );
                     }
                 }
             }
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
-        Skills::render_casting_box2(
-            &self.pos,
-            &self.half_extents,
-            self.rot_angle_in_rad,
-            &system_vars,
-            view_matrix,
-        );
+    fn render(
+        &self,
+        _now: ElapsedTime,
+        _assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(&(self.extents));
     }
 }
 
@@ -674,32 +667,35 @@ impl BrutalSkillManifest {
     ) -> BrutalSkillManifest {
         let half_extents = v2!(5.0, 5.0);
 
-        //        let effect_ids = (0..11*11).map(|i| {
-        //            let x = (-5.0 + (i%10) as f32);
-        //            let y = (-5.0 + (i/10) as f32);
-        //            skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
-        //        }).map(|effect_coords| {
-        //            let effect_comp = StrEffectComponent {
-        //                effect: "firewall".to_owned(),
-        //                pos: Point2::new(effect_coords.x, effect_coords.y),
-        //                start_time: system_time,
-        //                die_at: system_time.add_seconds(3.0),
-        //                duration: ElapsedTime(3.0),
-        //            };
-        //            let effect_entity = entities.create();
-        //            updater.insert(effect_entity, effect_comp);
-        //            effect_entity
-        //        }).collect();
-        let effect_comp = StrEffectComponent {
-            effect: "StrEffect::LordOfVermilion".to_owned(),
-            pos: *skill_center,
-            start_time: system_time,
-            die_at: system_time.add_seconds(3.0),
-            duration: ElapsedTime(3.0),
-        };
-        let effect_entity = entities.create();
-        updater.insert(effect_entity, effect_comp);
-        let effect_ids = vec![effect_entity];
+        let effect_ids = (0..11 * 11)
+            .map(|i| {
+                let x = -5.0 + (i % 10) as f32;
+                let y = -5.0 + (i / 10) as f32;
+                skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, y))
+            })
+            .map(|effect_coords| {
+                let effect_comp = StrEffectComponent {
+                    effect: "firewall".to_owned(),
+                    pos: effect_coords,
+                    start_time: system_time,
+                    die_at: system_time.add_seconds(3.0),
+                    duration: ElapsedTime(3.0),
+                };
+                let effect_entity = entities.create();
+                updater.insert(effect_entity, effect_comp);
+                effect_entity
+            })
+            .collect();
+        //        let effect_comp = StrEffectComponent {
+        //            effect: "StrEffect::LordOfVermilion".to_owned(),
+        //            pos: *skill_center,
+        //            start_time: system_time,
+        //            die_at: system_time.add_seconds(3.0),
+        //            duration: ElapsedTime(3.0),
+        //        };
+        //        let effect_entity = entities.create();
+        //        updater.insert(effect_entity, effect_comp);
+        //        let effect_ids = vec![effect_entity];
         BrutalSkillManifest {
             caster_entity_id,
             effect_ids,
@@ -717,20 +713,20 @@ impl SkillManifestation for BrutalSkillManifest {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        _all_collisions_in_world: &HashMap<(ColliderHandle, ColliderHandle), Collision>,
+        _all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &specs::ReadStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicsWorld,
+        _physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
-        if self.die_at.has_passed(system_vars.time) {
+        if self.die_at.is_earlier_than(system_vars.time) {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             for effect_id in &self.effect_ids {
                 updater.remove::<StrEffectComponent>(*effect_id);
             }
         } else {
-            if self.next_damage_at.has_not_passed(system_vars.time) {
+            if self.next_damage_at.is_later_than(system_vars.time) {
                 return;
             }
             self.next_damage_at = system_vars.time.add_seconds(0.5);
@@ -743,13 +739,17 @@ impl SkillManifestation for BrutalSkillManifest {
         }
     }
 
-    fn render(&self, system_vars: &SystemVariables, view_matrix: &Matrix4<f32>) {
-        Skills::render_casting_box2(
-            &self.pos,
-            &self.half_extents,
-            self.rot_angle_in_rad,
-            &system_vars,
-            view_matrix,
-        );
+    fn render(
+        &self,
+        _now: ElapsedTime,
+        _assets: &AssetResources,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        render_commands
+            .prepare_for_3d()
+            .pos_2d(&self.pos)
+            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .color(&[0.0, 1.0, 0.0, 1.0])
+            .add_rectangle_command(&(self.half_extents * 2.0));
     }
 }

@@ -7,6 +7,7 @@ uniform mat4 model;
 uniform mat4 projection;
 uniform vec2 size;
 uniform vec2 offset;
+uniform float z;
 
 
 out vec2 tex_coord;
@@ -16,6 +17,6 @@ void main() {
     pos.x += offset.x;
     pos.y += offset.y;
 
-    gl_Position = projection * model * vec4(pos.xy, 0.0, 1.0);
+    gl_Position = projection * model * vec4(pos.xy, z, 1.0);
     tex_coord = aTexCoord;
 }

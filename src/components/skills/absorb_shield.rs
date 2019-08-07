@@ -1,14 +1,14 @@
 use crate::asset::SpriteResource;
 use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::WorldCoords;
-use crate::components::status::{Status, StatusType, StatusUpdateResult};
+use crate::components::status::{Status, StatusStackingResult, StatusType, StatusUpdateResult};
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::Matrix4;
 use specs::{Entity, LazyUpdate};
 
 #[derive(Clone)]
@@ -77,7 +77,7 @@ impl Status for AbsorbStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             if self.absorbed_damage > 0 {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
@@ -90,7 +90,7 @@ impl Status for AbsorbStatus {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .has_passed(system_vars.time)
+                .is_earlier_than(system_vars.time)
             {
                 self.animation_started = system_vars.time.add_seconds(-1.9);
             }
@@ -98,30 +98,18 @@ impl Status for AbsorbStatus {
         }
     }
 
-    fn render(
-        &self,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
-    ) {
-        RenderDesktopClientSystem::render_str(
-            "ramadan",
-            self.animation_started,
-            char_pos,
-            system_vars,
-            view_matrix,
-        );
-    }
-
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         match outcome {
             AttackOutcome::Damage(value)
             | AttackOutcome::Poison(value)
+            | AttackOutcome::Combo {
+                sum_damage: value, ..
+            }
             | AttackOutcome::Crit(value) => {
                 self.absorbed_damage += value;
                 AttackOutcome::Absorb
             }
-            _ => outcome,
+            AttackOutcome::Heal(_) | AttackOutcome::Block | AttackOutcome::Absorb => outcome,
         }
     }
 
@@ -129,7 +117,35 @@ impl Status for AbsorbStatus {
         false
     }
 
+    fn render(
+        &self,
+        char_pos: &WorldCoords,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+        RenderDesktopClientSystem::render_str(
+            "ramadan",
+            self.animation_started,
+            char_pos,
+            system_vars,
+            render_commands,
+        );
+    }
+
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
+    }
+
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+        // I think it should be overwritten only when the caster_entity_id is the same
+        // otherwise other players should get the healed credits for their armors
+        //        let other_absorb = unsafe { Statuses::hack_cast::<AbsorbStatus>(&other) };
+        //        if other_absorb.until.is_later_than(self.until) {
+        //            self.until = other_absorb.until;
+        //            self.started = other_absorb.started;
+        //            self.caster_entity_id = other_absorb.caster_entity_id;
+        //            self.animation_started = other_absorb.animation_started;
+        //        }
+        StatusStackingResult::AddTheNewStatus
     }
 }

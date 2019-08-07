@@ -1,7 +1,7 @@
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
-use nalgebra::{Matrix3, Matrix4, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Matrix3, Matrix4};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
@@ -147,81 +147,6 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
     mat
 }
 
-pub fn draw_lines_inefficiently2(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    points: &[Point3<f32>],
-    color: &[f32; 4],
-) {
-    let points: Vec<Vector3<f32>> = points.iter().map(|&p| p.coords).collect();
-    draw_lines_inefficiently(trimesh_shader, projection, view, points.as_slice(), color);
-}
-
-pub fn draw_lines_inefficiently(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    points: &[Vector3<f32>],
-    color: &[f32; 4],
-) {
-    let shader = trimesh_shader.gl_use();
-    shader.set_mat4("projection", &projection);
-    shader.set_mat4("view", view);
-    shader.set_vec4("color", color);
-    shader.set_mat4("model", &Matrix4::identity());
-    VertexArray::new(
-        gl::LINE_LOOP,
-        points,
-        points.len(),
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    )
-    .bind()
-    .draw();
-}
-
-pub fn draw_circle_inefficiently(
-    trimesh_shader: &ShaderProgram,
-    projection: &Matrix4<f32>,
-    view: &Matrix4<f32>,
-    center: &Vector2<f32>,
-    y: f32,
-    r: f32,
-    color: &[f32; 4],
-) {
-    let shader = trimesh_shader.gl_use();
-    shader.set_mat4("projection", &projection);
-    shader.set_mat4("view", view);
-    shader.set_vec4("color", color);
-    let mut matrix = Matrix4::identity();
-    let center = Vector3::new(center.x, y, center.y);
-    matrix.prepend_translation_mut(&center);
-    let rotation = Rotation3::from_axis_angle(
-        &nalgebra::Unit::new_normalize(Vector3::x()),
-        std::f32::consts::FRAC_PI_2,
-    )
-    .to_homogeneous();
-    matrix = matrix * rotation;
-    shader.set_mat4("model", &matrix);
-    let capsule_mesh = ncollide2d::procedural::circle(&(r * 2.0), 32);
-
-    let coords = capsule_mesh.coords();
-    VertexArray::new(
-        gl::LINE_LOOP,
-        coords,
-        coords.len(),
-        vec![VertexAttribDefinition {
-            number_of_components: 2,
-            offset_of_first_element: 0,
-        }],
-    )
-    .bind()
-    .draw();
-}
-
 #[derive(Hash, Eq, PartialEq, Debug)]
 struct GlTextureContext(gl::types::GLuint);
 
@@ -347,6 +272,7 @@ impl GlTexture {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct VertexAttribDefinition {
     pub number_of_components: usize,
     pub offset_of_first_element: usize,
@@ -384,147 +310,24 @@ impl<'a> Drop for VertexArrayBind<'a> {
     }
 }
 
-pub struct IndexedVertexArray {
+#[derive(Debug, Clone)]
+struct VertexArrayResource {
     buffer_id: gl::types::GLuint,
     vertex_array_id: gl::types::GLuint,
-    index_vbo: gl::types::GLuint,
-    vertex_count: usize,
-    stride: gl::types::GLint,
-    vertex_attrib_pointer_defs: Vec<VertexAttribDefinition>,
-    draw_mode: u32,
 }
 
-pub struct IndexedVertexArrayBind<'a> {
-    vertex_array: &'a IndexedVertexArray,
-}
-
-impl<'a> IndexedVertexArrayBind<'a> {
-    pub fn draw(&self) {
-        unsafe {
-            gl::DrawElements(
-                self.vertex_array.draw_mode,           // mode
-                self.vertex_array.vertex_count as i32, // count
-                gl::UNSIGNED_INT,                      // type
-                std::ptr::null(),                      // element array buffer offset
-            );
-        }
-    }
-}
-
-impl IndexedVertexArray {
-    pub fn vertex_count(&self) -> usize {
-        self.vertex_count
-    }
-
-    pub fn bind(&self) -> IndexedVertexArrayBind {
-        unsafe {
-            gl::BindVertexArray(self.vertex_array_id);
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer_id);
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.index_vbo);
-
-            for (i, def) in self.vertex_attrib_pointer_defs.iter().enumerate() {
-                gl::EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
-                gl::VertexAttribPointer(
-                    i as u32, // index of the generic vertex attribute ("layout (location = 0)")
-                    def.number_of_components as i32,
-                    gl::FLOAT,   // data type
-                    gl::FALSE,   // normalized (int-to-float conversion)
-                    self.stride, // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
-                        as *const gl::types::GLvoid,
-                );
-            }
-
-            IndexedVertexArrayBind {
-                vertex_array: &self,
-            }
-        }
-    }
-
-    pub fn new<T>(
-        draw_mode: u32,
-        vertices: &[T],
-        vertex_count: usize,
-        indices: &[u32],
-        definitions: Vec<VertexAttribDefinition>,
-    ) -> IndexedVertexArray {
-        let mut vbo: gl::types::GLuint = 0;
-        unsafe {
-            gl::GenBuffers(1, &mut vbo);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-            gl::BufferData(
-                gl::ARRAY_BUFFER,                                                     // target
-                (vertices.len() * std::mem::size_of::<T>()) as gl::types::GLsizeiptr, // size of data in bytes
-                vertices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                gl::STATIC_DRAW,                               // usage
-            );
-        }
-        let mut vao: gl::types::GLuint = 0;
-        let stride = (std::mem::size_of::<T>()) as gl::types::GLint;
-        unsafe {
-            gl::GenVertexArrays(1, &mut vao);
-            gl::BindVertexArray(vao);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-
-            for (i, def) in definitions.iter().enumerate() {
-                gl::EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
-                gl::VertexAttribPointer(
-                    i as u32, // index of the generic vertex attribute ("layout (location = 0)")
-                    def.number_of_components as i32,
-                    gl::FLOAT, // data type
-                    gl::FALSE, // normalized (int-to-float conversion)
-                    stride,    // stride (byte offset between consecutive attributes)
-                    (std::mem::size_of::<f32>() * def.offset_of_first_element)
-                        as *const gl::types::GLvoid,
-                );
-            }
-        }
-        let index_vbo = {
-            let mut index_vbo: gl::types::GLuint = 0;
-            unsafe {
-                gl::GenBuffers(1, &mut index_vbo);
-                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_vbo);
-                gl::BufferData(
-                    gl::ELEMENT_ARRAY_BUFFER, // target
-                    (indices.len() * std::mem::size_of::<u32>()) as gl::types::GLsizeiptr, // size of data in bytes
-                    indices.as_ptr() as *const gl::types::GLvoid, // pointer to data
-                    gl::STATIC_DRAW,                              // usage
-                );
-            }
-            index_vbo
-        };
-
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
-            gl::BindVertexArray(0);
-        }
-
-        IndexedVertexArray {
-            draw_mode,
-            buffer_id: vbo,
-            vertex_array_id: vao,
-            index_vbo,
-            vertex_count,
-            stride,
-            vertex_attrib_pointer_defs: definitions,
-        }
-    }
-}
-
-impl Drop for IndexedVertexArray {
+impl Drop for VertexArrayResource {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &self.buffer_id);
-            gl::DeleteBuffers(1, &self.index_vbo);
             gl::DeleteVertexArrays(1, &self.vertex_array_id);
         }
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct VertexArray {
-    buffer_id: gl::types::GLuint,
-    vertex_array_id: gl::types::GLuint,
+    buffers: Arc<VertexArrayResource>,
     vertex_count: usize,
     stride: gl::types::GLint,
     vertex_attrib_pointer_defs: Vec<VertexAttribDefinition>,
@@ -538,8 +341,8 @@ impl VertexArray {
 
     pub fn bind(&self) -> VertexArrayBind {
         unsafe {
-            gl::BindVertexArray(self.vertex_array_id);
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffer_id);
+            gl::BindVertexArray(self.buffers.vertex_array_id);
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.buffers.buffer_id);
 
             for (i, def) in self.vertex_attrib_pointer_defs.iter().enumerate() {
                 gl::EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
@@ -605,20 +408,13 @@ impl VertexArray {
 
         VertexArray {
             draw_mode,
-            buffer_id: vbo,
-            vertex_array_id: vao,
+            buffers: Arc::new(VertexArrayResource {
+                buffer_id: vbo,
+                vertex_array_id: vao,
+            }),
             vertex_count,
             stride,
             vertex_attrib_pointer_defs: definitions,
-        }
-    }
-}
-
-impl Drop for VertexArray {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteBuffers(1, &self.buffer_id);
-            gl::DeleteVertexArrays(1, &self.vertex_array_id);
         }
     }
 }

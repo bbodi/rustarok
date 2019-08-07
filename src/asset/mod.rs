@@ -30,6 +30,7 @@ pub mod str;
 const GRF_HEADER_SIZE: usize = 15 + 15 + 4 * 4;
 
 // entry is a file
+#[allow(dead_code)]
 const GRF_FILELIST_TYPE_FILE: u8 = 0x01;
 
 // encryption mode 0 (header DES + periodic DES/shuffle)
@@ -181,17 +182,6 @@ impl AssetLoader {
             }
             None => Err(format!("Could not load '{}'", file_name)),
         };
-    }
-
-    fn get_number_of_digits(n: u32) -> usize {
-        let mut count = 1;
-        let mut n = n;
-        while n > 9 {
-            count += 1;
-            n = n / 10;
-        }
-        count += 1;
-        return count;
     }
 
     pub fn read_dir(&self, dir_name: &str) -> Vec<String> {

@@ -60,6 +60,7 @@ pub struct MeshVertex {
     pub tile_color_coord: [f32; 2],
 }
 
+#[allow(dead_code)]
 pub struct WaterVertex {
     pos: [f32; 3],
     texcoord: [f32; 2],

@@ -24,12 +24,14 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime};
 use strum::IntoEnumIterator;
 
-use imgui::ImString;
+use imgui::{ImString, ImVec2};
 use log::LevelFilter;
 use nalgebra::{Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
-use ncollide2d::world::CollisionGroups;
-use nphysics2d::object::{BodyHandle, ColliderDesc};
+use nphysics2d::object::{
+    BodyHandle, BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultBodySet,
+    DefaultColliderHandle, DefaultColliderSet, RigidBodyDesc,
+};
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -45,22 +47,25 @@ use crate::asset::rsw::Rsw;
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
-    CharOutlook, CharacterStateComponent, Percentage, PhysicsComponent,
-    SpriteRenderDescriptorComponent,
+    CharOutlook, CharType, CharacterStateComponent, Percentage, PhysicsComponent,
+    SpriteRenderDescriptorComponent, Team,
 };
-use crate::components::controller::{CastMode, ControllerComponent, SkillKey};
-use crate::components::{AttackType, BrowserClient, FlyingNumberComponent, StrEffectComponent};
+use crate::components::controller::{
+    CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
+};
+use crate::components::{
+    AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, StrEffectComponent,
+};
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
-use crate::systems::control_sys::CharacterControlSystem;
-use crate::systems::input::{BrowserInputProducerSystem, InputConsumerSystem};
+use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
+use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
-use crate::systems::render::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
-    CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations, SystemVariables,
-    Texts,
+    AssetResources, CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations,
+    SystemVariables, Texts,
 };
 use crate::video::{
     ortho, DynamicVertexArray, GlTexture, Shader, ShaderProgram, VertexArray,
@@ -68,15 +73,14 @@ use crate::video::{
 };
 use encoding::DecoderTrap;
 
+#[macro_use]
+mod common;
 mod asset;
 mod cam;
 mod consts;
 mod cursor;
 mod video;
 mod web_server;
-
-#[macro_use]
-mod common;
 
 #[macro_use]
 mod components;
@@ -90,12 +94,19 @@ use crate::components::skills::heal_area::HealApplierArea;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
 use crate::components::skills::status_applier_area::StatusApplierArea;
 use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
+use crate::systems::camera_system::CameraSystem;
+use crate::systems::input_to_next_action::InputToNextActionSystem;
+use crate::systems::minion_ai_sys::MinionAiSystem;
+use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::web_server::start_web_server;
+use ncollide2d::pipeline::CollisionGroups;
+use nphysics2d::force_generator::DefaultForceGeneratorSet;
+use nphysics2d::joint::DefaultJointConstraintSet;
+use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
 use serde::Deserialize;
 use std::str::FromStr;
-use std::sync::Mutex;
-
-pub type PhysicsWorld = nphysics2d::world::World<f32>;
 
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
@@ -142,18 +153,20 @@ pub enum MonsterActionIndex {
     Die = 32,
 }
 
-const STATIC_MODELS_COLLISION_GROUP: usize = 1;
-const LIVING_COLLISION_GROUP: usize = 2;
-const SKILL_AREA_COLLISION_GROUP: usize = 3;
+#[derive(Clone, Copy)]
+pub enum CollisionGroup {
+    StaticModel,
+    Player,
+    NonPlayer,
+    SkillArea,
+}
 
 pub struct Shaders {
     pub ground_shader: ShaderProgram,
     pub model_shader: ShaderProgram,
     pub sprite_shader: ShaderProgram,
-    pub player_shader: ShaderProgram,
     pub str_effect_shader: ShaderProgram,
     pub sprite2d_shader: ShaderProgram,
-    pub rectangle_2d_shader: ShaderProgram,
     pub trimesh_shader: ShaderProgram,
     pub trimesh2d_shader: ShaderProgram,
 }
@@ -174,9 +187,6 @@ pub struct RenderMatrices {
     pub ortho: Matrix4<f32>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Tick(u64);
-
 #[derive(Copy, Clone, Debug)]
 pub struct DeltaTime(pub f32);
 
@@ -192,9 +202,6 @@ impl PartialEq for ElapsedTime {
 impl Eq for ElapsedTime {}
 
 impl ElapsedTime {
-    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
-        self.0 > other.0
-    }
     pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
         ElapsedTime(self.0 + seconds as f32)
     }
@@ -225,12 +232,12 @@ impl ElapsedTime {
         self.0 = self.0.max(system_time.0 + seconds);
     }
 
-    pub fn has_passed(&self, system_time: ElapsedTime) -> bool {
+    pub fn is_earlier_than(&self, system_time: ElapsedTime) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn has_not_passed(&self, system_time: ElapsedTime) -> bool {
-        self.0 > system_time.0
+    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
+        self.0 > other.0
     }
 
     pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
@@ -276,11 +283,6 @@ fn main() {
             Shader::from_source(include_str!("shaders/sprite.frag"), gl::FRAGMENT_SHADER).unwrap(),
         ])
         .unwrap(),
-        player_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/player.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/player.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
-        .unwrap(),
         str_effect_shader: ShaderProgram::from_shaders(&[
             Shader::from_source(include_str!("shaders/str_effect.vert"), gl::VERTEX_SHADER)
                 .unwrap(),
@@ -292,16 +294,6 @@ fn main() {
             Shader::from_source(include_str!("shaders/sprite2d.vert"), gl::VERTEX_SHADER).unwrap(),
             Shader::from_source(include_str!("shaders/sprite2d.frag"), gl::FRAGMENT_SHADER)
                 .unwrap(),
-        ])
-        .unwrap(),
-        rectangle_2d_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/rectangle_2d.vert"), gl::VERTEX_SHADER)
-                .unwrap(),
-            Shader::from_source(
-                include_str!("shaders/rectangle_2d.frag"),
-                gl::FRAGMENT_SHADER,
-            )
-            .unwrap(),
         ])
         .unwrap(),
         trimesh_shader: ShaderProgram::from_shaders(&[
@@ -319,14 +311,17 @@ fn main() {
 
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
-    ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<HumanInputComponent>();
+    ecs_world.register::<RenderCommandCollectorComponent>();
     ecs_world.register::<SpriteRenderDescriptorComponent>();
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
     ecs_world.register::<StrEffectComponent>();
-
     ecs_world.register::<SkillManifestationComponent>();
+    ecs_world.register::<CameraComponent>();
+    ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<MinionComponent>();
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
@@ -335,11 +330,22 @@ fn main() {
             "input_handler",
             &["browser_input_processor"],
         )
+        .with(CameraSystem, "camera_system", &["input_handler"])
         .with(FrictionSystem, "friction_sys", &[])
         .with(
-            CharacterControlSystem,
+            InputToNextActionSystem,
+            "input_to_next_action_sys",
+            &["input_handler", "browser_input_processor"],
+        )
+        .with(MinionAiSystem, "minion_ai_sys", &[])
+        .with(
+            NextActionApplierSystem,
             "char_control",
-            &["friction_sys", "input_handler", "browser_input_processor"],
+            &[
+                "friction_sys",
+                "input_to_next_action_sys",
+                "browser_input_processor",
+            ],
         )
         .with(
             CharacterStateUpdateSystem,
@@ -354,6 +360,7 @@ fn main() {
         .with(SkillSystem, "skill_sys", &["collision_collector"])
         .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(RenderDesktopClientSystem::new())
+        .with_thread_local(OpenGlRenderSystem::new())
         .build();
 
     let rng = rand::thread_rng();
@@ -570,7 +577,7 @@ fn main() {
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
-    let (map_render_data, mut physics_world) =
+    let (map_render_data, physics_world) =
         load_map("prontera", &asset_loader, config.quick_startup);
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
@@ -674,30 +681,28 @@ fn main() {
         texts.skill_key_texts.insert(skill_key, texture);
     }
     ecs_world.add_resource(SystemVariables {
-        shaders,
-        sprites,
-        tick: Tick(0),
+        assets: AssetResources {
+            shaders,
+            sprites,
+            texts,
+            skill_icons,
+            status_icons,
+        },
+        tick: 0,
         dt: DeltaTime(0.0),
         time: ElapsedTime(0.0),
         matrices: render_matrices,
         map_render_data,
-        texts,
         attacks: Vec::with_capacity(128),
         area_attacks: Vec::with_capacity(128),
         pushes: Vec::with_capacity(128),
         apply_statuses: Vec::with_capacity(128),
         apply_area_statuses: Vec::with_capacity(128),
         remove_statuses: Vec::with_capacity(128),
-        skill_icons,
-        status_icons,
         str_effect_vao: DynamicVertexArray::new(
             gl::TRIANGLE_STRIP,
             vec![
-                1.0, 1.0, // xy
-                0.0, 0.0, // uv
-                1.0, 1.0, 1.0, 0.0, // uv
-                1.0, 1.0, 0.0, 1.0, // uv
-                1.0, 1.0, 1.0, 1.0, // uv
+                1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             ],
             4,
             vec![
@@ -721,34 +726,15 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let (desktop_client_controller, desktop_client_char) = {
-        let desktop_client_char = components::char::create_char(
-            &mut ecs_world,
-            Point2::new(250.0, -200.0),
-            Sex::Male,
-            JobId::CRUSADER,
-            1,
-            1,
-        );
-        let mut player = ControllerComponent::new(
-            desktop_client_char,
-            250.0,
-            -180.0,
-            &ecs_world
-                .read_resource::<SystemVariables>()
-                .matrices
-                .projection,
-        );
-        player.assign_skill(SkillKey::Q, Skills::FireWall);
-        player.assign_skill(SkillKey::W, Skills::AbsorbShield);
-        player.assign_skill(SkillKey::E, Skills::Heal);
-        player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-        player.assign_skill(SkillKey::Y, Skills::Mounting);
-        (
-            ecs_world.create_entity().with(player).build(),
-            desktop_client_char,
-        )
-    };
+    let desktop_client_entity = components::char::create_human_player(
+        &mut ecs_world,
+        Point2::new(250.0, -200.0),
+        Sex::Male,
+        JobId::CRUSADER,
+        1,
+        1,
+        Team::Right,
+    );
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
@@ -757,8 +743,11 @@ fn main() {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
+    let mut next_minion_spawn = ElapsedTime(2.0);
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
+    let mut fps_history: Vec<f32> = Vec::with_capacity(30);
+    let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
     let mut sent_bytes_per_second: usize = 0;
     let mut sent_bytes_per_second_counter: usize = 0;
@@ -773,123 +762,142 @@ fn main() {
     // Add static skill manifestations
     {
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "Poison",
-                    move |_now| ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison),
-                    &v2!(251, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "Poison",
+                        move |_now| {
+                            ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison)
+                        },
+                        &v2!(251, -213),
+                        v2!(2, 3),
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "AbsorbShield",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(AbsorbStatus::new(
-                            desktop_client_char,
-                            now,
-                        )))
-                    },
-                    &v2!(255, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "AbsorbShield",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                AbsorbStatus::new(desktop_client_entity, now),
+                            ))
+                        },
+                        &v2!(255, -213),
+                        v2!(2, 3),
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "FireBomb",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
-                            caster_entity_id: desktop_client_char,
-                            started: now,
-                            until: now.add_seconds(2.0),
-                        }))
-                    },
-                    &v2!(260, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "FireBomb",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
+                                caster_entity_id: desktop_client_entity,
+                                started: now,
+                                until: now.add_seconds(2.0),
+                            }))
+                        },
+                        &v2!(260, -213),
+                        v2!(2, 3),
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // armor up
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "ArmorUp",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage(70)),
-                        ))
-                    },
-                    &v2!(265, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "ArmorUp",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                ArmorModifierStatus::new(now, Percentage(70)),
+                            ))
+                        },
+                        &v2!(265, -213),
+                        v2!(2, 3),
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // armor down
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(StatusApplierArea::new(
-                    "ArmorDown",
-                    move |now| {
-                        ApplyStatusComponentPayload::from_secondary(Box::new(
-                            ArmorModifierStatus::new(now, Percentage(-30)),
-                        ))
-                    },
-                    &v2!(270, -213),
-                    v2!(2, 3),
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(StatusApplierArea::new(
+                        "ArmorDown",
+                        move |now| {
+                            ApplyStatusComponentPayload::from_secondary(Box::new(
+                                ArmorModifierStatus::new(now, Percentage(-30)),
+                            ))
+                        },
+                        &v2!(270, -213),
+                        v2!(2, 3),
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
 
         // HEAL
         let area_status_id = ecs_world.create_entity().build();
-        ecs_world.write_storage().insert(
-            area_status_id,
-            SkillManifestationComponent::new(
+        ecs_world
+            .write_storage()
+            .insert(
                 area_status_id,
-                Box::new(HealApplierArea::new(
-                    "Heal",
-                    AttackType::Heal(50),
-                    &v2!(273, -213),
-                    v2!(2, 3),
-                    0.5,
-                    desktop_client_char,
-                    &mut ecs_world.write_resource::<PhysicsWorld>(),
-                )),
-            ),
-        );
+                SkillManifestationComponent::new(
+                    area_status_id,
+                    Box::new(HealApplierArea::new(
+                        "Heal",
+                        AttackType::Heal(50),
+                        &v2!(273, -213),
+                        v2!(2, 3),
+                        0.5,
+                        desktop_client_entity,
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )),
+                ),
+            )
+            .unwrap();
     }
     start_web_server();
 
@@ -907,45 +915,23 @@ fn main() {
                 let welcome_msg = websocket::Message::binary(&welcome_data[..]);
                 let _ = browser_client.send_message(&welcome_msg).unwrap();
 
-                let browser_client_char = components::char::create_char(
+                let browser_client_entity = components::char::create_human_player(
                     &mut ecs_world,
                     Point2::new(250.0, -200.0),
                     Sex::Male,
                     JobId::CRUSADER,
                     2,
                     1,
+                    Team::Right,
                 );
-                let mut player = ControllerComponent::new(
-                    browser_client_char,
-                    250.0,
-                    -180.0,
-                    &ecs_world
-                        .read_resource::<SystemVariables>()
-                        .matrices
-                        .projection,
-                );
-                player.assign_skill(SkillKey::Q, Skills::FireWall);
-                player.assign_skill(SkillKey::W, Skills::Lightning);
-                player.assign_skill(SkillKey::E, Skills::Heal);
-                player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-                player.assign_skill(SkillKey::Y, Skills::Mounting);
-                let entity_id = ecs_world
-                    .create_entity()
-                    .with(player)
-                    .with(BrowserClient {
-                        websocket: Mutex::new(browser_client),
-                        offscreen: vec![0; (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize],
-                        ping: 0,
-                    })
-                    .build();
-                log::info!("Client connected: {:?}", entity_id);
+                log::info!("Client connected: {:?}", browser_client_entity);
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
 
         {
-            let mut storage = ecs_world.write_storage::<ControllerComponent>();
-            let inputs = storage.get_mut(desktop_client_controller).unwrap();
+            let mut storage = ecs_world.write_storage::<HumanInputComponent>();
+            let inputs = storage.get_mut(desktop_client_entity).unwrap();
 
             for event in video.event_pump.poll_iter() {
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
@@ -968,7 +954,7 @@ fn main() {
         ecs_world.maintain();
 
         let (new_map, new_str, show_cursor) = imgui_frame(
-            desktop_client_controller,
+            desktop_client_entity,
             &mut video,
             &mut ecs_world,
             rng.clone(),
@@ -982,11 +968,13 @@ fn main() {
             &all_str_names,
             &mut filtered_str_names,
             fps,
+            fps_history.as_slice(),
             &mut other_players,
             &mut other_monsters,
             &mut fov,
             &mut cam_angle,
             &mut window_opened,
+            &system_frame_durations,
         );
         video.sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
@@ -998,29 +986,7 @@ fn main() {
                 .map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
-            let desktop_client_char = components::char::create_char(
-                &mut ecs_world,
-                Point2::new(250.0, -200.0),
-                Sex::Male,
-                JobId::CRUSADER,
-                1,
-                1,
-            );
-            let mut player = ControllerComponent::new(
-                desktop_client_char,
-                250.0,
-                -180.0,
-                &ecs_world
-                    .read_resource::<SystemVariables>()
-                    .matrices
-                    .projection,
-            );
-            player.assign_skill(SkillKey::Q, Skills::FireWall);
-            player.assign_skill(SkillKey::W, Skills::Lightning);
-            player.assign_skill(SkillKey::E, Skills::Heal);
-            player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-            player.assign_skill(SkillKey::Y, Skills::Mounting);
-            ecs_world.create_entity().with(player).build();
+            // TODO
         }
         if let Some(new_str_name) = new_str {
             {
@@ -1035,12 +1001,8 @@ fn main() {
                 }
             }
             let hero_pos = {
-                let storage = ecs_world.write_storage::<ControllerComponent>();
-                let controller = storage.get(desktop_client_controller).unwrap();
-                let mut char_state_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_state_storage
-                    .get_mut(controller.char_entity_id)
-                    .unwrap();
+                let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                let char_state = storage.get(desktop_client_entity).unwrap();
                 char_state.pos()
             };
             ecs_world
@@ -1066,6 +1028,15 @@ fn main() {
         last_tick_time = now_ms;
         if now >= next_second {
             fps = fps_counter;
+            fps_history.push(fps as f32);
+            if fps_history.len() > 30 {
+                fps_history.remove(0);
+            }
+            //
+            let sh = &mut ecs_world.write_resource::<SystemFrameDurations>().0;
+            system_frame_durations.0 = sh.clone();
+            sh.clear();
+
             fps_counter = 0;
             sent_bytes_per_second = sent_bytes_per_second_counter;
             sent_bytes_per_second_counter = 0;
@@ -1092,15 +1063,51 @@ fn main() {
             }
         }
         fps_counter += 1;
-        ecs_world.write_resource::<SystemVariables>().tick.0 += 1;
-        ecs_world.write_resource::<SystemVariables>().dt.0 = dt;
+        ecs_world.write_resource::<SystemVariables>().tick += 1;
+        ecs_world.write_resource::<SystemVariables>().dt.0 =
+            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
         ecs_world.write_resource::<SystemVariables>().time.0 +=
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+
+        let now = ecs_world.read_resource::<SystemVariables>().time;
+        if next_minion_spawn.is_earlier_than(now) {
+            next_minion_spawn = now.add_seconds(2.0);
+
+            {
+                let entity_id = create_random_char_minion(
+                    &mut ecs_world,
+                    p2!(
+                        MinionAiSystem::CHECKPOINTS[0][0],
+                        MinionAiSystem::CHECKPOINTS[0][1]
+                    ),
+                    Team::Right,
+                );
+                let mut storage = ecs_world.write_storage();
+                storage
+                    .insert(entity_id, MinionComponent { fountain_up: false })
+                    .unwrap();
+            }
+
+            {
+                let entity_id = create_random_char_minion(
+                    &mut ecs_world,
+                    p2!(
+                        MinionAiSystem::CHECKPOINTS[5][0],
+                        MinionAiSystem::CHECKPOINTS[5][1]
+                    ),
+                    Team::Left,
+                );
+                let mut storage = ecs_world.write_storage();
+                storage
+                    .insert(entity_id, MinionComponent { fountain_up: false })
+                    .unwrap();
+            }
+        }
     }
 }
 
 fn imgui_frame(
-    desktop_client_controller_entity: Entity,
+    desktop_client_entity: Entity,
     video: &mut Video,
     mut ecs_world: &mut specs::world::World,
     mut rng: ThreadRng,
@@ -1114,11 +1121,13 @@ fn imgui_frame(
     all_str_names: &Vec<String>,
     filtered_str_names: &mut Vec<String>,
     fps: u64,
+    fps_history: &[f32],
     other_players: &mut Vec<Entity>,
     other_monsters: &mut Vec<Entity>,
     fov: &mut f32,
     cam_angle: &mut f32,
     window_opened: &mut bool,
+    system_frame_durations: &SystemFrameDurations,
 ) -> (Option<String>, Option<String>, bool) {
     let ui = video.imgui_sdl2.frame(
         &video.window,
@@ -1205,8 +1214,8 @@ fn imgui_frame(
                     .slider_float(im_str!("Camera"), cam_angle, -120.0, 120.0)
                     .build()
                 {
-                    let mut storage = ecs_world.write_storage::<ControllerComponent>();
-                    let controller = storage.get_mut(desktop_client_controller_entity).unwrap();
+                    let mut storage = ecs_world.write_storage::<CameraComponent>();
+                    let controller = storage.get_mut(desktop_client_entity).unwrap();
                     controller.camera.rotate(*cam_angle, 270.0);
                 }
 
@@ -1236,10 +1245,15 @@ fn imgui_frame(
                 ui.slider_int(im_str!("Monsters"), monster_count, 0, 20)
                     .build();
 
-                let mut storage = ecs_world.write_storage::<ControllerComponent>();
+                let camera = ecs_world
+                    .read_storage::<CameraComponent>()
+                    .get(desktop_client_entity)
+                    .unwrap()
+                    .clone();
+                let mut storage = ecs_world.write_storage::<HumanInputComponent>();
 
                 {
-                    let controller = storage.get_mut(desktop_client_controller_entity).unwrap();
+                    let controller = storage.get_mut(desktop_client_entity).unwrap();
                     let mut cast_mode = match controller.cast_mode {
                         CastMode::Normal => 0,
                         CastMode::OnKeyPress => 1,
@@ -1262,20 +1276,6 @@ fn imgui_frame(
                         controller.mouse_world_pos.x,
                         controller.mouse_world_pos.y,
                     ));
-                }
-
-                let controller = storage.get(desktop_client_controller_entity).unwrap();
-                {
-                    let mut char_state_storage =
-                        ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_state_storage
-                        .get_mut(controller.char_entity_id)
-                        .unwrap();
-                    let mut aspd: f32 = char_state.calculated_attribs().attack_speed.as_f32();
-                    ui.slider_float(im_str!("Attack Speed"), &mut aspd, 1.0, 5.0)
-                        .build();
-                    // TODO:
-                    //                    char_state.base_attribs.attack_speed = U8Float::new(Percentage::from_f32(aspd));
                 }
 
                 ui.drag_float3(
@@ -1311,15 +1311,11 @@ fn imgui_frame(
 
                 ui.text(im_str!(
                     "Maps: {},{},{}",
-                    controller.camera.pos().x,
-                    controller.camera.pos().y,
-                    controller.camera.pos().z
+                    camera.camera.pos().x,
+                    camera.camera.pos().y,
+                    camera.camera.pos().z
                 ));
-                ui.text(im_str!(
-                    "yaw: {}, pitch: {}",
-                    controller.yaw,
-                    controller.pitch
-                ));
+                ui.text(im_str!("yaw: {}, pitch: {}", camera.yaw, camera.pitch));
                 ui.text(im_str!("FPS: {}", fps));
                 let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
                     (sent_bytes_per_second / 1024 / 1024, "Mb")
@@ -1329,22 +1325,36 @@ fn imgui_frame(
                     (sent_bytes_per_second, "bytes")
                 };
 
-                let system_frame_durations =
-                    &mut ecs_world.write_resource::<SystemFrameDurations>().0;
-                ui.text(im_str!("Systems: "));
-                for (sys_name, duration) in system_frame_durations.iter() {
-                    let color = if *duration < 5 {
+                ui.plot_histogram(im_str!("FPS"), fps_history)
+                    .scale_min(100.0)
+                    .scale_max(145.0)
+                    .graph_size(ImVec2::new(0.0f32, 200.0f32))
+                    .build();
+                ui.text(im_str!("Systems[micro sec]: "));
+                for (sys_name, durations) in system_frame_durations.0.iter() {
+                    let diff = (durations.max / 100) as f32 / (durations.min / 100).max(1) as f32;
+
+                    let color = if diff < 1.5 && durations.avg < 5000 {
                         (0.0, 1.0, 0.0, 1.0)
-                    } else if *duration < 10 {
-                        (1.0, 0.8, 0.0, 1.0)
-                    } else if *duration < 15 {
+                    } else if diff < 2.0 && durations.avg < 5000 {
+                        (1.0, 0.75, 0.0, 1.0)
+                    } else if diff < 2.5 && durations.avg < 5000 {
                         (1.0, 0.5, 0.0, 1.0)
-                    } else if *duration < 20 {
-                        (1.0, 0.2, 0.0, 1.0)
+                    } else if durations.avg < 5000 {
+                        (1.0, 0.25, 0.0, 1.0)
                     } else {
                         (1.0, 0.0, 0.0, 1.0)
                     };
-                    ui.text_colored(color, im_str!("{}: {} ms", sys_name, duration));
+                    ui.text_colored(
+                        color,
+                        im_str!(
+                            "{}: {}, {}, {}",
+                            sys_name,
+                            durations.min,
+                            durations.max,
+                            durations.avg
+                        ),
+                    );
                 }
                 ui.text(im_str!("Traffic: {} {}", traffic, unit));
 
@@ -1370,13 +1380,8 @@ fn imgui_frame(
             for _i in 0..count_to_add {
                 let pos = {
                     let hero_pos = {
-                        let storage = ecs_world.write_storage::<ControllerComponent>();
-                        let controller = storage.get(desktop_client_controller_entity).unwrap();
-                        let mut char_state_storage =
-                            ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage
-                            .get_mut(controller.char_entity_id)
-                            .unwrap();
+                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let char_state = storage.get(desktop_client_entity).unwrap();
                         char_state.pos()
                     };
                     let map_render_data =
@@ -1384,7 +1389,8 @@ fn imgui_frame(
                     let (x, y) = loop {
                         let x = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
                         let y = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
+                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
+                            + x.max(0.0) as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type
                             & CellType::Walkable as u8)
                             != 0;
@@ -1395,25 +1401,7 @@ fn imgui_frame(
                     p3!(x, 0.5, -y)
                 };
                 let pos2d = p3_to_p2(&pos);
-                let mut rng = rand::thread_rng();
-                let sex = if rng.gen::<usize>() % 2 == 0 {
-                    Sex::Male
-                } else {
-                    Sex::Female
-                };
-                let head_count = ecs_world
-                    .read_resource::<SystemVariables>()
-                    .sprites
-                    .head_sprites[Sex::Male as usize]
-                    .len();
-                let entity_id = components::char::create_char(
-                    &mut ecs_world,
-                    pos2d,
-                    sex,
-                    JobId::SWORDMAN,
-                    rng.gen::<usize>() % head_count,
-                    rng.gen_range(1, 3),
-                );
+                let entity_id = create_random_char_minion(&mut ecs_world, pos2d, Team::Left);
 
                 other_players.push(entity_id);
             }
@@ -1422,19 +1410,23 @@ fn imgui_frame(
             let to_remove = (current_player_count - *player_count - current_user_count) as usize;
             let to_remove = to_remove.min(other_players.len());
             let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
-            let body_handles: Vec<BodyHandle> = {
+            {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                // remove rigid bodies from the physic simulation
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
                 entity_ids
                     .iter()
-                    .map(|entity| physic_storage.get(*entity).map(|it| it.body_handle))
+                    .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| it.unwrap())
-                    .collect()
+                    .for_each(|it| {
+                        let phys_comp = it.unwrap();
+                        ecs_world
+                            .write_resource::<CollisionsFromPrevFrame>()
+                            .remove_collider_handle(phys_comp.collider_handle);
+                        physics_world.bodies.remove(phys_comp.body_handle);
+                    });
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
-            // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-            physics_world.remove_bodies(body_handles.as_slice());
         }
         // add monsters
         let current_monster_count = ecs_world
@@ -1451,21 +1443,16 @@ fn imgui_frame(
                 let pos = {
                     let map_render_data =
                         &ecs_world.read_resource::<SystemVariables>().map_render_data;
-                    // TODO: extract it
                     let hero_pos = {
-                        let storage = ecs_world.write_storage::<ControllerComponent>();
-                        let controller = storage.get(desktop_client_controller_entity).unwrap();
-                        let mut char_state_storage =
-                            ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_state_storage
-                            .get_mut(controller.char_entity_id)
-                            .unwrap();
+                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let char_state = storage.get(desktop_client_entity).unwrap();
                         char_state.pos()
                     };
                     let (x, y) = loop {
                         let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
                         let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y as usize * map_render_data.gat.width as usize + x as usize;
+                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
+                            + x.max(0.0) as usize;
                         let walkable = (map_render_data.gat.cells[index].cell_type
                             & CellType::Walkable as u8)
                             != 0;
@@ -1482,33 +1469,79 @@ fn imgui_frame(
                     pos2d,
                     MonsterId::Baphomet,
                     rng.gen_range(1, 3),
+                    Team::Left,
+                    CollisionGroup::Player,
+                    &[CollisionGroup::NonPlayer],
                 );
                 other_monsters.push(entity_id);
             }
         } else if current_monster_count > *monster_count {
             let to_remove = (current_monster_count - *monster_count) as usize;
             let entity_ids: Vec<Entity> = other_monsters.drain(0..to_remove).collect();
-            let body_handles: Vec<BodyHandle> = {
+            {
                 let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                // remove rigid bodies from the physic simulation
                 entity_ids
                     .iter()
-                    .map(|entity| physic_storage.get(*entity).map(|it| it.body_handle))
+                    .map(|entity| physic_storage.get(*entity))
                     .filter(|it| it.is_some())
-                    .map(|it| it.unwrap())
-                    .collect()
+                    .for_each(|it| {
+                        let phys_comp = it.unwrap();
+                        ecs_world
+                            .write_resource::<CollisionsFromPrevFrame>()
+                            .remove_collider_handle(phys_comp.collider_handle);
+                        physics_world.bodies.remove(phys_comp.body_handle);
+                    });
             };
             let _ = ecs_world.delete_entities(entity_ids.as_slice());
-            // remove rigid bodies from the physic simulation
-            let physics_world = &mut ecs_world.write_resource::<PhysicsWorld>();
-            physics_world.remove_bodies(body_handles.as_slice());
         }
     }
     video.renderer.render(ui);
     return ret;
 }
 
+fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> Entity {
+    let mut rng = rand::thread_rng();
+    let sex = if rng.gen::<usize>() % 2 == 0 {
+        Sex::Male
+    } else {
+        Sex::Female
+    };
+    let head_count = ecs_world
+        .read_resource::<SystemVariables>()
+        .assets
+        .sprites
+        .head_sprites[Sex::Male as usize]
+        .len();
+    let entity_id = components::char::create_char(
+        ecs_world,
+        pos2d,
+        sex,
+        JobId::SWORDMAN,
+        rng.gen::<usize>() % head_count,
+        1,
+        team,
+        CharType::Minion,
+        CollisionGroup::NonPlayer,
+        &[
+            CollisionGroup::NonPlayer,
+            CollisionGroup::Player,
+            CollisionGroup::StaticModel,
+        ],
+    );
+    entity_id
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ModelName(String);
+
+pub struct ModelInstance {
+    name: ModelName,
+    matrix: Matrix4<f32>,
+    bottom_left_front: Vector3<f32>,
+    top_right_back: Vector3<f32>,
+}
 
 pub struct MapRenderData {
     pub gat: Gat,
@@ -1525,8 +1558,9 @@ pub struct MapRenderData {
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
+    // TODO: put the models into a simple Vec indexed by a number
     pub models: HashMap<ModelName, ModelRenderData>,
-    pub model_instances: Vec<(ModelName, Matrix4<f32>)>,
+    pub model_instances: Vec<ModelInstance>,
     pub draw_models: bool,
     pub draw_ground: bool,
     pub ground_walkability_mesh: VertexArray,
@@ -1563,7 +1597,7 @@ fn load_map(
     map_name: &str,
     asset_loader: &AssetLoader,
     quick_loading: bool,
-) -> (MapRenderData, PhysicsWorld) {
+) -> (MapRenderData, PhysicEngine) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
@@ -1693,20 +1727,21 @@ fn load_map(
     });
     log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
 
-    let mut model_instances_iter = if quick_loading {
+    let model_instances_iter = if quick_loading {
         world.models.iter().take(0)
     } else {
         let len = world.models.len();
         world.models.iter().take(len)
     };
-    let model_instances: Vec<(ModelName, Matrix4<f32>)> = model_instances_iter
+    let model_instances: Vec<ModelInstance> = model_instances_iter
         .map(|model_instance| {
-            let mut instance_matrix = Matrix4::<f32>::identity();
-            instance_matrix.prepend_translation_mut(
+            let mut only_transition_matrix = Matrix4::<f32>::identity();
+            only_transition_matrix.prepend_translation_mut(
                 &(model_instance.pos
                     + Vector3::new(ground.width as f32, 0f32, ground.height as f32)),
             );
 
+            let mut instance_matrix = only_transition_matrix.clone();
             // rot_z
             let rotation = Rotation3::from_axis_angle(
                 &Unit::new_normalize(Vector3::z()),
@@ -1730,13 +1765,37 @@ fn load_map(
             instance_matrix = instance_matrix * rotation;
 
             instance_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
+            only_transition_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
 
             let rotation =
                 Rotation3::from_axis_angle(&Unit::new_normalize(Vector3::x()), 180f32.to_radians())
                     .to_homogeneous();
             instance_matrix = rotation * instance_matrix;
+            only_transition_matrix = rotation * only_transition_matrix;
 
-            (model_instance.filename.clone(), instance_matrix)
+            let model_render_data = &model_render_datas[&model_instance.filename];
+            let tmin = only_transition_matrix
+                .transform_point(&model_render_data.bounding_box.min)
+                .coords;
+            let tmax = only_transition_matrix
+                .transform_point(&model_render_data.bounding_box.max)
+                .coords;
+            let min = Vector3::new(
+                tmin[0].min(tmax[0]),
+                tmin[1].min(tmax[1]),
+                tmin[2].max(tmax[2]),
+            );
+            let max = Vector3::new(
+                tmax[0].max(tmin[0]),
+                tmax[1].max(tmin[1]),
+                tmax[2].min(tmin[2]),
+            );
+            ModelInstance {
+                name: model_instance.filename.clone(),
+                matrix: instance_matrix,
+                bottom_left_front: min,
+                top_right_back: max,
+            }
         })
         .collect();
 
@@ -1835,8 +1894,20 @@ fn load_map(
             },
         ],
     );
-    let mut physics_world = nphysics2d::world::World::new();
-    physics_world.set_contact_model(SignoriniModel::new());
+
+    let mut physics_world = PhysicEngine {
+        mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
+        geometrical_world: DefaultGeometricalWorld::new(),
+
+        bodies: DefaultBodySet::new(),
+        colliders: DefaultColliderSet::new(),
+        joint_constraints: DefaultJointConstraintSet::new(),
+        force_generators: DefaultForceGeneratorSet::new(),
+    };
+    physics_world
+        .mechanical_world
+        .solver
+        .set_contact_model(Box::new(SignoriniModel::new()));
     let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
         .rectangles
         .iter()
@@ -1851,16 +1922,20 @@ fn load_map(
             let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
             let v = rot * Vector3::new(x, 0.0, y);
             let v2 = Vector2::new(v.x, v.z);
+            let parent_rigid_body = RigidBodyDesc::new().build();
+            let parent_handle = physics_world.bodies.insert(parent_rigid_body);
             let cuboid = ColliderDesc::new(cuboid)
                 .density(10.0)
                 .translation(v2)
                 .collision_groups(
                     CollisionGroups::new()
-                        .with_membership(&[STATIC_MODELS_COLLISION_GROUP])
-                        .with_blacklist(&[STATIC_MODELS_COLLISION_GROUP]),
+                        .with_membership(&[CollisionGroup::StaticModel as usize])
+                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
                 )
-                .build(&mut physics_world);
-            (half_extents, cuboid.position_wrt_body().translation.vector)
+                .build(BodyPartHandle(parent_handle, 0));
+            let cuboid_pos = cuboid.position_wrt_body().translation.vector;
+            physics_world.colliders.insert(cuboid);
+            (half_extents, cuboid_pos)
         })
         .collect();
     let vertices: Vec<Point3<f32>> = colliders
@@ -1968,6 +2043,51 @@ fn load_map(
         },
         physics_world,
     )
+}
+
+pub struct PhysicEngine {
+    mechanical_world: DefaultMechanicalWorld<f32>,
+    geometrical_world: DefaultGeometricalWorld<f32>,
+
+    bodies: DefaultBodySet<f32>,
+    colliders: DefaultColliderSet<f32>,
+    joint_constraints: DefaultJointConstraintSet<f32>,
+    force_generators: DefaultForceGeneratorSet<f32>,
+}
+
+impl PhysicEngine {
+    pub fn step(&mut self, dt: f32) {
+        self.mechanical_world.set_timestep(dt);
+        self.mechanical_world.step(
+            &mut self.geometrical_world,
+            &mut self.bodies,
+            &mut self.colliders,
+            &mut self.joint_constraints,
+            &mut self.force_generators,
+        );
+    }
+
+    pub fn add_cuboid_skill(
+        &mut self,
+        pos: Vector2<f32>,
+        rot_angle_in_rad: f32,
+        extent: Vector2<f32>,
+    ) -> DefaultColliderHandle {
+        let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(extent / 2.0));
+        let body_handle = self.bodies.insert(RigidBodyDesc::new().build());
+        return self.colliders.insert(
+            ColliderDesc::new(cuboid)
+                .translation(pos)
+                .rotation(rot_angle_in_rad.to_degrees())
+                .collision_groups(
+                    CollisionGroups::new()
+                        .with_membership(&[CollisionGroup::SkillArea as usize])
+                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
+                )
+                .sensor(true)
+                .build(BodyPartHandle(body_handle, 0)),
+        );
+    }
 }
 
 #[derive(Eq, Hash, PartialEq, Debug)]

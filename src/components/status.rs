@@ -6,16 +6,22 @@ use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::RenderDesktopClientSystem;
+use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Matrix4};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
 use std::any::Any;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use strum_macros::EnumCount;
+
+pub enum StatusStackingResult {
+    DontAddTheNewStatus,
+    AddTheNewStatus,
+}
 
 pub trait Status: Any {
     fn dupl(&self) -> Box<dyn Status>;
@@ -47,11 +53,13 @@ pub trait Status: Any {
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     );
     // (ElapsedTime, f32) == ends_at, percentage
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)>;
+
+    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult;
 }
 
 // TODO: should 'Dead' be a status?
@@ -65,8 +73,9 @@ pub enum MainStatuses {
 #[derive(Clone)]
 struct MountedStatus;
 
+const STATUS_ARRAY_SIZE: usize = 32;
 pub struct Statuses {
-    statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; 32],
+    statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; STATUS_ARRAY_SIZE],
     first_free_index: usize,
     cached_modifier_collector: CharAttributeModifierCollector,
 }
@@ -86,14 +95,24 @@ impl Statuses {
 
     pub fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
         let mut allow = true;
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             allow &= status.as_ref().unwrap().lock().unwrap().allow_push(push);
         }
         return allow;
     }
 
     pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             outcome = status
                 .as_ref()
                 .unwrap()
@@ -113,7 +132,12 @@ impl Statuses {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> bool {
         let mut changed = false;
-        for status in self.statuses.iter_mut().filter(|it| it.is_some()) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
                 char_pos,
@@ -140,15 +164,15 @@ impl Statuses {
     pub fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
         for status in self.statuses.iter().filter(|it| it.is_some()) {
             let guard = status.as_ref().unwrap().lock().unwrap();
             let type_id = guard.deref().as_ref().type_id();
             if !already_rendered.contains(&type_id) {
-                guard.render(char_pos, system_vars, view_matrix);
+                guard.render(char_pos, system_vars, render_commands);
                 already_rendered.insert(type_id);
             }
         }
@@ -187,8 +211,13 @@ impl Statuses {
 
     pub fn calc_attributes(&mut self) -> &CharAttributeModifierCollector {
         self.cached_modifier_collector.clear();
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
-            let modifier = status
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            status
                 .as_ref()
                 .unwrap()
                 .lock()
@@ -209,7 +238,12 @@ impl Statuses {
             let sprites = &sprites.character_sprites;
             &sprites[&job_id][sex as usize]
         };
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             if let Some(spr) = status
                 .as_ref()
                 .unwrap()
@@ -225,7 +259,12 @@ impl Statuses {
 
     pub fn calc_render_color(&self) -> [f32; 4] {
         let mut ret = [1.0, 1.0, 1.0, 1.0];
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let status_color = status.as_ref().unwrap().lock().unwrap().get_render_color();
             for i in 0..4 {
                 ret[i] *= status_color[i];
@@ -236,15 +275,20 @@ impl Statuses {
 
     pub fn calc_largest_remaining_status_time_percent(&self, now: ElapsedTime) -> Option<f32> {
         let mut ret: Option<(ElapsedTime, f32)> = None;
-        for status in &mut self.statuses.iter().filter(|it| it.is_some()) {
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
             let rem: Option<(ElapsedTime, f32)> = status
                 .as_ref()
                 .unwrap()
                 .lock()
                 .unwrap()
                 .get_status_completion_percent(now);
-            ret = if let Some((status_ends_at, status_remaining_time)) = rem {
-                if let Some((current_ends_at, current_rem_time)) = ret {
+            ret = if let Some((status_ends_at, _status_remaining_time)) = rem {
+                if let Some((current_ends_at, _current_rem_time)) = ret {
                     if current_ends_at.is_later_than(status_ends_at) {
                         rem
                     } else {
@@ -279,19 +323,23 @@ impl Statuses {
     }
 
     pub fn add(&mut self, status: Arc<Mutex<Box<dyn Status>>>) {
+        if self.first_free_index >= STATUS_ARRAY_SIZE {
+            log::error!("There is no more space for new Status!");
+            return;
+        }
         self.statuses[self.first_free_index] = Some(status);
         self.first_free_index += 1;
     }
 
     pub fn remove_all(&mut self) {
-        for status in &mut self.statuses {
+        for status in self.statuses.iter_mut().take(self.first_free_index) {
             *status = None;
         }
         self.first_free_index = MAINSTATUSES_COUNT;
     }
 
     pub fn remove(&mut self, status_type: StatusType) {
-        for arc_status in &mut self.statuses {
+        for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
             let should_remove = arc_status
                 .as_ref()
                 .map(|it| it.lock().unwrap().typ() == status_type)
@@ -306,6 +354,13 @@ impl Statuses {
         self.statuses[status as usize] = None;
     }
 
+    pub unsafe fn hack_cast<T>(boxx: &Box<dyn Status>) -> &T {
+        // TODO: I could not get back a PosionStatus struct from a Status trait without unsafe, HELP
+        // hacky as hell, nothing guarantees that the first pointer in a Trait is the value pointer
+        let raw_object: *const T = std::mem::transmute(boxx);
+        return &*raw_object;
+    }
+
     pub fn add_poison(
         &mut self,
         poison_caster_entity_id: Entity,
@@ -316,10 +371,7 @@ impl Statuses {
             let status = &self.statuses[MainStatuses::Poison as usize];
             if let Some(current_poison) = status {
                 let boxx: &Box<dyn Status> = &*current_poison.lock().unwrap();
-                // TODO: I could not get back a PosionStatus struct from a Status trait without unsafe, HELP
-                // hacky as hell, nothing guarantees that the first pointer in a Trait is the value pointer
-                let raw_object: *const PoisonStatus = unsafe { std::mem::transmute(boxx) };
-                unsafe { (*raw_object).until.max(until) }
+                unsafe { Statuses::hack_cast::<PoisonStatus>(boxx).until.max(until) }
             } else {
                 until
             }
@@ -377,7 +429,7 @@ impl Status for MountedStatus {
     fn calc_render_sprite<'a>(
         &self,
         job_id: JobId,
-        head_index: usize,
+        _head_index: usize,
         sex: Sex,
         sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
@@ -386,11 +438,11 @@ impl Status for MountedStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        _self_char_id: Entity,
+        _char_pos: &WorldCoords,
+        _system_vars: &mut SystemVariables,
+        _entities: &specs::Entities,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
     }
@@ -399,20 +451,24 @@ impl Status for MountedStatus {
         outcome
     }
 
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
         true
     }
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        _char_pos: &WorldCoords,
+        _system_vars: &SystemVariables,
+        _render_commands: &mut RenderCommandCollectorComponent,
     ) {
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         None
+    }
+
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::DontAddTheNewStatus
     }
 }
 
@@ -449,14 +505,14 @@ impl Status for PoisonStatus {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn calc_render_sprite<'a>(
         &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
+        _job_id: JobId,
+        _head_index: usize,
+        _sex: Sex,
+        _sprites: &'a Sprites,
     ) -> Option<&'a SpriteResource> {
         None
     }
@@ -464,15 +520,15 @@ impl Status for PoisonStatus {
     fn update(
         &mut self,
         self_char_id: Entity,
-        char_pos: &WorldCoords,
+        _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        _entities: &specs::Entities,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.has_passed(system_vars.time) {
+        if self.until.is_earlier_than(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.has_passed(system_vars.time) {
+            if self.next_damage_at.is_earlier_than(system_vars.time) {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,
@@ -488,27 +544,31 @@ impl Status for PoisonStatus {
         outcome
     }
 
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
         true
     }
 
     fn render(
         &self,
         char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        view_matrix: &Matrix4<f32>,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
             "quagmire",
             self.started,
             char_pos,
             system_vars,
-            view_matrix,
+            render_commands,
         );
     }
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
+    }
+
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::AddTheNewStatus
     }
 }
 

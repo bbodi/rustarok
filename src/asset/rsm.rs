@@ -43,7 +43,6 @@ pub struct RsmNodeVertex {
 pub struct BoundingBox {
     pub min: Point3<f32>,
     pub max: Point3<f32>,
-    pub offset: Vector3<f32>,
     pub range: Vector3<f32>,
     pub center: Point3<f32>,
 }
@@ -57,9 +56,30 @@ impl BoundingBox {
                 std::f32::NEG_INFINITY,
                 std::f32::NEG_INFINITY,
             ),
-            offset: Vector3::new(0.0, 0.0, 0.0),
-            range: Vector3::new(0.0, 0.0, 0.0),
+            range: v3!(0.0, 0.0, 0.0),
             center: Point3::new(0.0, 0.0, 0.0),
+        }
+    }
+
+    pub fn apply_matrix(&self, matrix: &Matrix4<f32>) -> BoundingBox {
+        let tmin = matrix.transform_point(&self.min);
+        let tmax = matrix.transform_point(&self.max);
+        let min = p3!(
+            tmin[0].min(tmax[0]),
+            tmin[1].min(tmax[1]),
+            tmin[2].max(tmax[2])
+        );
+        let max = p3!(
+            tmax[0].max(tmin[0]),
+            tmax[1].max(tmin[1]),
+            tmax[2].min(tmin[2])
+        );
+        let range = (max - min) / 2.0;
+        BoundingBox {
+            min,
+            max,
+            range,
+            center: min + range,
         }
     }
 }
@@ -300,7 +320,6 @@ impl Rsm {
                 bbox.min[i] = node.bounding_box.min[i].min(bbox.min[i]);
                 bbox.max[i] = node.bounding_box.max[i].max(bbox.max[i]);
             }
-            bbox.offset[i] = (bbox.max[i] + bbox.min[i]) / 2.0;
             bbox.range[i] = (bbox.max[i] - bbox.min[i]) / 2.0;
             bbox.center[i] = bbox.min[i] + bbox.range[i];
         }
@@ -388,8 +407,6 @@ impl Rsm {
             full_model_rendering_data.push(vertices_per_texture_per_node);
         }
         for i in 0..3 {
-            real_bounding_box.offset[i] =
-                (real_bounding_box.max[i] + real_bounding_box.min[i]) / 2.0;
             real_bounding_box.range[i] =
                 (real_bounding_box.max[i] - real_bounding_box.min[i]) / 2.0;
             real_bounding_box.center[i] = real_bounding_box.min[i] + real_bounding_box.range[i];
@@ -484,7 +501,6 @@ impl Rsm {
             }
         }
         for i in 0..3 {
-            bbox.offset[i] = (bbox.max[i] + bbox.min[i]) / 2.0;
             bbox.range[i] = (bbox.max[i] - bbox.min[i]) / 2.0;
             bbox.center[i] = bbox.min[i] + bbox.range[i];
         }
@@ -525,7 +541,7 @@ impl Rsm {
             }
             _/*NONE*/ => {
                 let normals = node.faces.iter().map(|_face| {
-                    Vector3::new(-1.0f32, -1.0f32, -1.0f32)
+                    v3!(-1.0f32, -1.0f32, -1.0f32)
                 }).collect();
                 Rsm::generate_mesh_flat(&matrix, faces, &verts, &tverts, normals)
             }
@@ -615,7 +631,7 @@ impl Rsm {
             }
             group[group_index].reserve(node.vertices.len());
             for vertex_index in 0..node.vertices.len() {
-                let mut grouped_normal = Vector3::new(0.0f32, 0.0f32, 0.0f32);
+                let mut grouped_normal = v3!(0.0f32, 0.0f32, 0.0f32);
                 for (face_index, face) in node.faces.iter().enumerate() {
                     if face.smooth_group as usize == group_index
                         && (face.vertex_index[0] == vertex_index as u16

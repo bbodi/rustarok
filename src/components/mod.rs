@@ -3,7 +3,7 @@ extern crate rand;
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::BodyHandle;
+use nphysics2d::object::{BodyHandle, DefaultBodyHandle};
 use specs::prelude::*;
 use std::sync::Mutex;
 use websocket::stream::sync::TcpStream;
@@ -30,6 +30,7 @@ impl Drop for BrowserClient {
 pub struct FlyingNumberComponent {
     pub value: u32,
     pub target_entity_id: Entity,
+    pub src_entity_id: Entity,
     pub typ: FlyingNumberType,
     pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
@@ -46,8 +47,18 @@ pub struct StrEffectComponent {
     pub duration: ElapsedTime,
 }
 
+#[derive(Component)]
+pub struct MinionComponent {
+    pub fountain_up: bool,
+}
+
 pub enum FlyingNumberType {
     Damage,
+    Combo {
+        single_attack_damage: u32,
+        attack_count: u8,
+    },
+    SubCombo,
     Poison,
     Heal,
     Block,
@@ -57,15 +68,26 @@ pub enum FlyingNumberType {
 }
 
 impl FlyingNumberType {
-    pub fn color(&self, target_is_current_user: bool) -> [f32; 3] {
+    pub fn color(
+        &self,
+        target_is_current_user: bool,
+        target_is_friend: bool,
+        damage_was_initiated_by_current_user: bool,
+    ) -> [f32; 3] {
         match self {
-            FlyingNumberType::Damage => {
+            FlyingNumberType::Damage | FlyingNumberType::SubCombo => {
                 if target_is_current_user {
                     [1.0, 0.0, 0.0]
+                } else if target_is_friend {
+                    [1.0, 0.0, 0.0] // [1.0, 0.55, 0.0] orange
+                } else if damage_was_initiated_by_current_user {
+                    [1.0, 1.0, 1.0]
                 } else {
                     [1.0, 1.0, 1.0]
+                    //                    [0.73, 0.73, 0.73] // simple damage by other, greyish
                 }
             }
+            FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
             FlyingNumberType::Heal => [0.0, 1.0, 0.0],
             FlyingNumberType::Poison => [0.55, 0.0, 0.55],
             FlyingNumberType::Mana => [0.0, 0.0, 1.0],
@@ -80,6 +102,7 @@ impl FlyingNumberComponent {
     pub fn new(
         typ: FlyingNumberType,
         value: u32,
+        src_entity_id: Entity,
         target_entity_id: Entity,
         duration: f32,
         start_pos: Vector2<f32>,
@@ -89,6 +112,7 @@ impl FlyingNumberComponent {
             value,
             typ,
             target_entity_id,
+            src_entity_id,
             start_pos,
             start_time: sys_time,
             die_at: sys_time.add_seconds(duration),
@@ -124,6 +148,6 @@ pub struct ApplyForceComponent {
     pub src_entity: Entity,
     pub dst_entity: Entity,
     pub force: Vector2<f32>,
-    pub body_handle: BodyHandle,
+    pub body_handle: DefaultBodyHandle,
     pub duration: f32,
 }

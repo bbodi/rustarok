@@ -1,45 +1,29 @@
-use nalgebra::{Matrix4, Vector2, Vector3};
+use nalgebra::Vector2;
 
 use crate::components::char::{
     CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{ControllerComponent, SkillKey};
-use crate::components::skills::skill::SkillTargetType;
-use crate::cursor::{CURSOR_ATTACK, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
+use crate::components::controller::{HumanInputComponent, SkillKey};
+use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::SystemVariables;
-use crate::video::VertexAttribDefinition;
-use crate::video::{GlTexture, VertexArray, TEXTURE_0, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::SpriteResource;
+use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::{ElapsedTime, SpriteResource};
 
-pub struct RenderUI {
-    vao: VertexArray,
-}
+pub struct RenderUI {}
 
 impl RenderUI {
     pub fn new() -> RenderUI {
-        let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
-        RenderUI {
-            vao: VertexArray::new(
-                gl::TRIANGLE_STRIP,
-                &s,
-                4,
-                vec![VertexAttribDefinition {
-                    number_of_components: 2,
-                    offset_of_first_element: 0,
-                }],
-            ),
-        }
+        RenderUI {}
     }
 
     pub fn run(
         &self,
-        _entities: &specs::Entities,
-        controller: &mut ControllerComponent,
-        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_state: &CharacterStateComponent,
+        input: &HumanInputComponent,
+        render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
         // Draw casting bar
-        let char_state = char_state_storage.get(controller.char_entity_id).unwrap();
         match char_state.state() {
             CharState::CastingSkill(casting_info) => {
                 // for really short skills, don't render it
@@ -49,23 +33,16 @@ impl RenderUI {
                     .as_f32()
                     > 0.1
                 {
-                    let shader = system_vars.shaders.trimesh2d_shader.gl_use();
-                    shader.set_mat4("projection", &system_vars.matrices.ortho);
-                    let vao = self.vao.bind();
-                    let draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-                        let mut matrix = Matrix4::<f32>::identity();
+                    let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
                         let bar_w = 540.0;
                         let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
-                        let pos = Vector3::new(
-                            bar_x + x as f32,
-                            VIDEO_HEIGHT as f32 - 200.0 + y as f32,
-                            0.0,
-                        );
-                        matrix.prepend_translation_mut(&pos);
-                        shader.set_mat4("model", &matrix);
-                        shader.set_vec4("color", color);
-                        shader.set_vec2("size", &[w as f32, h as f32]);
-                        vao.draw();
+                        // .trimesh_2d(&system_vars.map_render_data.rectangle_vertex_array)
+                        render_commands
+                            .prepare_for_2d()
+                            .screen_pos(bar_x + x as f32, VIDEO_HEIGHT as f32 - 200.0 + y as f32)
+                            .size2(w as f32, h as f32)
+                            .color(&color)
+                            .add_rectangle_command(Layer2d::Layer2)
                     };
                     draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
@@ -84,8 +61,6 @@ impl RenderUI {
             _ => {}
         }
 
-        let selecting_target = controller.is_selecting_target();
-
         // draw skill bar
         let single_icon_size = 48;
         let inner_border = 3;
@@ -97,115 +72,121 @@ impl RenderUI {
         let y = VIDEO_HEIGHT - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
 
         // blueish background
-        render_rect(
-            &system_vars,
-            &Vector2::new(start_x as f32, y as f32),
-            &[
+        render_commands
+            .prepare_for_2d()
+            .screen_pos(start_x as f32, y as f32)
+            .size2(
                 skill_bar_width as f32,
                 single_icon_size as f32 + (outer_border * 2 + inner_border * 2) as f32,
-            ],
-            &[0.11, 0.25, 0.48, 1.0],
-        );
+            )
+            .color(&[0.11, 0.25, 0.48, 1.0])
+            .add_rectangle_command(Layer2d::Layer0);
 
         let mut x = start_x + outer_border;
-        for (i, skill_key) in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R]
-            .iter()
-            .enumerate()
-        {
-            if let Some(skill) = controller.get_skill_for_key(*skill_key) {
+        for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
+            if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
-                let border_color = selecting_target
-                    .filter(|it| it.0 == *skill_key)
-                    .map(|_it| [0.0, 1.0, 0.0, 1.0])
-                    .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-                render_rect(
-                    &system_vars,
-                    &Vector2::new(x as f32, (y + outer_border) as f32),
-                    &[
+                let not_castable = char_state
+                    .skill_cast_allowed_at
+                    .get(&skill)
+                    .unwrap_or(&ElapsedTime(0.0))
+                    .is_later_than(system_vars.time);
+                let border_color = if not_castable {
+                    [0.7, 0.7, 0.7, 1.0] // grey
+                } else {
+                    input
+                        .select_skill_target
+                        .filter(|it| it.0 == *skill_key)
+                        .map(|_it| [0.0, 1.0, 0.0, 1.0])
+                        .unwrap_or([0.0, 0.0, 0.0, 1.0])
+                };
+                render_commands
+                    .prepare_for_2d()
+                    .screen_pos(x as f32, (y + outer_border) as f32)
+                    .size2(
                         (single_icon_size + inner_border * 2) as f32,
                         (single_icon_size + inner_border * 2) as f32,
-                    ],
-                    &border_color,
-                );
+                    )
+                    .color(&border_color)
+                    .add_rectangle_command(Layer2d::Layer0);
 
                 x += inner_border;
                 let icon_y = (y + outer_border + inner_border) as f32;
                 // blueish background
-                render_rect(
-                    &system_vars,
-                    &Vector2::new(x as f32, icon_y),
-                    &[(single_icon_size) as f32, (single_icon_size) as f32],
-                    &[0.11, 0.25, 0.48, 1.0],
-                );
-                let texture = &system_vars.skill_icons[&skill];
-                render_texture_2d(&system_vars, texture, &Vector2::new(x as f32, icon_y), 2.0);
-                let skill_key_texture = &system_vars.texts.skill_key_texts[&skill_key];
+                render_commands
+                    .prepare_for_2d()
+                    .screen_pos(x as f32, icon_y)
+                    .size2(single_icon_size as f32, single_icon_size as f32)
+                    .color(
+                        &(if not_castable {
+                            [0.7, 0.7, 0.7, 1.0] // grey if not castable
+                        } else {
+                            [0.11, 0.25, 0.48, 1.0]
+                        }),
+                    )
+                    .add_rectangle_command(Layer2d::Layer0);
+
+                render_commands
+                    .prepare_for_2d()
+                    .screen_pos(x as f32, icon_y)
+                    .size(2.0)
+                    .add_texture_command(&system_vars.assets.skill_icons[&skill], Layer2d::Layer1);
+
+                let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
                 let center_x =
                     -2.0 + x as f32 + single_icon_size as f32 - skill_key_texture.width as f32;
                 let center_y =
                     -2.0 + icon_y + single_icon_size as f32 - skill_key_texture.height as f32;
-                render_texture_2d(
-                    &system_vars,
-                    skill_key_texture,
-                    &Vector2::new(center_x, center_y),
-                    1.0,
-                );
+                render_commands
+                    .prepare_for_2d()
+                    .screen_pos(center_x, center_y)
+                    .add_texture_command(skill_key_texture, Layer2d::Layer2);
                 x += single_icon_size + inner_border + space;
             }
         }
 
-        // Draw cursor
-        let cursor = if let Some((skill_key, skill)) = selecting_target {
-            let texture = &system_vars.texts.skill_name_texts[&skill];
-            render_texture_2d(
-                &system_vars,
-                texture,
-                &Vector2::new(
-                    controller.last_mouse_x as f32 - texture.width as f32 / 2.0,
-                    controller.last_mouse_y as f32 + 32.0,
-                ),
-                1.0,
-            );
-            if skill.get_skill_target_type() != SkillTargetType::Area {
-                CURSOR_TARGET
-            } else {
-                CURSOR_CLICK
-            }
-        } else if let Some(entity_below_cursor) = controller.entity_below_cursor {
-            let ent_below_cursor_state = char_state_storage.get(entity_below_cursor).unwrap();
-            let ent_is_dead = char_state_storage
-                .get(entity_below_cursor)
-                .map(|it| !it.state().is_alive())
-                .unwrap_or(false);
-            if entity_below_cursor == controller.char_entity_id || ent_is_dead {
-                // self or dead
-                CURSOR_NORMAL
-            } else {
-                CURSOR_ATTACK
-            }
-        } else if !controller.cell_below_cursor_walkable {
-            CURSOR_STOP
-        } else {
-            CURSOR_NORMAL
-        };
-        controller.cursor_anim_descr.action_index = cursor.1;
-        render_sprite_2d(
+        // render targeting skill name
+        if let Some((_skill_key, skill)) = input.select_skill_target {
+            let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+            let not_castable = char_state
+                .skill_cast_allowed_at
+                .get(&skill)
+                .unwrap_or(&ElapsedTime(0.0))
+                .is_later_than(system_vars.time);
+            render_commands
+                .prepare_for_2d()
+                .color(
+                    &(if not_castable {
+                        [0.7, 0.7, 0.7, 1.0]
+                    } else {
+                        [1.0, 1.0, 1.0, 1.0]
+                    }),
+                )
+                .screen_pos(
+                    input.last_mouse_x as f32 - texture.width as f32 / 2.0,
+                    input.last_mouse_y as f32 + 32.0,
+                )
+                .add_texture_command(texture, Layer2d::Layer9);
+        }
+
+        render_action_2d(
             &system_vars,
-            &controller.cursor_anim_descr,
-            &system_vars.sprites.cursors,
-            &Vector2::new(
-                controller.last_mouse_x as f32,
-                controller.last_mouse_y as f32,
-            ),
+            &input.cursor_anim_descr,
+            &system_vars.assets.sprites.cursors,
+            &Vector2::new(input.last_mouse_x as f32, input.last_mouse_y as f32),
+            &input.cursor_color,
+            render_commands,
         );
     }
 }
 
-fn render_sprite_2d(
+fn render_action_2d(
     system_vars: &SystemVariables,
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector2<f32>,
+    color: &[f32; 3],
+    render_commands: &mut RenderCommandCollectorComponent,
 ) {
     let idx = animated_sprite.action_index;
     let action = &sprite_res.action.actions[idx];
@@ -225,82 +206,20 @@ fn render_sprite_2d(
         }
         let texture = &sprite_res.textures[layer.sprite_frame_index as usize];
 
-        let width = texture.original_width as f32 * layer.scale[0];
-        let height = texture.original_height as f32 * layer.scale[1];
-        texture.texture.bind(TEXTURE_0);
+        // todo: don't we need layer.scale[0]?
 
         let offset = [0, 0];
         let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
         let offset = [offset[0] as f32, offset[1] as f32];
+        let offset = [
+            offset[0] - (texture.texture.width / 2) as f32,
+            offset[1] - (texture.texture.height / 2) as f32,
+        ];
 
-        let mut matrix = Matrix4::<f32>::identity();
-        let pos = Vector3::new(pos.x, pos.y, 0.0);
-        matrix.prepend_translation_mut(&pos);
-
-        let width = width as f32;
-        let width = if layer.is_mirror { -width } else { width };
-
-        let shader = system_vars.shaders.sprite2d_shader.gl_use();
-        shader.set_mat4("projection", &system_vars.matrices.ortho);
-        shader.set_int("model_texture", 0);
-        shader.set_mat4("model", &matrix);
-        shader.set_vec2("offset", &offset);
-        shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
-        shader.set_vec2("size", &[width, -height as f32]);
-        system_vars
-            .map_render_data
-            .centered_sprite_vertex_array
-            .bind()
-            .draw();
+        render_commands
+            .prepare_for_2d()
+            .screen_pos(pos.x, pos.y)
+            .color_rgb(color)
+            .add_sprite_command(&texture.texture, offset, layer.is_mirror, Layer2d::Layer9);
     }
-}
-
-fn render_rect(
-    system_vars: &SystemVariables,
-    pos: &Vector2<f32>,
-    size: &[f32; 2],
-    color: &[f32; 4],
-) {
-    let mut matrix = Matrix4::<f32>::identity();
-    let pos = Vector3::new(pos.x, pos.y, 0.0);
-    matrix.prepend_translation_mut(&pos);
-
-    let shader = system_vars.shaders.rectangle_2d_shader.gl_use();
-    shader.set_mat4("projection", &system_vars.matrices.ortho);
-    shader.set_mat4("model", &matrix);
-    shader.set_vec4("color", color);
-    shader.set_vec2("size", size);
-    system_vars
-        .map_render_data
-        .rectangle_vertex_array
-        .bind()
-        .draw();
-}
-
-fn render_texture_2d(
-    system_vars: &SystemVariables,
-    texture: &GlTexture,
-    pos: &Vector2<f32>,
-    size: f32,
-) {
-    let width = texture.width as f32;
-    let height = texture.height as f32;
-    texture.bind(TEXTURE_0);
-
-    let mut matrix = Matrix4::<f32>::identity();
-    let pos = Vector3::new(pos.x, pos.y, 0.0);
-    matrix.prepend_translation_mut(&pos);
-
-    let shader = system_vars.shaders.sprite2d_shader.gl_use();
-    shader.set_mat4("projection", &system_vars.matrices.ortho);
-    shader.set_int("model_texture", 0);
-    shader.set_mat4("model", &matrix);
-    shader.set_vec2("offset", &[0.0, 0.0]);
-    shader.set_vec2("size", &[width * size, height as f32 * size]);
-    shader.set_vec4("color", &[1.0, 1.0, 1.0, 1.0]);
-    system_vars
-        .map_render_data
-        .sprite_vertex_array
-        .bind()
-        .draw();
 }

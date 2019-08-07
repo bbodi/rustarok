@@ -1,13 +1,14 @@
-use crate::components::char::{CharState, CharacterStateComponent};
+use crate::components::char::CharacterStateComponent;
 use crate::components::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
 };
 use crate::components::{AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::{ElapsedTime, PhysicsWorld};
+use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
+use rand::Rng;
 use specs::prelude::*;
 use specs::{Entity, LazyUpdate};
 
@@ -19,6 +20,44 @@ pub enum AttackOutcome {
     Heal(u32),
     Block,
     Absorb,
+    Combo {
+        single_attack_damage: u32,
+        attack_count: u8,
+        sum_damage: u32,
+    },
+}
+impl AttackOutcome {
+    pub fn create_combo() -> ComboAttackOutcomeBuilder {
+        ComboAttackOutcomeBuilder {
+            base_atk: 0,
+            attack_count: 0,
+        }
+    }
+}
+
+pub struct ComboAttackOutcomeBuilder {
+    base_atk: u32,
+    attack_count: u8,
+}
+
+impl ComboAttackOutcomeBuilder {
+    pub fn base_atk(mut self, base_atk: u32) -> ComboAttackOutcomeBuilder {
+        self.base_atk = base_atk;
+        self
+    }
+
+    pub fn attack_count(mut self, attack_count: u8) -> ComboAttackOutcomeBuilder {
+        self.attack_count = attack_count;
+        self
+    }
+
+    pub fn build(self) -> AttackOutcome {
+        AttackOutcome::Combo {
+            single_attack_damage: self.base_atk,
+            attack_count: self.attack_count,
+            sum_damage: self.base_atk * self.attack_count as u32,
+        }
+    }
 }
 
 pub struct AttackSystem;
@@ -28,7 +67,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, PhysicsWorld>,
+        specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
     );
@@ -44,7 +83,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             mut updater,
         ): Self::SystemData,
     ) {
-        let stopwatch = system_benchmark.start_measurement("AttackSystem");
+        let _stopwatch = system_benchmark.start_measurement("AttackSystem");
 
         let mut new_attacks = system_vars
             .area_attacks
@@ -81,7 +120,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         system_vars.apply_area_statuses.clear();
 
         for apply_force in &system_vars.pushes {
-            if let Some(char_body) = physics_world.rigid_body_mut(apply_force.body_handle) {
+            if let Some(char_body) = physics_world.bodies.rigid_body_mut(apply_force.body_handle) {
                 let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
                 log::trace!("Try to apply push {:?}", apply_force);
                 if char_state.statuses.allow_push(apply_force) {
@@ -108,7 +147,13 @@ impl<'a> specs::System<'a> for AttackSystem {
                 .and_then(|src_char_state| {
                     char_state_storage
                         .get(attack.dst_entity)
-                        .filter(|it| it.state().is_alive())
+                        .filter(|it| {
+                            it.state().is_alive()
+                                && match attack.typ {
+                                    AttackType::Heal(_) => src_char_state.team == it.team,
+                                    _ => src_char_state.team != it.team,
+                                }
+                        })
                         .and_then(|dst_char_state| {
                             Some(AttackCalculation::attack(
                                 src_char_state,
@@ -121,6 +166,7 @@ impl<'a> specs::System<'a> for AttackSystem {
 
             if let Some((src_outcomes, dst_outcomes)) = outcomes {
                 for outcome in src_outcomes.into_iter() {
+                    let attacker_entity = attack.dst_entity;
                     let attacked_entity = attack.src_entity;
                     let attacked_entity_state =
                         char_state_storage.get_mut(attacked_entity).unwrap();
@@ -143,12 +189,14 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &outcome,
                         &entities,
                         &mut updater,
+                        attacker_entity,
                         attacked_entity,
                         &char_pos,
                         system_vars.time,
                     );
                 }
                 for outcome in dst_outcomes.into_iter() {
+                    let attacker_entity = attack.src_entity;
                     let attacked_entity = attack.dst_entity;
                     let attacked_entity_state =
                         char_state_storage.get_mut(attacked_entity).unwrap();
@@ -171,6 +219,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                         &outcome,
                         &entities,
                         &mut updater,
+                        attacker_entity,
                         attacked_entity,
                         &char_pos,
                         system_vars.time,
@@ -186,7 +235,7 @@ impl<'a> specs::System<'a> for AttackSystem {
 
         let status_changes =
             std::mem::replace(&mut system_vars.remove_statuses, Vec::with_capacity(128));
-        AttackSystem::remove_statuses(status_changes, &mut char_state_storage, system_vars.time);
+        AttackSystem::remove_statuses(status_changes, &mut char_state_storage);
         system_vars.remove_statuses.clear();
     }
 }
@@ -259,20 +308,41 @@ impl AttackCalculation {
     }
 
     pub fn attack(
-        src: &CharacterStateComponent,
+        _src: &CharacterStateComponent,
         dst: &CharacterStateComponent,
         typ: AttackType,
     ) -> (Vec<AttackOutcome>, Vec<AttackOutcome>) {
-        let mut src_outcomes = vec![];
+        let src_outcomes = vec![];
         let mut dst_outcomes = vec![];
         match typ {
-            AttackType::Basic(base_dmg) | AttackType::SpellDamage(base_dmg) => {
+            AttackType::SpellDamage(base_dmg) => {
                 let atk = base_dmg;
                 let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
                 let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
-                    AttackOutcome::Damage(atk as u32)
+                    AttackOutcome::create_combo()
+                        .base_atk((atk / 10) as u32)
+                        .attack_count(10)
+                        .build()
+                };
+                dst_outcomes.push(outcome);
+            }
+            AttackType::Basic(base_dmg) => {
+                let atk = base_dmg;
+                let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
+                let outcome = if atk <= 0 {
+                    AttackOutcome::Block
+                } else {
+                    let mut rng = rand::thread_rng();
+                    if rng.gen::<usize>() % 10 == 0 {
+                        AttackOutcome::create_combo()
+                            .base_atk(atk as u32)
+                            .attack_count(2)
+                            .build()
+                    } else {
+                        AttackOutcome::Damage(atk as u32)
+                    }
                 };
                 dst_outcomes.push(outcome);
             }
@@ -308,8 +378,19 @@ impl AttackCalculation {
                 char_comp
                     .cannot_control_until
                     .run_at_least_until_seconds(now, 0.1);
-                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
-                char_comp.hp -= dbg!(*val) as i32;
+                char_comp.set_receiving_damage();
+                char_comp.hp -= *val as i32;
+            }
+            AttackOutcome::Combo {
+                single_attack_damage: _,
+                attack_count: _,
+                sum_damage,
+            } => {
+                char_comp
+                    .cannot_control_until
+                    .run_at_least_until_seconds(now, 0.1);
+                char_comp.set_receiving_damage();
+                char_comp.hp -= *sum_damage as i32;
             }
             AttackOutcome::Poison(val) => {
                 char_comp.hp -= *val as i32;
@@ -318,7 +399,7 @@ impl AttackCalculation {
                 char_comp
                     .cannot_control_until
                     .run_at_least_until_seconds(now, 0.1);
-                char_comp.set_state(CharState::ReceivingDamage, char_comp.dir());
+                char_comp.set_receiving_damage();
                 char_comp.hp -= *val as i32;
             }
             AttackOutcome::Block => {}
@@ -330,6 +411,7 @@ impl AttackCalculation {
         outcome: &AttackOutcome,
         entities: &Entities,
         updater: &mut specs::Write<LazyUpdate>,
+        src_entity_id: Entity,
         target_entity_id: Entity,
         char_pos: &Vector2<f32>,
         sys_time: ElapsedTime,
@@ -337,6 +419,17 @@ impl AttackCalculation {
         let damage_entity = entities.create();
         let (typ, value) = match outcome {
             AttackOutcome::Damage(value) => (FlyingNumberType::Damage, *value),
+            AttackOutcome::Combo {
+                single_attack_damage,
+                attack_count,
+                sum_damage,
+            } => (
+                FlyingNumberType::Combo {
+                    single_attack_damage: *single_attack_damage,
+                    attack_count: *attack_count,
+                },
+                *sum_damage,
+            ),
             AttackOutcome::Poison(value) => (FlyingNumberType::Poison, *value),
             AttackOutcome::Crit(value) => (FlyingNumberType::Damage, *value),
             AttackOutcome::Heal(value) => (FlyingNumberType::Heal, *value),
@@ -345,7 +438,15 @@ impl AttackCalculation {
         };
         updater.insert(
             damage_entity,
-            FlyingNumberComponent::new(typ, value, target_entity_id, 3.0, *char_pos, sys_time),
+            FlyingNumberComponent::new(
+                typ,
+                value,
+                src_entity_id,
+                target_entity_id,
+                3.0,
+                *char_pos,
+                sys_time,
+            ),
         );
     }
 }
@@ -400,7 +501,6 @@ impl AttackSystem {
     fn remove_statuses(
         status_changes: Vec<RemoveStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
-        now: ElapsedTime,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
