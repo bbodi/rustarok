@@ -1,14 +1,12 @@
-use crate::asset::SpriteResource;
 use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, Percentage,
+    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharType, Percentage,
 };
 use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
-use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
@@ -28,16 +26,9 @@ pub trait Status: Any {
     fn can_target_move(&self) -> bool;
     fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
-    fn get_render_color(&self) -> [f32; 4];
+    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4];
     fn get_render_size(&self) -> f32;
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
-    fn calc_render_sprite<'a>(
-        &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource>;
     fn update(
         &mut self,
         self_char_id: Entity,
@@ -178,33 +169,51 @@ impl Statuses {
         }
     }
 
-    pub fn get_base_attributes(outlook: &CharOutlook) -> CharAttributes {
-        return match outlook {
-            CharOutlook::Player { job_id, .. } => match job_id {
-                _ => CharAttributes {
-                    walking_speed: Percentage(100),
-                    attack_range: Percentage(100),
-                    attack_speed: Percentage(100),
-                    attack_damage: 76,
-                    armor: Percentage(10),
-                    healing: Percentage(100),
-                    hp_regen: Percentage(100),
-                    max_hp: 2000,
-                    mana_regen: Percentage(100),
-                },
+    pub fn get_base_attributes(typ: &CharType) -> CharAttributes {
+        return match typ {
+            CharType::Player => CharAttributes {
+                walking_speed: Percentage(100),
+                attack_range: Percentage(100),
+                attack_speed: Percentage(130),
+                attack_damage: 120,
+                armor: Percentage(50),
+                healing: Percentage(100),
+                hp_regen: Percentage(100),
+                max_hp: 50_000,
+                mana_regen: Percentage(100),
             },
-            CharOutlook::Monster(monster_id) => match monster_id {
-                _ => CharAttributes {
-                    walking_speed: Percentage(100),
-                    attack_range: Percentage(100),
-                    attack_speed: Percentage(100),
-                    attack_damage: 76,
-                    armor: Percentage(0),
-                    healing: Percentage(100),
-                    hp_regen: Percentage(100),
-                    max_hp: 2000,
-                    mana_regen: Percentage(100),
-                },
+            CharType::Minion => CharAttributes {
+                walking_speed: Percentage(100),
+                attack_range: Percentage(100),
+                attack_speed: Percentage(100),
+                attack_damage: 76,
+                armor: Percentage(10),
+                healing: Percentage(100),
+                hp_regen: Percentage(100),
+                max_hp: 2000,
+                mana_regen: Percentage(100),
+            },
+            CharType::Boss => CharAttributes {
+                walking_speed: Percentage(100),
+                attack_range: Percentage(100),
+                attack_speed: Percentage(100),
+                attack_damage: 200,
+                armor: Percentage(10),
+                healing: Percentage(100),
+                hp_regen: Percentage(100),
+                max_hp: 100_000,
+                mana_regen: Percentage(100),
+            },
+            CharType::Mercenary => CharAttributes {
+                walking_speed: Percentage(130),
+                attack_range: Percentage(100),
+                attack_speed: Percentage(200),
+                attack_damage: 300,
+                armor: Percentage(20),
+                healing: Percentage(100),
+                hp_regen: Percentage(100),
+                max_hp: 3000,
+                mana_regen: Percentage(100),
             },
         };
     }
@@ -227,37 +236,7 @@ impl Statuses {
         return &self.cached_modifier_collector;
     }
 
-    pub fn calc_render_sprite<'a>(
-        &self,
-        job_id: JobId,
-        head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
-    ) -> &'a SpriteResource {
-        let mut sprite = {
-            let sprites = &sprites.character_sprites;
-            &sprites[&job_id][sex as usize]
-        };
-        for status in &mut self
-            .statuses
-            .iter()
-            .take(self.first_free_index)
-            .filter(|it| it.is_some())
-        {
-            if let Some(spr) = status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .calc_render_sprite(job_id, head_index, sex, sprites)
-            {
-                sprite = spr;
-            }
-        }
-        return sprite;
-    }
-
-    pub fn calc_render_color(&self) -> [f32; 4] {
+    pub fn calc_render_color(&self, now: ElapsedTime) -> [f32; 4] {
         let mut ret = [1.0, 1.0, 1.0, 1.0];
         for status in &mut self
             .statuses
@@ -265,7 +244,12 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            let status_color = status.as_ref().unwrap().lock().unwrap().get_render_color();
+            let status_color = status
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .get_render_color(now);
             for i in 0..4 {
                 ret[i] *= status_color[i];
             }
@@ -322,7 +306,16 @@ impl Statuses {
         self.statuses[MainStatuses::Mounted as usize] = value;
     }
 
-    pub fn add(&mut self, status: Arc<Mutex<Box<dyn Status>>>) {
+    pub fn add(&mut self, status: Box<dyn Status>) {
+        if self.first_free_index >= STATUS_ARRAY_SIZE {
+            log::error!("There is no more space for new Status!");
+            return;
+        }
+        self.statuses[self.first_free_index] = Some(Arc::new(Mutex::new(status)));
+        self.first_free_index += 1;
+    }
+
+    pub fn ugly_add(&mut self, status: Arc<Mutex<Box<dyn Status>>>) {
         if self.first_free_index >= STATUS_ARRAY_SIZE {
             log::error!("There is no more space for new Status!");
             return;
@@ -409,7 +402,7 @@ impl Status for MountedStatus {
         true
     }
 
-    fn get_render_color(&self) -> [f32; 4] {
+    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
         [1.0, 1.0, 1.0, 1.0]
     }
 
@@ -424,16 +417,6 @@ impl Status for MountedStatus {
             ElapsedTime(0.0),
             ElapsedTime(0.0),
         );
-    }
-
-    fn calc_render_sprite<'a>(
-        &self,
-        job_id: JobId,
-        _head_index: usize,
-        sex: Sex,
-        sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource> {
-        Some(&sprites.mounted_character_sprites[&job_id][sex as usize])
     }
 
     fn update(
@@ -497,7 +480,7 @@ impl Status for PoisonStatus {
         true
     }
 
-    fn get_render_color(&self) -> [f32; 4] {
+    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
         [0.5, 1.0, 0.5, 1.0]
     }
 
@@ -506,16 +489,6 @@ impl Status for PoisonStatus {
     }
 
     fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
-
-    fn calc_render_sprite<'a>(
-        &self,
-        _job_id: JobId,
-        _head_index: usize,
-        _sex: Sex,
-        _sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource> {
-        None
-    }
 
     fn update(
         &mut self,

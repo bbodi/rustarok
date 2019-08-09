@@ -1,13 +1,13 @@
 use crate::components::controller::SkillKey;
 use crate::components::skills::skill::Skills;
-use crate::components::status::{
+use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::consts::{JobId, MonsterId};
 use crate::video::{DynamicVertexArray, GlTexture};
 use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
-use nphysics2d::object::{ColliderHandle, DefaultColliderHandle};
+use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
 use std::time::Instant;
 

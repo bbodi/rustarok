@@ -1,3 +1,4 @@
+use crate::components::controller::WorldCoords;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::video::VIDEO_HEIGHT;
 use nalgebra::{Matrix4, Point3, Vector3};
@@ -9,6 +10,7 @@ pub struct Camera {
     up: Vector3<f32>,
     right: Vector3<f32>,
     pub visible_z_range: f32,
+    pub top_z_world_coord_offset: f32,
 }
 
 #[allow(dead_code)]
@@ -22,7 +24,13 @@ impl Camera {
             up,
             right: front.cross(&up).normalize(),
             visible_z_range: 0.0,
+            top_z_world_coord_offset: 0.0,
         }
+    }
+
+    pub fn is_visible(&self, pos: WorldCoords) -> bool {
+        return (pos.x >= self.pos.x - 40.0 && pos.x <= self.pos.x + 40.0)
+            && (pos.y >= self.pos.z - self.top_z_world_coord_offset && pos.y <= self.pos.z + 5.0);
     }
 
     pub fn pos(&self) -> Point3<f32> {
@@ -51,6 +59,8 @@ impl Camera {
             &view,
         );
         self.visible_z_range = (self.pos.z - center.y).abs();
+        self.top_z_world_coord_offset =
+            self.pos.z - InputConsumerSystem::picking_2d_3d(0, 0, &self.pos(), projection, &view).y;
     }
 
     pub fn rotate(&mut self, pitch: f32, yaw: f32) {

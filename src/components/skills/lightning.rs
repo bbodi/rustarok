@@ -4,12 +4,10 @@ use crate::components::skills::skill::{
 };
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
-use crate::systems::{AssetResources, Collision, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::ColliderHandle;
 use specs::{Entity, LazyUpdate};
-use std::collections::HashMap;
 
 pub struct LightningSkill;
 

@@ -1,16 +1,14 @@
-use crate::asset::SpriteResource;
 use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::WorldCoords;
-use crate::components::status::{
+use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
     StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
-use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
@@ -39,7 +37,7 @@ impl Status for FireBombStatus {
         true
     }
 
-    fn get_render_color(&self) -> [f32; 4] {
+    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
         [1.0, 1.0, 1.0, 1.0]
     }
 
@@ -48,16 +46,6 @@ impl Status for FireBombStatus {
     }
 
     fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
-
-    fn calc_render_sprite<'a>(
-        &self,
-        _job_id: JobId,
-        _head_index: usize,
-        _sex: Sex,
-        _sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource> {
-        None
-    }
 
     fn update(
         &mut self,

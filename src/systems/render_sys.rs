@@ -1,13 +1,16 @@
 use crate::cam::Camera;
 use crate::components::char::{
-    CharOutlook, CharState, CharType, CharacterStateComponent, PhysicsComponent,
+    ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, PhysicsComponent,
     SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
-use crate::components::controller::{CameraComponent, HumanInputComponent, WorldCoords};
+use crate::components::controller::{
+    CameraComponent, ControllerComponent, HumanInputComponent, PlayerIntention, WorldCoords,
+};
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
     BrowserClient, FlyingNumberComponent, FlyingNumberType, StrEffectComponent,
 };
+use crate::cursor::CURSOR_TARGET;
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
@@ -18,6 +21,7 @@ use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
 
+pub const COLOR_WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 /// The values that should be added to the sprite direction based on the camera
 /// direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
@@ -69,6 +73,7 @@ impl RenderDesktopClientSystem {
         self_id: Entity,
         self_team: Team,
         char_state: &CharacterStateComponent,
+        controller: &ControllerComponent,
         char_pos: &WorldCoords,
         camera: &CameraComponent,
         input: &mut HumanInputComponent, // mut: we have to store bounding rects of drawed entities :(
@@ -154,6 +159,33 @@ impl RenderDesktopClientSystem {
             }
         }
 
+        // render target position
+        if let Some(PlayerIntention::MoveTo(pos)) = controller.last_action {
+            if let CharState::Walking(_) = char_state.state() {
+                let cursor_anim_descr = SpriteRenderDescriptorComponent {
+                    action_index: CURSOR_TARGET.1,
+                    animation_started: ElapsedTime(0.0),
+                    animation_ends_at: ElapsedTime(0.0),
+                    forced_duration: None,
+                    direction: 0,
+                    fps_multiplier: 2.0,
+                };
+                render_action(
+                    system_vars.time,
+                    &cursor_anim_descr,
+                    &system_vars.assets.sprites.cursors,
+                    camera.yaw,
+                    &pos,
+                    [0, 0],
+                    false,
+                    1.0,
+                    ActionPlayMode::Repeat,
+                    &COLOR_WHITE,
+                    render_commands,
+                );
+            }
+        }
+
         {
             let _stopwatch = system_benchmark.start_measurement("render.draw_characters");
             self.draw_characters(
@@ -212,20 +244,29 @@ impl RenderDesktopClientSystem {
             let char_state: &CharacterStateComponent = char_state;
 
             let pos = char_state.pos();
-            let is_dead = char_state.state().is_dead();
-            let color = char_state.statuses.calc_render_color();
+            if !camera.camera.is_visible(pos) {
+                continue;
+            }
+
+            let color = char_state.statuses.calc_render_color(system_vars.time);
             match char_state.outlook {
                 CharOutlook::Player {
                     job_id,
                     head_index,
                     sex,
                 } => {
-                    let body_sprite = char_state.statuses.calc_render_sprite(
-                        job_id,
-                        head_index,
-                        sex,
-                        &system_vars.assets.sprites,
-                    );
+                    let body_sprite = if char_state.statuses.is_mounted() {
+                        let sprites = &system_vars.assets.sprites;
+                        &sprites.mounted_character_sprites[&job_id][sex as usize]
+                    } else {
+                        let sprites = &system_vars.assets.sprites.character_sprites;
+                        &sprites[&job_id][sex as usize]
+                    };
+                    let play_mode = if char_state.state().is_dead() {
+                        ActionPlayMode::PlayThenHold
+                    } else {
+                        ActionPlayMode::Repeat
+                    };
                     let head_res = {
                         let sprites = &system_vars.assets.sprites.head_sprites;
                         &sprites[sex as usize][head_index]
@@ -249,7 +290,7 @@ impl RenderDesktopClientSystem {
                             [0, 0],
                             true,
                             1.2,
-                            is_dead,
+                            play_mode,
                             color,
                             render_commands,
                         );
@@ -263,7 +304,7 @@ impl RenderDesktopClientSystem {
                             body_pos_offset,
                             false,
                             1.2,
-                            is_dead,
+                            play_mode,
                             color,
                             render_commands,
                         );
@@ -279,7 +320,7 @@ impl RenderDesktopClientSystem {
                         [0, 0],
                         true,
                         1.0,
-                        is_dead,
+                        play_mode,
                         &color,
                         render_commands,
                     );
@@ -301,7 +342,7 @@ impl RenderDesktopClientSystem {
                         body_pos_offset,
                         false,
                         1.0,
-                        is_dead,
+                        play_mode,
                         &color,
                         render_commands,
                     );
@@ -315,7 +356,8 @@ impl RenderDesktopClientSystem {
                         body_bounding_rect.merge(&head_bounding_rect);
                     };
 
-                    if !is_dead {
+                    // TODO: create a has_hp component and draw this on them only?
+                    if !char_state.state().is_dead() {
                         self.draw_health_bar(
                             self_id == entity_id,
                             self_team == char_state.team,
@@ -333,6 +375,11 @@ impl RenderDesktopClientSystem {
                     let body_res = {
                         let sprites = &system_vars.assets.sprites.monster_sprites;
                         &sprites[&monster_id]
+                    };
+                    let play_mode = if char_state.state().is_dead() {
+                        ActionPlayMode::PlayThenHold
+                    } else {
+                        ActionPlayMode::Repeat
                     };
                     if input
                         .entity_below_cursor
@@ -353,7 +400,7 @@ impl RenderDesktopClientSystem {
                             [0, 0],
                             true,
                             1.2,
-                            is_dead,
+                            play_mode,
                             color,
                             render_commands,
                         );
@@ -367,7 +414,7 @@ impl RenderDesktopClientSystem {
                         [0, 0],
                         true,
                         1.0,
-                        is_dead,
+                        play_mode,
                         &color,
                         render_commands,
                     );
@@ -379,7 +426,7 @@ impl RenderDesktopClientSystem {
                             &system_vars.matrices.projection,
                         )
                     };
-                    if !is_dead {
+                    if !char_state.state().is_dead() {
                         self.draw_health_bar(
                             self_id == entity_id,
                             self_team == char_state.team,
@@ -410,6 +457,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
+        specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -430,6 +478,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             physics_storage,
             sprite_storage,
             char_state_storage,
+            controller_storage,
             mut system_vars,
             mut system_benchmark,
             skill_storage,
@@ -449,13 +498,22 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             render_commands.clear();
         }
 
-        for (entity_id, mut input, browser, mut render_commands, desktop_char, camera) in (
+        for (
+            entity_id,
+            mut input,
+            browser,
+            mut render_commands,
+            desktop_char,
+            camera,
+            controller,
+        ) in (
             &entities,
             &mut input_storage,
             &mut browser_client_storage,
             &mut render_commands_storage,
             &char_state_storage,
             &camera_storage,
+            &controller_storage,
         )
             .join()
         {
@@ -463,6 +521,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 entity_id,
                 desktop_char.team,
                 &desktop_char,
+                controller,
                 &desktop_char.pos(),
                 camera,
                 &mut input,
@@ -513,7 +572,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             // ecs_world.maintain has not been executed yet to remove it from the world
             let _result = browser.websocket.lock().unwrap().send_message(&message);
         }
-
         unsafe {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
@@ -527,16 +585,26 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &mut render_commands_storage,
                 &char_state_storage,
                 &camera_storage,
+                &controller_storage,
             )
                 .join()
         };
-        for (entity_id, mut input, _not_browser, mut render_commands, desktop_char, camera) in join
+        for (
+            entity_id,
+            mut input,
+            _not_browser,
+            mut render_commands,
+            desktop_char,
+            camera,
+            controller,
+        ) in join
         {
             {
                 self.render_for_controller(
                     entity_id,
                     desktop_char.team,
                     &desktop_char,
+                    controller,
                     &desktop_char.pos(),
                     camera,
                     &mut input,
@@ -581,7 +649,7 @@ pub fn render_single_layer_action<'a>(
     pos_offset: [i32; 2],
     is_main: bool,
     size_multiplier: f32,
-    is_dead: bool,
+    play_mode: ActionPlayMode,
     color: &[f32; 4],
     render_commands: &'a mut RenderCommandCollectorComponent,
 ) -> [i32; 2] {
@@ -604,9 +672,7 @@ pub fn render_single_layer_action<'a>(
             Some(&sprite_res.action.actions[0])
         })
         .unwrap();
-    let frame_index = if is_dead {
-        action.frames.len() - 1
-    } else {
+    let frame_index = {
         let frame_count = action.frames.len();
         let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
             duration.div(frame_count as f32)
@@ -619,7 +685,11 @@ pub fn render_single_layer_action<'a>(
             time_needed_for_one_frame
         };
         let elapsed_time = now.elapsed_since(animation.animation_started);
-        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
+        let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
+        match play_mode {
+            ActionPlayMode::Repeat => real_index % frame_count,
+            ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
+        }
     };
     let frame = &action.frames[frame_index];
 
@@ -674,7 +744,7 @@ pub fn render_action(
     pos_offset: [i32; 2],
     is_main: bool,
     size_multiplier: f32,
-    is_dead: bool,
+    play_mode: ActionPlayMode,
     color: &[f32; 4],
     render_commands: &mut RenderCommandCollectorComponent,
 ) -> [i32; 2] {
@@ -697,9 +767,7 @@ pub fn render_action(
             Some(&sprite_res.action.actions[0])
         })
         .unwrap();
-    let frame_index = if is_dead {
-        action.frames.len() - 1
-    } else {
+    let frame_index = {
         let frame_count = action.frames.len();
         let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
             duration.div(frame_count as f32)
@@ -712,7 +780,11 @@ pub fn render_action(
             time_needed_for_one_frame
         };
         let elapsed_time = now.elapsed_since(animation.animation_started);
-        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
+        let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
+        match play_mode {
+            ActionPlayMode::Repeat => real_index % frame_count,
+            ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
+        }
     };
     let frame = &action.frames[frame_index];
 
@@ -1152,14 +1224,6 @@ impl DamageRenderSystem {
         pos.z -= y_offset;
         return (size, pos);
     }
-
-    pub fn render_single_number(
-        value: u32,
-        typ: FlyingNumberType,
-        target_entity_id: Entity,
-        start_time: ElapsedTime,
-    ) {
-    }
 }
 
 impl RenderDesktopClientSystem {
@@ -1239,7 +1303,7 @@ impl RenderDesktopClientSystem {
             let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
             render_commands
                 .prepare_for_2d()
-                .color(&[1.0, 1.0, 1.0, 1.0])
+                .color(&COLOR_WHITE)
                 .screen_pos(x, y)
                 .add_sprite_command(
                     shield_icon_texture,

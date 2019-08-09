@@ -29,8 +29,8 @@ use log::LevelFilter;
 use nalgebra::{Matrix4, Point2, Point3, Rotation3, Unit, Vector2, Vector3};
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
-    BodyHandle, BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultBodySet,
-    DefaultColliderHandle, DefaultColliderSet, RigidBodyDesc,
+    BodyPartHandle, ColliderDesc, DefaultBodySet, DefaultColliderHandle, DefaultColliderSet,
+    RigidBodyDesc,
 };
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
@@ -87,13 +87,13 @@ mod components;
 mod systems;
 
 use crate::common::p3_to_p2;
-use crate::components::skills::absorb_shield::AbsorbStatus;
-use crate::components::skills::attrib_mod::ArmorModifierStatus;
 use crate::components::skills::fire_bomb::FireBombStatus;
-use crate::components::skills::heal_area::HealApplierArea;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
-use crate::components::skills::status_applier_area::StatusApplierArea;
-use crate::components::status::{ApplyStatusComponentPayload, MainStatuses};
+use crate::components::status::absorb_shield::AbsorbStatus;
+use crate::components::status::attrib_mod::ArmorModifierStatus;
+use crate::components::status::heal_area::HealApplierArea;
+use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuses};
+use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
@@ -1070,7 +1070,7 @@ fn main() {
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
-        if next_minion_spawn.is_earlier_than(now) {
+        if next_minion_spawn.is_earlier_than(now) && false {
             next_minion_spawn = now.add_seconds(2.0);
 
             {
@@ -1402,6 +1402,19 @@ fn imgui_frame(
                 };
                 let pos2d = p3_to_p2(&pos);
                 let entity_id = create_random_char_minion(&mut ecs_world, pos2d, Team::Left);
+                ecs_world
+                    .write_storage()
+                    .insert(entity_id, MinionComponent { fountain_up: false });
+                ecs_world
+                    .write_storage()
+                    .insert(
+                        entity_id,
+                        ControllerComponent {
+                            next_action: None,
+                            last_action: None,
+                        },
+                    )
+                    .unwrap();
 
                 other_players.push(entity_id);
             }
@@ -1470,9 +1483,23 @@ fn imgui_frame(
                     MonsterId::Baphomet,
                     rng.gen_range(1, 3),
                     Team::Left,
+                    CharType::Mercenary,
                     CollisionGroup::Player,
                     &[CollisionGroup::NonPlayer],
                 );
+                ecs_world
+                    .write_storage()
+                    .insert(entity_id, MinionComponent { fountain_up: false });
+                ecs_world
+                    .write_storage()
+                    .insert(
+                        entity_id,
+                        ControllerComponent {
+                            next_action: None,
+                            last_action: None,
+                        },
+                    )
+                    .unwrap();
                 other_monsters.push(entity_id);
             }
         } else if current_monster_count > *monster_count {
@@ -1922,11 +1949,14 @@ fn load_map(
             let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
             let v = rot * Vector3::new(x, 0.0, y);
             let v2 = Vector2::new(v.x, v.z);
-            let parent_rigid_body = RigidBodyDesc::new().build();
+            let parent_rigid_body = RigidBodyDesc::new()
+                .translation(v2)
+                .gravity_enabled(false)
+                .status(nphysics2d::object::BodyStatus::Static)
+                .build();
             let parent_handle = physics_world.bodies.insert(parent_rigid_body);
             let cuboid = ColliderDesc::new(cuboid)
                 .density(10.0)
-                .translation(v2)
                 .collision_groups(
                     CollisionGroups::new()
                         .with_membership(&[CollisionGroup::StaticModel as usize])
@@ -2074,7 +2104,12 @@ impl PhysicEngine {
         extent: Vector2<f32>,
     ) -> DefaultColliderHandle {
         let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(extent / 2.0));
-        let body_handle = self.bodies.insert(RigidBodyDesc::new().build());
+        let body_handle = self.bodies.insert(
+            RigidBodyDesc::new()
+                .status(nphysics2d::object::BodyStatus::Static)
+                .gravity_enabled(false)
+                .build(),
+        );
         return self.colliders.insert(
             ColliderDesc::new(cuboid)
                 .translation(pos)

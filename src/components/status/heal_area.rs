@@ -2,14 +2,11 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::{AttackComponent, AttackType};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
-use crate::systems::{AssetResources, Collision, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
-use ncollide2d::pipeline::CollisionGroups;
-use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{ColliderDesc, ColliderHandle, DefaultColliderHandle};
+use nphysics2d::object::DefaultColliderHandle;
 use specs::{Entity, LazyUpdate};
-use std::collections::HashMap;
 
 pub struct HealApplierArea {
     pub collider_handle: DefaultColliderHandle,

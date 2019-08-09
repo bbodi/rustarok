@@ -3,7 +3,7 @@ use crate::components::controller::{
     CameraComponent, ControllerComponent, HumanInputComponent, SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::Skills;
-use crate::components::status::Statuses;
+use crate::components::status::status::Statuses;
 use crate::consts::{JobId, MonsterId};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
@@ -142,12 +142,13 @@ pub fn create_monster(
     monster_id: MonsterId,
     radius: i32,
     team: Team,
+    typ: CharType,
     collision_group: CollisionGroup,
     blacklist_coll_groups: &[CollisionGroup],
 ) -> Entity {
     let entity_id = {
         let mut entity_builder = ecs_world.create_entity().with(CharacterStateComponent::new(
-            CharType::Minion,
+            typ,
             CharOutlook::Monster(monster_id),
             team,
         ));
@@ -206,7 +207,7 @@ impl PhysicsComponent {
             RigidBodyDesc::new()
                 .user_data(entity_id)
                 .gravity_enabled(false)
-                .linear_damping(20.0)
+                .linear_damping(50.0)
                 .set_translation(pos)
                 .build(),
         );
@@ -415,12 +416,14 @@ impl Percentage {
     }
 
     pub fn add_me_to(&self, num: i32) -> i32 {
-        let change = num / 100 * self.value / PERCENTAGE_FACTOR;
+        let change =
+            num * PERCENTAGE_FACTOR / 100 * self.value / PERCENTAGE_FACTOR / PERCENTAGE_FACTOR;
         return num + change;
     }
 
     pub fn subtract_me_from(&self, num: i32) -> i32 {
-        let change = num / 100 * self.value / PERCENTAGE_FACTOR;
+        let change =
+            num * PERCENTAGE_FACTOR / 100 * self.value / PERCENTAGE_FACTOR / PERCENTAGE_FACTOR;
         return num - change;
     }
 
@@ -460,8 +463,10 @@ mod tests {
         assert_eq!(Percentage(70).add_me_to(600), 1020);
         assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
         assert_eq!(Percentage(-10).add_me_to(200), 180);
+        assert_eq!(Percentage(50).add_me_to(76), 114);
         assert_eq!(Percentage(10).subtract_me_from(200), 180);
         assert_eq!(Percentage(70).subtract_me_from(600), 180);
+        assert_eq!(Percentage(50).subtract_me_from(76), 38);
         assert_eq!(Percentage(100).as_f32(), 1.0);
         assert_eq!(Percentage(50).as_f32(), 0.5);
         assert_eq!(Percentage(5).as_f32(), 0.05);
@@ -799,7 +804,7 @@ impl Drop for CharacterStateComponent {
 impl CharacterStateComponent {
     pub fn new(typ: CharType, outlook: CharOutlook, team: Team) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let base_attributes = Statuses::get_base_attributes(&outlook);
+        let base_attributes = Statuses::get_base_attributes(&typ);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             pos: v2!(0, 0),
@@ -813,7 +818,7 @@ impl CharacterStateComponent {
             dir: 0,
             cannot_control_until: ElapsedTime(0.0),
             attack_delay_ends_at: ElapsedTime(0.0),
-            hp: 2000,
+            hp: calculated_attribs.max_hp,
             base_attributes,
             calculated_attribs,
             attrib_bonuses: CharAttributesBonuses {
@@ -944,6 +949,13 @@ impl CharacterStateComponent {
     pub fn set_dir(&mut self, dir: usize) {
         self.dir = dir;
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum ActionPlayMode {
+    Repeat,
+    PlayThenHold,
+    // FixFrame(12)
 }
 
 #[derive(Component)]

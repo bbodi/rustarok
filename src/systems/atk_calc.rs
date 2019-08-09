@@ -1,5 +1,5 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::status::{
+use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
 };
@@ -329,8 +329,9 @@ impl AttackCalculation {
                 dst_outcomes.push(outcome);
             }
             AttackType::Basic(base_dmg) => {
-                let atk = base_dmg;
-                let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
+                let atk = dbg!(base_dmg);
+                let atk = dbg!(dst.calculated_attribs().armor).subtract_me_from(atk as i32);
+                dbg!(atk);
                 let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
@@ -484,7 +485,7 @@ impl AttackSystem {
                         }
                     }
                     ApplyStatusComponentPayload::SecondaryStatus(box_status) => {
-                        target_char.statuses.add(box_status);
+                        target_char.statuses.ugly_add(box_status);
                     }
                 }
                 target_char.update_attributes();

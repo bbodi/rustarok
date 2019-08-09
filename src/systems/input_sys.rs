@@ -4,9 +4,7 @@ use crate::components::controller::{
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
-use crate::cursor::{
-    CursorFrame, CURSOR_ATTACK, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET,
-};
+use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ElapsedTime;

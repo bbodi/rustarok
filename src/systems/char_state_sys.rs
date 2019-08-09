@@ -4,6 +4,7 @@ use crate::common::v2_to_p2;
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, PhysicsComponent};
 use crate::components::controller::WorldCoords;
 use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::status::death_status::DeathStatus;
 use crate::components::{AttackComponent, AttackType};
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
@@ -57,9 +58,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             if char_comp.hp <= 0 && *char_comp.state() != CharState::Dead {
                 log::debug!("Entity has died {:?}", char_entity_id);
                 char_comp.set_state(CharState::Dead, char_comp.dir());
-                // TODO: implement Death as status?
-                // then swap the order, first remove states then apply new ones (to remove the death state in case of resurrect)
                 char_comp.statuses.remove_all();
+                char_comp.statuses.add(DeathStatus::new(system_vars.time));
                 // remove rigid bodies from the physic simulation
                 if let Some(phys_comp) = physics_storage.get(char_entity_id) {
                     collisions_resource.remove_collider_handle(phys_comp.collider_handle);
@@ -68,10 +68,12 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 }
                 continue;
             }
+
+            char_comp.update_statuses(char_entity_id, &mut system_vars, &entities, &mut updater);
+
             if *char_comp.state() == CharState::Dead {
                 continue;
             }
-            char_comp.update_statuses(char_entity_id, &mut system_vars, &entities, &mut updater);
 
             let char_pos = char_comp.pos();
             match char_comp.state().clone() {

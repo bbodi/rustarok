@@ -1,10 +1,10 @@
 use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
 use crate::components::controller::WorldCoords;
-use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::lightning::{LightningManifest, LightningSkill};
-use crate::components::status::{
+use crate::components::status::absorb_shield::AbsorbStatus;
+use crate::components::status::status::{
     ApplyStatusComponent, MainStatuses, RemoveStatusComponent, StatusType,
 };
 use crate::components::{
@@ -15,9 +15,7 @@ use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2, Vector3};
-use ncollide2d::pipeline::CollisionGroups;
-use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{ColliderDesc, ColliderHandle, DefaultColliderHandle};
+use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

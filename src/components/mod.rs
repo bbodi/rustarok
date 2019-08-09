@@ -3,7 +3,7 @@ extern crate rand;
 use crate::components::controller::WorldCoords;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::{BodyHandle, DefaultBodyHandle};
+use nphysics2d::object::DefaultBodyHandle;
 use specs::prelude::*;
 use std::sync::Mutex;
 use websocket::stream::sync::TcpStream;

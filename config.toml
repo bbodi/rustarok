@@ -1,6 +1,6 @@
 
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
-log_level = "INFO"
+log_level = "TRACE"
 
 # if true, many resources won't be loaded (static models, gat data etc)
 quick_startup = false

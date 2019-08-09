@@ -1,12 +1,12 @@
-use crate::asset::SpriteResource;
 use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
 use crate::components::controller::WorldCoords;
-use crate::components::status::{Status, StatusStackingResult, StatusType, StatusUpdateResult};
+use crate::components::status::status::{
+    Status, StatusStackingResult, StatusType, StatusUpdateResult,
+};
 use crate::components::ApplyForceComponent;
-use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
-use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use specs::{Entity, LazyUpdate};
 
@@ -44,7 +44,7 @@ impl Status for ArmorModifierStatus {
         true
     }
 
-    fn get_render_color(&self) -> [f32; 4] {
+    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
         [1.0, 1.0, 1.0, 1.0]
     }
 
@@ -58,16 +58,6 @@ impl Status for ArmorModifierStatus {
             self.started,
             self.until,
         );
-    }
-
-    fn calc_render_sprite<'a>(
-        &self,
-        _job_id: JobId,
-        _head_index: usize,
-        _sex: Sex,
-        _sprites: &'a Sprites,
-    ) -> Option<&'a SpriteResource> {
-        None
     }
 
     fn update(

@@ -1,10 +1,8 @@
 use crate::components::char::{CharacterStateComponent, PhysicsComponent};
 use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
-use nalgebra::Vector2;
 use ncollide2d::narrow_phase::ContactEvent;
 use ncollide2d::query::Proximity;
-use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;
 
 pub struct PhysCollisionCollectorSystem;
