@@ -1,5 +1,5 @@
 use crate::cam::Camera;
-use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
+use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
 use crate::components::skills::skill::Skills;
 use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
@@ -64,6 +64,7 @@ impl SkillKey {
     }
 }
 
+#[derive(Clone)]
 pub enum PlayerIntention {
     MoveTowardsMouse(WorldCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.
@@ -72,7 +73,7 @@ pub enum PlayerIntention {
     /// Move to the coordination, attack any enemy on the way.
     AttackTowards(WorldCoords),
     /// bool = is self cast
-    Casting(Skills, bool, WorldCoords, Option<Entity>),
+    Casting(Skills, bool, WorldCoords),
 }
 
 #[derive(PartialEq, Eq)]
@@ -91,7 +92,55 @@ pub enum CastMode {
 pub struct ControllerComponent {
     pub next_action: Option<PlayerIntention>,
     pub last_action: Option<PlayerIntention>,
-    //    pub char_entity_id: Entity,
+    pub next_action_allowed: bool,
+    pub entities_below_cursor: EntitiesBelowCursor,
+    pub bounding_rect_2d: HashMap<Entity, (SpriteBoundingRect, Team)>,
+    pub cell_below_cursor_walkable: bool,
+    pub cursor_anim_descr: SpriteRenderDescriptorComponent,
+    pub cursor_color: [f32; 3],
+}
+
+impl ControllerComponent {
+    pub fn new() -> ControllerComponent {
+        ControllerComponent {
+            next_action_allowed: true,
+            next_action: None,
+            last_action: None,
+            entities_below_cursor: EntitiesBelowCursor::new(),
+            bounding_rect_2d: HashMap::new(),
+            cell_below_cursor_walkable: false,
+            cursor_color: [1.0, 1.0, 1.0],
+            cursor_anim_descr: SpriteRenderDescriptorComponent {
+                action_index: 0,
+                animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+                fps_multiplier: 1.0,
+            },
+        }
+    }
+
+    pub fn calc_entities_below_cursor(&mut self, self_team: Team, mouse_x: u16, mouse_y: u16) {
+        self.entities_below_cursor.clear();
+        for (entity_id, (bounding_rect, entity_team)) in &self.bounding_rect_2d {
+            let mx = mouse_x as i32;
+            let my = mouse_y as i32;
+            if mx >= bounding_rect.bottom_left[0]
+                && mx <= bounding_rect.top_right[0]
+                && my <= bounding_rect.bottom_left[1]
+                && my >= bounding_rect.top_right[1]
+            {
+                if *entity_team == self_team {
+                    self.entities_below_cursor.add_friend(*entity_id);
+                } else {
+                    self.entities_below_cursor.add_enemy(*entity_id);
+                }
+                break;
+            }
+        }
+        self.bounding_rect_2d.clear();
+    }
 }
 
 #[derive(Component, Clone)]
@@ -132,6 +181,53 @@ pub enum CameraMode {
     FollowChar,
 }
 
+pub struct EntitiesBelowCursor {
+    friendly: Vec<Entity>,
+    enemy: Vec<Entity>,
+}
+
+impl EntitiesBelowCursor {
+    pub fn new() -> EntitiesBelowCursor {
+        EntitiesBelowCursor {
+            friendly: Vec::with_capacity(12),
+            enemy: Vec::with_capacity(12),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.friendly.clear();
+        self.enemy.clear();
+    }
+
+    pub fn add_friend(&mut self, entity_id: Entity) {
+        self.friendly.push(entity_id);
+    }
+
+    pub fn add_enemy(&mut self, entity_id: Entity) {
+        self.enemy.push(entity_id);
+    }
+
+    pub fn get_enemy_or_friend(&self) -> Option<Entity> {
+        self.enemy.get(0).or(self.friendly.get(0)).map(|it| *it)
+    }
+
+    pub fn get_friend_except(&self, except_id: Entity) -> Option<Entity> {
+        self.friendly
+            .iter()
+            .filter(|it| **it != except_id)
+            .next()
+            .map(|it| *it)
+    }
+
+    pub fn get_friend(&self) -> Option<Entity> {
+        self.friendly.get(0).map(|it| *it)
+    }
+
+    pub fn get_enemy(&self) -> Option<Entity> {
+        self.enemy.get(0).map(|it| *it)
+    }
+}
+
 #[derive(Component)]
 pub struct HumanInputComponent {
     pub select_skill_target: Option<(SkillKey, Skills)>,
@@ -154,16 +250,11 @@ pub struct HumanInputComponent {
     pub delta_mouse_x: i32,
     pub delta_mouse_y: i32,
     pub mouse_world_pos: WorldCoords,
-    pub entity_below_cursor: Option<Entity>,
-    pub cell_below_cursor_walkable: bool,
-    pub cursor_anim_descr: SpriteRenderDescriptorComponent,
-    pub cursor_color: [f32; 3],
-    pub bounding_rect_2d: HashMap<Entity, SpriteBoundingRect>,
 }
 
 impl Drop for HumanInputComponent {
     fn drop(&mut self) {
-        log::info!("ControllerComponent DROPPED");
+        log::info!("HumanInputComponent DROPPED");
     }
 }
 
@@ -186,43 +277,11 @@ impl HumanInputComponent {
             right_mouse_released: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
-            entity_below_cursor: None,
-            cell_below_cursor_walkable: false,
             mouse_world_pos: v2!(0, 0),
-            bounding_rect_2d: HashMap::new(),
-            cursor_color: [1.0, 1.0, 1.0],
-            cursor_anim_descr: SpriteRenderDescriptorComponent {
-                action_index: 0,
-                animation_started: ElapsedTime(0.0),
-                animation_ends_at: ElapsedTime(0.0),
-                forced_duration: None,
-                direction: 0,
-                fps_multiplier: 1.0,
-            },
             mouse_wheel: 0,
             delta_mouse_x: 0,
             delta_mouse_y: 0,
         }
-    }
-
-    pub fn calc_entity_below_cursor(&mut self) {
-        self.entity_below_cursor = {
-            let mut entity_below_cursor: Option<Entity> = None;
-            for (entity_id, bounding_rect) in &self.bounding_rect_2d {
-                let mx = self.last_mouse_x as i32;
-                let my = self.last_mouse_y as i32;
-                if mx >= bounding_rect.bottom_left[0]
-                    && mx <= bounding_rect.top_right[0]
-                    && my <= bounding_rect.bottom_left[1]
-                    && my >= bounding_rect.top_right[1]
-                {
-                    entity_below_cursor = Some(*entity_id);
-                    break;
-                }
-            }
-            entity_below_cursor
-        };
-        self.bounding_rect_2d.clear();
     }
 
     pub fn get_skill_for_key(&self, skill_key: SkillKey) -> Option<Skills> {

@@ -1,4 +1,4 @@
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{CharacterStateComponent, Team};
 use crate::components::controller::{
     CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
 };
@@ -315,23 +315,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 &system_vars.matrices.projection,
                 &camera.view_matrix,
             );
-            input.calc_entity_below_cursor();
-
-            input.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
-                mouse_world_pos.x.max(0.0) as usize,
-                mouse_world_pos.y.abs() as usize,
-            );
             input.mouse_world_pos = mouse_world_pos;
-
-            let (cursor_frame, cursor_color) = InputConsumerSystem::determine_cursor(
-                system_vars.time,
-                entity_id,
-                input,
-                &char_state_storage,
-            );
-
-            input.cursor_anim_descr.action_index = cursor_frame.1;
-            input.cursor_color = cursor_color;
 
             if input.is_key_just_released(Scancode::F12) {
                 match input.get_skill_for_key(SkillKey::Q) {
@@ -355,60 +339,14 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-    pub fn determine_cursor(
-        now: ElapsedTime,
-        self_id: Entity,
-        input: &HumanInputComponent,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
-    ) -> (CursorFrame, [f32; 3]) {
-        return if let Some((_skill_key, skill)) = input.select_skill_target {
-            let is_castable = char_state_storage
-                .get(self_id)
-                .unwrap()
-                .skill_cast_allowed_at
-                .get(&skill)
-                .unwrap_or(&ElapsedTime(0.0))
-                .is_earlier_than(now);
-            if !is_castable {
-                (CURSOR_STOP, [1.0, 1.0, 1.0])
-            } else if skill.get_skill_target_type() != SkillTargetType::Area {
-                (CURSOR_TARGET, [1.0, 1.0, 1.0])
-            } else {
-                (CURSOR_CLICK, [1.0, 1.0, 1.0])
-            }
-        } else if let Some(entity_below_cursor) = input.entity_below_cursor {
-            let self_team = char_state_storage.get(self_id).unwrap().team;
-            let ent_is_dead_or_friend = char_state_storage
-                .get(entity_below_cursor)
-                .map(|it| !it.state().is_alive() || it.team == self_team)
-                .unwrap_or(false);
-            if entity_below_cursor == self_id || ent_is_dead_or_friend {
-                // self or dead
-                (CURSOR_NORMAL, [0.2, 0.46, 0.9])
-            } else {
-                (CURSOR_NORMAL, [1.0, 0.0, 0.0])
-            }
-        } else if !input.cell_below_cursor_walkable {
-            (CURSOR_STOP, [1.0, 1.0, 1.0])
-        } else {
-            (CURSOR_NORMAL, [1.0, 1.0, 1.0])
-        };
-    }
-
     pub fn target_selection_or_casting(
         skill: Skills,
         mouse_pos: WorldCoords,
-        entity_below_cursor: Option<Entity>,
     ) -> Option<PlayerIntention> {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            Some(PlayerIntention::Casting(
-                skill,
-                true,
-                mouse_pos,
-                entity_below_cursor,
-            ))
+            Some(PlayerIntention::Casting(skill, true, mouse_pos))
         } else {
             None
         }

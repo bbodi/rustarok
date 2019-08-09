@@ -80,8 +80,11 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 CharState::CastingSkill(casting_info) => {
                     if casting_info.cast_ends.is_earlier_than(now) {
                         log::debug!("Skill cast has finished: {:?}", casting_info.skill);
-                        let skill_pos = if let Some(target_entity) = casting_info.target_entity {
-                            Some(char_positions[&target_entity].clone())
+                        let skill_pos = if let Some(target_entity) = casting_info
+                            .target_entity
+                            .and_then(|it| char_positions.get(&it))
+                        {
+                            Some(target_entity.clone())
                         } else {
                             casting_info.target_area_pos
                         };

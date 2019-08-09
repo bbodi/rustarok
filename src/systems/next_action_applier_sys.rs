@@ -2,7 +2,9 @@ use crate::components::char::{
     CastingSkillData, CharState, CharacterStateComponent, EntityTarget,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{ControllerComponent, PlayerIntention, WorldCoords};
+use crate::components::controller::{
+    ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
+};
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render_sys::DIRECTION_TABLE;
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -17,7 +19,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::ReadStorage<'a, ControllerComponent>,
+        specs::WriteStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
@@ -28,7 +30,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
             entities,
             mut char_state_storage,
             mut sprite_storage,
-            controller_storage,
+            mut controller_storage,
             system_vars,
             mut system_benchmark,
         ): Self::SystemData,
@@ -36,40 +38,38 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
         for (entity_id, controller, char_state) in
-            (&entities, &controller_storage, &mut char_state_storage).join()
+            (&entities, &mut controller_storage, &mut char_state_storage).join()
         {
             // for autocompletion...
-            let controller: &ControllerComponent = controller;
+            let controller: &mut ControllerComponent = controller;
             let char_state: &mut CharacterStateComponent = char_state;
 
-            match controller.next_action {
+            controller.next_action_allowed = match controller.next_action {
                 Some(PlayerIntention::MoveTo(pos)) => {
                     char_state.target = Some(EntityTarget::Pos(pos));
+                    true
                 }
                 Some(PlayerIntention::Attack(target_entity_id)) => {
-                    char_state.target = Some(EntityTarget::OtherEntity(target_entity_id))
+                    char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
+                    true
                 }
                 Some(PlayerIntention::MoveTowardsMouse(pos)) => {
                     char_state.target = Some(EntityTarget::Pos(pos));
+                    true
                 }
-                Some(PlayerIntention::AttackTowards(_)) => {}
-                Some(PlayerIntention::Casting(
-                    skill,
-                    is_self_cast,
-                    world_coords,
-                    target_entity,
-                )) => {
+                Some(PlayerIntention::AttackTowards(_)) => true,
+                Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
                     NextActionApplierSystem::try_cast_skill(
                         skill,
                         now,
                         char_state,
                         &world_coords,
-                        target_entity,
+                        &controller.entities_below_cursor,
                         entity_id,
                         is_self_cast,
-                    );
+                    )
                 }
-                None => {}
+                None => true,
             }
         }
 
@@ -146,21 +146,32 @@ impl NextActionApplierSystem {
         now: ElapsedTime,
         char_state: &mut CharacterStateComponent,
         world_coords: &WorldCoords,
-        target_entity: Option<Entity>,
+        entities_below_cursor: &EntitiesBelowCursor,
         self_id: Entity,
         is_self_cast: bool,
-    ) {
+    ) -> bool {
         if char_state
             .skill_cast_allowed_at
             .entry(skill)
             .or_insert(ElapsedTime(0.0))
             .is_later_than(now)
         {
-            return;
+            return false;
         }
         let (target_pos, target_entity) = if is_self_cast {
             (char_state.pos(), Some(self_id))
         } else {
+            let target_entity = match skill.get_skill_target_type() {
+                SkillTargetType::AnyEntity => entities_below_cursor.get_enemy_or_friend(),
+                SkillTargetType::NoTarget => panic!(), /* NoTarget should have been casted already */
+                SkillTargetType::Area => None,
+                SkillTargetType::OnlyAllyButNoSelf => {
+                    entities_below_cursor.get_friend_except(self_id)
+                }
+                SkillTargetType::OnlyAllyAndSelf => entities_below_cursor.get_friend(),
+                SkillTargetType::OnlyEnemy => entities_below_cursor.get_enemy(),
+                SkillTargetType::OnlySelf => panic!(), /* NoTarget should have been casted already */
+            };
             (*world_coords, target_entity)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
@@ -197,6 +208,7 @@ impl NextActionApplierSystem {
             char_state.set_state(new_state, dir);
             *char_state.skill_cast_allowed_at.get_mut(&skill).unwrap() =
                 now.add(skill.get_cast_delay(&char_state));
+            return true;
         } else {
             log::debug!(
                 "Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
@@ -204,6 +216,7 @@ impl NextActionApplierSystem {
                 allowed,
                 can_move
             );
+            return false;
         }
     }
 

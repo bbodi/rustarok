@@ -125,13 +125,7 @@ pub fn create_char(
     // controller
     ecs_world
         .write_storage()
-        .insert(
-            entity_id,
-            ControllerComponent {
-                next_action: None,
-                last_action: None,
-            },
-        )
+        .insert(entity_id, ControllerComponent::new())
         .unwrap();
     return entity_id;
 }

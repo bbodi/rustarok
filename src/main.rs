@@ -1407,13 +1407,7 @@ fn imgui_frame(
                     .insert(entity_id, MinionComponent { fountain_up: false });
                 ecs_world
                     .write_storage()
-                    .insert(
-                        entity_id,
-                        ControllerComponent {
-                            next_action: None,
-                            last_action: None,
-                        },
-                    )
+                    .insert(entity_id, ControllerComponent::new())
                     .unwrap();
 
                 other_players.push(entity_id);
@@ -1492,13 +1486,7 @@ fn imgui_frame(
                     .insert(entity_id, MinionComponent { fountain_up: false });
                 ecs_world
                     .write_storage()
-                    .insert(
-                        entity_id,
-                        ControllerComponent {
-                            next_action: None,
-                            last_action: None,
-                        },
-                    )
+                    .insert(entity_id, ControllerComponent::new())
                     .unwrap();
                 other_monsters.push(entity_id);
             }

@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use crate::components::char::{
     CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{HumanInputComponent, SkillKey};
+use crate::components::controller::{ControllerComponent, HumanInputComponent, SkillKey};
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -20,6 +20,7 @@ impl RenderUI {
         &self,
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
+        controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &specs::WriteExpect<SystemVariables>,
     ) {
@@ -171,10 +172,10 @@ impl RenderUI {
 
         render_action_2d(
             &system_vars,
-            &input.cursor_anim_descr,
+            &controller.cursor_anim_descr,
             &system_vars.assets.sprites.cursors,
             &Vector2::new(input.last_mouse_x as f32, input.last_mouse_y as f32),
-            &input.cursor_color,
+            &controller.cursor_color,
             render_commands,
         );
     }

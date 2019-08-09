@@ -4,7 +4,8 @@ use crate::components::char::{
     SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, HumanInputComponent, PlayerIntention, WorldCoords,
+    CameraComponent, ControllerComponent, EntitiesBelowCursor, HumanInputComponent,
+    PlayerIntention, WorldCoords,
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
@@ -73,10 +74,10 @@ impl RenderDesktopClientSystem {
         self_id: Entity,
         self_team: Team,
         char_state: &CharacterStateComponent,
-        controller: &ControllerComponent,
+        controller: &mut ControllerComponent, // mut: we have to store bounding rects of drawed entities :(
         char_pos: &WorldCoords,
         camera: &CameraComponent,
-        input: &mut HumanInputComponent, // mut: we have to store bounding rects of drawed entities :(
+        input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         physics_storage: &specs::ReadStorage<'a, PhysicsComponent>,
         physics_world: &specs::ReadExpect<'a, PhysicEngine>,
@@ -161,7 +162,7 @@ impl RenderDesktopClientSystem {
 
         // render target position
         if let Some(PlayerIntention::MoveTo(pos)) = controller.last_action {
-            if let CharState::Walking(_) = char_state.state() {
+            if CharState::Idle != *char_state.state() {
                 let cursor_anim_descr = SpriteRenderDescriptorComponent {
                     action_index: CURSOR_TARGET.1,
                     animation_started: ElapsedTime(0.0),
@@ -192,6 +193,7 @@ impl RenderDesktopClientSystem {
                 self_id,
                 self_team,
                 &camera,
+                controller,
                 input,
                 render_commands,
                 &system_vars,
@@ -224,12 +226,52 @@ impl RenderDesktopClientSystem {
         }
     }
 
+    fn need_entity_highlighting(
+        self_id: Entity,
+        entity_id: Entity,
+        input: &HumanInputComponent,
+        entities_below_cursor: &EntitiesBelowCursor,
+    ) -> bool {
+        return if let Some((_skill_key, skill)) = input.select_skill_target {
+            match skill.get_skill_target_type() {
+                SkillTargetType::AnyEntity => entities_below_cursor
+                    .get_enemy_or_friend()
+                    .map(|it| it == entity_id)
+                    .unwrap_or(false),
+                SkillTargetType::NoTarget => false,
+                SkillTargetType::Area => false,
+                SkillTargetType::OnlyAllyButNoSelf => entities_below_cursor
+                    .get_friend_except(self_id)
+                    .map(|it| it == entity_id)
+                    .unwrap_or(false),
+                SkillTargetType::OnlyAllyAndSelf => entities_below_cursor
+                    .get_friend()
+                    .map(|it| it == entity_id)
+                    .unwrap_or(false),
+                SkillTargetType::OnlyEnemy => entities_below_cursor
+                    .get_enemy()
+                    .map(|it| it == entity_id)
+                    .unwrap_or(false),
+                SkillTargetType::OnlySelf => entities_below_cursor
+                    .get_friend()
+                    .map(|it| it == self_id)
+                    .unwrap_or(false),
+            }
+        } else {
+            entities_below_cursor
+                .get_enemy_or_friend()
+                .map(|it| it == entity_id)
+                .unwrap_or(false)
+        };
+    }
+
     fn draw_characters(
         &self,
         self_id: Entity,
         self_team: Team,
         camera: &CameraComponent,
-        input: &mut HumanInputComponent,
+        controller: &mut ControllerComponent,
+        input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
@@ -271,11 +313,13 @@ impl RenderDesktopClientSystem {
                         let sprites = &system_vars.assets.sprites.head_sprites;
                         &sprites[sex as usize][head_index]
                     };
-                    if input
-                        .entity_below_cursor
-                        .filter(|it| *it == entity_id)
-                        .is_some()
-                    {
+
+                    if RenderDesktopClientSystem::need_entity_highlighting(
+                        self_id,
+                        entity_id,
+                        input,
+                        &controller.entities_below_cursor,
+                    ) {
                         let color = if self_team == char_state.team {
                             &[0.0, 0.0, 1.0, 0.7]
                         } else {
@@ -369,7 +413,9 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    input.bounding_rect_2d.insert(entity_id, body_bounding_rect);
+                    controller
+                        .bounding_rect_2d
+                        .insert(entity_id, (body_bounding_rect, char_state.team));
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -381,11 +427,12 @@ impl RenderDesktopClientSystem {
                     } else {
                         ActionPlayMode::Repeat
                     };
-                    if input
-                        .entity_below_cursor
-                        .filter(|it| *it == entity_id)
-                        .is_some()
-                    {
+                    if RenderDesktopClientSystem::need_entity_highlighting(
+                        self_id,
+                        entity_id,
+                        input,
+                        &controller.entities_below_cursor,
+                    ) {
                         let color = if self_team == char_state.team {
                             &[0.0, 0.0, 1.0, 0.7]
                         } else {
@@ -413,7 +460,7 @@ impl RenderDesktopClientSystem {
                         &pos,
                         [0, 0],
                         true,
-                        1.0,
+                        5.0,
                         play_mode,
                         &color,
                         render_commands,
@@ -438,7 +485,9 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    input.bounding_rect_2d.insert(entity_id, bounding_rect);
+                    controller
+                        .bounding_rect_2d
+                        .insert(entity_id, (bounding_rect, char_state.team));
                 }
             }
 
@@ -452,12 +501,12 @@ impl RenderDesktopClientSystem {
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, HumanInputComponent>, // mut: we have to store bounding rects of drawed entities :(
+        specs::ReadStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, ControllerComponent>,
+        specs::WriteStorage<'a, ControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -473,12 +522,12 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         &mut self,
         (
             entities,
-            mut input_storage,
+            input_storage,
             mut browser_client_storage,
             physics_storage,
             sprite_storage,
             char_state_storage,
-            controller_storage,
+            mut controller_storage,
             mut system_vars,
             mut system_benchmark,
             skill_storage,
@@ -500,20 +549,20 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
 
         for (
             entity_id,
-            mut input,
+            input,
+            mut controller,
             browser,
             mut render_commands,
             desktop_char,
             camera,
-            controller,
         ) in (
             &entities,
-            &mut input_storage,
+            &input_storage,
+            &mut controller_storage,
             &mut browser_client_storage,
             &mut render_commands_storage,
             &char_state_storage,
             &camera_storage,
-            &controller_storage,
         )
             .join()
         {
@@ -524,7 +573,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 controller,
                 &desktop_char.pos(),
                 camera,
-                &mut input,
+                input,
                 &mut render_commands,
                 &physics_storage,
                 &physics_world,
@@ -550,8 +599,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 render_commands,
             );
 
-            self.render_ui_sys
-                .run(&desktop_char, &input, &mut render_commands, &system_vars);
+            self.render_ui_sys.run(
+                &desktop_char,
+                &input,
+                controller,
+                &mut render_commands,
+                &system_vars,
+            );
 
             // now the back buffer contains the rendered image for this client
             unsafe {
@@ -580,12 +634,12 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem.join");
             (
                 &entities,
-                &mut input_storage,
+                &input_storage,
                 !&browser_client_storage,
                 &mut render_commands_storage,
                 &char_state_storage,
                 &camera_storage,
-                &controller_storage,
+                &mut controller_storage,
             )
                 .join()
         };
@@ -634,8 +688,13 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 render_commands,
             );
 
-            self.render_ui_sys
-                .run(&desktop_char, &input, &mut render_commands, &system_vars);
+            self.render_ui_sys.run(
+                &desktop_char,
+                &input,
+                &controller,
+                &mut render_commands,
+                &system_vars,
+            );
         }
     }
 }
@@ -704,8 +763,8 @@ pub fn render_single_layer_action<'a>(
         [0.0, 0.0]
     };
     let offset = [
-        layer.pos[0] as f32 + offset[0],
-        layer.pos[1] as f32 + offset[1],
+        layer.pos[0] as f32 + offset[0] * size_multiplier,
+        layer.pos[1] as f32 + offset[1] * size_multiplier,
     ];
 
     let mut color = color.clone();
