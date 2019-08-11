@@ -9,10 +9,12 @@ use crate::components::controller::{
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
-    BrowserClient, FlyingNumberComponent, FlyingNumberType, StrEffectComponent,
+    BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
+    StrEffectComponent,
 };
 use crate::cursor::CURSOR_TARGET;
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
+use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::{VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2};
@@ -515,7 +517,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, PhysicEngine>,
         specs::Write<'a, LazyUpdate>,
         specs::ReadStorage<'a, FlyingNumberComponent>,
+        specs::ReadStorage<'a, SoundEffectComponent>,
         specs::WriteStorage<'a, RenderCommandCollectorComponent>,
+        specs::WriteStorage<'a, AudioCommandCollectorComponent>,
     );
 
     fn run(
@@ -536,7 +540,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             physics_world,
             updater,
             numbers,
+            sound_effects,
             mut render_commands_storage,
+            mut audio_commands_storage,
         ): Self::SystemData,
     ) {
         //        let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
@@ -546,6 +552,9 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         for render_commands in (&mut render_commands_storage).join() {
             render_commands.clear();
         }
+        for audio_commands in (&mut audio_commands_storage).join() {
+            audio_commands.clear();
+        }
 
         for (
             entity_id,
@@ -553,6 +562,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut controller,
             browser,
             mut render_commands,
+            mut audio_commands,
             desktop_char,
             camera,
         ) in (
@@ -561,6 +571,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             &mut controller_storage,
             &mut browser_client_storage,
             &mut render_commands_storage,
+            &mut audio_commands_storage,
             &char_state_storage,
             &camera_storage,
         )
@@ -586,6 +597,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &updater,
                 &mut system_benchmark,
             );
+
+            for (entity_id, sound) in (&entities, &sound_effects).join() {
+                audio_commands.add_sound_command(sound.sound_id);
+                updater.remove::<SoundEffectComponent>(entity_id);
+            }
 
             self.damage_render_sys.run(
                 &entities,
@@ -637,6 +653,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &input_storage,
                 !&browser_client_storage,
                 &mut render_commands_storage,
+                &mut audio_commands_storage,
                 &char_state_storage,
                 &camera_storage,
                 &mut controller_storage,
@@ -648,6 +665,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut input,
             _not_browser,
             mut render_commands,
+            mut audio_commands,
             desktop_char,
             camera,
             controller,
@@ -674,6 +692,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &updater,
                     &mut system_benchmark,
                 );
+            }
+
+            for (entity_id, sound) in (&entities, &sound_effects).join() {
+                audio_commands.add_sound_command(sound.sound_id);
+                updater.remove::<SoundEffectComponent>(entity_id);
             }
 
             self.damage_render_sys.run(
@@ -788,10 +811,7 @@ pub fn render_single_layer_action<'a>(
         .map(|it| it.clone())
         .unwrap_or([0, 0]);
 
-    return [
-        (anim_pos[0] as f32 * size_multiplier) as i32,
-        (anim_pos[1] as f32 * size_multiplier) as i32,
-    ];
+    return [(anim_pos[0] as f32) as i32, (anim_pos[1] as f32) as i32];
 }
 
 pub fn render_action(

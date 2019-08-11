@@ -1,6 +1,7 @@
 extern crate rand;
 
 use crate::components::controller::WorldCoords;
+use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::DefaultBodyHandle;
@@ -36,6 +37,14 @@ pub struct FlyingNumberComponent {
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: f32,
+}
+
+#[derive(Component)]
+pub struct SoundEffectComponent {
+    pub target_entity_id: Entity,
+    pub sound_id: SoundId,
+    pub pos: WorldCoords,
+    pub start_time: ElapsedTime,
 }
 
 #[derive(Component)]

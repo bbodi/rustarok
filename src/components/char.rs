@@ -6,6 +6,7 @@ use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
 use crate::consts::{JobId, MonsterId};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::{CharActionIndex, CollisionGroup, ElapsedTime, MonsterActionIndex, PhysicEngine};
 use nalgebra::{Point2, Vector2};
@@ -52,6 +53,10 @@ pub fn create_human_player(
             desktop_client_entity,
             RenderCommandCollectorComponent::new(),
         )
+        .unwrap();
+    ecs_world
+        .write_storage()
+        .insert(desktop_client_entity, AudioCommandCollectorComponent::new())
         .unwrap();
     ecs_world
         .write_storage()

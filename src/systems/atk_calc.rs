@@ -1,10 +1,13 @@
 use crate::components::char::CharacterStateComponent;
+use crate::components::controller::WorldCoords;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
 };
-use crate::components::{AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType};
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::components::{
+    AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
+};
+use crate::systems::{AssetResources, Sounds, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
@@ -168,61 +171,31 @@ impl<'a> specs::System<'a> for AttackSystem {
                 for outcome in src_outcomes.into_iter() {
                     let attacker_entity = attack.dst_entity;
                     let attacked_entity = attack.src_entity;
-                    let attacked_entity_state =
-                        char_state_storage.get_mut(attacked_entity).unwrap();
-
-                    // Allow statuses to affect incoming damages/heals
-                    log::trace!("Attack outcome: {:?}", outcome);
-                    let outcome = attacked_entity_state
-                        .statuses
-                        .affect_incoming_damage(outcome);
-                    log::trace!("Attack outcome affected by statuses: {:?}", outcome);
-
-                    AttackCalculation::apply_damage(
-                        attacked_entity_state,
-                        &outcome,
-                        system_vars.time,
-                    );
-
-                    let char_pos = attacked_entity_state.pos();
-                    AttackCalculation::add_flying_damage_entity(
-                        &outcome,
-                        &entities,
-                        &mut updater,
+                    AttackCalculation::process_outcome(
                         attacker_entity,
                         attacked_entity,
-                        &char_pos,
+                        outcome,
+                        attack,
+                        &mut char_state_storage,
                         system_vars.time,
+                        &entities,
+                        &mut updater,
+                        &system_vars.assets,
                     );
                 }
                 for outcome in dst_outcomes.into_iter() {
                     let attacker_entity = attack.src_entity;
                     let attacked_entity = attack.dst_entity;
-                    let attacked_entity_state =
-                        char_state_storage.get_mut(attacked_entity).unwrap();
-
-                    // Allow statuses to affect incoming damages/heals
-                    log::trace!("Attack outcome: {:?}", outcome);
-                    let outcome = attacked_entity_state
-                        .statuses
-                        .affect_incoming_damage(outcome);
-                    log::trace!("Attack outcome affected by statuses: {:?}", outcome);
-
-                    AttackCalculation::apply_damage(
-                        attacked_entity_state,
-                        &outcome,
-                        system_vars.time,
-                    );
-
-                    let char_pos = attacked_entity_state.pos();
-                    AttackCalculation::add_flying_damage_entity(
-                        &outcome,
-                        &entities,
-                        &mut updater,
+                    AttackCalculation::process_outcome(
                         attacker_entity,
                         attacked_entity,
-                        &char_pos,
+                        outcome,
+                        attack,
+                        &mut char_state_storage,
                         system_vars.time,
+                        &entities,
+                        &mut updater,
+                        &system_vars.assets,
                     );
                 }
             }
@@ -243,6 +216,53 @@ impl<'a> specs::System<'a> for AttackSystem {
 pub struct AttackCalculation;
 
 impl AttackCalculation {
+    pub fn process_outcome(
+        attacker_entity: Entity,
+        attacked_entity: Entity,
+        outcome: AttackOutcome,
+        attack: &AttackComponent,
+        char_state_storage: &mut WriteStorage<CharacterStateComponent>,
+        now: ElapsedTime,
+        entities: &Entities,
+        updater: &mut specs::Write<LazyUpdate>,
+        assets: &AssetResources,
+    ) {
+        let attacked_entity_state = char_state_storage.get_mut(attacked_entity).unwrap();
+
+        // Allow statuses to affect incoming damages/heals
+        log::trace!("Attack outcome: {:?}", outcome);
+        let outcome = attacked_entity_state
+            .statuses
+            .affect_incoming_damage(outcome);
+        log::trace!("Attack outcome affected by statuses: {:?}", outcome);
+
+        AttackCalculation::apply_damage(attacked_entity_state, &outcome, now);
+
+        // TODO: rather than this, create a common component which
+        // contains all the necessary info from which an other system will be able to
+        // generate the render and audio commands
+        let char_pos = attacked_entity_state.pos();
+        AttackCalculation::make_sound(
+            &entities,
+            char_pos,
+            attacked_entity,
+            &outcome,
+            attack.typ,
+            now,
+            updater,
+            &assets.sounds,
+        );
+        AttackCalculation::add_flying_damage_entity(
+            &outcome,
+            &entities,
+            updater,
+            attacker_entity,
+            attacked_entity,
+            &char_pos,
+            now,
+        );
+    }
+
     pub fn damage_chars(
         entities: &Entities,
         char_storage: &specs::WriteStorage<CharacterStateComponent>,
@@ -361,6 +381,47 @@ impl AttackCalculation {
             }
         }
         return (src_outcomes, dst_outcomes);
+    }
+
+    pub fn make_sound(
+        entities: &Entities,
+        pos: WorldCoords,
+        target_entity_id: Entity,
+        outcome: &AttackOutcome,
+        attack_type: AttackType,
+        now: ElapsedTime,
+        updater: &mut specs::Write<LazyUpdate>,
+        sounds: &Sounds,
+    ) {
+        match outcome {
+            AttackOutcome::Heal(val) => {}
+            AttackOutcome::Damage(val) => match attack_type {
+                AttackType::Basic(_) => {
+                    let damage_entity = entities.create();
+                    updater.insert(
+                        damage_entity,
+                        SoundEffectComponent {
+                            target_entity_id,
+                            sound_id: sounds.attack,
+                            pos,
+                            start_time: now,
+                        },
+                    );
+                }
+                AttackType::SpellDamage(_) => {}
+                AttackType::Heal(_) => {}
+                AttackType::Poison(_) => {}
+            },
+            AttackOutcome::Combo {
+                single_attack_damage: _,
+                attack_count: _,
+                sum_damage,
+            } => {}
+            AttackOutcome::Poison(val) => {}
+            AttackOutcome::Crit(val) => {}
+            AttackOutcome::Block => {}
+            AttackOutcome::Absorb => {}
+        }
     }
 
     pub fn apply_damage(

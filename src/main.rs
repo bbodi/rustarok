@@ -54,7 +54,8 @@ use crate::components::controller::{
     CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
 };
 use crate::components::{
-    AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, StrEffectComponent,
+    AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent,
+    StrEffectComponent,
 };
 use crate::consts::{job_name_table, JobId, MonsterId};
 use crate::systems::atk_calc::AttackSystem;
@@ -64,8 +65,8 @@ use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::{
-    AssetResources, CollisionsFromPrevFrame, EffectSprites, Sex, Sprites, SystemFrameDurations,
-    SystemVariables, Texts,
+    AssetResources, CollisionsFromPrevFrame, EffectSprites, Sex, Sounds, Sprites,
+    SystemFrameDurations, SystemVariables, Texts,
 };
 use crate::video::{
     ortho, DynamicVertexArray, GlTexture, Shader, ShaderProgram, VertexArray,
@@ -100,6 +101,7 @@ use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
+use crate::systems::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::web_server::start_web_server;
 use ncollide2d::pipeline::CollisionGroups;
 use nphysics2d::force_generator::DefaultForceGeneratorSet;
@@ -265,7 +267,30 @@ fn main() {
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
     log::info!("GRF loading: {}ms", elapsed.as_millis());
-    let mut video = Video::init();
+    let sdl_context = sdl2::init().unwrap();
+    let mut video = Video::init(&sdl_context);
+
+    let _audio = sdl_context.audio();
+    let frequency = sdl2::mixer::DEFAULT_FREQUENCY;
+    let format = sdl2::mixer::DEFAULT_FORMAT; // signed 16 bit samples, in little-endian byte order
+    let channels = sdl2::mixer::DEFAULT_CHANNELS; // Stereo
+    let chunk_size = 1_024;
+    sdl2::mixer::open_audio(frequency, format, channels, chunk_size).unwrap();
+    let _mixer_context = sdl2::mixer::init(
+        sdl2::mixer::InitFlag::MP3
+            | sdl2::mixer::InitFlag::FLAC
+            | sdl2::mixer::InitFlag::MOD
+            | sdl2::mixer::InitFlag::OGG,
+    )
+    .unwrap();
+    sdl2::mixer::allocate_channels(4);
+
+    let mut sound_system = SoundSystem::new();
+    let sounds = Sounds {
+        attack: sound_system
+            .load_wav("data\\wav\\chung_e_attack.wav", &asset_loader)
+            .unwrap(),
+    };
 
     let shaders = Shaders {
         ground_shader: ShaderProgram::from_shaders(&[
@@ -313,10 +338,12 @@ fn main() {
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<HumanInputComponent>();
     ecs_world.register::<RenderCommandCollectorComponent>();
+    ecs_world.register::<AudioCommandCollectorComponent>();
     ecs_world.register::<SpriteRenderDescriptorComponent>();
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<PhysicsComponent>();
     ecs_world.register::<FlyingNumberComponent>();
+    ecs_world.register::<SoundEffectComponent>();
     ecs_world.register::<StrEffectComponent>();
     ecs_world.register::<SkillManifestationComponent>();
     ecs_world.register::<CameraComponent>();
@@ -361,6 +388,7 @@ fn main() {
         .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(RenderDesktopClientSystem::new())
         .with_thread_local(OpenGlRenderSystem::new())
+        .with_thread_local(sound_system)
         .build();
 
     let rng = rand::thread_rng();
@@ -687,6 +715,7 @@ fn main() {
             texts,
             skill_icons,
             status_icons,
+            sounds,
         },
         tick: 0,
         dt: DeltaTime(0.0),
@@ -976,7 +1005,7 @@ fn main() {
             &mut window_opened,
             &system_frame_durations,
         );
-        video.sdl_context.mouse().show_cursor(show_cursor);
+        sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
             let (map_render_data, physics_world) =

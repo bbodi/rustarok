@@ -7,7 +7,7 @@ use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{GLContext, Window};
-use sdl2::{EventPump, Sdl};
+use sdl2::EventPump;
 use std::ffi::{CStr, CString};
 use std::fmt::Display;
 use std::ops::{Index, IndexMut};
@@ -15,7 +15,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub struct Video {
-    pub sdl_context: Sdl,
     pub window: Window,
     pub imgui: ImGui,
     pub imgui_sdl2: ImguiSdl2,
@@ -29,8 +28,7 @@ pub const VIDEO_WIDTH: u32 = 1024;
 pub const VIDEO_HEIGHT: u32 = 768;
 
 impl Video {
-    pub fn init() -> Video {
-        let sdl_context = sdl2::init().unwrap();
+    pub fn init(sdl_context: &sdl2::Sdl) -> Video {
         sdl_context.mouse().show_cursor(false);
         let video = sdl_context.video().unwrap();
         let gl_attr = video.gl_attr();
@@ -55,9 +53,6 @@ impl Video {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::LineWidth(2.0);
         }
-        //        az input kezelés és a camera mozgás külön legyenm
-        //        szóal lehet olyan implementáció ami free fly meg olyan ami follow
-        //        tag componenttel?
         let mut imgui = imgui::ImGui::init();
         imgui.set_ini_filename(None);
         let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
@@ -65,7 +60,6 @@ impl Video {
             imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
         Video {
-            sdl_context,
             window,
             imgui,
             imgui_sdl2,

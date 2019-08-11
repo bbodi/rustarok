@@ -5,6 +5,7 @@ use crate::components::status::status::{
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::consts::{JobId, MonsterId};
+use crate::systems::sound_sys::SoundId;
 use crate::video::{DynamicVertexArray, GlTexture};
 use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
 use nphysics2d::object::DefaultColliderHandle;
@@ -22,6 +23,7 @@ pub mod phys;
 pub mod render;
 pub mod render_sys;
 pub mod skill_sys;
+pub mod sound_sys;
 pub mod ui;
 
 pub struct EffectSprites {
@@ -56,12 +58,17 @@ pub struct Texts {
     pub plus: GlTexture,
 }
 
+pub struct Sounds {
+    pub attack: SoundId,
+}
+
 pub struct AssetResources {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub texts: Texts,
     pub skill_icons: HashMap<Skills, GlTexture>,
     pub status_icons: HashMap<&'static str, GlTexture>,
+    pub sounds: Sounds,
 }
 
 pub struct SystemVariables {

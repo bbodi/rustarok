@@ -10,6 +10,7 @@ use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use libflate::zlib::Decoder;
 use sdl2::image::ImageRWops;
+use sdl2::mixer::LoaderRWops;
 use sdl2::pixels::PixelFormatEnum;
 use std::collections::HashMap;
 use std::fs::File;
@@ -232,6 +233,12 @@ impl AssetLoader {
             water_level,
             water_height,
         ));
+    }
+
+    pub fn load_wav(&self, path: &str) -> Result<sdl2::mixer::Chunk, String> {
+        let buffer = self.get_content(path)?;
+        let rwops = sdl2::rwops::RWops::from_bytes(buffer.as_slice())?;
+        return rwops.load_wav();
     }
 
     pub fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {

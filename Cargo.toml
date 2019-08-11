@@ -37,4 +37,4 @@ features = []
 [dependencies.sdl2]
 version = "0.32.2"
 default-features = false
-features = ["image", "ttf"]
+features = ["image", "ttf", "mixer"]

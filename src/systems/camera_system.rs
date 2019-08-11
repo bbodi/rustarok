@@ -61,7 +61,7 @@ impl<'a> specs::System<'a> for CameraSystem {
                             .camera
                             .update_visible_z_range(&system_vars.matrices.projection);
                     }
-                    CameraSystem::free_movement(camera, input);
+                    CameraSystem::axis_aligned_movement(camera, input);
                 }
             }
 
@@ -92,7 +92,7 @@ impl<'a> specs::System<'a> for CameraSystem {
 }
 
 impl CameraSystem {
-    fn free_movement(camera: &mut CameraComponent, input: &HumanInputComponent) {
+    fn axis_aligned_movement(camera: &mut CameraComponent, input: &HumanInputComponent) {
         let camera_speed = if input.is_key_down(Scancode::LShift) {
             6.0
         } else {
@@ -107,6 +107,24 @@ impl CameraSystem {
             camera.camera.move_along_z(-camera_speed);
         } else if input.is_key_down(Scancode::Down) {
             camera.camera.move_along_z(camera_speed);
+        }
+    }
+
+    fn free_movement(camera: &mut CameraComponent, input: &HumanInputComponent) {
+        let camera_speed = if input.is_key_down(Scancode::LShift) {
+            6.0
+        } else {
+            1.0
+        };
+        if input.is_key_down(Scancode::Left) {
+            camera.camera.move_side(-camera_speed);
+        } else if input.is_key_down(Scancode::Right) {
+            camera.camera.move_side(camera_speed);
+        }
+        if input.is_key_down(Scancode::Up) {
+            camera.camera.move_forward(-camera_speed);
+        } else if input.is_key_down(Scancode::Down) {
+            camera.camera.move_forward(camera_speed);
         }
     }
 }
