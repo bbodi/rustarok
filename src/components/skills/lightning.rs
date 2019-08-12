@@ -4,6 +4,7 @@ use crate::components::skills::skill::{
 };
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
@@ -165,8 +166,10 @@ impl SkillManifestation for LightningManifest {
     fn render(
         &self,
         _now: ElapsedTime,
+        _tick: u64,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         for i in self.action_count..3 {
             let pos = self.pos + self.dir_vector * i as f32 * 2.2;

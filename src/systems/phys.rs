@@ -21,7 +21,7 @@ impl<'a> specs::System<'a> for FrictionSystem {
     fn run(
         &mut self,
         (
-        mut physics_world,
+        physics_world,
         mut system_benchmark,
         physics_storage,
         mut char_storage,

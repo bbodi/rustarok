@@ -284,11 +284,18 @@ fn main() {
     )
     .unwrap();
     sdl2::mixer::allocate_channels(4);
+    sdl2::mixer::Channel::all().set_volume(64);
 
     let mut sound_system = SoundSystem::new();
     let sounds = Sounds {
         attack: sound_system
-            .load_wav("data\\wav\\chung_e_attack.wav", &asset_loader)
+            .load_wav("data\\wav\\_novice_attack.wav", &asset_loader)
+            .unwrap(),
+        heal: sound_system
+            .load_wav("data\\wav\\_heal_effect.wav", &asset_loader)
+            .unwrap(),
+        firewall: sound_system
+            .load_wav("data\\wav\\effect\\ef_firewall.wav", &asset_loader)
             .unwrap(),
     };
 

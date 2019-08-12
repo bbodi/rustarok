@@ -2,6 +2,7 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::{AttackComponent, AttackType};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
@@ -82,8 +83,10 @@ impl SkillManifestation for HealApplierArea {
     fn render(
         &self,
         now: ElapsedTime,
+        _tick: u64,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands
             .prepare_for_3d()

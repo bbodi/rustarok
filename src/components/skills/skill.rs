@@ -12,6 +12,7 @@ use crate::components::{
 };
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
+use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2, Vector3};
@@ -38,8 +39,10 @@ pub trait SkillManifestation {
     fn render(
         &self,
         now: ElapsedTime,
+        tick: u64,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        audio_command_collector: &mut AudioCommandCollectorComponent,
     );
 }
 
@@ -86,11 +89,13 @@ impl SkillManifestationComponent {
     pub fn render(
         &self,
         now: ElapsedTime,
+        tick: u64,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let skill = self.skill.lock().unwrap();
-        skill.render(now, assets, render_commands);
+        skill.render(now, tick, assets, render_commands, audio_commands);
     }
 }
 
@@ -218,6 +223,7 @@ impl Skills {
                     &skill_pos.unwrap(),
                     angle_in_rad,
                     system_vars.time,
+                    system_vars.tick,
                     entities,
                     updater,
                 )))
@@ -507,6 +513,7 @@ pub struct PushBackWallSkill {
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
     cannot_damage_until: HashMap<Entity, ElapsedTime>,
+    born_tick: u64,
 }
 
 impl PushBackWallSkill {
@@ -518,6 +525,7 @@ impl PushBackWallSkill {
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,
+        tick: u64,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> PushBackWallSkill {
@@ -555,6 +563,7 @@ impl PushBackWallSkill {
             created_at: system_time.clone(),
             die_at: system_time.add_seconds(2.0),
             cannot_damage_until: HashMap::new(),
+            born_tick: tick,
         }
     }
 }
@@ -631,9 +640,14 @@ impl SkillManifestation for PushBackWallSkill {
     fn render(
         &self,
         _now: ElapsedTime,
-        _assets: &AssetResources,
+        tick: u64,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
+        if self.born_tick + 1 == tick {
+            audio_command_collector.add_sound_command(assets.sounds.firewall);
+        }
         render_commands
             .prepare_for_3d()
             .pos_2d(&self.pos)
@@ -740,8 +754,10 @@ impl SkillManifestation for BrutalSkillManifest {
     fn render(
         &self,
         _now: ElapsedTime,
+        _tick: u64,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
+        _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands
             .prepare_for_3d()

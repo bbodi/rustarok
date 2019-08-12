@@ -81,6 +81,7 @@ impl RenderDesktopClientSystem {
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
+        audio_commands: &mut AudioCommandCollectorComponent,
         physics_storage: &specs::ReadStorage<'a, PhysicsComponent>,
         physics_world: &specs::ReadExpect<'a, PhysicEngine>,
         system_vars: &SystemVariables,
@@ -206,7 +207,13 @@ impl RenderDesktopClientSystem {
         }
 
         for skill in (&skill_storage).join() {
-            skill.render(system_vars.time, &system_vars.assets, render_commands);
+            skill.render(
+                system_vars.time,
+                system_vars.tick,
+                &system_vars.assets,
+                render_commands,
+                audio_commands,
+            );
         }
 
         // TODO: into a separate system
@@ -586,6 +593,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 camera,
                 input,
                 &mut render_commands,
+                &mut audio_commands,
                 &physics_storage,
                 &physics_world,
                 &mut system_vars,
@@ -681,6 +689,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     camera,
                     &mut input,
                     &mut render_commands,
+                    &mut audio_commands,
                     &physics_storage,
                     &physics_world,
                     &mut system_vars,

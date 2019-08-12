@@ -60,6 +60,8 @@ pub struct Texts {
 
 pub struct Sounds {
     pub attack: SoundId,
+    pub heal: SoundId,
+    pub firewall: SoundId,
 }
 
 pub struct AssetResources {
