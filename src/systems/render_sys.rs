@@ -1,7 +1,7 @@
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, PhysicsComponent,
-    SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
+    ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
+    PhysicsComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, ControllerComponent, EntitiesBelowCursor, HumanInputComponent,
@@ -73,8 +73,8 @@ impl RenderDesktopClientSystem {
     // TODO: wtf is this argument list
     pub fn render_for_controller<'a>(
         &self,
-        self_id: Entity,
-        self_team: Team,
+        desktop_entity_id: Entity,
+        desktop_team: Team,
         char_state: &CharacterStateComponent,
         controller: &mut ControllerComponent, // mut: we have to store bounding rects of drawed entities :(
         char_pos: &WorldCoords,
@@ -193,8 +193,8 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.draw_characters");
             self.draw_characters(
-                self_id,
-                self_team,
+                desktop_entity_id,
+                desktop_team,
                 &camera,
                 controller,
                 input,
@@ -236,47 +236,54 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        self_id: Entity,
-        entity_id: Entity,
+        desktop_entity_id: Entity,
+        rendering_entity_id: Entity,
         input: &HumanInputComponent,
         entities_below_cursor: &EntitiesBelowCursor,
+        desktop_target: &Option<EntityTarget>,
     ) -> bool {
         return if let Some((_skill_key, skill)) = input.select_skill_target {
             match skill.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor
                     .get_enemy_or_friend()
-                    .map(|it| it == entity_id)
+                    .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
                 SkillTargetType::NoTarget => false,
                 SkillTargetType::Area => false,
                 SkillTargetType::OnlyAllyButNoSelf => entities_below_cursor
-                    .get_friend_except(self_id)
-                    .map(|it| it == entity_id)
+                    .get_friend_except(desktop_entity_id)
+                    .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor
                     .get_friend()
-                    .map(|it| it == entity_id)
+                    .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
                 SkillTargetType::OnlyEnemy => entities_below_cursor
                     .get_enemy()
-                    .map(|it| it == entity_id)
+                    .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
                 SkillTargetType::OnlySelf => entities_below_cursor
                     .get_friend()
-                    .map(|it| it == self_id)
+                    .map(|it| it == desktop_entity_id)
                     .unwrap_or(false),
             }
         } else {
-            entities_below_cursor
+            let mut ret = entities_below_cursor
                 .get_enemy_or_friend()
-                .map(|it| it == entity_id)
-                .unwrap_or(false)
+                .map(|it| it == rendering_entity_id)
+                .unwrap_or(false);
+            ret || match desktop_target {
+                Some(EntityTarget::OtherEntity(target_entity_id)) => {
+                    rendering_entity_id == *target_entity_id
+                }
+                _ => false,
+            }
         };
     }
 
     fn draw_characters(
         &self,
-        self_id: Entity,
+        desktop_entity_id: Entity,
         self_team: Team,
         camera: &CameraComponent,
         controller: &mut ControllerComponent,
@@ -288,7 +295,7 @@ impl RenderDesktopClientSystem {
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
     ) {
         // Draw players
-        for (entity_id, animated_sprite, char_state) in
+        for (rendering_entity_id, animated_sprite, char_state) in
             (entities, sprite_storage, char_state_storage).join()
         {
             // for autocompletion
@@ -324,10 +331,11 @@ impl RenderDesktopClientSystem {
                     };
 
                     if RenderDesktopClientSystem::need_entity_highlighting(
-                        self_id,
-                        entity_id,
+                        desktop_entity_id,
+                        rendering_entity_id,
                         input,
                         &controller.entities_below_cursor,
+                        &char_state_storage.get(desktop_entity_id).unwrap().target,
                     ) {
                         let color = if self_team == char_state.team {
                             &[0.0, 0.0, 1.0, 0.7]
@@ -412,7 +420,7 @@ impl RenderDesktopClientSystem {
                     // TODO: create a has_hp component and draw this on them only?
                     if !char_state.state().is_dead() {
                         self.draw_health_bar(
-                            self_id == entity_id,
+                            desktop_entity_id == rendering_entity_id,
                             self_team == char_state.team,
                             &char_state,
                             system_vars.time,
@@ -424,7 +432,7 @@ impl RenderDesktopClientSystem {
 
                     controller
                         .bounding_rect_2d
-                        .insert(entity_id, (body_bounding_rect, char_state.team));
+                        .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -437,10 +445,11 @@ impl RenderDesktopClientSystem {
                         ActionPlayMode::Repeat
                     };
                     if RenderDesktopClientSystem::need_entity_highlighting(
-                        self_id,
-                        entity_id,
+                        desktop_entity_id,
+                        rendering_entity_id,
                         input,
                         &controller.entities_below_cursor,
+                        &char_state_storage.get(desktop_entity_id).unwrap().target,
                     ) {
                         let color = if self_team == char_state.team {
                             &[0.0, 0.0, 1.0, 0.7]
@@ -484,7 +493,7 @@ impl RenderDesktopClientSystem {
                     };
                     if !char_state.state().is_dead() {
                         self.draw_health_bar(
-                            self_id == entity_id,
+                            desktop_entity_id == rendering_entity_id,
                             self_team == char_state.team,
                             &char_state,
                             system_vars.time,
@@ -496,7 +505,7 @@ impl RenderDesktopClientSystem {
 
                     controller
                         .bounding_rect_2d
-                        .insert(entity_id, (bounding_rect, char_state.team));
+                        .insert(rendering_entity_id, (bounding_rect, char_state.team));
                 }
             }
 
@@ -607,8 +616,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             }
 
             for (entity_id, sound) in (&entities, &sound_effects).join() {
-                audio_commands.add_sound_command(sound.sound_id);
                 updater.remove::<SoundEffectComponent>(entity_id);
+                if !camera.camera.is_visible(sound.pos) {
+                    continue;
+                }
+                audio_commands.add_sound_command(sound.sound_id);
             }
 
             self.damage_render_sys.run(
@@ -1160,8 +1172,8 @@ impl DamageRenderSystem {
         speed: f32,
     ) -> (f32, Vector3<f32>) {
         let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
-        pos.x += perc * 6.0;
-        pos.z -= perc * 4.0;
+        pos.x += perc * 1.0;
+        pos.z -= perc * 1.0;
         pos.y += 2.0
             + (-std::f32::consts::FRAC_PI_2 + (std::f32::consts::PI * (0.5 + perc * 1.5 * speed)))
                 .sin()

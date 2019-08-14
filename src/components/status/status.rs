@@ -1,8 +1,10 @@
 use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharType, Percentage,
+    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, CharType,
+    Percentage,
 };
 use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
@@ -169,7 +171,7 @@ impl Statuses {
         }
     }
 
-    pub fn get_base_attributes(typ: &CharType) -> CharAttributes {
+    pub fn get_base_attributes(typ: &CharType, outlook: &CharOutlook) -> CharAttributes {
         return match typ {
             CharType::Player => CharAttributes {
                 walking_speed: Percentage(100),
@@ -182,16 +184,42 @@ impl Statuses {
                 max_hp: 50_000,
                 mana_regen: Percentage(100),
             },
-            CharType::Minion => CharAttributes {
-                walking_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(100),
-                attack_damage: 76,
-                armor: Percentage(10),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
-                max_hp: 2000,
-                mana_regen: Percentage(100),
+            CharType::Minion => match outlook {
+                CharOutlook::Player { job_id, .. } => match job_id {
+                    JobId::ARCHER => CharAttributes {
+                        walking_speed: Percentage(100),
+                        attack_range: Percentage(500),
+                        attack_speed: Percentage(67),
+                        attack_damage: 72,
+                        armor: Percentage(0),
+                        healing: Percentage(100),
+                        hp_regen: Percentage(100),
+                        max_hp: 660,
+                        mana_regen: Percentage(100),
+                    },
+                    _ => CharAttributes {
+                        walking_speed: Percentage(100),
+                        attack_range: Percentage(100),
+                        attack_speed: Percentage(67),
+                        attack_damage: 5,
+                        armor: Percentage(10),
+                        healing: Percentage(100),
+                        hp_regen: Percentage(100),
+                        max_hp: 990,
+                        mana_regen: Percentage(100),
+                    },
+                },
+                CharOutlook::Monster(_) => CharAttributes {
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
+                    attack_damage: 76,
+                    armor: Percentage(10),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
+                    max_hp: 2000,
+                    mana_regen: Percentage(100),
+                },
             },
             CharType::Boss => CharAttributes {
                 walking_speed: Percentage(100),

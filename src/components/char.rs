@@ -771,7 +771,7 @@ impl Drop for CharacterStateComponent {
 impl CharacterStateComponent {
     pub fn new(typ: CharType, outlook: CharOutlook, team: Team) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let base_attributes = Statuses::get_base_attributes(&typ);
+        let base_attributes = Statuses::get_base_attributes(&typ, &outlook);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             pos: v2!(0, 0),

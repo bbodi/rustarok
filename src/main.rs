@@ -17,6 +17,8 @@ extern crate libflate;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
+extern crate crossbeam_channel;
+extern crate notify;
 extern crate strum;
 extern crate strum_macros;
 extern crate websocket;
@@ -60,6 +62,7 @@ use crate::components::{
     StrEffectComponent,
 };
 use crate::consts::{job_name_table, JobId, MonsterId};
+use crate::notify::Watcher;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
@@ -130,6 +133,19 @@ impl AppConfig {
     pub fn new() -> Result<Self, config::ConfigError> {
         let mut s = config::Config::new();
         s.merge(config::File::with_name("config"))?;
+        return s.try_into();
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DevConfig {
+    sleep_ms: u64,
+}
+
+impl DevConfig {
+    pub fn new() -> Result<Self, config::ConfigError> {
+        let mut s = config::Config::new();
+        s.merge(config::File::with_name("config-runtime"))?;
         return s.try_into();
     }
 }
@@ -289,7 +305,7 @@ fn main() {
     )
     .unwrap();
     sdl2::mixer::allocate_channels(4);
-    sdl2::mixer::Channel::all().set_volume(64);
+    sdl2::mixer::Channel::all().set_volume(32);
 
     let mut sound_system = SoundSystem::new();
     let sounds = Sounds {
@@ -440,7 +456,11 @@ fn main() {
             },
             character_sprites: JobId::iter()
                 .take(25)
-                .filter(|job_id| *job_id == JobId::CRUSADER || *job_id == JobId::SWORDMAN)
+                .filter(|job_id| {
+                    *job_id == JobId::CRUSADER
+                        || *job_id == JobId::SWORDMAN
+                        || *job_id == JobId::ARCHER
+                })
                 .map(|job_id| {
                     let job_file_name = &job_name_table[&job_id];
                     let folder1 = encoding::all::WINDOWS_1252
@@ -725,6 +745,13 @@ fn main() {
         );
         texts.skill_key_texts.insert(skill_key, texture);
     }
+    ecs_world.add_resource(DevConfig::new().unwrap());
+    let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
+    let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
+    watcher
+        .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
+        .unwrap();
+
     ecs_world.add_resource(SystemVariables {
         assets: AssetResources {
             shaders,
@@ -1130,7 +1157,9 @@ fn main() {
         }
 
         video.gl_swap_window();
-
+        std::thread::sleep(Duration::from_millis(
+            ecs_world.read_resource::<DevConfig>().sleep_ms,
+        ));
         let now = std::time::SystemTime::now();
         let now_ms = now
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -1215,6 +1244,14 @@ fn main() {
                     .unwrap();
             }
         }
+
+        // runtime configs
+        match runtime_conf_watcher_rx.try_recv() {
+            Ok(event) => {
+                *ecs_world.write_resource::<DevConfig>() = DevConfig::new().unwrap();
+            }
+            _ => {}
+        };
     }
 }
 
@@ -1635,6 +1672,12 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
     } else {
         Sex::Female
     };
+
+    let job_id = if rng.gen::<usize>() % 2 == 0 {
+        JobId::SWORDMAN
+    } else {
+        JobId::ARCHER
+    };
     let head_count = ecs_world
         .read_resource::<SystemVariables>()
         .assets
@@ -1648,14 +1691,14 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
         &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
         sex,
-        JobId::SWORDMAN,
+        job_id,
         rng.gen::<usize>() % head_count,
         1,
         team,
         CharType::Minion,
         CollisionGroup::NonPlayer,
         &[
-            CollisionGroup::NonPlayer,
+            //CollisionGroup::NonPlayer,
             CollisionGroup::Player,
             CollisionGroup::StaticModel,
         ],
