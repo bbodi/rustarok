@@ -1,3 +1,4 @@
+use crate::asset::database::AssetDatabase;
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
@@ -8,6 +9,7 @@ use sdl2::surface::Surface;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{GLContext, Window};
 use sdl2::EventPump;
+use serde::Serialize;
 use std::ffi::{CStr, CString};
 use std::fmt::Display;
 use std::ops::{Index, IndexMut};
@@ -142,11 +144,11 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
 }
 
 #[derive(Hash, Eq, PartialEq, Debug)]
-struct GlTextureContext(gl::types::GLuint);
+struct GlTextureContext(GlTextureIndex);
 
 impl Drop for GlTextureContext {
     fn drop(&mut self) {
-        unsafe { gl::DeleteTextures(1, &self.0 as *const gl::types::GLuint) }
+        unsafe { gl::DeleteTextures(1, &(self.0).0 as *const gl::types::GLuint) }
     }
 }
 
@@ -157,25 +159,26 @@ pub struct GlTexture {
     pub height: i32,
 }
 
-pub struct GlTextureIndex(gl::types::GLuint);
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize)]
+pub struct GlTextureIndex(pub gl::types::GLuint);
 
 pub const TEXTURE_0: GlTextureIndex = GlTextureIndex(gl::TEXTURE0);
 pub const TEXTURE_1: GlTextureIndex = GlTextureIndex(gl::TEXTURE1);
 pub const TEXTURE_2: GlTextureIndex = GlTextureIndex(gl::TEXTURE2);
 
 impl GlTexture {
-    pub fn id(&self) -> gl::types::GLuint {
-        self.context.0
+    pub fn id(&self) -> GlTextureIndex {
+        (self.context.0).clone()
     }
 
     pub fn bind(&self, texture_index: GlTextureIndex) {
         unsafe {
             gl::ActiveTexture(texture_index.0);
-            gl::BindTexture(gl::TEXTURE_2D, self.context.0);
+            gl::BindTexture(gl::TEXTURE_2D, (self.context.0).0);
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> GlTexture
+    pub fn from_file<P: AsRef<Path>>(path: P, asset_database: &mut AssetDatabase) -> GlTexture
     where
         P: Display,
     {
@@ -189,7 +192,10 @@ impl GlTexture {
             .unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
         log::trace!("Texture from file --> {}", &path);
-        GlTexture::from_surface(optimized_surf, gl::NEAREST)
+        let (w, h) = (surface.width(), surface.height());
+        let ret = GlTexture::from_surface(optimized_surf, gl::NEAREST);
+        asset_database.register_texture(&path.to_string(), &[(ret.context.0, w, h)]);
+        return ret;
     }
 
     pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
@@ -208,10 +214,10 @@ impl GlTexture {
         } else {
             surface
         };
-        let mut texture_id: gl::types::GLuint = 0;
+        let mut texture_id = GlTextureIndex(0);
         unsafe {
-            gl::GenTextures(1, &mut texture_id);
-            gl::BindTexture(gl::TEXTURE_2D, texture_id);
+            gl::GenTextures(1, &mut texture_id.0);
+            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,               // Pyramid level (for mip-mapping) - 0 is the top level
@@ -238,11 +244,11 @@ impl GlTexture {
     }
 
     pub fn from_data(data: &Vec<u8>, width: i32, height: i32) -> GlTexture {
-        let mut texture_id: gl::types::GLuint = 0;
+        let mut texture_id = GlTextureIndex(0);
         unsafe {
-            gl::GenTextures(1, &mut texture_id);
-            log::debug!("Texture from_data {}", texture_id);
-            gl::BindTexture(gl::TEXTURE_2D, texture_id);
+            gl::GenTextures(1, &mut texture_id.0);
+            log::debug!("Texture from_data {}", texture_id.0);
+            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
             gl::TexImage2D(
                 gl::TEXTURE_2D,
                 0,               // Pyramid level (for mip-mapping) - 0 is the top level

@@ -17,8 +17,8 @@ use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComp
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
+use crate::video::VertexAttribDefinition;
 use crate::video::{VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2};
-use crate::video::{VertexAttribDefinition, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{ElapsedTime, MapRenderData, PhysicEngine, Shaders, SpriteResource};
 use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use specs::prelude::*;
@@ -552,10 +552,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut audio_commands_storage,
         ): Self::SystemData,
     ) {
-        //        let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem");
-        unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-        }
         for render_commands in (&mut render_commands_storage).join() {
             render_commands.clear();
         }
@@ -563,103 +559,11 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             audio_commands.clear();
         }
 
-        for (
-            entity_id,
-            input,
-            mut controller,
-            browser,
-            mut render_commands,
-            mut audio_commands,
-            desktop_char,
-            camera,
-        ) in (
-            &entities,
-            &input_storage,
-            &mut controller_storage,
-            &mut browser_client_storage,
-            &mut render_commands_storage,
-            &mut audio_commands_storage,
-            &char_state_storage,
-            &camera_storage,
-        )
-            .join()
-        {
-            self.render_for_controller(
-                entity_id,
-                desktop_char.team,
-                &desktop_char,
-                controller,
-                &desktop_char.pos(),
-                camera,
-                input,
-                &mut render_commands,
-                &mut audio_commands,
-                &physics_storage,
-                &physics_world,
-                &mut system_vars,
-                &char_state_storage,
-                &entities,
-                &sprite_storage,
-                &skill_storage,
-                &str_effect_storage,
-                &updater,
-                &mut system_benchmark,
-            );
-
-            for (entity_id, sound) in (&entities, &sound_effects).join() {
-                audio_commands.add_sound_command(sound.sound_id);
-                updater.remove::<SoundEffectComponent>(entity_id);
-            }
-
-            self.damage_render_sys.run(
-                &entities,
-                &numbers,
-                &char_state_storage,
-                entity_id,
-                desktop_char.team,
-                system_vars.time,
-                &system_vars.assets,
-                &updater,
-                render_commands,
-            );
-
-            self.render_ui_sys.run(
-                &desktop_char,
-                &input,
-                controller,
-                &mut render_commands,
-                &system_vars,
-            );
-
-            // now the back buffer contains the rendered image for this client
-            unsafe {
-                gl::ReadBuffer(gl::BACK);
-                gl::ReadPixels(
-                    0,
-                    0,
-                    VIDEO_WIDTH as i32,
-                    VIDEO_HEIGHT as i32,
-                    gl::RGBA,
-                    gl::UNSIGNED_BYTE,
-                    browser.offscreen.as_mut_ptr() as *mut gl::types::GLvoid,
-                );
-            }
-            let message = websocket::Message::binary(browser.offscreen.as_slice());
-            //                sent_bytes_per_second_counter += client.offscreen.len();
-            // it is ok if it fails, the client might have disconnected but
-            // ecs_world.maintain has not been executed yet to remove it from the world
-            let _result = browser.websocket.lock().unwrap().send_message(&message);
-        }
-        unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-        }
-
         let join = {
             let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem.join");
             (
                 &entities,
                 &input_storage,
-                !&browser_client_storage,
                 &mut render_commands_storage,
                 &mut audio_commands_storage,
                 &char_state_storage,
@@ -671,7 +575,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         for (
             entity_id,
             mut input,
-            _not_browser,
             mut render_commands,
             mut audio_commands,
             desktop_char,

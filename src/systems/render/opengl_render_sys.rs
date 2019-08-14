@@ -1,4 +1,5 @@
 use crate::asset::str::{KeyFrameType, StrLayer};
+use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
     EffectFrameCacheKey, RenderCommandCollectorComponent,
 };
@@ -251,28 +252,45 @@ impl OpenGlRenderSystem {
 impl<'a> specs::System<'a> for OpenGlRenderSystem {
     type SystemData = (
         specs::ReadStorage<'a, RenderCommandCollectorComponent>,
+        specs::ReadStorage<'a, BrowserClient>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (render_commands_storage, mut system_benchmark, system_vars): Self::SystemData,
+        (render_commands_storage, browser_client_storage,mut system_benchmark, system_vars): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem");
-        for render_commands in render_commands_storage.join() {
+
+        unsafe {
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
+
+        for (render_commands, not_browser) in
+            (&render_commands_storage, !&browser_client_storage).join()
+        {
             let render_commands: &RenderCommandCollectorComponent = render_commands;
-            let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use();
-            shader.set_mat4("projection", &system_vars.matrices.ortho);
-            for trimesh_2d in &render_commands.trimesh_2d_commands {
-                // TODO: move bind out of the loop by grouping same vaos
-                shader.set_mat4("model", &trimesh_2d.matrix);
-                shader.set_vec4("color", &trimesh_2d.color);
-                shader.set_vec2("size", &trimesh_2d.size);
-                shader.set_f32("z", 0.01 * trimesh_2d.layer as usize as f32);
-                trimesh_2d.vao.bind().draw();
+
+            /////////////////////////////////
+            // 2D Trimesh
+            /////////////////////////////////
+            {
+                let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.ortho);
+                for trimesh_2d in &render_commands.trimesh_2d_commands {
+                    // TODO: move bind out of the loop by grouping same vaos
+                    shader.set_mat4("model", &trimesh_2d.matrix);
+                    shader.set_vec4("color", &trimesh_2d.color);
+                    shader.set_vec2("size", &trimesh_2d.size);
+                    shader.set_f32("z", 0.01 * trimesh_2d.layer as usize as f32);
+                    trimesh_2d.vao.bind().draw();
+                }
             }
 
+            /////////////////////////////////
+            // 2D Texture
+            /////////////////////////////////
             {
                 let shader = system_vars.assets.shaders.sprite2d_shader.gl_use();
                 shader.set_mat4("projection", &system_vars.matrices.ortho);
@@ -285,7 +303,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     let width = command.texture_width as f32;
                     let height = command.texture_height as f32;
                     unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, command.texture);
+                        gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
                     }
                     shader.set_mat4("model", &command.matrix);
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
@@ -296,6 +314,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 }
             }
 
+            /////////////////////////////////
+            // 2D Rectangle
+            /////////////////////////////////
             {
                 let vertex_array_bind = system_vars.map_render_data.sprite_vertex_array.bind();
                 let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use();
@@ -309,6 +330,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 }
             }
 
+            /////////////////////////////////
+            // 3D Rectangle
+            /////////////////////////////////
             {
                 let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind();
                 let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
@@ -322,6 +346,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 }
             }
 
+            /////////////////////////////////
+            // 3D Circles
+            /////////////////////////////////
             {
                 let vao_bind = self.circle_vao.bind();
                 let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
@@ -338,6 +365,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 }
             }
 
+            /////////////////////////////////
+            // 3D Sprites
+            /////////////////////////////////
             {
                 let shader = system_vars.assets.shaders.sprite_shader.gl_use();
                 let vao_bind = system_vars
@@ -357,7 +387,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     shader.set_vec2("offset", &command.common.offset);
 
                     unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, command.texture);
+                        gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
                     }
                     vao_bind.draw();
                 }

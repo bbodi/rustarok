@@ -9,7 +9,7 @@ use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::{CharActionIndex, CollisionGroup, ElapsedTime, MonsterActionIndex, PhysicEngine};
-use nalgebra::{Point2, Vector2};
+use nalgebra::{Matrix4, Point2, Vector2};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
@@ -19,17 +19,22 @@ use specs::prelude::*;
 use specs::Entity;
 use std::collections::HashMap;
 
-pub fn create_human_player(
-    ecs_world: &mut specs::world::World,
+pub fn attach_human_player_components(
+    entity_id: Entity,
+    updater: &LazyUpdate,
+    physic_world: &mut PhysicEngine,
+    projection_mat: Matrix4<f32>,
     pos2d: Point2<f32>,
     sex: Sex,
     job_id: JobId,
     head_index: usize,
     radius: i32,
     team: Team,
-) -> Entity {
-    let desktop_client_entity = create_char(
-        ecs_world,
+) {
+    attach_char_components(
+        entity_id,
+        updater,
+        physic_world,
         pos2d,
         sex,
         job_id,
@@ -47,40 +52,21 @@ pub fn create_human_player(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    ecs_world
-        .write_storage()
-        .insert(
-            desktop_client_entity,
-            RenderCommandCollectorComponent::new(),
-        )
-        .unwrap();
-    ecs_world
-        .write_storage()
-        .insert(desktop_client_entity, AudioCommandCollectorComponent::new())
-        .unwrap();
-    ecs_world
-        .write_storage()
-        .insert(desktop_client_entity, human_player)
-        .unwrap();
+    updater.insert(entity_id, RenderCommandCollectorComponent::new());
+    updater.insert(entity_id, AudioCommandCollectorComponent::new());
+    updater.insert(entity_id, human_player);
     // camera
     {
         let mut camera_component = CameraComponent::new();
-        camera_component.reset_y_and_angle(
-            &ecs_world
-                .read_resource::<SystemVariables>()
-                .matrices
-                .projection,
-        );
-        ecs_world
-            .write_storage()
-            .insert(desktop_client_entity, camera_component)
-            .unwrap();
+        camera_component.reset_y_and_angle(&projection_mat);
+        updater.insert(entity_id, camera_component);
     }
-    return desktop_client_entity;
 }
 
-pub fn create_char(
-    ecs_world: &mut specs::world::World,
+pub fn attach_char_components(
+    entity_id: Entity,
+    updater: &LazyUpdate,
+    physics_world: &mut PhysicEngine,
     pos2d: Point2<f32>,
     sex: Sex,
     job_id: JobId,
@@ -90,9 +76,10 @@ pub fn create_char(
     typ: CharType,
     collision_group: CollisionGroup,
     blacklist_coll_groups: &[CollisionGroup],
-) -> Entity {
-    let entity_id = {
-        let char_comp = CharacterStateComponent::new(
+) {
+    updater.insert(
+        entity_id,
+        CharacterStateComponent::new(
             typ,
             CharOutlook::Player {
                 job_id,
@@ -100,20 +87,9 @@ pub fn create_char(
                 sex,
             },
             team,
-        );
-        let mut entity_builder = ecs_world.create_entity().with(char_comp);
-
-        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
-            action_index: CharActionIndex::Idle as usize,
-            animation_started: ElapsedTime(0.0),
-            animation_ends_at: ElapsedTime(0.0),
-            forced_duration: None,
-            direction: 0,
-            fps_multiplier: 1.0,
-        });
-        entity_builder.build()
-    };
-    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+        ),
+    );
+    updater.insert(entity_id, SpriteRenderDescriptorComponent::new());
     let physics_component = PhysicsComponent::new(
         physics_world,
         pos2d.coords,
@@ -122,17 +98,9 @@ pub fn create_char(
         collision_group,
         blacklist_coll_groups,
     );
-    ecs_world
-        .write_storage()
-        .insert(entity_id, physics_component)
-        .unwrap();
+    updater.insert(entity_id, physics_component);
 
-    // controller
-    ecs_world
-        .write_storage()
-        .insert(entity_id, ControllerComponent::new())
-        .unwrap();
-    return entity_id;
+    updater.insert(entity_id, ControllerComponent::new());
 }
 
 pub fn create_monster(
@@ -966,4 +934,17 @@ pub struct SpriteRenderDescriptorComponent {
     pub direction: usize,
     /// duration of the current animation
     pub animation_ends_at: ElapsedTime,
+}
+
+impl SpriteRenderDescriptorComponent {
+    pub fn new() -> SpriteRenderDescriptorComponent {
+        SpriteRenderDescriptorComponent {
+            action_index: CharActionIndex::Idle as usize,
+            animation_started: ElapsedTime(0.0),
+            animation_ends_at: ElapsedTime(0.0),
+            forced_duration: None,
+            direction: 0,
+            fps_multiplier: 1.0,
+        }
+    }
 }

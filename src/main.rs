@@ -15,6 +15,8 @@ extern crate specs_derive;
 extern crate config;
 extern crate libflate;
 extern crate serde;
+#[macro_use]
+extern crate serde_json;
 extern crate strum;
 extern crate strum_macros;
 extern crate websocket;
@@ -87,6 +89,7 @@ mod web_server;
 mod components;
 mod systems;
 
+use crate::asset::database::AssetDatabase;
 use crate::common::p3_to_p2;
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
@@ -100,6 +103,7 @@ use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::web_server::start_web_server;
@@ -109,6 +113,7 @@ use nphysics2d::joint::DefaultJointConstraintSet;
 use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
 use serde::Deserialize;
 use std::str::FromStr;
+use websocket::OwnedMessage;
 
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
@@ -395,18 +400,21 @@ fn main() {
         .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(RenderDesktopClientSystem::new())
         .with_thread_local(OpenGlRenderSystem::new())
+        .with_thread_local(WebSocketBrowserRenderSystem::new())
         .with_thread_local(sound_system)
         .build();
 
     let rng = rand::thread_rng();
 
+    let mut asset_database = AssetDatabase::new();
+
     let (elapsed, sprites) = measure_time(|| {
         let job_name_table = job_name_table();
         Sprites {
             cursors: asset_loader
-                .load_spr_and_act("data\\sprite\\cursors")
+                .load_spr_and_act("data\\sprite\\cursors", &mut asset_database)
                 .unwrap(),
-            numbers: GlTexture::from_file("assets\\damage.bmp"),
+            numbers: GlTexture::from_file("assets\\damage.bmp", &mut asset_database),
             mounted_character_sprites: {
                 let mut mounted_sprites = HashMap::new();
                 let mounted_file_name = &job_name_table[&JobId::CRUSADER2];
@@ -421,7 +429,7 @@ fn main() {
                     folder1, folder2, mounted_file_name
                 );
                 let mut male = asset_loader
-                    .load_spr_and_act(&male_file_name)
+                    .load_spr_and_act(&male_file_name, &mut asset_database)
                     .expect(&format!("Failed loading {:?}", JobId::CRUSADER2));
                 // for Idle action, character sprites contains head rotating animations, we don't need them
                 male.action
@@ -453,7 +461,7 @@ fn main() {
                         .exists(&format!("{}.act", female_file_name))
                     {
                         let mut male = asset_loader
-                            .load_spr_and_act(&male_file_name)
+                            .load_spr_and_act(&male_file_name, &mut asset_database)
                             .expect(&format!("Failed loading {:?}", job_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         male.action
@@ -462,7 +470,7 @@ fn main() {
                         (male, female)
                     } else if !asset_loader.exists(&format!("{}.act", male_file_name)) {
                         let mut female = asset_loader
-                            .load_spr_and_act(&female_file_name)
+                            .load_spr_and_act(&female_file_name, &mut asset_database)
                             .expect(&format!("Failed loading {:?}", job_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         female
@@ -472,13 +480,13 @@ fn main() {
                         (male, female)
                     } else {
                         let mut male = asset_loader
-                            .load_spr_and_act(&male_file_name)
+                            .load_spr_and_act(&male_file_name, &mut asset_database)
                             .expect(&format!("Failed loading {:?}", job_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         male.action
                             .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                         let mut female = asset_loader
-                            .load_spr_and_act(&female_file_name)
+                            .load_spr_and_act(&female_file_name, &mut asset_database)
                             .expect(&format!("Failed loading {:?}", job_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         female
@@ -498,7 +506,7 @@ fn main() {
                         );
                         let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
                             let mut head = asset_loader
-                                .load_spr_and_act(&male_file_name)
+                                .load_spr_and_act(&male_file_name, &mut asset_database)
                                 .expect(&format!("Failed loading head({})", i));
                             // for Idle action, character sprites contains head rotating animations, we don't need them
                             head.action.remove_frames_in_every_direction(
@@ -521,7 +529,7 @@ fn main() {
                         );
                         let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
                             let mut head = asset_loader
-                                .load_spr_and_act(&female_file_name)
+                                .load_spr_and_act(&female_file_name, &mut asset_database)
                                 .expect(&format!("Failed loading head({})", i));
                             // for Idle action, character sprites contains head rotating animations, we don't need them
                             head.action.remove_frames_in_every_direction(
@@ -545,19 +553,21 @@ fn main() {
                     );
                     (
                         monster_id,
-                        asset_loader.load_spr_and_act(&file_name).unwrap(),
+                        asset_loader
+                            .load_spr_and_act(&file_name, &mut asset_database)
+                            .unwrap(),
                     )
                 })
                 .collect::<HashMap<MonsterId, SpriteResource>>(),
             effect_sprites: EffectSprites {
                 torch: asset_loader
-                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\torch_01")
+                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\torch_01", &mut asset_database)
                     .unwrap(),
                 fire_wall: asset_loader
-                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\firewall")
+                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\firewall", &mut asset_database)
                     .unwrap(),
                 fire_ball: asset_loader
-                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\fireball")
+                    .load_spr_and_act("data\\sprite\\ÀÌÆÑÆ®\\fireball", &mut asset_database)
                     .unwrap(),
             },
         }
@@ -762,8 +772,15 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let desktop_client_entity = components::char::create_human_player(
-        &mut ecs_world,
+    let desktop_client_entity = ecs_world.create_entity().build();
+    components::char::attach_human_player_components(
+        desktop_client_entity,
+        &ecs_world.read_resource::<LazyUpdate>(),
+        &mut ecs_world.write_resource::<PhysicEngine>(),
+        ecs_world
+            .read_resource::<SystemVariables>()
+            .matrices
+            .projection,
         Point2::new(250.0, -200.0),
         Sex::Male,
         JobId::CRUSADER,
@@ -771,6 +788,7 @@ fn main() {
         1,
         Team::Right,
     );
+    ecs_world.maintain();
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
@@ -942,28 +960,86 @@ fn main() {
             Ok(wsupgrade) => {
                 let mut browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
-                let welcome_data: [u8; 4] = unsafe {
-                    std::mem::transmute::<[u16; 2], [u8; 4]>([
-                        VIDEO_WIDTH as u16,
-                        VIDEO_HEIGHT as u16,
-                    ])
-                };
-                let welcome_msg = websocket::Message::binary(&welcome_data[..]);
+
+                let welcome_data = json!({
+                    "screen_width": VIDEO_WIDTH,
+                    "screen_height": VIDEO_HEIGHT,
+                    "asset_database": serde_json::to_value(&asset_database).unwrap(),
+                    "projection_mat": ecs_world
+                                        .read_resource::<SystemVariables>()
+                                        .matrices
+                                        .projection.as_slice()
+                });
+                let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
+                let welcome_msg = websocket::Message::binary(&welcome_msg[..]);
                 let _ = browser_client.send_message(&welcome_msg).unwrap();
 
-                let browser_client_entity = components::char::create_human_player(
-                    &mut ecs_world,
-                    Point2::new(250.0, -200.0),
-                    Sex::Male,
-                    JobId::CRUSADER,
-                    2,
-                    1,
-                    Team::Right,
-                );
+                let browser_client_entity = ecs_world
+                    .create_entity()
+                    .with(BrowserClient::new(browser_client))
+                    .build();
+
                 log::info!("Client connected: {:?}", browser_client_entity);
             }
             _ => { /* Nobody tried to connect, move on.*/ }
         };
+
+        {
+            let projection_mat = ecs_world
+                .read_resource::<SystemVariables>()
+                .matrices
+                .projection;
+            let mut updater = ecs_world.read_resource::<LazyUpdate>();
+            for (entity_id, client, not_char_state) in (
+                &ecs_world.entities(),
+                &mut ecs_world.write_storage::<BrowserClient>(),
+                !&ecs_world.read_storage::<CharacterStateComponent>(),
+            )
+                .join()
+            {
+                let sh = client.websocket.lock().unwrap().recv_message();
+                if let Ok(msg) = sh {
+                    match msg {
+                        OwnedMessage::Binary(buf) => {}
+                        OwnedMessage::Text(text) => {
+                            let deserialized: serde_json::Value =
+                                serde_json::from_str(&text).unwrap();
+                            if let Some(mismatched_textures) =
+                                deserialized["mismatched_textures"].as_array()
+                            {
+                                log::trace!("mismatched_textures: {:?}", mismatched_textures);
+                                let mut response_buf =
+                                    Vec::with_capacity(mismatched_textures.len() * 256 * 256);
+                                for mismatched_texture in mismatched_textures {
+                                    asset_database.copy_texture(
+                                        mismatched_texture.as_str().unwrap_or(""),
+                                        &mut response_buf,
+                                    );
+                                    let msg = websocket::Message::binary(&response_buf[..]);
+                                    let _ = client.websocket.lock().unwrap().send_message(&msg);
+                                    response_buf.clear();
+                                }
+                                components::char::attach_human_player_components(
+                                    entity_id,
+                                    &updater,
+                                    &mut ecs_world.write_resource::<PhysicEngine>(),
+                                    projection_mat,
+                                    Point2::new(250.0, -200.0),
+                                    Sex::Male,
+                                    JobId::CRUSADER,
+                                    2,
+                                    1,
+                                    Team::Right,
+                                );
+                            }
+                        }
+                        OwnedMessage::Close(_) => {}
+                        OwnedMessage::Ping(_) => {}
+                        OwnedMessage::Pong(_) => {}
+                    }
+                }
+            }
+        }
 
         {
             let mut storage = ecs_world.write_storage::<HumanInputComponent>();
@@ -1091,11 +1167,11 @@ fn main() {
             let browser_storage = ecs_world.write_storage::<BrowserClient>();
             for browser_client in browser_storage.join() {
                 let message = websocket::Message::ping(&data[..]);
-                let _ = browser_client
-                    .websocket
-                    .lock()
-                    .unwrap()
-                    .send_message(&message);
+                //                let _ = browser_client
+                //                    .websocket
+                //                    .lock()
+                //                    .unwrap()
+                //                    .send_message(&message);
             }
         }
         fps_counter += 1;
@@ -1565,8 +1641,11 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let entity_id = components::char::create_char(
-        ecs_world,
+    let entity_id = ecs_world.create_entity().build();
+    components::char::attach_char_components(
+        entity_id,
+        &ecs_world.read_resource::<LazyUpdate>(),
+        &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
         sex,
         JobId::SWORDMAN,

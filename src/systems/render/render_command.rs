@@ -1,7 +1,7 @@
 use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::video::{GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{GlTexture, GlTextureIndex, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ModelName;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
@@ -234,7 +234,7 @@ pub struct Texture2dRenderCommand {
     pub(super) offset: [f32; 2],
     pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
-    pub(super) texture: gl::types::GLuint,
+    pub(super) texture: GlTextureIndex,
     pub(super) texture_width: i32,
     pub(super) texture_height: i32,
     pub(super) layer: Layer2d,
@@ -254,7 +254,7 @@ pub struct Circle3dRenderCommand {
 #[derive(Debug)]
 pub struct BillboardRenderCommand {
     pub common: Common3DProperties,
-    pub texture: gl::types::GLuint,
+    pub texture: GlTextureIndex,
     pub texture_width: f32,
     pub texture_height: f32,
 }

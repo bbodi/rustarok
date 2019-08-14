@@ -17,13 +17,23 @@ pub mod status;
 #[derive(Component)]
 pub struct BrowserClient {
     pub websocket: Mutex<websocket::sync::Client<TcpStream>>,
-    pub offscreen: Vec<u8>,
     pub ping: u16,
+    pub state: usize,
 }
 
 impl Drop for BrowserClient {
     fn drop(&mut self) {
         log::info!("BrowserClient DROPPED");
+    }
+}
+
+impl BrowserClient {
+    pub fn new(websocket: websocket::sync::Client<TcpStream>) -> BrowserClient {
+        BrowserClient {
+            websocket: Mutex::new(websocket),
+            ping: 0,
+            state: 0,
+        }
     }
 }
 

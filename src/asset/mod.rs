@@ -1,4 +1,5 @@
 use crate::asset::act::ActionFile;
+use crate::asset::database::AssetDatabase;
 use crate::asset::gat::Gat;
 use crate::asset::gnd::Gnd;
 use crate::asset::rsm::Rsm;
@@ -21,6 +22,7 @@ use std::ops::*;
 use std::path::Path;
 
 pub mod act;
+pub mod database;
 pub mod gat;
 pub mod gnd;
 pub mod rsm;
@@ -262,7 +264,11 @@ impl AssetLoader {
         return Ok(optimized_surf);
     }
 
-    pub fn load_spr_and_act(&self, path: &str) -> Result<SpriteResource, String> {
+    pub fn load_spr_and_act(
+        &self,
+        path: &str,
+        asset_db: &mut AssetDatabase,
+    ) -> Result<SpriteResource, String> {
         let content = self.get_content(&format!("{}.spr", path))?;
         let frames: Vec<SpriteTexture> = SpriteFile::load(BinaryReader::from_vec(content))
             .frames
@@ -271,6 +277,18 @@ impl AssetLoader {
             .collect();
         let content = self.get_content(&format!("{}.act", path))?;
         let action = ActionFile::load(BinaryReader::from_vec(content));
+
+        let s = frames
+            .iter()
+            .map(|it| {
+                (
+                    it.texture.id(),
+                    it.texture.width as u32,
+                    it.texture.height as u32,
+                )
+            })
+            .collect::<Vec<_>>();
+        asset_db.register_texture(&path.to_string(), s.as_slice());
 
         return Ok(SpriteResource {
             action,

@@ -11,6 +11,7 @@ use sdl2::keyboard::Scancode;
 use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use specs::prelude::*;
 use std::io::ErrorKind;
+use std::iter::Enumerate;
 use std::slice::Iter;
 use std::time::SystemTime;
 use websocket::{OwnedMessage, WebSocketError};
@@ -24,15 +25,15 @@ const PACKET_KEY_DOWN: i32 = 4;
 const PACKET_KEY_UP: i32 = 5;
 const PACKET_MOUSE_WHEEL: i32 = 6;
 
-fn read_u16(iter: &mut Iter<u8>) -> u16 {
-    let upper_byte = iter.next().unwrap();
-    let lower_byte = iter.next().unwrap();
+fn read_u16(iter: &mut Enumerate<Iter<u8>>) -> u16 {
+    let (_, upper_byte) = iter.next().unwrap();
+    let (_, lower_byte) = iter.next().unwrap();
     return ((*upper_byte as u16) << 8) | *lower_byte as u16;
 }
 
-fn read_i16(iter: &mut Iter<u8>) -> i16 {
-    let upper_byte = iter.next().unwrap();
-    let lower_byte = iter.next().unwrap();
+fn read_i16(iter: &mut Enumerate<Iter<u8>>) -> i16 {
+    let (_, upper_byte) = iter.next().unwrap();
+    let (_, lower_byte) = iter.next().unwrap();
     return ((*upper_byte as i16) << 8) | *lower_byte as i16;
 }
 
@@ -66,18 +67,19 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                         client.ping = (now_ms - ping_time) as u16;
                     }
                     OwnedMessage::Binary(buf) => {
-                        let mut iter = buf.iter();
-                        while let Some(header) = iter.next() {
+                        let mut iter = buf.iter().enumerate();
+                        while let Some((index, header)) = iter.next() {
+                            let read_bytes = index + 1;
+                            let remaining_bytes = buf.len() - read_bytes;
                             let header = *header as i32;
                             match header & 0b1111 {
                                 PACKET_MOUSE_MOVE => {
+                                    let expected_size = 2 * 2;
+                                    if remaining_bytes < expected_size {
+                                        continue;
+                                    }
                                     let mouse_x: u16 = read_u16(&mut iter);
                                     let mouse_y: u16 = read_u16(&mut iter);
-                                    log::trace!(
-                                        "Message arrived: MouseMove({}, {})",
-                                        mouse_x,
-                                        mouse_y
-                                    );
                                     let mousestate = {
                                         unsafe {
                                             std::mem::transmute((0 as u32, 0 as i32, 0 as i32))
@@ -94,6 +96,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         yrel: 0,
                                     });
                                 }
+
                                 PACKET_MOUSE_DOWN => {
                                     let mouse_btn = match (header >> 4) & 0b11 {
                                         0 => sdl2::mouse::MouseButton::Left,
@@ -133,7 +136,11 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         });
                                 }
                                 PACKET_KEY_DOWN => {
-                                    let scancode = *iter.next().unwrap();
+                                    let expected_size = 1 + 2;
+                                    if remaining_bytes < expected_size {
+                                        continue;
+                                    }
+                                    let scancode = *iter.next().unwrap().1;
                                     let input_char: u16 = read_u16(&mut iter);
                                     log::trace!(
                                         "Message arrived: KeyDown({}, {})",
@@ -157,7 +164,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     }
                                 }
                                 PACKET_KEY_UP => {
-                                    let scancode = *iter.next().unwrap();
+                                    let scancode = *iter.next().unwrap().1;
                                     log::trace!("Message arrived: KeyUp({})", scancode);
                                     input_producer.inputs.push(sdl2::event::Event::KeyUp {
                                         timestamp: 0,
