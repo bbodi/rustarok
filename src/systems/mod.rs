@@ -4,6 +4,7 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
+use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::systems::sound_sys::SoundId;
 use crate::video::{DynamicVertexArray, GlTexture};
@@ -90,6 +91,7 @@ pub struct SystemVariables {
     pub remove_statuses: Vec<RemoveStatusComponent>,
     // Todo: put it into the new Graphic module if it is ready
     pub str_effect_vao: DynamicVertexArray,
+    pub dev_configs: DevConfig,
 }
 
 #[derive(Debug)]

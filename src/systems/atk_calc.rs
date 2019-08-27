@@ -549,7 +549,7 @@ impl AttackSystem {
                         target_char.statuses.ugly_add(box_status);
                     }
                 }
-                target_char.update_attributes();
+                target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status added. Attributes({:?}): bonuses: {:?}, current: {:?}",
                     status_change.target_entity_id,
@@ -579,7 +579,7 @@ impl AttackSystem {
                         target_char.statuses.remove(*status_type);
                     }
                 }
-                target_char.update_attributes();
+                target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status removed. Attributes({:?}): bonuses: {:?}, current: {:?}",
                     status_change.target_entity_id,

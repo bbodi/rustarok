@@ -83,6 +83,7 @@ use encoding::DecoderTrap;
 mod common;
 mod asset;
 mod cam;
+mod configs;
 mod consts;
 mod cursor;
 mod video;
@@ -101,6 +102,7 @@ use crate::components::status::attrib_mod::ArmorModifierStatus;
 use crate::components::status::heal_area::HealApplierArea;
 use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuses};
 use crate::components::status::status_applier_area::StatusApplierArea;
+use crate::configs::{AppConfig, DevConfig};
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
@@ -114,41 +116,12 @@ use ncollide2d::pipeline::CollisionGroups;
 use nphysics2d::force_generator::DefaultForceGeneratorSet;
 use nphysics2d::joint::DefaultJointConstraintSet;
 use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
-use serde::Deserialize;
 use std::str::FromStr;
 use websocket::OwnedMessage;
 
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
 pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
-
-#[derive(Debug, Deserialize)]
-pub struct AppConfig {
-    log_level: String,
-    quick_startup: bool,
-    grf_paths: Vec<String>,
-}
-
-impl AppConfig {
-    pub fn new() -> Result<Self, config::ConfigError> {
-        let mut s = config::Config::new();
-        s.merge(config::File::with_name("config"))?;
-        return s.try_into();
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DevConfig {
-    sleep_ms: u64,
-}
-
-impl DevConfig {
-    pub fn new() -> Result<Self, config::ConfigError> {
-        let mut s = config::Config::new();
-        s.merge(config::File::with_name("config-runtime"))?;
-        return s.try_into();
-    }
-}
 
 #[derive(Clone, Copy)]
 pub enum CharActionIndex {
@@ -745,7 +718,6 @@ fn main() {
         );
         texts.skill_key_texts.insert(skill_key, texture);
     }
-    ecs_world.add_resource(DevConfig::new().unwrap());
     let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
     let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
     watcher
@@ -753,6 +725,7 @@ fn main() {
         .unwrap();
 
     ecs_world.add_resource(SystemVariables {
+        dev_configs: DevConfig::new().unwrap(),
         assets: AssetResources {
             shaders,
             sprites,
@@ -814,6 +787,7 @@ fn main() {
         1,
         1,
         Team::Right,
+        &ecs_world.read_resource::<SystemVariables>().dev_configs,
     );
     ecs_world.maintain();
 
@@ -1016,8 +990,8 @@ fn main() {
                 .read_resource::<SystemVariables>()
                 .matrices
                 .projection;
-            let mut updater = ecs_world.read_resource::<LazyUpdate>();
-            for (entity_id, client, not_char_state) in (
+            let updater = ecs_world.read_resource::<LazyUpdate>();
+            for (entity_id, client, _not_char_state) in (
                 &ecs_world.entities(),
                 &mut ecs_world.write_storage::<BrowserClient>(),
                 !&ecs_world.read_storage::<CharacterStateComponent>(),
@@ -1027,7 +1001,7 @@ fn main() {
                 let sh = client.websocket.lock().unwrap().recv_message();
                 if let Ok(msg) = sh {
                     match msg {
-                        OwnedMessage::Binary(buf) => {}
+                        OwnedMessage::Binary(_buf) => {}
                         OwnedMessage::Text(text) => {
                             let deserialized: serde_json::Value =
                                 serde_json::from_str(&text).unwrap();
@@ -1057,6 +1031,7 @@ fn main() {
                                     2,
                                     1,
                                     Team::Right,
+                                    &ecs_world.read_resource::<SystemVariables>().dev_configs,
                                 );
                             }
                         }
@@ -1158,7 +1133,10 @@ fn main() {
 
         video.gl_swap_window();
         std::thread::sleep(Duration::from_millis(
-            ecs_world.read_resource::<DevConfig>().sleep_ms,
+            ecs_world
+                .read_resource::<SystemVariables>()
+                .dev_configs
+                .sleep_ms,
         ));
         let now = std::time::SystemTime::now();
         let now_ms = now
@@ -1211,7 +1189,12 @@ fn main() {
             dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
-        if next_minion_spawn.is_earlier_than(now) && false {
+        if next_minion_spawn.is_earlier_than(now)
+            && ecs_world
+                .read_resource::<SystemVariables>()
+                .dev_configs
+                .minions_enabled
+        {
             next_minion_spawn = now.add_seconds(2.0);
 
             {
@@ -1248,7 +1231,19 @@ fn main() {
         // runtime configs
         match runtime_conf_watcher_rx.try_recv() {
             Ok(event) => {
-                *ecs_world.write_resource::<DevConfig>() = DevConfig::new().unwrap();
+                if let Ok(new_config) = DevConfig::new() {
+                    ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
+                    for char_state in
+                        (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
+                    {
+                        char_state.update_base_attributes(
+                            &ecs_world.write_resource::<SystemVariables>().dev_configs,
+                        );
+                    }
+                    log::info!("Configs has been reloaded");
+                } else {
+                    log::warn!("Config error");
+                }
             }
             _ => {}
         };
@@ -1702,6 +1697,7 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
             CollisionGroup::Player,
             CollisionGroup::StaticModel,
         ],
+        &ecs_world.read_resource::<SystemVariables>().dev_configs,
     );
     entity_id
 }

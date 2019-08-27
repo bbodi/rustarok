@@ -9,8 +9,7 @@ use crate::components::controller::{
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
-    BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
-    StrEffectComponent,
+    FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
 use crate::cursor::CURSOR_TARGET;
 use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
@@ -520,7 +519,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::ReadStorage<'a, HumanInputComponent>,
-        specs::WriteStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, PhysicsComponent>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
@@ -543,7 +541,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         (
             entities,
             input_storage,
-            mut browser_client_storage,
             physics_storage,
             sprite_storage,
             char_state_storage,

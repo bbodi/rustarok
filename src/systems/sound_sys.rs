@@ -70,12 +70,11 @@ impl SoundSystem {
 
 impl<'a> specs::System<'a> for SoundSystem {
     type SystemData = (
-        specs::Entities<'a>,
         specs::ReadStorage<'a, AudioCommandCollectorComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
 
-    fn run(&mut self, (entities, audio_commands, mut system_benchmark): Self::SystemData) {
+    fn run(&mut self, (audio_commands, mut system_benchmark): Self::SystemData) {
         let _stopwatch = system_benchmark.start_measurement("SoundSystem");
 
         for audio_commands in audio_commands.join() {
@@ -83,7 +82,7 @@ impl<'a> specs::System<'a> for SoundSystem {
 
             for sound_command in &audio_commands.sound_commands {
                 let chunk = self.sounds.get(sound_command.sound_id);
-                let sh = sdl2::mixer::Channel::all().play(chunk, 0);
+                let _ = sdl2::mixer::Channel::all().play(chunk, 0);
             }
         }
     }

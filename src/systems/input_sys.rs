@@ -1,4 +1,3 @@
-use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
     CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
 };
@@ -214,20 +213,13 @@ pub struct InputConsumerSystem;
 
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, CameraComponent>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
-    fn run(
-        &mut self,
-        (entities, char_state_storage, mut input_storage, mut camera_storage, system_vars): Self::SystemData,
-    ) {
-        for (entity_id, input, camera) in
-            (&entities, &mut input_storage, &mut camera_storage).join()
-        {
+    fn run(&mut self, (mut input_storage, mut camera_storage, system_vars): Self::SystemData) {
+        for (input, camera) in (&mut input_storage, &mut camera_storage).join() {
             // for autocompletion...
             let input: &mut HumanInputComponent = input;
 

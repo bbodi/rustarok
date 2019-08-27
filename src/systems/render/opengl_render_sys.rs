@@ -267,7 +267,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        for (render_commands, not_browser) in
+        for (render_commands, _not_browser) in
             (&render_commands_storage, !&browser_client_storage).join()
         {
             let render_commands: &RenderCommandCollectorComponent = render_commands;

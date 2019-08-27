@@ -1,6 +1,6 @@
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::SystemFrameDurations;
 use byteorder::{LittleEndian, WriteBytesExt};
 use specs::prelude::*;
 
@@ -17,12 +17,11 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
         specs::ReadStorage<'a, RenderCommandCollectorComponent>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (render_commands_storage, browser_client_storage,mut system_benchmark, system_vars): Self::SystemData,
+        (render_commands_storage, browser_client_storage, mut system_benchmark): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("WebSocketBrowserRenderSystem");
 

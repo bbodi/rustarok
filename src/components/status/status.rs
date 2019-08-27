@@ -4,6 +4,7 @@ use crate::components::char::{
 };
 use crate::components::controller::WorldCoords;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
@@ -171,43 +172,33 @@ impl Statuses {
         }
     }
 
-    pub fn get_base_attributes(typ: &CharType, outlook: &CharOutlook) -> CharAttributes {
+    pub fn get_base_attributes(
+        typ: &CharType,
+        outlook: &CharOutlook,
+        configs: &DevConfig,
+    ) -> CharAttributes {
         return match typ {
-            CharType::Player => CharAttributes {
-                walking_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(130),
-                attack_damage: 120,
-                armor: Percentage(50),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
-                max_hp: 50_000,
-                mana_regen: Percentage(100),
+            CharType::Player => match outlook {
+                CharOutlook::Player { job_id, .. } => match job_id {
+                    JobId::CRUSADER => configs.stats.player.crusader.clone(),
+                    _ => configs.stats.player.crusader.clone(),
+                },
+                CharOutlook::Monster(_) => CharAttributes {
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
+                    attack_damage: 76,
+                    armor: Percentage(10),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
+                    max_hp: 2000,
+                    mana_regen: Percentage(100),
+                },
             },
             CharType::Minion => match outlook {
                 CharOutlook::Player { job_id, .. } => match job_id {
-                    JobId::ARCHER => CharAttributes {
-                        walking_speed: Percentage(100),
-                        attack_range: Percentage(500),
-                        attack_speed: Percentage(67),
-                        attack_damage: 72,
-                        armor: Percentage(0),
-                        healing: Percentage(100),
-                        hp_regen: Percentage(100),
-                        max_hp: 660,
-                        mana_regen: Percentage(100),
-                    },
-                    _ => CharAttributes {
-                        walking_speed: Percentage(100),
-                        attack_range: Percentage(100),
-                        attack_speed: Percentage(67),
-                        attack_damage: 5,
-                        armor: Percentage(10),
-                        healing: Percentage(100),
-                        hp_regen: Percentage(100),
-                        max_hp: 990,
-                        mana_regen: Percentage(100),
-                    },
+                    JobId::ARCHER => configs.stats.minion.ranged.clone(),
+                    _ => configs.stats.minion.melee.clone(),
                 },
                 CharOutlook::Monster(_) => CharAttributes {
                     walking_speed: Percentage(100),

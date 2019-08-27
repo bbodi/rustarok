@@ -4,6 +4,7 @@ use crate::components::controller::{
 };
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
+use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
@@ -15,6 +16,7 @@ use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
     BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle, RigidBodyDesc,
 };
+use serde::Deserialize;
 use specs::prelude::*;
 use specs::Entity;
 use std::collections::HashMap;
@@ -30,6 +32,7 @@ pub fn attach_human_player_components(
     head_index: usize,
     radius: i32,
     team: Team,
+    dev_configs: &DevConfig,
 ) {
     attach_char_components(
         entity_id,
@@ -44,6 +47,7 @@ pub fn attach_human_player_components(
         CharType::Player,
         CollisionGroup::Player,
         &[CollisionGroup::NonPlayer],
+        dev_configs,
     );
     let mut human_player = HumanInputComponent::new();
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
@@ -76,6 +80,7 @@ pub fn attach_char_components(
     typ: CharType,
     collision_group: CollisionGroup,
     blacklist_coll_groups: &[CollisionGroup],
+    dev_configs: &DevConfig,
 ) {
     updater.insert(
         entity_id,
@@ -87,6 +92,7 @@ pub fn attach_char_components(
                 sex,
             },
             team,
+            dev_configs,
         ),
     );
     updater.insert(entity_id, SpriteRenderDescriptorComponent::new());
@@ -114,20 +120,28 @@ pub fn create_monster(
     blacklist_coll_groups: &[CollisionGroup],
 ) -> Entity {
     let entity_id = {
-        let mut entity_builder = ecs_world.create_entity().with(CharacterStateComponent::new(
-            typ,
-            CharOutlook::Monster(monster_id),
-            team,
-        ));
-        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
-            action_index: CharActionIndex::Idle as usize,
-            animation_started: ElapsedTime(0.0),
-            animation_ends_at: ElapsedTime(0.0),
-            forced_duration: None,
-            direction: 0,
-            fps_multiplier: 1.0,
-        });
-        entity_builder.build()
+        let entity_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            entity_id,
+            CharacterStateComponent::new(
+                typ,
+                CharOutlook::Monster(monster_id),
+                team,
+                &ecs_world.read_resource::<SystemVariables>().dev_configs,
+            ),
+        );
+        ecs_world.write_storage().insert(
+            entity_id,
+            SpriteRenderDescriptorComponent {
+                action_index: CharActionIndex::Idle as usize,
+                animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+                fps_multiplier: 1.0,
+            },
+        );
+        entity_id
     };
     let mut storage = ecs_world.write_storage();
     let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -330,9 +344,16 @@ pub enum EntityTarget {
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(from = "i32")]
 pub struct Percentage {
     value: i32,
+}
+
+impl From<i32> for Percentage {
+    fn from(value: i32) -> Self {
+        Percentage(value)
+    }
 }
 
 // able to represent numbers in 0.1% discrete steps
@@ -485,7 +506,7 @@ impl CharOutlook {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CharAttributes {
     pub max_hp: i32,
     pub attack_damage: u16,
@@ -769,9 +790,19 @@ impl Drop for CharacterStateComponent {
 }
 
 impl CharacterStateComponent {
-    pub fn new(typ: CharType, outlook: CharOutlook, team: Team) -> CharacterStateComponent {
+    pub fn update_base_attributes(&mut self, dev_configs: &DevConfig) {
+        self.base_attributes = Statuses::get_base_attributes(&self.typ, &self.outlook, dev_configs);
+        self.recalc_attribs_based_on_statuses()
+    }
+
+    pub fn new(
+        typ: CharType,
+        outlook: CharOutlook,
+        team: Team,
+        dev_configs: &DevConfig,
+    ) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let base_attributes = Statuses::get_base_attributes(&typ, &outlook);
+        let base_attributes = Statuses::get_base_attributes(&typ, &outlook, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             pos: v2!(0, 0),
@@ -806,7 +837,7 @@ impl CharacterStateComponent {
         &self.attrib_bonuses
     }
 
-    pub fn update_attributes(&mut self) {
+    pub fn recalc_attribs_based_on_statuses(&mut self) {
         let modifier_collector = self.statuses.calc_attributes();
         self.calculated_attribs = self.base_attributes.apply(modifier_collector);
 
@@ -826,7 +857,7 @@ impl CharacterStateComponent {
             self.statuses
                 .update(self_char_id, &self.pos(), system_vars, entities, updater);
         if changed {
-            self.update_attributes();
+            self.recalc_attribs_based_on_statuses();
             log::trace!(
                 "Status expired. Attributes({:?}): mod: {:?}, attribs: {:?}",
                 self_char_id,
