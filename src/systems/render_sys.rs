@@ -12,7 +12,7 @@ use crate::components::{
     FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
 use crate::cursor::CURSOR_TARGET;
-use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
+use crate::systems::render::render_command::{RenderCommandCollectorComponent, UiLayer2d};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
@@ -267,7 +267,7 @@ impl RenderDesktopClientSystem {
                     .unwrap_or(false),
             }
         } else {
-            let mut ret = entities_below_cursor
+            let ret = entities_below_cursor
                 .get_enemy_or_friend()
                 .map(|it| it == rendering_entity_id)
                 .unwrap_or(false);
@@ -558,13 +558,6 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut audio_commands_storage,
         ): Self::SystemData,
     ) {
-        for render_commands in (&mut render_commands_storage).join() {
-            render_commands.clear();
-        }
-        for audio_commands in (&mut audio_commands_storage).join() {
-            audio_commands.clear();
-        }
-
         let join = {
             let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem.join");
             (
@@ -1244,17 +1237,14 @@ impl RenderDesktopClientSystem {
         };
         let spr_x = bounding_rect_2d.bottom_left[0];
         let spr_w = bounding_rect_2d.top_right[0] - bounding_rect_2d.bottom_left[0];
-        let bar_x = spr_x as f32 + (spr_w as f32 / 2.0) - (bar_w as f32 / 2.0);
+        let bar_x = spr_x + (spr_w / 2) - (bar_w / 2);
         let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
             render_commands
                 .prepare_for_2d()
                 .color(&color)
-                .size2(w as f32, h as f32)
-                .screen_pos(
-                    bar_x + x as f32,
-                    bounding_rect_2d.top_right[1] as f32 - 30.0 + y as f32,
-                )
-                .add_rectangle_command(Layer2d::Layer2);
+                .size2(w, h)
+                .screen_pos(bar_x + x, bounding_rect_2d.top_right[1] - 30 + y)
+                .add_rectangle_command(UiLayer2d::HealthBars);
         };
 
         let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
@@ -1299,8 +1289,8 @@ impl RenderDesktopClientSystem {
         if char_state.attrib_bonuses().attrs.armor.is_not_zero() {
             let armor_bonus = char_state.attrib_bonuses().attrs.armor.as_i16();
             let shield_icon_texture = &assets.status_icons["shield"];
-            let x = bar_x + bar_w as f32 + 1.0;
-            let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
+            let x = bar_x + bar_w + 1;
+            let y = bounding_rect_2d.top_right[1] - 30;
             render_commands
                 .prepare_for_2d()
                 .color(&COLOR_WHITE)
@@ -1309,7 +1299,7 @@ impl RenderDesktopClientSystem {
                     shield_icon_texture,
                     [0.0, (-shield_icon_texture.height / 2) as f32],
                     false,
-                    Layer2d::Layer7,
+                    UiLayer2d::StatusIndicators,
                 );
 
             // progress bar
@@ -1324,15 +1314,18 @@ impl RenderDesktopClientSystem {
                 char_state.attrib_bonuses().durations.armor_bonus_ends_at,
             ) * 100.0) as i32;
             let perc = perc.max(1);
-            let x = bar_x + bar_w as f32 + shield_icon_texture.width as f32 / 2.0 + 1.0;
-            let y = bounding_rect_2d.top_right[1] as f32 - 30.0;
+            let x = bar_x + bar_w + shield_icon_texture.width / 2 + 1;
+            let y = bounding_rect_2d.top_right[1] - 30;
 
             render_commands
                 .prepare_for_2d()
                 .color(&color)
                 .screen_pos(x, y)
                 .rotation_rad(-std::f32::consts::FRAC_PI_2)
-                .add_trimesh_command(&self.circle_vertex_arrays[&perc], Layer2d::Layer2);
+                .add_trimesh_command(
+                    &self.circle_vertex_arrays[&perc],
+                    UiLayer2d::StatusIndicators,
+                );
 
             let text_texture = &assets.texts.custom_texts[&armor_bonus.to_string()];
 
@@ -1340,7 +1333,7 @@ impl RenderDesktopClientSystem {
                 .prepare_for_2d()
                 .color(&color)
                 .screen_pos(x, y)
-                .add_sprite_command(text_texture, [0.0, 0.0], false, Layer2d::Layer7);
+                .add_sprite_command(text_texture, [0.0, 0.0], false, UiLayer2d::StatusIndicators);
         }
     }
 

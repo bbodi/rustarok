@@ -34,10 +34,16 @@ pub struct DevConfigStatsPlayer {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DevConfigConsole {
+    pub color: [f32; 4],
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DevConfig {
     pub sleep_ms: u64,
     pub minions_enabled: bool,
     pub stats: DevConfigStats,
+    pub console: DevConfigConsole,
 }
 
 impl DevConfig {

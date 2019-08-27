@@ -41,6 +41,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
     pub(super) rectangle_2d_commands: Vec<Common2DProperties>,
+    pub(super) text_2d_commands: Vec<Text2dRenderCommand>,
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
     pub(super) billboard_commands: Vec<BillboardRenderCommand>,
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
@@ -56,6 +57,7 @@ impl<'a> RenderCommandCollectorComponent {
         RenderCommandCollectorComponent {
             trimesh_2d_commands: Vec::with_capacity(128),
             texture_2d_commands: Vec::with_capacity(128),
+            text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
             rectangle_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
@@ -76,6 +78,7 @@ impl<'a> RenderCommandCollectorComponent {
     pub fn clear(&mut self) {
         self.trimesh_2d_commands.clear();
         self.texture_2d_commands.clear();
+        self.text_2d_commands.clear();
         self.rectangle_3d_commands.clear();
         self.rectangle_2d_commands.clear();
         self.circle_3d_commands.clear();
@@ -104,14 +107,14 @@ pub struct Trimesh2dRenderCommand {
     pub(super) color: [f32; 4],
     pub(super) size: [f32; 2],
     pub(super) matrix: Matrix4<f32>,
-    pub(super) layer: Layer2d,
+    pub(super) layer: UiLayer2d,
 }
 
 pub struct Common2DProperties {
     pub(super) color: [f32; 4],
     pub(super) size: [f32; 2],
     pub(super) matrix: Matrix4<f32>,
-    pub(super) layer: Layer2d,
+    pub(super) layer: UiLayer2d,
 }
 
 pub struct Common2DPropBuilder<'a> {
@@ -133,7 +136,7 @@ impl<'a> Common2DPropBuilder<'a> {
         }
     }
 
-    pub fn add_trimesh_command(&'a mut self, vao: &'a VertexArray, layer: Layer2d) {
+    pub fn add_trimesh_command(&'a mut self, vao: &'a VertexArray, layer: UiLayer2d) {
         self.collector
             .trimesh_2d_commands
             .push(Trimesh2dRenderCommand {
@@ -145,7 +148,7 @@ impl<'a> Common2DPropBuilder<'a> {
             });
     }
 
-    pub fn add_rectangle_command(&'a mut self, layer: Layer2d) {
+    pub fn add_rectangle_command(&'a mut self, layer: UiLayer2d) {
         self.collector
             .rectangle_2d_commands
             .push(Common2DProperties {
@@ -156,7 +159,31 @@ impl<'a> Common2DPropBuilder<'a> {
             });
     }
 
-    pub fn add_texture_command(&'a mut self, texture: &GlTexture, layer: Layer2d) {
+    pub fn add_text_command(&'a mut self, text: &str, font: Font, layer: UiLayer2d) {
+        self.collector.text_2d_commands.push(Text2dRenderCommand {
+            text: text.to_owned(),
+            color: self.color,
+            size: self.size[0],
+            matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
+            font,
+            outline: false,
+            layer,
+        });
+    }
+
+    pub fn add_outline_command(&'a mut self, text: &str, font: Font, layer: UiLayer2d) {
+        self.collector.text_2d_commands.push(Text2dRenderCommand {
+            text: text.to_owned(),
+            color: self.color,
+            size: self.size[0],
+            matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
+            font,
+            outline: true,
+            layer,
+        });
+    }
+
+    pub fn add_texture_command(&'a mut self, texture: &GlTexture, layer: UiLayer2d) {
         self.add_sprite_command(texture, [0.0, 0.0], false, layer);
     }
 
@@ -165,7 +192,7 @@ impl<'a> Common2DPropBuilder<'a> {
         texture: &GlTexture,
         offset: [f32; 2],
         flip_vertically: bool,
-        layer: Layer2d,
+        layer: UiLayer2d,
     ) {
         self.collector
             .texture_2d_commands
@@ -193,13 +220,13 @@ impl<'a> Common2DPropBuilder<'a> {
         self
     }
 
-    pub fn screen_pos(&'a mut self, x: f32, y: f32) -> &'a mut Common2DPropBuilder {
-        self.screen_pos = [x, y];
+    pub fn screen_pos(&'a mut self, x: i32, y: i32) -> &'a mut Common2DPropBuilder {
+        self.screen_pos = [x as f32, y as f32];
         self
     }
 
-    pub fn size2(&'a mut self, x: f32, y: f32) -> &'a mut Common2DPropBuilder {
-        self.size = [x, y];
+    pub fn size2(&'a mut self, x: i32, y: i32) -> &'a mut Common2DPropBuilder {
+        self.size = [x as f32, y as f32];
         self
     }
 
@@ -215,17 +242,18 @@ impl<'a> Common2DPropBuilder<'a> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Layer2d {
-    Layer0,
-    Layer1,
-    Layer2,
-    Layer3,
-    Layer4,
-    Layer5,
-    Layer6,
-    Layer7,
-    Layer8,
-    Layer9,
+pub enum UiLayer2d {
+    HealthBars,
+    StatusIndicators,
+    SelfCastingBar,
+    SkillBar,
+    SkillBarIcon,
+    SkillBarKey,
+    SelectingTargetSkillName,
+    Console,
+    ConsoleTexts,
+    ConsoleAutocompletion,
+    Cursor,
 }
 
 #[derive(Debug)]
@@ -237,7 +265,28 @@ pub struct Texture2dRenderCommand {
     pub(super) texture: GlTextureIndex,
     pub(super) texture_width: i32,
     pub(super) texture_height: i32,
-    pub(super) layer: Layer2d,
+    pub(super) layer: UiLayer2d,
+}
+
+#[derive(Debug)]
+pub struct Text2dRenderCommand {
+    pub(super) text: String,
+    pub(super) color: [f32; 4],
+    pub(super) size: f32,
+    pub(super) matrix: Matrix4<f32>,
+    pub(super) font: Font,
+    pub(super) outline: bool,
+    pub(super) layer: UiLayer2d,
+}
+
+#[derive(Debug)]
+pub enum Font {
+    Small,
+    SmallBold,
+    Normal,
+    NormalBold,
+    Big,
+    BigBold,
 }
 
 #[derive(Debug)]

@@ -45,6 +45,16 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         {
             let controller: &mut ControllerComponent = controller;
             let input: &mut HumanInputComponent = input;
+
+            if input.is_key_just_pressed(Scancode::Grave) && input.is_key_down(Scancode::LAlt) {
+                input.is_console_open = !input.is_console_open;
+            }
+
+            if input.is_console_open {
+                controller.next_action = None;
+                continue;
+            }
+
             let just_pressed_skill_key = SkillKey::iter()
                 .filter(|key| input.is_key_just_pressed(key.scancode()))
                 .take(1)

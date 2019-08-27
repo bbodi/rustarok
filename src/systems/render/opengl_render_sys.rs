@@ -5,12 +5,13 @@ use crate::systems::render::render_command::{
 };
 use crate::systems::render_sys::DamageRenderSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{VertexArray, VertexAttribDefinition, TEXTURE_0};
+use crate::video::{GlTexture, VertexArray, VertexAttribDefinition, Video, TEXTURE_0};
 use nalgebra::{Matrix4, Rotation3, Vector3};
+use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
 use std::collections::HashMap;
 
-pub struct OpenGlRenderSystem {
+pub struct OpenGlRenderSystem<'a, 'b> {
     centered_rectangle_vao: VertexArray,
     circle_vao: VertexArray,
     // damage rendering
@@ -18,6 +19,123 @@ pub struct OpenGlRenderSystem {
     texture_u_coords: [f32; 10],
 
     str_effect_cache: HashMap<EffectFrameCacheKey, Option<EffectFrameCache>>,
+    text_cache: HashMap<String, GlTexture>,
+    fonts: Fonts<'a, 'b>,
+}
+
+pub struct Fonts<'a, 'b> {
+    small_font: sdl2::ttf::Font<'a, 'b>,
+    normal_font: sdl2::ttf::Font<'a, 'b>,
+    big_font: sdl2::ttf::Font<'a, 'b>,
+    small_bold_font: sdl2::ttf::Font<'a, 'b>,
+    normal_bold_font: sdl2::ttf::Font<'a, 'b>,
+    big_bold_font: sdl2::ttf::Font<'a, 'b>,
+
+    small_font_outline: sdl2::ttf::Font<'a, 'b>,
+    normal_font_outline: sdl2::ttf::Font<'a, 'b>,
+    big_font_outline: sdl2::ttf::Font<'a, 'b>,
+    small_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
+    normal_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
+    big_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
+}
+
+pub const SMALL_FONT_SIZE: i32 = 14;
+pub const NORMAL_FONT_H: i32 = 20;
+pub const NORMAL_FONT_W: i32 = 10;
+pub const BIG_FONT_SIZE: i32 = 32;
+
+impl<'a, 'b> Fonts<'a, 'b> {
+    pub fn new(ttf_context: &'a Sdl2TtfContext) -> Fonts {
+        let small_font = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-R.ttf",
+            SMALL_FONT_SIZE as u16,
+        )
+        .unwrap();
+        let mut small_font_outline = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-R.ttf",
+            SMALL_FONT_SIZE as u16,
+        )
+        .unwrap();
+        small_font_outline.set_outline_width(2);
+
+        let normal_font = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-R.ttf",
+            NORMAL_FONT_H as u16,
+        )
+        .unwrap();
+        let mut normal_font_outline = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-R.ttf",
+            NORMAL_FONT_H as u16,
+        )
+        .unwrap();
+        normal_font_outline.set_outline_width(2);
+
+        let big_font = Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-R.ttf", 32).unwrap();
+        let mut big_font_outline =
+            Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-R.ttf", 32).unwrap();
+        big_font_outline.set_outline_width(2);
+
+        let small_bold_font = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            SMALL_FONT_SIZE as u16,
+        )
+        .unwrap();
+        let mut small_bold_font_outline = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            SMALL_FONT_SIZE as u16,
+        )
+        .unwrap();
+        small_bold_font_outline.set_outline_width(2);
+
+        let normal_bold_font = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            NORMAL_FONT_H as u16,
+        )
+        .unwrap();
+        let mut normal_bold_font_outline = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            NORMAL_FONT_H as u16,
+        )
+        .unwrap();
+        normal_bold_font_outline.set_outline_width(2);
+
+        let big_bold_font = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            BIG_FONT_SIZE as u16,
+        )
+        .unwrap();
+        let mut big_bold_font_outline = Video::load_font(
+            &ttf_context,
+            "assets/fonts/UbuntuMono-B.ttf",
+            BIG_FONT_SIZE as u16,
+        )
+        .unwrap();
+        big_bold_font_outline.set_outline_width(2);
+
+        Fonts {
+            small_font,
+            normal_font,
+            big_font,
+            small_bold_font,
+            normal_bold_font,
+            big_bold_font,
+            small_font_outline,
+            normal_font_outline,
+            big_font_outline,
+            small_bold_font_outline,
+            normal_bold_font_outline,
+            big_bold_font_outline,
+        }
+    }
 }
 
 struct EffectFrameCache {
@@ -30,13 +148,14 @@ struct EffectFrameCache {
     pub texture_index: usize,
 }
 
-impl OpenGlRenderSystem {
-    pub fn new() -> OpenGlRenderSystem {
+impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
+    pub fn new(ttf_context: &Sdl2TtfContext) -> OpenGlRenderSystem {
         let single_digit_width = 10.0;
         let texture_width = single_digit_width * 10.0;
         let single_digit_u_coord = single_digit_width / texture_width;
 
         OpenGlRenderSystem {
+            fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
             texture_u_coords: [
                 single_digit_u_coord * 0.0,
@@ -83,6 +202,7 @@ impl OpenGlRenderSystem {
                 )
             },
             str_effect_cache: HashMap::new(),
+            text_cache: HashMap::with_capacity(1024),
         }
     }
 
@@ -249,7 +369,7 @@ impl OpenGlRenderSystem {
     }
 }
 
-impl<'a> specs::System<'a> for OpenGlRenderSystem {
+impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
         specs::ReadStorage<'a, RenderCommandCollectorComponent>,
         specs::ReadStorage<'a, BrowserClient>,
@@ -326,6 +446,40 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     shader.set_mat4("model", &command.matrix);
                     shader.set_vec2("size", &command.size);
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
+                    vertex_array_bind.draw();
+                }
+            }
+
+            /////////////////////////////////
+            // 2D Text
+            /////////////////////////////////
+            {
+                let shader = system_vars.assets.shaders.sprite2d_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.ortho);
+                shader.set_int("model_texture", 0);
+                let vertex_array_bind = system_vars.map_render_data.sprite_vertex_array.bind();
+                unsafe {
+                    gl::ActiveTexture(gl::TEXTURE0);
+                }
+                for command in &render_commands.text_2d_commands {
+                    let texture = self
+                        .text_cache
+                        .entry(command.text.clone()) // TODO: why clone ?
+                        .or_insert(Video::create_text_texture(
+                            &self.fonts.normal_font,
+                            &command.text,
+                        ));
+
+                    let width = texture.width as f32;
+                    let height = texture.height as f32;
+                    unsafe {
+                        gl::BindTexture(gl::TEXTURE_2D, texture.id().0);
+                    }
+                    shader.set_mat4("model", &command.matrix);
+                    shader.set_f32("z", 0.01 * command.layer as usize as f32);
+                    shader.set_vec2("offset", &[0.0, 0.0]);
+                    shader.set_vec2("size", &[width * command.size, height * command.size]);
+                    shader.set_vec4("color", &command.color);
                     vertex_array_bind.draw();
                 }
             }

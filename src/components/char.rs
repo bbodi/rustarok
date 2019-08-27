@@ -22,6 +22,7 @@ use specs::Entity;
 use std::collections::HashMap;
 
 pub fn attach_human_player_components(
+    username: &str,
     entity_id: Entity,
     updater: &LazyUpdate,
     physic_world: &mut PhysicEngine,
@@ -49,7 +50,7 @@ pub fn attach_human_player_components(
         &[CollisionGroup::NonPlayer],
         dev_configs,
     );
-    let mut human_player = HumanInputComponent::new();
+    let mut human_player = HumanInputComponent::new(username);
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
     human_player.assign_skill(SkillKey::E, Skills::Heal);

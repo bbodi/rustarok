@@ -23,7 +23,9 @@ impl<'a> specs::System<'a> for CameraSystem {
         {
             match input.camera_movement_mode {
                 CameraMode::Free => {
-                    CameraSystem::free_movement(camera, input);
+                    if !input.is_console_open {
+                        CameraSystem::free_movement(camera, input);
+                    }
                     if input.left_mouse_down {
                         camera.yaw += input.delta_mouse_x as f32;
                         camera.pitch += input.delta_mouse_y as f32;
@@ -61,7 +63,9 @@ impl<'a> specs::System<'a> for CameraSystem {
                             .camera
                             .update_visible_z_range(&system_vars.matrices.projection);
                     }
-                    CameraSystem::axis_aligned_movement(camera, input);
+                    if !input.is_console_open {
+                        CameraSystem::axis_aligned_movement(camera, input);
+                    }
                 }
             }
 

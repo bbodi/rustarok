@@ -96,7 +96,7 @@ impl Video {
             .render(text)
             .blended(Color::RGBA(255, 255, 255, 255))
             .unwrap();
-        return GlTexture::from_surface(surface, gl::NEAREST);
+        return GlTexture::from_surface(surface, gl::LINEAR);
     }
 
     pub fn create_outline_text_texture<'a, 'b>(

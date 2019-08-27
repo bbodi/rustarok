@@ -4,7 +4,7 @@ use crate::components::char::{
     CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{ControllerComponent, HumanInputComponent, SkillKey};
-use crate::systems::render::render_command::{Layer2d, RenderCommandCollectorComponent};
+use crate::systems::render::render_command::{RenderCommandCollectorComponent, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{ElapsedTime, SpriteResource};
@@ -35,15 +35,15 @@ impl RenderUI {
                     > 0.1
                 {
                     let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
-                        let bar_w = 540.0;
-                        let bar_x = (VIDEO_WIDTH as f32 / 2.0) - (bar_w / 2.0) - 2.0;
+                        let bar_w = 540;
+                        let bar_x = ((VIDEO_WIDTH / 2) - (bar_w / 2) - 2) as i32;
                         // .trimesh_2d(&system_vars.map_render_data.rectangle_vertex_array)
                         render_commands
                             .prepare_for_2d()
-                            .screen_pos(bar_x + x as f32, VIDEO_HEIGHT as f32 - 200.0 + y as f32)
-                            .size2(w as f32, h as f32)
+                            .screen_pos(bar_x + x, VIDEO_HEIGHT as i32 - 200 + y)
+                            .size2(w, h)
                             .color(&color)
-                            .add_rectangle_command(Layer2d::Layer2)
+                            .add_rectangle_command(UiLayer2d::SelfCastingBar)
                     };
                     draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
@@ -69,19 +69,19 @@ impl RenderUI {
         let space = 4;
         let skill_bar_width =
             (outer_border * 2) + 4 * single_icon_size + inner_border * 4 * 2 + 3 * space;
-        let start_x = VIDEO_WIDTH / 2 - skill_bar_width / 2;
-        let y = VIDEO_HEIGHT - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
+        let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
+        let y = VIDEO_HEIGHT as i32 - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
 
         // blueish background
         render_commands
             .prepare_for_2d()
-            .screen_pos(start_x as f32, y as f32)
+            .screen_pos(start_x, y)
             .size2(
-                skill_bar_width as f32,
-                single_icon_size as f32 + (outer_border * 2 + inner_border * 2) as f32,
+                skill_bar_width,
+                single_icon_size + (outer_border * 2 + inner_border * 2),
             )
             .color(&[0.11, 0.25, 0.48, 1.0])
-            .add_rectangle_command(Layer2d::Layer0);
+            .add_rectangle_command(UiLayer2d::SkillBar);
 
         let mut x = start_x + outer_border;
         for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
@@ -103,21 +103,21 @@ impl RenderUI {
                 };
                 render_commands
                     .prepare_for_2d()
-                    .screen_pos(x as f32, (y + outer_border) as f32)
+                    .screen_pos(x, y + outer_border)
                     .size2(
-                        (single_icon_size + inner_border * 2) as f32,
-                        (single_icon_size + inner_border * 2) as f32,
+                        single_icon_size + inner_border * 2,
+                        single_icon_size + inner_border * 2,
                     )
                     .color(&border_color)
-                    .add_rectangle_command(Layer2d::Layer0);
+                    .add_rectangle_command(UiLayer2d::SkillBar);
 
                 x += inner_border;
-                let icon_y = (y + outer_border + inner_border) as f32;
+                let icon_y = y + outer_border + inner_border;
                 // blueish background
                 render_commands
                     .prepare_for_2d()
-                    .screen_pos(x as f32, icon_y)
-                    .size2(single_icon_size as f32, single_icon_size as f32)
+                    .screen_pos(x, icon_y)
+                    .size2(single_icon_size, single_icon_size)
                     .color(
                         &(if not_castable {
                             [0.7, 0.7, 0.7, 1.0] // grey if not castable
@@ -125,23 +125,24 @@ impl RenderUI {
                             [0.11, 0.25, 0.48, 1.0]
                         }),
                     )
-                    .add_rectangle_command(Layer2d::Layer0);
+                    .add_rectangle_command(UiLayer2d::SkillBar);
 
                 render_commands
                     .prepare_for_2d()
-                    .screen_pos(x as f32, icon_y)
+                    .screen_pos(x, icon_y)
                     .size(2.0)
-                    .add_texture_command(&system_vars.assets.skill_icons[&skill], Layer2d::Layer1);
+                    .add_texture_command(
+                        &system_vars.assets.skill_icons[&skill],
+                        UiLayer2d::SkillBarIcon,
+                    );
 
                 let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
-                let center_x =
-                    -2.0 + x as f32 + single_icon_size as f32 - skill_key_texture.width as f32;
-                let center_y =
-                    -2.0 + icon_y + single_icon_size as f32 - skill_key_texture.height as f32;
+                let center_x = -2 + x + single_icon_size - skill_key_texture.width;
+                let center_y = -2 + icon_y + single_icon_size - skill_key_texture.height;
                 render_commands
                     .prepare_for_2d()
                     .screen_pos(center_x, center_y)
-                    .add_texture_command(skill_key_texture, Layer2d::Layer2);
+                    .add_texture_command(skill_key_texture, UiLayer2d::SkillBarKey);
                 x += single_icon_size + inner_border + space;
             }
         }
@@ -164,10 +165,10 @@ impl RenderUI {
                     }),
                 )
                 .screen_pos(
-                    input.last_mouse_x as f32 - texture.width as f32 / 2.0,
-                    input.last_mouse_y as f32 + 32.0,
+                    input.last_mouse_x as i32 - texture.width / 2,
+                    input.last_mouse_y as i32 + 32,
                 )
-                .add_texture_command(texture, Layer2d::Layer9);
+                .add_texture_command(texture, UiLayer2d::SelectingTargetSkillName);
         }
 
         render_action_2d(
@@ -219,8 +220,8 @@ fn render_action_2d(
 
         render_commands
             .prepare_for_2d()
-            .screen_pos(pos.x, pos.y)
+            .screen_pos(pos.x as i32, pos.y as i32)
             .color_rgb(color)
-            .add_sprite_command(&texture.texture, offset, layer.is_mirror, Layer2d::Layer9);
+            .add_sprite_command(&texture.texture, offset, layer.is_mirror, UiLayer2d::Cursor);
     }
 }

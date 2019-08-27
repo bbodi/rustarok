@@ -16,6 +16,8 @@ use std::time::Instant;
 pub mod atk_calc;
 pub mod camera_system;
 pub mod char_state_sys;
+pub mod console_system;
+pub mod frame_end_system;
 pub mod input_sys;
 pub mod input_to_next_action;
 pub mod minion_ai_sys;

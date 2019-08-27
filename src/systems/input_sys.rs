@@ -231,6 +231,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             input.mouse_wheel = 0;
             input.delta_mouse_x = 0;
             input.delta_mouse_y = 0;
+            input.text = String::new();
             input.cleanup_released_keys();
             for event in events {
                 match event {
@@ -285,6 +286,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         if let Some(scancode) = scancode {
                             input.key_released(scancode);
                         }
+                    }
+                    sdl2::event::Event::TextInput { text, .. } => {
+                        input.text = text;
                     }
                     _ => {}
                 }

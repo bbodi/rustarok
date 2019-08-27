@@ -55,7 +55,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
+    CameraComponent, CastMode, ConsoleComponent, ControllerComponent, HumanInputComponent, SkillKey,
 };
 use crate::components::{
     AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent,
@@ -104,6 +104,8 @@ use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuse
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::configs::{AppConfig, DevConfig};
 use crate::systems::camera_system::CameraSystem;
+use crate::systems::console_system::{CommandDefinition, ConsoleSystem};
+use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
@@ -335,6 +337,8 @@ fn main() {
         .unwrap(),
     };
 
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<HumanInputComponent>();
@@ -350,6 +354,9 @@ fn main() {
     ecs_world.register::<CameraComponent>();
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<MinionComponent>();
+    ecs_world.register::<ConsoleComponent>();
+
+    let mut command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands();
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
@@ -387,10 +394,12 @@ fn main() {
         )
         .with(SkillSystem, "skill_sys", &["collision_collector"])
         .with(AttackSystem, "attack_sys", &["collision_collector"])
+        .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
         .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(OpenGlRenderSystem::new())
+        .with_thread_local(OpenGlRenderSystem::new(&ttf_context))
         .with_thread_local(WebSocketBrowserRenderSystem::new())
         .with_thread_local(sound_system)
+        .with_thread_local(FrameEndSystem)
         .build();
 
     let rng = rand::thread_rng();
@@ -618,7 +627,6 @@ fn main() {
     let (map_render_data, physics_world) =
         load_map("prontera", &asset_loader, config.quick_startup);
 
-    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
     let skill_name_font =
         Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 32).unwrap();
     let mut skill_name_font_outline =
@@ -774,6 +782,7 @@ fn main() {
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
     let desktop_client_entity = ecs_world.create_entity().build();
     components::char::attach_human_player_components(
+        "sharp",
         desktop_client_entity,
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -789,6 +798,9 @@ fn main() {
         Team::Right,
         &ecs_world.read_resource::<SystemVariables>().dev_configs,
     );
+    ecs_world
+        .read_resource::<LazyUpdate>()
+        .insert(desktop_client_entity, ConsoleComponent::new());
     ecs_world.maintain();
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
@@ -1021,6 +1033,7 @@ fn main() {
                                     response_buf.clear();
                                 }
                                 components::char::attach_human_player_components(
+                                    "browser",
                                     entity_id,
                                     &updater,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -1066,6 +1079,25 @@ fn main() {
 
         ecs_dispatcher.dispatch(&mut ecs_world.res);
         ecs_world.maintain();
+
+        {
+            // Run console commands
+            let console_args = {
+                let mut storage = ecs_world.write_storage::<ConsoleComponent>();
+                let console = storage.get_mut(desktop_client_entity).unwrap();
+                std::mem::replace(&mut console.command_to_execute, None)
+            };
+            if let Some(args) = console_args {
+                let command_def = &command_defs[args.get_command_name().unwrap()];
+                if let Err(e) = (command_def.action)(desktop_client_entity, &args, &mut ecs_world) {
+                    let console = ecs_world
+                        .write_storage::<ConsoleComponent>()
+                        .get_mut(desktop_client_entity)
+                        .unwrap()
+                        .error(&e);
+                }
+            }
+        }
 
         let (new_map, new_str, show_cursor) = imgui_frame(
             desktop_client_entity,
