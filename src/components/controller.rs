@@ -1,7 +1,6 @@
 use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
 use crate::components::skills::skill::Skills;
-use crate::systems::console_system::{CommandArguments, ConsoleEntry};
 use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
@@ -87,45 +86,6 @@ pub enum CastMode {
     OnKeyRelease,
     /// Pressing the skill key casts the skill immediately
     OnKeyPress,
-}
-
-#[derive(Component)]
-pub struct ConsoleComponent {
-    pub command_history: Vec<String>,
-    pub rows: Vec<ConsoleEntry>,
-    pub history_pos: usize,
-    pub cursor_x: usize,
-    pub input: String,
-    pub y_pos: i32,
-    pub cursor_shown: bool,
-    pub cursor_change: ElapsedTime,
-    pub key_repeat_allowed_at: ElapsedTime,
-    pub command_to_execute: Option<CommandArguments>,
-}
-
-impl ConsoleComponent {
-    pub fn new() -> ConsoleComponent {
-        ConsoleComponent {
-            history_pos: 0,
-            command_history: vec![],
-            rows: vec![],
-            cursor_x: 0,
-            input: "".to_string(),
-            y_pos: 0,
-            cursor_shown: false,
-            cursor_change: ElapsedTime(0.0),
-            key_repeat_allowed_at: ElapsedTime(0.0),
-            command_to_execute: None,
-        }
-    }
-
-    pub fn print(&mut self, text: &str) {
-        self.rows.push(ConsoleEntry::new().add_normal(text));
-    }
-
-    pub fn error(&mut self, text: &str) {
-        self.rows.push(ConsoleEntry::new().add_error(text));
-    }
 }
 
 #[derive(Component)]

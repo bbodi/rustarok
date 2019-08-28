@@ -21,6 +21,7 @@ extern crate crossbeam_channel;
 extern crate notify;
 extern crate strum;
 extern crate strum_macros;
+extern crate sublime_fuzzy;
 extern crate websocket;
 
 use encoding::types::Encoding;
@@ -39,7 +40,6 @@ use nphysics2d::object::{
 use nphysics2d::solver::SignoriniModel;
 use rand::prelude::ThreadRng;
 use rand::Rng;
-use sdl2::keyboard::Keycode;
 use specs::prelude::*;
 use specs::Builder;
 use specs::Join;
@@ -55,7 +55,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, CastMode, ConsoleComponent, ControllerComponent, HumanInputComponent, SkillKey,
+    CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
 };
 use crate::components::{
     AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent,
@@ -104,7 +104,7 @@ use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuse
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::configs::{AppConfig, DevConfig};
 use crate::systems::camera_system::CameraSystem;
-use crate::systems::console_system::{CommandDefinition, ConsoleSystem};
+use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
@@ -271,7 +271,7 @@ fn main() {
     let format = sdl2::mixer::DEFAULT_FORMAT; // signed 16 bit samples, in little-endian byte order
     let channels = sdl2::mixer::DEFAULT_CHANNELS; // Stereo
     let chunk_size = 1_024;
-    sdl2::mixer::open_audio(frequency, format, channels, chunk_size).unwrap();
+    sdl2::mixer::open_audio(frequency, format, channels, chunk_size);
     let _mixer_context = sdl2::mixer::init(
         sdl2::mixer::InitFlag::MP3
             | sdl2::mixer::InitFlag::FLAC
@@ -356,7 +356,7 @@ fn main() {
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<ConsoleComponent>();
 
-    let mut command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands();
+    let command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands();
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(BrowserInputProducerSystem, "browser_input_processor", &[])
@@ -1063,11 +1063,7 @@ fn main() {
             for event in video.event_pump.poll_iter() {
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
                 match event {
-                    sdl2::event::Event::Quit { .. }
-                    | sdl2::event::Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => {
+                    sdl2::event::Event::Quit { .. } => {
                         break 'running;
                     }
                     _ => {
@@ -1310,7 +1306,6 @@ fn imgui_frame(
         &mut video.imgui,
         &video.event_pump.mouse_state(),
     );
-    extern crate sublime_fuzzy;
     let mut ret = (None, None, false); // (map, str, show_cursor)
     {
         // IMGUI
