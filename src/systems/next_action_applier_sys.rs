@@ -37,12 +37,11 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
-        for (entity_id, controller, char_state) in
-            (&entities, &mut controller_storage, &mut char_state_storage).join()
-        {
+        for (entity_id, controller) in (&entities, &mut controller_storage).join() {
             // for autocompletion...
-            let controller: &mut ControllerComponent = controller;
-            let char_state: &mut CharacterStateComponent = char_state;
+            let char_state: &mut CharacterStateComponent = char_state_storage
+                .get_mut(controller.controlled_entity)
+                .unwrap();
 
             controller.next_action_allowed = match controller.next_action {
                 Some(PlayerIntention::MoveTo(pos)) => {

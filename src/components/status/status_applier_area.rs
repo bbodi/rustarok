@@ -16,7 +16,7 @@ where
     pub collider_handle: DefaultColliderHandle,
     pub extents: Vector2<f32>,
     pub pos: Vector2<f32>,
-    pub name: &'static str,
+    pub name: String,
     pub status_creator: F,
     pub caster_entity_id: Entity,
     pub next_action_at: ElapsedTime,
@@ -27,7 +27,7 @@ where
     F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
 {
     pub fn new(
-        name: &'static str,
+        name: String,
         status_creator: F,
         skill_center: &Vector2<f32>,
         size: Vector2<f32>,
@@ -108,6 +108,6 @@ where
             } else {
                 [0.3, 0.3, 0.3, 1.0]
             })
-            .add_billboard_command(&assets.texts.custom_texts[self.name], false);
+            .add_billboard_command(&assets.texts.custom_texts[&self.name], false);
     }
 }

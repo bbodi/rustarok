@@ -95,7 +95,7 @@ impl RenderUI {
                 let border_color = if not_castable {
                     [0.7, 0.7, 0.7, 1.0] // grey
                 } else {
-                    input
+                    controller
                         .select_skill_target
                         .filter(|it| it.0 == *skill_key)
                         .map(|_it| [0.0, 1.0, 0.0, 1.0])
@@ -148,7 +148,7 @@ impl RenderUI {
         }
 
         // render targeting skill name
-        if let Some((_skill_key, skill)) = input.select_skill_target {
+        if let Some((_skill_key, skill)) = controller.select_skill_target {
             let texture = &system_vars.assets.texts.skill_name_texts[&skill];
             let not_castable = char_state
                 .skill_cast_allowed_at

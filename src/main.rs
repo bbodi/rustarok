@@ -51,7 +51,7 @@ use crate::asset::rsw::Rsw;
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
-    CharOutlook, CharType, CharacterStateComponent, Percentage, PhysicsComponent,
+    CharType, CharacterStateComponent, Percentage, PhysicsComponent,
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
@@ -94,7 +94,6 @@ mod components;
 mod systems;
 
 use crate::asset::database::AssetDatabase;
-use crate::common::p3_to_p2;
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skill::{SkillManifestationComponent, Skills};
 use crate::components::status::absorb_shield::AbsorbStatus;
@@ -104,6 +103,7 @@ use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuse
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::configs::{AppConfig, DevConfig};
 use crate::systems::camera_system::CameraSystem;
+use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -608,12 +608,20 @@ fn main() {
         "ArmorUp",
         "ArmorDown",
         "Heal",
+        "Damage",
     ] {
         texts.custom_texts.insert(
             name.to_string(),
             Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
         );
     }
+    STATUS_NAMES.iter().for_each(|name| {
+        texts.custom_texts.insert(
+            name.to_string(),
+            Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
+        );
+    });
+
     for i in -200..=200 {
         texts.custom_texts.insert(
             i.to_string(),
@@ -779,10 +787,12 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let desktop_client_entity = ecs_world.create_entity().build();
+    let desktop_client_char = ecs_world.create_entity().build();
+    let desktop_client_controller = ecs_world.create_entity().build();
     components::char::attach_human_player_components(
         "sharp",
-        desktop_client_entity,
+        desktop_client_char,
+        desktop_client_controller,
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
         ecs_world
@@ -799,7 +809,7 @@ fn main() {
     );
     ecs_world
         .read_resource::<LazyUpdate>()
-        .insert(desktop_client_entity, ConsoleComponent::new());
+        .insert(desktop_client_controller, ConsoleComponent::new());
     ecs_world.maintain();
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
@@ -820,11 +830,6 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
-    let mut other_players: Vec<Entity> = vec![];
-    let mut other_monsters: Vec<Entity> = vec![];
-    let mut player_count = 0;
-    let mut monster_count = 0;
-
     // Add static skill manifestations
     {
         let area_status_id = ecs_world.create_entity().build();
@@ -835,13 +840,13 @@ fn main() {
                 SkillManifestationComponent::new(
                     area_status_id,
                     Box::new(StatusApplierArea::new(
-                        "Poison",
+                        "Poison".to_owned(),
                         move |_now| {
                             ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison)
                         },
                         &v2!(251, -213),
                         v2!(2, 3),
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -856,15 +861,15 @@ fn main() {
                 SkillManifestationComponent::new(
                     area_status_id,
                     Box::new(StatusApplierArea::new(
-                        "AbsorbShield",
+                        "AbsorbShield".to_owned(),
                         move |now| {
                             ApplyStatusComponentPayload::from_secondary(Box::new(
-                                AbsorbStatus::new(desktop_client_entity, now),
+                                AbsorbStatus::new(desktop_client_char, now),
                             ))
                         },
                         &v2!(255, -213),
                         v2!(2, 3),
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -879,17 +884,17 @@ fn main() {
                 SkillManifestationComponent::new(
                     area_status_id,
                     Box::new(StatusApplierArea::new(
-                        "FireBomb",
+                        "FireBomb".to_owned(),
                         move |now| {
                             ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
-                                caster_entity_id: desktop_client_entity,
+                                caster_entity_id: desktop_client_char,
                                 started: now,
                                 until: now.add_seconds(2.0),
                             }))
                         },
                         &v2!(260, -213),
                         v2!(2, 3),
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -905,7 +910,7 @@ fn main() {
                 SkillManifestationComponent::new(
                     area_status_id,
                     Box::new(StatusApplierArea::new(
-                        "ArmorUp",
+                        "ArmorUp".to_owned(),
                         move |now| {
                             ApplyStatusComponentPayload::from_secondary(Box::new(
                                 ArmorModifierStatus::new(now, Percentage(70)),
@@ -913,7 +918,7 @@ fn main() {
                         },
                         &v2!(265, -213),
                         v2!(2, 3),
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -929,7 +934,7 @@ fn main() {
                 SkillManifestationComponent::new(
                     area_status_id,
                     Box::new(StatusApplierArea::new(
-                        "ArmorDown",
+                        "ArmorDown".to_owned(),
                         move |now| {
                             ApplyStatusComponentPayload::from_secondary(Box::new(
                                 ArmorModifierStatus::new(now, Percentage(-30)),
@@ -937,7 +942,7 @@ fn main() {
                         },
                         &v2!(270, -213),
                         v2!(2, 3),
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -958,7 +963,7 @@ fn main() {
                         &v2!(273, -213),
                         v2!(2, 3),
                         0.5,
-                        desktop_client_entity,
+                        desktop_client_char,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
                     )),
                 ),
@@ -1001,11 +1006,12 @@ fn main() {
                 .read_resource::<SystemVariables>()
                 .matrices
                 .projection;
+            let entities = &ecs_world.entities();
             let updater = ecs_world.read_resource::<LazyUpdate>();
-            for (entity_id, client, _not_char_state) in (
+            for (controller_id, client, _not_camera) in (
                 &ecs_world.entities(),
                 &mut ecs_world.write_storage::<BrowserClient>(),
-                !&ecs_world.read_storage::<CharacterStateComponent>(),
+                !&ecs_world.read_storage::<CameraComponent>(),
             )
                 .join()
             {
@@ -1031,9 +1037,11 @@ fn main() {
                                     let _ = client.websocket.lock().unwrap().send_message(&msg);
                                     response_buf.clear();
                                 }
+                                let char_entity_id = entities.create();
                                 components::char::attach_human_player_components(
                                     "browser",
-                                    entity_id,
+                                    char_entity_id,
+                                    controller_id,
                                     &updater,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
                                     projection_mat,
@@ -1057,7 +1065,7 @@ fn main() {
 
         {
             let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-            let inputs = storage.get_mut(desktop_client_entity).unwrap();
+            let inputs = storage.get_mut(desktop_client_controller).unwrap();
 
             for event in video.event_pump.poll_iter() {
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
@@ -1079,15 +1087,20 @@ fn main() {
             // Run console commands
             let console_args = {
                 let mut storage = ecs_world.write_storage::<ConsoleComponent>();
-                let console = storage.get_mut(desktop_client_entity).unwrap();
+                let console = storage.get_mut(desktop_client_controller).unwrap();
                 std::mem::replace(&mut console.command_to_execute, None)
             };
             if let Some(args) = console_args {
                 let command_def = &command_defs[args.get_command_name().unwrap()];
-                if let Err(e) = (command_def.action)(desktop_client_entity, &args, &mut ecs_world) {
+                if let Err(e) = (command_def.action)(
+                    desktop_client_controller,
+                    desktop_client_char,
+                    &args,
+                    &mut ecs_world,
+                ) {
                     ecs_world
                         .write_storage::<ConsoleComponent>()
-                        .get_mut(desktop_client_entity)
+                        .get_mut(desktop_client_controller)
                         .unwrap()
                         .error(&e);
                 }
@@ -1095,20 +1108,16 @@ fn main() {
         }
 
         let (new_map, show_cursor) = imgui_frame(
-            desktop_client_entity,
+            desktop_client_controller,
             &mut video,
             &mut ecs_world,
             rng.clone(),
             sent_bytes_per_second,
-            &mut player_count,
-            &mut monster_count,
             &mut map_name_filter,
             &all_map_names,
             &mut filtered_map_names,
             fps,
             fps_history.as_slice(),
-            &mut other_players,
-            &mut other_monsters,
             &mut fov,
             &mut cam_angle,
             &mut window_opened,
@@ -1197,7 +1206,7 @@ fn main() {
             next_minion_spawn = now.add_seconds(2.0);
 
             {
-                let entity_id = create_random_char_minion(
+                let char_entity_id = create_random_char_minion(
                     &mut ecs_world,
                     p2!(
                         MinionAiSystem::CHECKPOINTS[0][0],
@@ -1205,10 +1214,10 @@ fn main() {
                     ),
                     Team::Right,
                 );
-                let mut storage = ecs_world.write_storage();
-                storage
-                    .insert(entity_id, MinionComponent { fountain_up: false })
-                    .unwrap();
+                ecs_world
+                    .create_entity()
+                    .with(ControllerComponent::new(char_entity_id))
+                    .with(MinionComponent { fountain_up: false });
             }
 
             {
@@ -1255,15 +1264,11 @@ fn imgui_frame(
     mut ecs_world: &mut specs::world::World,
     mut rng: ThreadRng,
     sent_bytes_per_second: usize,
-    player_count: &mut i32,
-    monster_count: &mut i32,
     mut map_name_filter: &mut ImString,
     all_map_names: &Vec<String>,
     filtered_map_names: &mut Vec<String>,
     fps: u64,
     fps_history: &[f32],
-    other_players: &mut Vec<Entity>,
-    other_monsters: &mut Vec<Entity>,
     fov: &mut f32,
     cam_angle: &mut f32,
     window_opened: &mut bool,
@@ -1353,11 +1358,6 @@ fn imgui_frame(
                 }
                 ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
                 ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
-
-                ui.slider_int(im_str!("Players"), player_count, 0, 20)
-                    .build();
-                ui.slider_int(im_str!("Monsters"), monster_count, 0, 20)
-                    .build();
 
                 let camera = ecs_world
                     .read_storage::<CameraComponent>()
@@ -1478,154 +1478,6 @@ fn imgui_frame(
                 }
             });
     }
-    {
-        let current_player_count = ecs_world
-            .read_storage::<CharacterStateComponent>()
-            .join()
-            .filter(|it| match it.outlook {
-                CharOutlook::Player { .. } => true,
-                _ => false,
-            })
-            .count() as i32;
-        let current_user_count =
-            1 + ecs_world.read_storage::<BrowserClient>().join().count() as i32;
-        if current_player_count < *player_count {
-            let count_to_add = *player_count - current_player_count;
-            for _i in 0..count_to_add {
-                let pos = {
-                    let hero_pos = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(desktop_client_entity).unwrap();
-                        char_state.pos()
-                    };
-                    let map_render_data =
-                        &ecs_world.read_resource::<SystemVariables>().map_render_data;
-                    let (x, y) = loop {
-                        let x = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
-                        let y = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
-                            + x.max(0.0) as usize;
-                        let walkable = (map_render_data.gat.cells[index].cell_type
-                            & CellType::Walkable as u8)
-                            != 0;
-                        if walkable {
-                            break (x, y);
-                        }
-                    };
-                    p3!(x, 0.5, -y)
-                };
-                let pos2d = p3_to_p2(&pos);
-                let entity_id = create_random_char_minion(&mut ecs_world, pos2d, Team::Left);
-                ecs_world
-                    .write_storage()
-                    .insert(entity_id, MinionComponent { fountain_up: false });
-                ecs_world
-                    .write_storage()
-                    .insert(entity_id, ControllerComponent::new())
-                    .unwrap();
-
-                other_players.push(entity_id);
-            }
-        } else if current_player_count - current_user_count > *player_count {
-            // -1 is the entity of the controller
-            let to_remove = (current_player_count - *player_count - current_user_count) as usize;
-            let to_remove = to_remove.min(other_players.len());
-            let entity_ids: Vec<Entity> = other_players.drain(0..to_remove).collect();
-            {
-                let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
-                // remove rigid bodies from the physic simulation
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                entity_ids
-                    .iter()
-                    .map(|entity| physic_storage.get(*entity))
-                    .filter(|it| it.is_some())
-                    .for_each(|it| {
-                        let phys_comp = it.unwrap();
-                        ecs_world
-                            .write_resource::<CollisionsFromPrevFrame>()
-                            .remove_collider_handle(phys_comp.collider_handle);
-                        physics_world.bodies.remove(phys_comp.body_handle);
-                    });
-            };
-            let _ = ecs_world.delete_entities(entity_ids.as_slice());
-        }
-        // add monsters
-        let current_monster_count = ecs_world
-            .read_storage::<CharacterStateComponent>()
-            .join()
-            .filter(|it| match it.outlook {
-                CharOutlook::Monster(_) => true,
-                _ => false,
-            })
-            .count() as i32;
-        if current_monster_count < *monster_count {
-            let count_to_add = *monster_count - current_monster_count;
-            for _i in 0..count_to_add {
-                let pos = {
-                    let map_render_data =
-                        &ecs_world.read_resource::<SystemVariables>().map_render_data;
-                    let hero_pos = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(desktop_client_entity).unwrap();
-                        char_state.pos()
-                    };
-                    let (x, y) = loop {
-                        let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
-                        let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
-                            + x.max(0.0) as usize;
-                        let walkable = (map_render_data.gat.cells[index].cell_type
-                            & CellType::Walkable as u8)
-                            != 0;
-                        if walkable {
-                            break (x, y);
-                        }
-                    };
-                    p3!(x, 0.5, -y)
-                };
-                let pos2d = p3_to_p2(&pos);
-                let mut rng = rand::thread_rng();
-                let entity_id = components::char::create_monster(
-                    &mut ecs_world,
-                    pos2d,
-                    MonsterId::Baphomet,
-                    rng.gen_range(1, 3),
-                    Team::Left,
-                    CharType::Mercenary,
-                    CollisionGroup::Player,
-                    &[CollisionGroup::NonPlayer],
-                );
-                ecs_world
-                    .write_storage()
-                    .insert(entity_id, MinionComponent { fountain_up: false });
-                ecs_world
-                    .write_storage()
-                    .insert(entity_id, ControllerComponent::new())
-                    .unwrap();
-                other_monsters.push(entity_id);
-            }
-        } else if current_monster_count > *monster_count {
-            let to_remove = (current_monster_count - *monster_count) as usize;
-            let entity_ids: Vec<Entity> = other_monsters.drain(0..to_remove).collect();
-            {
-                let physic_storage = ecs_world.read_storage::<PhysicsComponent>();
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                // remove rigid bodies from the physic simulation
-                entity_ids
-                    .iter()
-                    .map(|entity| physic_storage.get(*entity))
-                    .filter(|it| it.is_some())
-                    .for_each(|it| {
-                        let phys_comp = it.unwrap();
-                        ecs_world
-                            .write_resource::<CollisionsFromPrevFrame>()
-                            .remove_collider_handle(phys_comp.collider_handle);
-                        physics_world.bodies.remove(phys_comp.body_handle);
-                    });
-            };
-            let _ = ecs_world.delete_entities(entity_ids.as_slice());
-        }
-    }
     video.renderer.render(ui);
     return ret;
 }
@@ -1651,6 +1503,7 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
         .len();
     let entity_id = ecs_world.create_entity().build();
     components::char::attach_char_components(
+        "minion".to_owned(),
         entity_id,
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),

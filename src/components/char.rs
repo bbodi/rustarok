@@ -23,7 +23,8 @@ use std::collections::HashMap;
 
 pub fn attach_human_player_components(
     username: &str,
-    entity_id: Entity,
+    char_entity_id: Entity,
+    controller_id: Entity,
     updater: &LazyUpdate,
     physic_world: &mut PhysicEngine,
     projection_mat: Matrix4<f32>,
@@ -36,7 +37,8 @@ pub fn attach_human_player_components(
     dev_configs: &DevConfig,
 ) {
     attach_char_components(
-        entity_id,
+        username.to_owned(),
+        char_entity_id,
         updater,
         physic_world,
         pos2d,
@@ -50,6 +52,7 @@ pub fn attach_human_player_components(
         &[CollisionGroup::NonPlayer],
         dev_configs,
     );
+
     let mut human_player = HumanInputComponent::new(username);
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
@@ -57,18 +60,20 @@ pub fn attach_human_player_components(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    updater.insert(entity_id, RenderCommandCollectorComponent::new());
-    updater.insert(entity_id, AudioCommandCollectorComponent::new());
-    updater.insert(entity_id, human_player);
+    updater.insert(controller_id, RenderCommandCollectorComponent::new());
+    updater.insert(controller_id, AudioCommandCollectorComponent::new());
+    updater.insert(controller_id, human_player);
+    updater.insert(controller_id, ControllerComponent::new(char_entity_id));
     // camera
     {
-        let mut camera_component = CameraComponent::new();
+        let mut camera_component = CameraComponent::new(Some(controller_id));
         camera_component.reset_y_and_angle(&projection_mat);
-        updater.insert(entity_id, camera_component);
+        updater.insert(controller_id, camera_component);
     }
 }
 
 pub fn attach_char_components(
+    name: String,
     entity_id: Entity,
     updater: &LazyUpdate,
     physics_world: &mut PhysicEngine,
@@ -86,6 +91,7 @@ pub fn attach_char_components(
     updater.insert(
         entity_id,
         CharacterStateComponent::new(
+            name,
             typ,
             CharOutlook::Player {
                 job_id,
@@ -106,8 +112,6 @@ pub fn attach_char_components(
         blacklist_coll_groups,
     );
     updater.insert(entity_id, physics_component);
-
-    updater.insert(entity_id, ControllerComponent::new());
 }
 
 pub fn create_monster(
@@ -125,6 +129,7 @@ pub fn create_monster(
         ecs_world.write_storage().insert(
             entity_id,
             CharacterStateComponent::new(
+                "monster".to_owned(),
                 typ,
                 CharOutlook::Monster(monster_id),
                 team,
@@ -766,6 +771,7 @@ impl Team {
 
 #[derive(Component)]
 pub struct CharacterStateComponent {
+    pub name: String, // characters also has names so it is possible to follow them with a camera
     pos: WorldCoords,
     pub team: Team,
     pub target: Option<EntityTarget>,
@@ -797,6 +803,7 @@ impl CharacterStateComponent {
     }
 
     pub fn new(
+        name: String,
         typ: CharType,
         outlook: CharOutlook,
         team: Team,
@@ -806,6 +813,7 @@ impl CharacterStateComponent {
         let base_attributes = Statuses::get_base_attributes(&typ, &outlook, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
+            name,
             pos: v2!(0, 0),
             team,
             typ,

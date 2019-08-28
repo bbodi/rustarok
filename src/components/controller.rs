@@ -88,8 +88,11 @@ pub enum CastMode {
     OnKeyPress,
 }
 
+// Camera follows a controller, a Controller controls a Character
 #[derive(Component)]
 pub struct ControllerComponent {
+    pub select_skill_target: Option<(SkillKey, Skills)>,
+    pub controlled_entity: Entity,
     pub next_action: Option<PlayerIntention>,
     pub last_action: Option<PlayerIntention>,
     pub next_action_allowed: bool,
@@ -101,8 +104,10 @@ pub struct ControllerComponent {
 }
 
 impl ControllerComponent {
-    pub fn new() -> ControllerComponent {
+    pub fn new(controlled_entity: Entity) -> ControllerComponent {
         ControllerComponent {
+            select_skill_target: None,
+            controlled_entity,
             next_action_allowed: true,
             next_action: None,
             last_action: None,
@@ -143,8 +148,10 @@ impl ControllerComponent {
     }
 }
 
+// Camera follows a controller, a Controller controls a Character
 #[derive(Component, Clone)]
 pub struct CameraComponent {
+    pub followed_controller: Option<Entity>,
     pub view_matrix: Matrix4<f32>,
     pub normal_matrix: Matrix3<f32>,
     pub camera: Camera,
@@ -155,9 +162,10 @@ pub struct CameraComponent {
 impl CameraComponent {
     const YAW: f32 = 270.0;
     const PITCH: f32 = -60.0;
-    pub fn new() -> CameraComponent {
+    pub fn new(followed_controller: Option<Entity>) -> CameraComponent {
         let camera = Camera::new(Point3::new(0.0, 40.0, 0.0));
         return CameraComponent {
+            followed_controller,
             view_matrix: Matrix4::identity(), // it is filled before every frame
             normal_matrix: Matrix3::identity(), // it is filled before every frame
             camera,
@@ -232,7 +240,6 @@ impl EntitiesBelowCursor {
 pub struct HumanInputComponent {
     pub is_console_open: bool,
     pub username: String,
-    pub select_skill_target: Option<(SkillKey, Skills)>,
     pub inputs: Vec<sdl2::event::Event>,
     skills_for_keys: [Option<Skills>; 8],
     pub cast_mode: CastMode,
@@ -266,7 +273,6 @@ impl HumanInputComponent {
         HumanInputComponent {
             is_console_open: false,
             username: username.to_owned(),
-            select_skill_target: None,
             cast_mode: CastMode::Normal,
             inputs: vec![],
             skills_for_keys: Default::default(),

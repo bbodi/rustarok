@@ -69,16 +69,12 @@ impl<'a> specs::System<'a> for MinionAiSystem {
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("MinionAiSystem");
-        for (char_id, controller, char_state, _minion) in (
-            &entities,
-            &mut controller_storage,
-            &char_state_storage,
-            &minion_storage,
-        )
-            .join()
+        for (char_id, controller, _minion) in
+            (&entities, &mut controller_storage, &minion_storage).join()
         {
-            let controller: &mut ControllerComponent = controller;
-            let char_state: &CharacterStateComponent = char_state;
+            let char_state: &CharacterStateComponent = char_state_storage
+                .get(controller.controlled_entity)
+                .unwrap();
 
             // Hack
             let mut current_target_id = char_id;

@@ -294,7 +294,11 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
-            if input.is_key_just_released(Scancode::L) {
+            if input.is_key_just_pressed(Scancode::Grave) && input.is_key_down(Scancode::LAlt) {
+                input.is_console_open = !input.is_console_open;
+            }
+
+            if input.is_key_just_released(Scancode::L) && !input.is_console_open {
                 match input.camera_movement_mode {
                     CameraMode::Free => {
                         input.camera_movement_mode = CameraMode::FollowChar;

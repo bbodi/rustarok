@@ -1,6 +1,9 @@
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::HumanInputComponent;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_player_list, cmd_set_pos, cmd_spawn_effect,
+    cmd_add_status, cmd_attach_camera_to, cmd_control, cmd_follow, cmd_goto, cmd_heal,
+    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_pos, cmd_spawn_area,
+    cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
@@ -237,7 +240,7 @@ impl<'a> ConsoleSystem<'a> {
             (selected_text.clone(), false)
         };
         let end_pos = if console.cursor_parameter_index == 0 {
-            selected_text.chars().count()
+            selected_text.chars().count() + 1
         } else {
             arg.args[console.cursor_parameter_index - 1].end_pos + 2 + selected_text.chars().count()
         };
@@ -251,12 +254,15 @@ impl<'a> ConsoleSystem<'a> {
         } else {
             arg.args[console.cursor_parameter_index].text = selected_text;
         }
-        let new_input = arg
+        let mut new_input = arg
             .args
             .iter()
             .map(|it| it.text.as_str())
             .collect::<Vec<&str>>()
             .join(" ");
+        if end_pos > new_input.len() {
+            new_input += " ";
+        }
         console.set_input_and_cursor_x(end_pos.min(new_input.chars().count()), new_input);
         console.full_autocompletion_list.clear();
         console.filtered_autocompletion_list.clear();
@@ -300,7 +306,6 @@ impl<'a> ConsoleSystem<'a> {
     }
 
     pub fn get_user_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
-        let mut user_entity_id: Option<Entity> = None;
         for (entity_id, human) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<HumanInputComponent>(),
@@ -308,21 +313,47 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if human.username == username {
-                user_entity_id = Some(entity_id);
-                break;
+                return Some(entity_id);
             }
         }
-        return user_entity_id;
+        return None;
+    }
+
+    pub fn get_char_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
+        for (entity_id, char_state) in (
+            &ecs_world.entities(),
+            &ecs_world.read_storage::<CharacterStateComponent>(),
+        )
+            .join()
+        {
+            if char_state.name == username {
+                return Some(entity_id);
+            }
+        }
+        return None;
     }
 
     pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
-        command_defs.insert("set_pos".to_owned(), cmd_set_pos());
-        command_defs.insert("add_status".to_owned(), cmd_add_status());
-        command_defs.insert("player_list".to_owned(), cmd_player_list());
-        command_defs.insert("spawn_effect".to_owned(), cmd_spawn_effect(effect_names));
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
+        ConsoleSystem::add_command(&mut command_defs, cmd_add_status());
+        ConsoleSystem::add_command(&mut command_defs, cmd_list_players());
+        ConsoleSystem::add_command(&mut command_defs, cmd_list_entities());
+        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_effect(effect_names));
+        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_area());
+        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_entity());
+        ConsoleSystem::add_command(&mut command_defs, cmd_heal());
+        ConsoleSystem::add_command(&mut command_defs, cmd_kill_all());
+        ConsoleSystem::add_command(&mut command_defs, cmd_goto());
+        ConsoleSystem::add_command(&mut command_defs, cmd_attach_camera_to());
+        ConsoleSystem::add_command(&mut command_defs, cmd_follow());
+        ConsoleSystem::add_command(&mut command_defs, cmd_control());
 
         return command_defs;
+    }
+
+    fn add_command(defs: &mut HashMap<String, CommandDefinition>, command_def: CommandDefinition) {
+        defs.insert(command_def.name.to_owned(), command_def);
     }
 }
 
@@ -513,7 +544,7 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback =
-    Box<dyn Fn(Entity, &CommandArguments, &mut specs::World) -> Result<(), String>>;
+    Box<dyn Fn(Entity, Entity, &CommandArguments, &mut specs::World) -> Result<(), String>>;
 
 pub enum ConsoleWordType {
     Normal,
@@ -737,11 +768,11 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                     CommandParamType::Float => args
                                         .as_str(i)
                                         .map(|it| it.parse::<f32>().is_ok())
-                                        .unwrap_or(false),
+                                        .unwrap_or(!*mandatory),
                                     CommandParamType::Int => args
                                         .as_str(i)
                                         .map(|it| it.parse::<i32>().is_ok())
-                                        .unwrap_or(false),
+                                        .unwrap_or(!*mandatory),
                                     CommandParamType::String => true,
                                 };
                                 if !ok {

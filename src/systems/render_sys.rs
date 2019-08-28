@@ -5,7 +5,7 @@ use crate::components::char::{
 };
 use crate::components::controller::{
     CameraComponent, ControllerComponent, EntitiesBelowCursor, HumanInputComponent,
-    PlayerIntention, WorldCoords,
+    PlayerIntention, SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
@@ -70,13 +70,9 @@ impl RenderDesktopClientSystem {
     }
 
     // TODO: wtf is this argument list
-    pub fn render_for_controller<'a>(
+    fn render_for_controller<'a>(
         &self,
-        desktop_entity_id: Entity,
-        desktop_team: Team,
-        char_state: &CharacterStateComponent,
-        controller: &mut ControllerComponent, // mut: we have to store bounding rects of drawed entities :(
-        char_pos: &WorldCoords,
+        controller: &mut Option<ControllerAndControlled>, // mut: we have to store bounding rects of drawed entities :(
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
@@ -114,7 +110,10 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.render_client");
             render_client(
-                char_pos,
+                controller
+                    .as_ref()
+                    .map(|it| it.controlled_char.pos())
+                    .as_ref(),
                 &camera.camera,
                 &camera.view_matrix,
                 &camera.normal_matrix,
@@ -126,74 +125,87 @@ impl RenderDesktopClientSystem {
         }
 
         {
-            let _stopwatch = system_benchmark.start_measurement("render.casting");
-            if let Some((_skill_key, skill)) = input.select_skill_target {
-                render_commands
-                    .prepare_for_3d()
-                    .pos_2d(char_pos)
-                    .y(0.0)
-                    .radius(skill.get_casting_range())
-                    .color(&[0.0, 1.0, 0.0, 1.0])
-                    .add_circle_command();
+            if let Some(controller) = &controller {
+                {
+                    let _stopwatch = system_benchmark.start_measurement("render.casting");
+                    let char_pos = controller.controlled_char.pos();
+                    if let Some((_skill_key, skill)) = controller.controller.select_skill_target {
+                        render_commands
+                            .prepare_for_3d()
+                            .pos_2d(&char_pos)
+                            .y(0.0)
+                            .radius(skill.get_casting_range())
+                            .color(&[0.0, 1.0, 0.0, 1.0])
+                            .add_circle_command();
 
-                if skill.get_skill_target_type() == SkillTargetType::Area {
-                    let is_castable = char_state
-                        .skill_cast_allowed_at
-                        .get(&skill)
-                        .unwrap_or(&ElapsedTime(0.0))
-                        .is_earlier_than(system_vars.time);
-                    let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
-                        char_pos,
-                        &input.mouse_world_pos,
-                        skill.get_casting_range(),
-                    );
-                    skill.render_target_selection(
-                        is_castable,
-                        &skill_3d_pos,
-                        &dir_vector,
-                        render_commands,
-                    );
+                        if skill.get_skill_target_type() == SkillTargetType::Area {
+                            let is_castable = controller
+                                .controlled_char
+                                .skill_cast_allowed_at
+                                .get(&skill)
+                                .unwrap_or(&ElapsedTime(0.0))
+                                .is_earlier_than(system_vars.time);
+                            let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
+                                &char_pos,
+                                &input.mouse_world_pos,
+                                skill.get_casting_range(),
+                            );
+                            skill.render_target_selection(
+                                is_castable,
+                                &skill_3d_pos,
+                                &dir_vector,
+                                render_commands,
+                            );
+                        }
+                    } else {
+                        if let CharState::CastingSkill(casting_info) =
+                            controller.controlled_char.state()
+                        {
+                            let skill = casting_info.skill;
+                            skill.render_casting(
+                                &char_pos,
+                                &casting_info,
+                                system_vars,
+                                render_commands,
+                            );
+                        }
+                    }
                 }
-            } else {
-                if let CharState::CastingSkill(casting_info) = char_state.state() {
-                    let skill = casting_info.skill;
-                    skill.render_casting(&char_pos, &casting_info, system_vars, render_commands);
+                {
+                    // render target position
+                    // if there is a valid controller, there is char_state as well
+                    if let Some(PlayerIntention::MoveTo(pos)) = controller.controller.last_action {
+                        if CharState::Idle != *controller.controlled_char.state() {
+                            let cursor_anim_descr = SpriteRenderDescriptorComponent {
+                                action_index: CURSOR_TARGET.1,
+                                animation_started: ElapsedTime(0.0),
+                                animation_ends_at: ElapsedTime(0.0),
+                                forced_duration: None,
+                                direction: 0,
+                                fps_multiplier: 2.0,
+                            };
+                            render_action(
+                                system_vars.time,
+                                &cursor_anim_descr,
+                                &system_vars.assets.sprites.cursors,
+                                camera.yaw,
+                                &pos,
+                                [0, 0],
+                                false,
+                                1.0,
+                                ActionPlayMode::Repeat,
+                                &COLOR_WHITE,
+                                render_commands,
+                            );
+                        }
+                    }
                 }
-            }
-        }
-
-        // render target position
-        if let Some(PlayerIntention::MoveTo(pos)) = controller.last_action {
-            if CharState::Idle != *char_state.state() {
-                let cursor_anim_descr = SpriteRenderDescriptorComponent {
-                    action_index: CURSOR_TARGET.1,
-                    animation_started: ElapsedTime(0.0),
-                    animation_ends_at: ElapsedTime(0.0),
-                    forced_duration: None,
-                    direction: 0,
-                    fps_multiplier: 2.0,
-                };
-                render_action(
-                    system_vars.time,
-                    &cursor_anim_descr,
-                    &system_vars.assets.sprites.cursors,
-                    camera.yaw,
-                    &pos,
-                    [0, 0],
-                    false,
-                    1.0,
-                    ActionPlayMode::Repeat,
-                    &COLOR_WHITE,
-                    render_commands,
-                );
             }
         }
 
         {
             let _stopwatch = system_benchmark.start_measurement("render.draw_characters");
             self.draw_characters(
-                desktop_entity_id,
-                desktop_team,
                 &camera,
                 controller,
                 input,
@@ -235,13 +247,14 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        desktop_entity_id: Entity,
+        followed_char_id: Entity,
+        select_skill_target: Option<(SkillKey, Skills)>,
         rendering_entity_id: Entity,
         input: &HumanInputComponent,
         entities_below_cursor: &EntitiesBelowCursor,
         desktop_target: &Option<EntityTarget>,
     ) -> bool {
-        return if let Some((_skill_key, skill)) = input.select_skill_target {
+        return if let Some((_skill_key, skill)) = select_skill_target {
             match skill.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor
                     .get_enemy_or_friend()
@@ -250,7 +263,7 @@ impl RenderDesktopClientSystem {
                 SkillTargetType::NoTarget => false,
                 SkillTargetType::Area => false,
                 SkillTargetType::OnlyAllyButNoSelf => entities_below_cursor
-                    .get_friend_except(desktop_entity_id)
+                    .get_friend_except(followed_char_id)
                     .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor
@@ -263,7 +276,7 @@ impl RenderDesktopClientSystem {
                     .unwrap_or(false),
                 SkillTargetType::OnlySelf => entities_below_cursor
                     .get_friend()
-                    .map(|it| it == desktop_entity_id)
+                    .map(|it| it == followed_char_id)
                     .unwrap_or(false),
             }
         } else {
@@ -282,10 +295,8 @@ impl RenderDesktopClientSystem {
 
     fn draw_characters(
         &self,
-        desktop_entity_id: Entity,
-        self_team: Team,
         camera: &CameraComponent,
-        controller: &mut ControllerComponent,
+        controller: &mut Option<ControllerAndControlled>,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &SystemVariables,
@@ -329,47 +340,49 @@ impl RenderDesktopClientSystem {
                         &sprites[sex as usize][head_index]
                     };
 
-                    if RenderDesktopClientSystem::need_entity_highlighting(
-                        desktop_entity_id,
-                        rendering_entity_id,
-                        input,
-                        &controller.entities_below_cursor,
-                        &char_state_storage.get(desktop_entity_id).unwrap().target,
-                    ) {
-                        let color = if self_team == char_state.team {
-                            &[0.0, 0.0, 1.0, 0.7]
-                        } else {
-                            &[1.0, 0.0, 0.0, 0.7]
-                        };
-                        let body_pos_offset = render_single_layer_action(
-                            system_vars.time,
-                            &animated_sprite,
-                            body_sprite,
-                            camera.yaw,
-                            &pos,
-                            [0, 0],
-                            true,
-                            1.2,
-                            play_mode,
-                            color,
-                            render_commands,
-                        );
+                    if let Some(controller) = &controller {
+                        if RenderDesktopClientSystem::need_entity_highlighting(
+                            controller.controller.controlled_entity,
+                            controller.controller.select_skill_target,
+                            rendering_entity_id,
+                            input,
+                            &controller.controller.entities_below_cursor,
+                            &controller.controlled_char.target,
+                        ) {
+                            let color = if controller.controlled_char.team == char_state.team {
+                                &[0.0, 0.0, 1.0, 0.7]
+                            } else {
+                                &[1.0, 0.0, 0.0, 0.7]
+                            };
+                            let body_pos_offset = render_single_layer_action(
+                                system_vars.time,
+                                &animated_sprite,
+                                body_sprite,
+                                camera.yaw,
+                                &pos,
+                                [0, 0],
+                                true,
+                                1.2,
+                                play_mode,
+                                color,
+                                render_commands,
+                            );
 
-                        let _head_pos_offset = render_single_layer_action(
-                            system_vars.time,
-                            &animated_sprite,
-                            head_res,
-                            camera.yaw,
-                            &pos,
-                            body_pos_offset,
-                            false,
-                            1.2,
-                            play_mode,
-                            color,
-                            render_commands,
-                        );
+                            let _head_pos_offset = render_single_layer_action(
+                                system_vars.time,
+                                &animated_sprite,
+                                head_res,
+                                camera.yaw,
+                                &pos,
+                                body_pos_offset,
+                                false,
+                                1.2,
+                                play_mode,
+                                color,
+                                render_commands,
+                            );
+                        }
                     }
-
                     // todo: kell a body_pos_offset még mindig? (bounding rect)
                     let body_pos_offset = render_single_layer_action(
                         system_vars.time,
@@ -419,8 +432,14 @@ impl RenderDesktopClientSystem {
                     // TODO: create a has_hp component and draw this on them only?
                     if !char_state.state().is_dead() {
                         self.draw_health_bar(
-                            desktop_entity_id == rendering_entity_id,
-                            self_team == char_state.team,
+                            controller
+                                .as_ref()
+                                .map(|it| it.controller.controlled_entity == rendering_entity_id)
+                                .unwrap_or(false),
+                            controller
+                                .as_ref()
+                                .map(|it| it.controlled_char.team == char_state.team)
+                                .unwrap_or(false),
                             &char_state,
                             system_vars.time,
                             &body_bounding_rect,
@@ -429,9 +448,12 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    controller
-                        .bounding_rect_2d
-                        .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
+                    if let Some(controller) = controller {
+                        controller
+                            .controller
+                            .bounding_rect_2d
+                            .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
+                    }
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -443,31 +465,34 @@ impl RenderDesktopClientSystem {
                     } else {
                         ActionPlayMode::Repeat
                     };
-                    if RenderDesktopClientSystem::need_entity_highlighting(
-                        desktop_entity_id,
-                        rendering_entity_id,
-                        input,
-                        &controller.entities_below_cursor,
-                        &char_state_storage.get(desktop_entity_id).unwrap().target,
-                    ) {
-                        let color = if self_team == char_state.team {
-                            &[0.0, 0.0, 1.0, 0.7]
-                        } else {
-                            &[1.0, 0.0, 0.0, 0.7]
-                        };
-                        let _pos_offset = render_single_layer_action(
-                            system_vars.time,
-                            &animated_sprite,
-                            body_res,
-                            camera.yaw,
-                            &pos,
-                            [0, 0],
-                            true,
-                            1.2,
-                            play_mode,
-                            color,
-                            render_commands,
-                        );
+                    if let Some(controller) = controller {
+                        if RenderDesktopClientSystem::need_entity_highlighting(
+                            controller.controller.controlled_entity,
+                            controller.controller.select_skill_target,
+                            rendering_entity_id,
+                            input,
+                            &controller.controller.entities_below_cursor,
+                            &controller.controlled_char.target,
+                        ) {
+                            let color = if controller.controlled_char.team == char_state.team {
+                                &[0.0, 0.0, 1.0, 0.7]
+                            } else {
+                                &[1.0, 0.0, 0.0, 0.7]
+                            };
+                            let _pos_offset = render_single_layer_action(
+                                system_vars.time,
+                                &animated_sprite,
+                                body_res,
+                                camera.yaw,
+                                &pos,
+                                [0, 0],
+                                true,
+                                1.2,
+                                play_mode,
+                                color,
+                                render_commands,
+                            );
+                        }
                     }
                     let _pos_offset = render_single_layer_action(
                         system_vars.time,
@@ -492,8 +517,14 @@ impl RenderDesktopClientSystem {
                     };
                     if !char_state.state().is_dead() {
                         self.draw_health_bar(
-                            desktop_entity_id == rendering_entity_id,
-                            self_team == char_state.team,
+                            controller
+                                .as_ref()
+                                .map(|it| it.controller.controlled_entity == rendering_entity_id)
+                                .unwrap_or(false),
+                            controller
+                                .as_ref()
+                                .map(|it| it.controlled_char.team == char_state.team)
+                                .unwrap_or(false),
                             &char_state,
                             system_vars.time,
                             &bounding_rect,
@@ -502,9 +533,12 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    controller
-                        .bounding_rect_2d
-                        .insert(rendering_entity_id, (bounding_rect, char_state.team));
+                    if let Some(controller) = controller {
+                        controller
+                            .controller
+                            .bounding_rect_2d
+                            .insert(rendering_entity_id, (bounding_rect, char_state.team));
+                    }
                 }
             }
 
@@ -513,6 +547,11 @@ impl RenderDesktopClientSystem {
                 .render(&char_state.pos(), system_vars, render_commands);
         }
     }
+}
+
+struct ControllerAndControlled<'a> {
+    controller: &'a mut ControllerComponent,
+    controlled_char: &'a CharacterStateComponent,
 }
 
 impl<'a> specs::System<'a> for RenderDesktopClientSystem {
@@ -565,29 +604,25 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &input_storage,
                 &mut render_commands_storage,
                 &mut audio_commands_storage,
-                &char_state_storage,
                 &camera_storage,
-                &mut controller_storage,
             )
                 .join()
         };
-        for (
-            entity_id,
-            mut input,
-            mut render_commands,
-            mut audio_commands,
-            desktop_char,
-            camera,
-            controller,
-        ) in join
-        {
+        for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
+            let mut controller_and_controlled: Option<ControllerAndControlled> = camera
+                .followed_controller
+                .map(|controller_id| controller_storage.get_mut(controller_id).unwrap())
+                .map(|controller| {
+                    let entity = controller.controlled_entity;
+                    ControllerAndControlled {
+                        controller,
+                        controlled_char: char_state_storage.get(entity).unwrap(),
+                    }
+                });
+
             {
                 self.render_for_controller(
-                    entity_id,
-                    desktop_char.team,
-                    &desktop_char,
-                    controller,
-                    &desktop_char.pos(),
+                    &mut controller_and_controlled,
                     camera,
                     &mut input,
                     &mut render_commands,
@@ -617,21 +652,30 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 &entities,
                 &numbers,
                 &char_state_storage,
-                entity_id,
-                desktop_char.team,
+                controller_and_controlled
+                    .as_ref()
+                    .map(|it| it.controller.controlled_entity)
+                    .unwrap_or(
+                        entity_id, // entity_id is the controller id, so no character will match with it, ~dummy value
+                    ),
+                controller_and_controlled
+                    .as_ref()
+                    .map(|it| it.controlled_char.team),
                 system_vars.time,
                 &system_vars.assets,
                 &updater,
                 render_commands,
             );
 
-            self.render_ui_sys.run(
-                &desktop_char,
-                &input,
-                &controller,
-                &mut render_commands,
-                &system_vars,
-            );
+            if let Some(controller_and_controlled) = controller_and_controlled.as_ref() {
+                self.render_ui_sys.run(
+                    &controller_and_controlled.controlled_char,
+                    &input,
+                    &controller_and_controlled.controller,
+                    &mut render_commands,
+                    &system_vars,
+                );
+            }
         }
     }
 }
@@ -827,7 +871,7 @@ pub fn render_action(
 }
 
 fn render_client(
-    char_pos: &Vector2<f32>,
+    char_pos: Option<&Vector2<f32>>,
     camera: &Camera,
     view: &Matrix4<f32>,
     normal_matrix: &Matrix3<f32>,
@@ -861,11 +905,15 @@ fn render_client(
                 continue;
             }
             let model_render_data = &map_render_data.models[&model_instance.name];
-            let alpha = if (max.x > char_pos.x && min.x < char_pos.x)
-                && char_pos.y <= min.z // character is behind
-                && max.y > 2.0
-            {
-                0.3
+            let alpha = if let Some(char_pos) = char_pos {
+                if (max.x > char_pos.x && min.x < char_pos.x)
+                    && char_pos.y <= min.z // character is behind
+                    && max.y > 2.0
+                {
+                    0.3
+                } else {
+                    model_render_data.alpha
+                }
             } else {
                 model_render_data.alpha
             };
@@ -947,8 +995,8 @@ impl DamageRenderSystem {
         entities: &specs::Entities,
         numbers: &specs::ReadStorage<FlyingNumberComponent>,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
-        desktop_entity_id: Entity,
-        desktop_entity_team: Team,
+        followed_char_id: Entity,
+        desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
         updater: &specs::Write<LazyUpdate>,
@@ -958,7 +1006,7 @@ impl DamageRenderSystem {
             DamageRenderSystem::add_render_command(
                 number,
                 char_state_storage,
-                desktop_entity_id,
+                followed_char_id,
                 desktop_entity_team,
                 now,
                 assets,
@@ -975,7 +1023,7 @@ impl DamageRenderSystem {
         number: &FlyingNumberComponent,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
         desktop_entity_id: Entity,
-        desktop_entity_team: Team,
+        desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollectorComponent,
@@ -1105,7 +1153,9 @@ impl DamageRenderSystem {
         };
         let is_friend = char_state_storage
             .get(number.target_entity_id)
-            .map(|it| it.team == desktop_entity_team)
+            .and_then(|target| {
+                desktop_entity_team.map(|controller_team| controller_team == target.team)
+            })
             .unwrap_or(true);
         let size_mult = if desktop_entity_id == number.target_entity_id
             || desktop_entity_id == number.src_entity_id
