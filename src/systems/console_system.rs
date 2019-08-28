@@ -1,15 +1,12 @@
-use crate::components::char::PhysicsComponent;
 use crate::components::controller::HumanInputComponent;
-use crate::components::status::absorb_shield::AbsorbStatus;
-use crate::components::status::status::{
-    ApplyStatusComponent, ApplyStatusComponentPayload, MainStatuses,
+use crate::systems::console_commands::{
+    cmd_add_status, cmd_player_list, cmd_set_pos, cmd_spawn_effect,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::{ElapsedTime, PhysicEngine};
-use nalgebra::Isometry2;
+use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -142,6 +139,11 @@ impl ConsoleComponent {
             };
             if self.filtered_autocompletion_list.is_empty() {
                 self.close_autocompletion();
+                self.autocompletion_index = 0;
+            } else {
+                self.autocompletion_index = self
+                    .autocompletion_index
+                    .min(self.filtered_autocompletion_list.len() - 1)
             }
         }
     }
@@ -163,58 +165,6 @@ impl ConsoleComponent {
 
 pub struct ConsoleSystem<'a> {
     command_defs: &'a HashMap<String, CommandDefinition>,
-}
-
-pub struct SetPosCommand;
-
-impl AutocompletionGenerator for SetPosCommand {
-    fn create_autocompletion_list(&self) -> Vec<String> {
-        vec!["sharp".to_owned(), "béla".to_owned(), "Józsi".to_owned()]
-    }
-}
-
-impl From<SetPosCommand> for CommandDefinition {
-    fn from(cmd: SetPosCommand) -> Self {
-        CommandDefinition {
-            name: "set_pos".to_string(),
-            arguments: vec![
-                ("x", CommandParamType::Int, true),
-                ("y", CommandParamType::Int, true),
-                ("[username]", CommandParamType::String, false),
-            ],
-            autocompletion: Box::new(|_index| None),
-            action: Box::new(|self_entity_id, args, ecs_world| {
-                let x = args.as_int(0).unwrap();
-                let y = args.as_int(1).unwrap();
-                let username = args.as_str(2);
-
-                let entity_id = if let Some(username) = username {
-                    ConsoleSystem::get_user_id_by_name(ecs_world, username)
-                } else {
-                    Some(self_entity_id)
-                };
-
-                let body_handle = entity_id.and_then(|it| {
-                    ecs_world
-                        .read_storage::<PhysicsComponent>()
-                        .get(it)
-                        .map(|it| it.body_handle)
-                });
-
-                if let Some(body_handle) = body_handle {
-                    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                    if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
-                        body.set_position(Isometry2::translation(x as f32, y as f32));
-                        Ok(())
-                    } else {
-                        Err("No rigid body was found for this user".to_owned())
-                    }
-                } else {
-                    Err("The user was not found".to_owned())
-                }
-            }),
-        }
-    }
 }
 
 impl<'a> ConsoleSystem<'a> {
@@ -280,8 +230,12 @@ impl<'a> ConsoleSystem<'a> {
 
     fn autocompletion_selected(&self, console: &mut ConsoleComponent) {
         let mut arg = CommandArguments::new(&console.input);
-        let selected_text =
-            console.filtered_autocompletion_list[console.autocompletion_index].clone();
+        let selected_text = &console.filtered_autocompletion_list[console.autocompletion_index];
+        let (selected_text, quoted) = if selected_text.contains(" ") {
+            (format!("\"{}\"", selected_text), true)
+        } else {
+            (selected_text.clone(), false)
+        };
         let end_pos = if console.cursor_parameter_index == 0 {
             selected_text.chars().count()
         } else {
@@ -289,14 +243,13 @@ impl<'a> ConsoleSystem<'a> {
         };
         if arg.args.len() < console.cursor_parameter_index + 1 {
             arg.args.push(CommandElement {
-                text: console.filtered_autocompletion_list[console.autocompletion_index].clone(),
+                text: selected_text,
                 start_pos: 0,
                 end_pos,
-                qouted: false,
+                qouted: quoted,
             });
         } else {
-            arg.args[console.cursor_parameter_index].text =
-                console.filtered_autocompletion_list[console.autocompletion_index].clone();
+            arg.args[console.cursor_parameter_index].text = selected_text;
         }
         let new_input = arg
             .args
@@ -318,9 +271,10 @@ impl<'a> ConsoleSystem<'a> {
                 .unwrap_or(&"".to_owned()),
         );
         if console.cursor_parameter_index != 0 {
-            if let Some(list) =
-                command_def.and_then(|it| (it.autocompletion)(console.cursor_parameter_index - 1))
-            {
+            if let Some(list) = command_def.and_then(|it| {
+                it.autocompletion
+                    .get_autocompletion_list(console.cursor_parameter_index - 1)
+            }) {
                 console.full_autocompletion_list = list;
                 console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
                 console.autocompletion_open = true;
@@ -345,7 +299,7 @@ impl<'a> ConsoleSystem<'a> {
             .0
     }
 
-    fn get_user_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
+    pub fn get_user_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
         let mut user_entity_id: Option<Entity> = None;
         for (entity_id, human) in (
             &ecs_world.entities(),
@@ -361,63 +315,12 @@ impl<'a> ConsoleSystem<'a> {
         return user_entity_id;
     }
 
-    pub fn init_commands() -> HashMap<String, CommandDefinition> {
+    pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
-        command_defs.insert("set_pos".to_owned(), SetPosCommand.into());
-
-        command_defs.insert(
-            "add_status".to_owned(),
-            CommandDefinition {
-                name: "add_status".to_string(),
-                arguments: vec![
-                    ("status_name", CommandParamType::String, true),
-                    ("time(ms)", CommandParamType::Int, true),
-                    ("[username]", CommandParamType::String, false),
-                ],
-                autocompletion: Box::new(|index| {
-                    if index == 0 {
-                        Some(vec![
-                            "absorb".to_owned(),
-                            "posion".to_owned(),
-                            "firebomb".to_owned(),
-                        ])
-                    } else {
-                        None
-                    }
-                }),
-                action: Box::new(|self_entity_id, args, ecs_world| {
-                    let status_name = args.as_str(0).unwrap();
-                    let time = args.as_int(1).unwrap();
-
-                    let username = args.as_str(2);
-                    let entity_id = if let Some(username) = username {
-                        ConsoleSystem::get_user_id_by_name(ecs_world, username)
-                    } else {
-                        Some(self_entity_id)
-                    };
-
-                    if let Some(entity_id) = entity_id {
-                        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-                        let now = system_vars.time;
-                        system_vars.apply_statuses.push(ApplyStatusComponent {
-                            source_entity_id: self_entity_id,
-                            target_entity_id: entity_id,
-                            status: match status_name {
-                                "absorb" => ApplyStatusComponentPayload::from_secondary(Box::new(
-                                    AbsorbStatus::new(self_entity_id, now),
-                                )),
-                                _ => ApplyStatusComponentPayload::from_main_status(
-                                    MainStatuses::Poison,
-                                ),
-                            },
-                        });
-                        Ok(())
-                    } else {
-                        Err("The user was not found".to_owned())
-                    }
-                }),
-            },
-        );
+        command_defs.insert("set_pos".to_owned(), cmd_set_pos());
+        command_defs.insert("add_status".to_owned(), cmd_add_status());
+        command_defs.insert("player_list".to_owned(), cmd_player_list());
+        command_defs.insert("spawn_effect".to_owned(), cmd_spawn_effect(effect_names));
 
         return command_defs;
     }
@@ -580,11 +483,33 @@ mod tests {
     }
 }
 
+pub trait AutocompletionProvider {
+    fn get_autocompletion_list(&self, param_index: usize) -> Option<Vec<String>>;
+}
+
+pub struct BasicAutocompletionProvider(Box<dyn Fn(usize) -> Option<Vec<String>>>);
+
+impl BasicAutocompletionProvider {
+    pub fn new<F>(callback: F) -> Box<dyn AutocompletionProvider>
+    where
+        F: Fn(usize) -> Option<Vec<String>> + 'static,
+    {
+        Box::new(BasicAutocompletionProvider(Box::new(callback)))
+    }
+}
+
+impl AutocompletionProvider for BasicAutocompletionProvider {
+    fn get_autocompletion_list(&self, param_index: usize) -> Option<Vec<String>> {
+        (self.0)(param_index)
+    }
+}
+
 pub struct CommandDefinition {
     pub name: String,
     pub arguments: Vec<(&'static str, CommandParamType, bool)>, // name, type, mandatory
     pub action: CommandCallback,
-    pub autocompletion: Box<dyn Fn(usize) -> Option<Vec<String>>>,
+    pub autocompletion: Box<dyn AutocompletionProvider>,
+    //    pub autocompletion: Box<dyn FnMut(usize) -> Option<Vec<String>>>,
 }
 
 pub type CommandCallback =
@@ -902,57 +827,65 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     &entry,
                 );
                 if let Some(command_def) = command_def {
-                    // draw help prompt above the cursor
-                    let help_text_len: usize = command_def
-                        .arguments
-                        .iter()
-                        .map(|it| it.0.chars().count())
-                        .sum::<usize>()
-                        + command_def.arguments.len() // spaces
-                        - 1;
-                    let start_x = ((console.cursor_x as i32 - help_text_len as i32 / 2)
-                        * NORMAL_FONT_W)
-                        .max(0);
-                    // background
-                    render_commands
-                        .prepare_for_2d()
-                        .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
-                        .size2(help_text_len as i32 * NORMAL_FONT_W, NORMAL_FONT_H)
-                        .color(&[55.0 / 255.0, 57.0 / 255.0, 57.0 / 255.0, console_color[3]])
-                        .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
-                    // text
-                    let mut x: usize = 0;
-                    command_def
-                        .arguments
-                        .iter()
-                        .map(|it| it.0.to_owned())
-                        .enumerate()
-                        .for_each(|(i, param_name)| {
-                            let color = if console.cursor_parameter_index as i32 - 1 == i as i32 {
-                                [1.0, 1.0, 1.0, console_color[3]] // active argument
-                            } else {
-                                [85.0 / 255.0, 87.0 / 255.0, 87.0 / 255.0, console_color[3]]
-                            };
-                            render_commands
-                                .prepare_for_2d()
-                                .screen_pos(
-                                    start_x + x as i32,
-                                    console.y_pos - NORMAL_FONT_H * 2 - 3,
-                                )
-                                .color(&color)
-                                .add_text_command(
-                                    &param_name,
-                                    Font::Normal,
-                                    UiLayer2d::ConsoleAutocompletion,
-                                );
-                            x += (param_name.chars().count() + 1) * NORMAL_FONT_W as usize;
-                        });
+                    if !command_def.arguments.is_empty() {
+                        let border_size = 3;
+                        // draw help prompt above the cursor
+                        let help_text_len: usize = command_def
+                            .arguments
+                            .iter()
+                            .map(|it| it.0.chars().count())
+                            .sum::<usize>()
+                            + command_def.arguments.len() // spaces
+                            - 1;
+                        let start_x = ((console.cursor_x as i32 - help_text_len as i32 / 2)
+                            * NORMAL_FONT_W)
+                            .max(0);
+                        // background
+                        render_commands
+                            .prepare_for_2d()
+                            .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
+                            .size2(
+                                help_text_len as i32 * NORMAL_FONT_W + border_size * 2,
+                                NORMAL_FONT_H + border_size * 2,
+                            )
+                            .color(&[55.0 / 255.0, 57.0 / 255.0, 57.0 / 255.0, console_color[3]])
+                            .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
+                        // text
+                        let mut x: usize = border_size as usize;
+                        command_def
+                            .arguments
+                            .iter()
+                            .map(|it| it.0.to_owned())
+                            .enumerate()
+                            .for_each(|(i, param_name)| {
+                                let color = if console.cursor_parameter_index as i32 - 1 == i as i32
+                                {
+                                    [1.0, 1.0, 1.0, console_color[3]] // active argument
+                                } else {
+                                    [85.0 / 255.0, 87.0 / 255.0, 87.0 / 255.0, console_color[3]]
+                                };
+                                render_commands
+                                    .prepare_for_2d()
+                                    .screen_pos(
+                                        start_x + x as i32,
+                                        console.y_pos - NORMAL_FONT_H * 2 - 3 + border_size,
+                                    )
+                                    .color(&color)
+                                    .add_text_command(
+                                        &param_name,
+                                        Font::Normal,
+                                        UiLayer2d::ConsoleAutocompletion,
+                                    );
+                                x += (param_name.chars().count() + 1) * NORMAL_FONT_W as usize;
+                            });
+                    }
                 }
                 // autocompletion
                 if console.autocompletion_open {
                     let longest_text_len: usize = console
                         .filtered_autocompletion_list
                         .iter()
+                        .take(20)
                         .map(|it| it.chars().count())
                         .max()
                         .unwrap_or(1);
@@ -965,12 +898,19 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         .screen_pos(start_x, console.y_pos)
                         .size2(
                             longest_text_len as i32 * NORMAL_FONT_W,
-                            NORMAL_FONT_H * console.filtered_autocompletion_list.len() as i32,
+                            NORMAL_FONT_H
+                                * console.filtered_autocompletion_list.iter().take(20).count()
+                                    as i32,
                         )
                         .color(&[55.0 / 255.0, 57.0 / 255.0, 57.0 / 255.0, console_color[3]])
                         .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
                     // texts
-                    for (i, line) in console.filtered_autocompletion_list.iter().enumerate() {
+                    for (i, line) in console
+                        .filtered_autocompletion_list
+                        .iter()
+                        .take(20)
+                        .enumerate()
+                    {
                         let color = if i == console.autocompletion_index {
                             [1.0, 1.0, 1.0, console_color[3]] // active argument
                         } else {

@@ -1,3 +1,4 @@
+use crate::asset::AssetLoader;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::{
@@ -16,6 +17,7 @@ use std::time::Instant;
 pub mod atk_calc;
 pub mod camera_system;
 pub mod char_state_sys;
+pub mod console_commands;
 pub mod console_system;
 pub mod frame_end_system;
 pub mod input_sys;
@@ -78,6 +80,7 @@ pub struct AssetResources {
 
 pub struct SystemVariables {
     pub assets: AssetResources,
+    pub asset_loader: AssetLoader,
     pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,

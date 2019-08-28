@@ -339,69 +339,6 @@ fn main() {
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
 
-    let mut ecs_world = specs::World::new();
-    ecs_world.register::<BrowserClient>();
-    ecs_world.register::<HumanInputComponent>();
-    ecs_world.register::<RenderCommandCollectorComponent>();
-    ecs_world.register::<AudioCommandCollectorComponent>();
-    ecs_world.register::<SpriteRenderDescriptorComponent>();
-    ecs_world.register::<CharacterStateComponent>();
-    ecs_world.register::<PhysicsComponent>();
-    ecs_world.register::<FlyingNumberComponent>();
-    ecs_world.register::<SoundEffectComponent>();
-    ecs_world.register::<StrEffectComponent>();
-    ecs_world.register::<SkillManifestationComponent>();
-    ecs_world.register::<CameraComponent>();
-    ecs_world.register::<ControllerComponent>();
-    ecs_world.register::<MinionComponent>();
-    ecs_world.register::<ConsoleComponent>();
-
-    let command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands();
-
-    let mut ecs_dispatcher = specs::DispatcherBuilder::new()
-        .with(BrowserInputProducerSystem, "browser_input_processor", &[])
-        .with(
-            InputConsumerSystem,
-            "input_handler",
-            &["browser_input_processor"],
-        )
-        .with(CameraSystem, "camera_system", &["input_handler"])
-        .with(FrictionSystem, "friction_sys", &[])
-        .with(
-            InputToNextActionSystem,
-            "input_to_next_action_sys",
-            &["input_handler", "browser_input_processor"],
-        )
-        .with(MinionAiSystem, "minion_ai_sys", &[])
-        .with(
-            NextActionApplierSystem,
-            "char_control",
-            &[
-                "friction_sys",
-                "input_to_next_action_sys",
-                "browser_input_processor",
-            ],
-        )
-        .with(
-            CharacterStateUpdateSystem,
-            "char_state_update",
-            &["char_control"],
-        )
-        .with(
-            PhysCollisionCollectorSystem,
-            "collision_collector",
-            &["char_state_update"],
-        )
-        .with(SkillSystem, "skill_sys", &["collision_collector"])
-        .with(AttackSystem, "attack_sys", &["collision_collector"])
-        .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
-        .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(OpenGlRenderSystem::new(&ttf_context))
-        .with_thread_local(WebSocketBrowserRenderSystem::new())
-        .with_thread_local(sound_system)
-        .with_thread_local(FrameEndSystem)
-        .build();
-
     let rng = rand::thread_rng();
 
     let mut asset_database = AssetDatabase::new();
@@ -585,9 +522,7 @@ fn main() {
     );
 
     let mut map_name_filter = ImString::new("prontera");
-    let mut str_name_filter = ImString::new("fire");
     let mut filtered_map_names: Vec<String> = vec![];
-    let mut filtered_str_names: Vec<String> = vec![];
     let all_map_names = asset_loader
         .read_dir("data")
         .into_iter()
@@ -732,7 +667,71 @@ fn main() {
         .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
         .unwrap();
 
+    let mut ecs_world = specs::World::new();
+    ecs_world.register::<BrowserClient>();
+    ecs_world.register::<HumanInputComponent>();
+    ecs_world.register::<RenderCommandCollectorComponent>();
+    ecs_world.register::<AudioCommandCollectorComponent>();
+    ecs_world.register::<SpriteRenderDescriptorComponent>();
+    ecs_world.register::<CharacterStateComponent>();
+    ecs_world.register::<PhysicsComponent>();
+    ecs_world.register::<FlyingNumberComponent>();
+    ecs_world.register::<SoundEffectComponent>();
+    ecs_world.register::<StrEffectComponent>();
+    ecs_world.register::<SkillManifestationComponent>();
+    ecs_world.register::<CameraComponent>();
+    ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<MinionComponent>();
+    ecs_world.register::<ConsoleComponent>();
+    let command_defs: HashMap<String, CommandDefinition> =
+        ConsoleSystem::init_commands(all_str_names);
+
+    let mut ecs_dispatcher = specs::DispatcherBuilder::new()
+        .with(BrowserInputProducerSystem, "browser_input_processor", &[])
+        .with(
+            InputConsumerSystem,
+            "input_handler",
+            &["browser_input_processor"],
+        )
+        .with(CameraSystem, "camera_system", &["input_handler"])
+        .with(FrictionSystem, "friction_sys", &[])
+        .with(
+            InputToNextActionSystem,
+            "input_to_next_action_sys",
+            &["input_handler", "browser_input_processor"],
+        )
+        .with(MinionAiSystem, "minion_ai_sys", &[])
+        .with(
+            NextActionApplierSystem,
+            "char_control",
+            &[
+                "friction_sys",
+                "input_to_next_action_sys",
+                "browser_input_processor",
+            ],
+        )
+        .with(
+            CharacterStateUpdateSystem,
+            "char_state_update",
+            &["char_control"],
+        )
+        .with(
+            PhysCollisionCollectorSystem,
+            "collision_collector",
+            &["char_state_update"],
+        )
+        .with(SkillSystem, "skill_sys", &["collision_collector"])
+        .with(AttackSystem, "attack_sys", &["collision_collector"])
+        .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
+        .with_thread_local(RenderDesktopClientSystem::new())
+        .with_thread_local(OpenGlRenderSystem::new(&ttf_context))
+        .with_thread_local(WebSocketBrowserRenderSystem::new())
+        .with_thread_local(sound_system)
+        .with_thread_local(FrameEndSystem)
+        .build();
+
     ecs_world.add_resource(SystemVariables {
+        asset_loader,
         dev_configs: DevConfig::new().unwrap(),
         assets: AssetResources {
             shaders,
@@ -1086,7 +1085,7 @@ fn main() {
             if let Some(args) = console_args {
                 let command_def = &command_defs[args.get_command_name().unwrap()];
                 if let Err(e) = (command_def.action)(desktop_client_entity, &args, &mut ecs_world) {
-                    let console = ecs_world
+                    ecs_world
                         .write_storage::<ConsoleComponent>()
                         .get_mut(desktop_client_entity)
                         .unwrap()
@@ -1095,7 +1094,7 @@ fn main() {
             }
         }
 
-        let (new_map, new_str, show_cursor) = imgui_frame(
+        let (new_map, show_cursor) = imgui_frame(
             desktop_client_entity,
             &mut video,
             &mut ecs_world,
@@ -1106,9 +1105,6 @@ fn main() {
             &mut map_name_filter,
             &all_map_names,
             &mut filtered_map_names,
-            &mut str_name_filter,
-            &all_str_names,
-            &mut filtered_str_names,
             fps,
             fps_history.as_slice(),
             &mut other_players,
@@ -1121,42 +1117,17 @@ fn main() {
         sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
-            let (map_render_data, physics_world) =
-                load_map(&new_map_name, &asset_loader, config.quick_startup);
+            let (map_render_data, physics_world) = load_map(
+                &new_map_name,
+                &ecs_world.read_resource::<SystemVariables>().asset_loader,
+                config.quick_startup,
+            );
             ecs_world
                 .write_resource::<SystemVariables>()
                 .map_render_data = map_render_data;
             ecs_world.add_resource(physics_world);
 
             // TODO
-        }
-        if let Some(new_str_name) = new_str {
-            {
-                let map_render_data = &mut ecs_world
-                    .write_resource::<SystemVariables>()
-                    .map_render_data;
-                if !map_render_data.str_effects.contains_key(&new_str_name) {
-                    let str_file = asset_loader.load_effect(&new_str_name).unwrap();
-                    map_render_data
-                        .str_effects
-                        .insert(new_str_name.clone(), str_file);
-                }
-            }
-            let hero_pos = {
-                let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                let char_state = storage.get(desktop_client_entity).unwrap();
-                char_state.pos()
-            };
-            ecs_world
-                .create_entity()
-                .with(StrEffectComponent {
-                    effect: new_str_name.clone(),
-                    pos: hero_pos,
-                    start_time: ElapsedTime(0.0),
-                    die_at: ElapsedTime(20000.0),
-                    duration: ElapsedTime(1.0),
-                })
-                .build();
         }
 
         video.gl_swap_window();
@@ -1289,9 +1260,6 @@ fn imgui_frame(
     mut map_name_filter: &mut ImString,
     all_map_names: &Vec<String>,
     filtered_map_names: &mut Vec<String>,
-    mut str_name_filter: &mut ImString,
-    all_str_names: &Vec<String>,
-    filtered_str_names: &mut Vec<String>,
     fps: u64,
     fps_history: &[f32],
     other_players: &mut Vec<Entity>,
@@ -1300,13 +1268,13 @@ fn imgui_frame(
     cam_angle: &mut f32,
     window_opened: &mut bool,
     system_frame_durations: &SystemFrameDurations,
-) -> (Option<String>, Option<String>, bool) {
+) -> (Option<String>, bool) {
     let ui = video.imgui_sdl2.frame(
         &video.window,
         &mut video.imgui,
         &video.event_pump.mouse_state(),
     );
-    let mut ret = (None, None, false); // (map, str, show_cursor)
+    let mut ret = (None, false); // (map, show_cursor)
     {
         // IMGUI
         ui.window(im_str!("Graphic options"))
@@ -1314,9 +1282,8 @@ fn imgui_frame(
             .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
             .opened(window_opened)
             .build(|| {
-                ret.2 = ui.is_window_hovered();
+                ret.1 = ui.is_window_hovered();
                 let map_name_filter_clone = map_name_filter.clone();
-                let str_name_filter_clone = str_name_filter.clone();
                 if ui
                     .input_text(im_str!("Map name:"), &mut map_name_filter)
                     .enter_returns_true(false)
@@ -1339,30 +1306,6 @@ fn imgui_frame(
                 for map_name in filtered_map_names.iter() {
                     if ui.small_button(&ImString::new(map_name.as_str())) {
                         ret.0 = Some(map_name.to_owned());
-                    }
-                }
-                if ui
-                    .input_text(im_str!("Load STR:"), &mut str_name_filter)
-                    .enter_returns_true(false)
-                    .build()
-                {
-                    filtered_str_names.clear();
-                    filtered_str_names.extend(
-                        all_str_names
-                            .iter()
-                            .filter(|str_name| {
-                                let matc = sublime_fuzzy::best_match(
-                                    str_name_filter_clone.to_str(),
-                                    str_name,
-                                );
-                                matc.is_some()
-                            })
-                            .map(|it| it.to_owned()),
-                    );
-                }
-                for str_name in filtered_str_names.iter() {
-                    if ui.small_button(&ImString::new(str_name.as_str())) {
-                        ret.1 = Some(str_name.to_owned());
                     }
                 }
 
