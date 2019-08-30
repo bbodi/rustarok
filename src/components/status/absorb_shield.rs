@@ -21,12 +21,12 @@ pub struct AbsorbStatus {
 }
 
 impl AbsorbStatus {
-    pub fn new(caster_entity_id: Entity, now: ElapsedTime) -> AbsorbStatus {
+    pub fn new(caster_entity_id: Entity, now: ElapsedTime, duration: f32) -> AbsorbStatus {
         AbsorbStatus {
             caster_entity_id,
             started: now,
             animation_started: now.add_seconds(-1.9),
-            until: now.add_seconds(3.0),
+            until: now.add_seconds(duration),
             absorbed_damage: 0,
         }
     }

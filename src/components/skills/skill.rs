@@ -329,7 +329,7 @@ impl Skills {
                     .push(ApplyStatusComponent::from_secondary_status(
                         caster_entity_id,
                         target_entity.unwrap(),
-                        Box::new(AbsorbStatus::new(caster_entity_id, system_vars.time)),
+                        Box::new(AbsorbStatus::new(caster_entity_id, system_vars.time, 3.0)),
                     ));
                 None
             }

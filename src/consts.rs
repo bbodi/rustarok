@@ -5,14 +5,15 @@ use std::collections::HashMap;
 
 use strum_macros::Display;
 use strum_macros::EnumIter;
+use strum_macros::EnumString;
 
-#[derive(EnumIter, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum MonsterId {
     Baphomet,
     Poring,
 }
 
-#[derive(EnumIter, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(EnumIter, EnumString, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobId {
     NOVICE = 0,
     SWORDMAN = 1,

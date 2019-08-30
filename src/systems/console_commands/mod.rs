@@ -22,12 +22,14 @@ use crate::systems::console_system::{
     ConsoleComponent, ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
-use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
+use crate::{CollisionGroup, ElapsedTime, PhysicEngine, PLAYABLE_OUTLOOKS};
 use nalgebra::{Isometry2, Point2};
 use nalgebra::{Point3, Vector2};
 use rand::Rng;
 use specs::prelude::*;
 use std::collections::HashMap;
+use std::str::FromStr;
+use strum::IntoEnumIterator;
 
 struct SpawnEffectAutocompletion {
     effect_names: Vec<String>,
@@ -36,6 +38,83 @@ struct SpawnEffectAutocompletion {
 impl AutocompletionProvider for SpawnEffectAutocompletion {
     fn get_autocompletion_list(&self, _param_index: usize) -> Option<Vec<String>> {
         Some(self.effect_names.clone())
+    }
+}
+
+pub(super) fn cmd_change_outlook() -> CommandDefinition {
+    CommandDefinition {
+        name: "change_outlook".to_string(),
+        arguments: vec![
+            ("outlook", CommandParamType::String, true),
+            ("[username]", CommandParamType::String, false),
+        ],
+        autocompletion: BasicAutocompletionProvider::new(|index| {
+            if index == 0 {
+                Some(
+                    [
+                        PLAYABLE_OUTLOOKS
+                            .iter()
+                            .map(|it| format!("{:?}", it))
+                            .collect::<Vec<_>>(),
+                        MonsterId::iter()
+                            .map(|it| it.to_string())
+                            .collect::<Vec<_>>(),
+                    ]
+                    .concat(),
+                )
+            } else {
+                None
+            }
+        }),
+        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+            let job_name = args.as_str(0).unwrap();
+            let username = args.as_str(1);
+
+            let target_char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+            if let Some(target_char_id) = target_char_id {
+                if let Some(target_char) = ecs_world
+                    .write_storage::<CharacterStateComponent>()
+                    .get_mut(target_char_id)
+                {
+                    let job_id = JobId::from_str(job_name);
+                    if let Ok(job_id) = job_id {
+                        target_char.outlook = match target_char.outlook {
+                            CharOutlook::Player {
+                                job_id: old_job_id,
+                                head_index,
+                                sex,
+                            } => CharOutlook::Player {
+                                job_id,
+                                head_index,
+                                sex,
+                            },
+                            CharOutlook::Monster(_) => CharOutlook::Player {
+                                job_id,
+                                head_index: 0,
+                                sex: Sex::Male,
+                            },
+                        };
+                        Ok(())
+                    } else if let Ok(monster_id) = MonsterId::from_str(job_name) {
+                        target_char.outlook = CharOutlook::Monster(monster_id);
+                        Ok(())
+                    } else {
+                        Err("Invalid JobId/MonsterId".to_owned())
+                    }
+                } else {
+                    Err(format!(
+                        "The character component does not exist: {:?}",
+                        target_char_id
+                    ))
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
     }
 }
 
@@ -266,7 +345,8 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                         ecs_world
                             .create_entity()
                             .with(ControllerComponent::new(char_entity_id))
-                            .with(MinionComponent { fountain_up: false });
+                            .with(MinionComponent { fountain_up: false })
+                            .build();
                     }
                     _ => {
                         let job_id = if type_name == "merc_melee" {
@@ -279,7 +359,8 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                         ecs_world
                             .create_entity()
                             .with(ControllerComponent::new(char_entity_id))
-                            .with(MinionComponent { fountain_up: false });
+                            .with(MinionComponent { fountain_up: false })
+                            .build();
                     }
                 }
             }
@@ -535,7 +616,7 @@ fn create_status_payload(
 ) -> Result<ApplyStatusComponentPayload, String> {
     match name {
         "absorb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            AbsorbStatus::new(self_entity_id, now),
+            AbsorbStatus::new(self_entity_id, now, time as f32 / 1000.0),
         ))),
         "firebomb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             FireBombStatus {

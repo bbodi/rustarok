@@ -3,7 +3,7 @@ sleep_ms = 0
 minions_enabled = false
 
 [console]
-    color = [0.0, 0.0, 0.0, 1.0]
+    color = [0.0, 0.0, 0.0, 0.7]
 
 [stats]
     [stats.minion]

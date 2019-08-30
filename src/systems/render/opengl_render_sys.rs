@@ -393,6 +393,174 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             let render_commands: &RenderCommandCollectorComponent = render_commands;
 
             /////////////////////////////////
+            // 3D Rectangle
+            /////////////////////////////////
+            {
+                let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind();
+                let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                for command in &render_commands.rectangle_3d_commands {
+                    shader.set_vec4("color", &command.common.color);
+                    shader.set_mat4("model", &command.common.matrix);
+                    shader.set_vec2("size", &command.size);
+                    centered_rectangle_vao_bind.draw();
+                }
+            }
+
+            /////////////////////////////////
+            // 3D Circles
+            /////////////////////////////////
+            {
+                let vao_bind = self.circle_vao.bind();
+                let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                for command in &render_commands.circle_3d_commands {
+                    shader.set_vec4("color", &command.common.color);
+                    shader.set_mat4("model", &command.common.matrix);
+                    shader.set_vec2(
+                        "size",
+                        &[command.common.size * 2.0, command.common.size * 2.0],
+                    );
+                    vao_bind.draw();
+                }
+            }
+
+            /////////////////////////////////
+            // 3D Sprites
+            /////////////////////////////////
+            {
+                let shader = system_vars.assets.shaders.sprite_shader.gl_use();
+                let vao_bind = system_vars
+                    .map_render_data
+                    .centered_sprite_vertex_array
+                    .bind();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_int("model_texture", 0);
+                unsafe {
+                    gl::ActiveTexture(gl::TEXTURE0);
+                }
+                for command in &render_commands.billboard_commands {
+                    shader.set_vec2("size", &[command.texture_width, command.texture_height]);
+                    shader.set_mat4("model", &command.common.matrix);
+                    shader.set_vec4("color", &command.common.color);
+                    shader.set_vec2("offset", &command.common.offset);
+
+                    unsafe {
+                        gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
+                    }
+                    vao_bind.draw();
+                }
+            }
+
+            /////////////////////////////////
+            // 3D NUMBERS
+            /////////////////////////////////
+            {
+                unsafe {
+                    gl::Disable(gl::DEPTH_TEST);
+                }
+                let shader = system_vars.assets.shaders.sprite_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_int("model_texture", 0);
+                unsafe {
+                    gl::ActiveTexture(gl::TEXTURE0);
+                }
+                system_vars.assets.sprites.numbers.bind(TEXTURE_0);
+                for command in &render_commands.number_3d_commands {
+                    shader.set_vec2("size", &[command.common.size, command.common.size]);
+                    shader.set_mat4("model", &command.common.matrix);
+                    shader.set_vec4("color", &command.common.color);
+                    shader.set_vec2("offset", &command.common.offset);
+
+                    self.create_number_vertex_array(command.value).bind().draw();
+                }
+                unsafe {
+                    gl::Enable(gl::DEPTH_TEST);
+                }
+            }
+
+            /////////////////////////////////
+            // 3D EFFECTS
+            /////////////////////////////////
+            {
+                unsafe {
+                    gl::Disable(gl::DEPTH_TEST);
+                }
+                let shader = system_vars.assets.shaders.str_effect_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_int("model_texture", 0);
+                unsafe {
+                    gl::ActiveTexture(gl::TEXTURE0);
+                }
+
+                for (command, commands) in &render_commands.effect_commands {
+                    let cached_frame = self.str_effect_cache.get(&command);
+                    let str_file = &system_vars.map_render_data.str_effects[&command.effect_name];
+                    if let None = cached_frame {
+                        let layer = &str_file.layers[command.layer_index];
+                        let cached_effect_frame =
+                            OpenGlRenderSystem::prepare_effect(layer, command.key_index);
+                        self.str_effect_cache
+                            .insert(command.clone(), cached_effect_frame);
+                    } else if let Some(None) = cached_frame {
+                        continue;
+                    } else if let Some(Some(cached_frame)) = cached_frame {
+                        shader.set_vec2("offset", &cached_frame.offset);
+                        shader.set_vec4("color", &cached_frame.color);
+                        unsafe {
+                            gl::BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
+                        }
+                        str_file.textures[cached_frame.texture_index].bind(TEXTURE_0);
+                        let bind = cached_frame.pos_vao.bind();
+                        for matrix in commands {
+                            shader.set_mat4("model", &(matrix * cached_frame.rotation_matrix));
+                            bind.draw();
+                        }
+                    }
+                }
+
+                unsafe {
+                    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+                    gl::Enable(gl::DEPTH_TEST);
+                }
+            }
+
+            /////////////////////////////////
+            // 3D MODELS
+            /////////////////////////////////
+            {
+                let map_render_data = &system_vars.map_render_data;
+                let shader = system_vars.assets.shaders.model_shader.gl_use();
+                shader.set_mat4("projection", &system_vars.matrices.projection);
+                shader.set_mat4("view", &render_commands.view_matrix);
+                shader.set_mat3("normal_matrix", &render_commands.normal_matrix);
+                shader.set_int("model_texture", 0);
+                shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+                shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+                shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+                shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+                shader.set_int("use_lighting", map_render_data.use_lighting as i32);
+
+                for render_command in &render_commands.model_commands {
+                    shader.set_mat4("model", &render_command.matrix);
+                    shader.set_f32("alpha", render_command.alpha);
+                    let model_render_data = &map_render_data.models[&render_command.name];
+                    for node_render_data in &model_render_data.model {
+                        // TODO: optimize this
+                        for face_render_data in node_render_data {
+                            face_render_data.texture.bind(TEXTURE_0);
+                            face_render_data.vao.bind().draw();
+                        }
+                    }
+                }
+            }
+
+            /////////////////////////////////
             // 2D Trimesh
             /////////////////////////////////
             {
@@ -481,174 +649,6 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.set_vec2("size", &[width * command.size, height * command.size]);
                     shader.set_vec4("color", &command.color);
                     vertex_array_bind.draw();
-                }
-            }
-
-            /////////////////////////////////
-            // 3D Rectangle
-            /////////////////////////////////
-            {
-                let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind();
-                let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                for command in &render_commands.rectangle_3d_commands {
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec2("size", &command.size);
-                    centered_rectangle_vao_bind.draw();
-                }
-            }
-
-            /////////////////////////////////
-            // 3D Circles
-            /////////////////////////////////
-            {
-                let vao_bind = self.circle_vao.bind();
-                let shader = system_vars.assets.shaders.trimesh_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                for command in &render_commands.circle_3d_commands {
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec2(
-                        "size",
-                        &[command.common.size * 2.0, command.common.size * 2.0],
-                    );
-                    vao_bind.draw();
-                }
-            }
-
-            /////////////////////////////////
-            // 3D Sprites
-            /////////////////////////////////
-            {
-                let shader = system_vars.assets.shaders.sprite_shader.gl_use();
-                let vao_bind = system_vars
-                    .map_render_data
-                    .centered_sprite_vertex_array
-                    .bind();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                shader.set_int("model_texture", 0);
-                unsafe {
-                    gl::ActiveTexture(gl::TEXTURE0);
-                }
-                for command in &render_commands.billboard_commands {
-                    shader.set_vec2("size", &[command.texture_width, command.texture_height]);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_vec2("offset", &command.common.offset);
-
-                    unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
-                    }
-                    vao_bind.draw();
-                }
-            }
-
-            /////////////////////////////////
-            // NUMBERS
-            /////////////////////////////////
-            {
-                unsafe {
-                    gl::Disable(gl::DEPTH_TEST);
-                }
-                let shader = system_vars.assets.shaders.sprite_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                shader.set_int("model_texture", 0);
-                unsafe {
-                    gl::ActiveTexture(gl::TEXTURE0);
-                }
-                system_vars.assets.sprites.numbers.bind(TEXTURE_0);
-                for command in &render_commands.number_3d_commands {
-                    shader.set_vec2("size", &[command.common.size, command.common.size]);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_vec2("offset", &command.common.offset);
-
-                    self.create_number_vertex_array(command.value).bind().draw();
-                }
-                unsafe {
-                    gl::Enable(gl::DEPTH_TEST);
-                }
-            }
-
-            /////////////////////////////////
-            // EFFECTS
-            /////////////////////////////////
-            {
-                unsafe {
-                    gl::Disable(gl::DEPTH_TEST);
-                }
-                let shader = system_vars.assets.shaders.str_effect_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                shader.set_int("model_texture", 0);
-                unsafe {
-                    gl::ActiveTexture(gl::TEXTURE0);
-                }
-
-                for (command, commands) in &render_commands.effect_commands {
-                    let cached_frame = self.str_effect_cache.get(&command);
-                    let str_file = &system_vars.map_render_data.str_effects[&command.effect_name];
-                    if let None = cached_frame {
-                        let layer = &str_file.layers[command.layer_index];
-                        let cached_effect_frame =
-                            OpenGlRenderSystem::prepare_effect(layer, command.key_index);
-                        self.str_effect_cache
-                            .insert(command.clone(), cached_effect_frame);
-                    } else if let Some(None) = cached_frame {
-                        continue;
-                    } else if let Some(Some(cached_frame)) = cached_frame {
-                        shader.set_vec2("offset", &cached_frame.offset);
-                        shader.set_vec4("color", &cached_frame.color);
-                        unsafe {
-                            gl::BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
-                        }
-                        str_file.textures[cached_frame.texture_index].bind(TEXTURE_0);
-                        let bind = cached_frame.pos_vao.bind();
-                        for matrix in commands {
-                            shader.set_mat4("model", &(matrix * cached_frame.rotation_matrix));
-                            bind.draw();
-                        }
-                    }
-                }
-
-                unsafe {
-                    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-                    gl::Enable(gl::DEPTH_TEST);
-                }
-            }
-
-            /////////////////////////////////
-            // MODELS
-            /////////////////////////////////
-            {
-                let map_render_data = &system_vars.map_render_data;
-                let shader = system_vars.assets.shaders.model_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                shader.set_mat3("normal_matrix", &render_commands.normal_matrix);
-                shader.set_int("model_texture", 0);
-                shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-                shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-                shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-                shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-                shader.set_int("use_lighting", map_render_data.use_lighting as i32);
-
-                for render_command in &render_commands.model_commands {
-                    shader.set_mat4("model", &render_command.matrix);
-                    shader.set_f32("alpha", render_command.alpha);
-                    let model_render_data = &map_render_data.models[&render_command.name];
-                    for node_render_data in &model_render_data.model {
-                        // TODO: optimize this
-                        for face_render_data in node_render_data {
-                            face_render_data.texture.bind(TEXTURE_0);
-                            face_render_data.vao.bind().draw();
-                        }
-                    }
                 }
             }
         }

@@ -125,6 +125,21 @@ use websocket::OwnedMessage;
 pub const SIMULATION_FREQ: u64 = 30;
 pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
 
+pub const PLAYABLE_OUTLOOKS: [JobId; 12] = [
+    JobId::CRUSADER,
+    JobId::SWORDMAN,
+    JobId::ARCHER,
+    JobId::ASSASSIN,
+    JobId::KNIGHT,
+    JobId::WIZARD,
+    JobId::SAGE,
+    JobId::ALCHEMIST,
+    JobId::BLACKSMITH,
+    JobId::PRIEST,
+    JobId::MONK,
+    JobId::GUNSLINGER,
+];
+
 #[derive(Clone, Copy)]
 pub enum CharActionIndex {
     Idle = 0,
@@ -373,14 +388,9 @@ fn main() {
                 mounted_sprites.insert(JobId::CRUSADER, [male, female]);
                 mounted_sprites
             },
-            character_sprites: JobId::iter()
-                .take(25)
-                .filter(|job_id| {
-                    *job_id == JobId::CRUSADER
-                        || *job_id == JobId::SWORDMAN
-                        || *job_id == JobId::ARCHER
-                })
-                .map(|job_id| {
+            character_sprites: PLAYABLE_OUTLOOKS
+                .iter()
+                .map(|&job_id| {
                     let job_file_name = &job_name_table[&job_id];
                     let folder1 = encoding::all::WINDOWS_1252
                         .decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict)
@@ -864,7 +874,7 @@ fn main() {
                         "AbsorbShield".to_owned(),
                         move |now| {
                             ApplyStatusComponentPayload::from_secondary(Box::new(
-                                AbsorbStatus::new(desktop_client_char, now),
+                                AbsorbStatus::new(desktop_client_char, now, 3.0),
                             ))
                         },
                         &v2!(255, -213),
@@ -1081,8 +1091,6 @@ fn main() {
         }
 
         ecs_dispatcher.dispatch(&mut ecs_world.res);
-        ecs_world.maintain();
-
         {
             // Run console commands
             let console_args = {
@@ -1106,6 +1114,7 @@ fn main() {
                 }
             }
         }
+        ecs_world.maintain();
 
         let (new_map, show_cursor) = imgui_frame(
             desktop_client_controller,

@@ -42,11 +42,6 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 .get(controller.controlled_entity)
                 .unwrap();
 
-            if input.is_console_open {
-                controller.next_action = None;
-                continue;
-            }
-
             let just_pressed_skill_key = SkillKey::iter()
                 .filter(|key| input.is_key_just_pressed(key.scancode()))
                 .take(1)
@@ -114,7 +109,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                             if let Some(s) = shhh {
                                 Some(s)
                             } else {
-                                controller.select_skill_target = Some((skill_key, skill));
+                                if !input.is_console_open {
+                                    controller.select_skill_target = Some((skill_key, skill));
+                                }
                                 None
                             }
                         } else {
@@ -164,7 +161,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                             if let Some(s) = shh {
                                 Some(s)
                             } else {
-                                controller.select_skill_target = Some((skill_key, skill));
+                                if !input.is_console_open {
+                                    controller.select_skill_target = Some((skill_key, skill));
+                                }
                                 None
                             }
                         } else {
@@ -225,6 +224,21 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             } else {
                 None
             };
+            // in console mode, only moving around is allowed
+            if input.is_console_open {
+                if let Some(next_action) = &controller.next_action {
+                    match next_action {
+                        PlayerIntention::MoveTo(_) => {}
+                        PlayerIntention::MoveTowardsMouse(_) => {}
+                        PlayerIntention::Attack(_) => {}
+                        PlayerIntention::AttackTowards(_) => {}
+                        PlayerIntention::Casting(_, _, _) => {
+                            log::debug!("...but the console is open");
+                            controller.next_action = None;
+                        }
+                    }
+                }
+            }
         }
     }
 }

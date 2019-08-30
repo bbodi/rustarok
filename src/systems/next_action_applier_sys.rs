@@ -38,37 +38,37 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
         for (entity_id, controller) in (&entities, &mut controller_storage).join() {
-            // for autocompletion...
-            let char_state: &mut CharacterStateComponent = char_state_storage
-                .get_mut(controller.controlled_entity)
-                .unwrap();
+            let char_state = char_state_storage.get_mut(controller.controlled_entity);
 
-            controller.next_action_allowed = match controller.next_action {
-                Some(PlayerIntention::MoveTo(pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(pos));
-                    true
+            // the controlled character might have been removed due to death etc
+            if let Some(char_state) = char_state {
+                controller.next_action_allowed = match controller.next_action {
+                    Some(PlayerIntention::MoveTo(pos)) => {
+                        char_state.target = Some(EntityTarget::Pos(pos));
+                        true
+                    }
+                    Some(PlayerIntention::Attack(target_entity_id)) => {
+                        char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
+                        true
+                    }
+                    Some(PlayerIntention::MoveTowardsMouse(pos)) => {
+                        char_state.target = Some(EntityTarget::Pos(pos));
+                        true
+                    }
+                    Some(PlayerIntention::AttackTowards(_)) => true,
+                    Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
+                        NextActionApplierSystem::try_cast_skill(
+                            skill,
+                            now,
+                            char_state,
+                            &world_coords,
+                            &controller.entities_below_cursor,
+                            entity_id,
+                            is_self_cast,
+                        )
+                    }
+                    None => true,
                 }
-                Some(PlayerIntention::Attack(target_entity_id)) => {
-                    char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
-                    true
-                }
-                Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(pos));
-                    true
-                }
-                Some(PlayerIntention::AttackTowards(_)) => true,
-                Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
-                    NextActionApplierSystem::try_cast_skill(
-                        skill,
-                        now,
-                        char_state,
-                        &world_coords,
-                        &controller.entities_below_cursor,
-                        entity_id,
-                        is_self_cast,
-                    )
-                }
-                None => true,
             }
         }
 

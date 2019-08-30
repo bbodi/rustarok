@@ -1,8 +1,8 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::HumanInputComponent;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_attach_camera_to, cmd_control, cmd_follow, cmd_goto, cmd_heal,
-    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_pos, cmd_spawn_area,
+    cmd_add_status, cmd_attach_camera_to, cmd_change_outlook, cmd_control, cmd_follow, cmd_goto,
+    cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_pos, cmd_spawn_area,
     cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
@@ -13,6 +13,10 @@ use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use std::collections::HashMap;
+
+// apply the command without losing input
+// add a slider for a vairable?
+// ctrl-R history filtering
 
 #[derive(Component)]
 pub struct ConsoleComponent {
@@ -108,12 +112,13 @@ impl ConsoleComponent {
 
     pub fn filter_autocompletion_list(&mut self) {
         if self.autocompletion_open {
-            let current_word = self
-                .args
-                .args
-                .get(self.cursor_parameter_index)
-                .map(|it| it.text.as_str())
-                .unwrap_or("");
+            let param = self.args.args.get(self.cursor_parameter_index);
+            let current_word = param
+                .map(|param| {
+                    let filtering_chars = self.cursor_x - param.start_pos;
+                    param.text.chars().take(filtering_chars).collect()
+                })
+                .unwrap_or("".to_owned());
             self.filtered_autocompletion_list = if current_word.is_empty() {
                 self.full_autocompletion_list.clone()
             } else {
@@ -205,6 +210,15 @@ impl<'a> ConsoleSystem<'a> {
         return entry;
     }
 
+    fn insert_str_to_prompt(&mut self, text: &str, console: &mut ConsoleComponent) {
+        let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+        console.input.insert_str(idx, text);
+        console.set_input_and_cursor_x(console.cursor_x + 1, console.input.clone());
+        if !console.autocompletion_open {
+            self.open_autocompletion(console);
+        }
+    }
+
     fn render_console_entry(
         render_commands: &mut RenderCommandCollectorComponent,
         console_color: &[f32; 4],
@@ -231,7 +245,7 @@ impl<'a> ConsoleSystem<'a> {
         }
     }
 
-    fn autocompletion_selected(&self, console: &mut ConsoleComponent) {
+    fn autocompletion_selected(&self, console: &mut ConsoleComponent, close_autocompletion: bool) {
         let mut arg = CommandArguments::new(&console.input);
         let selected_text = &console.filtered_autocompletion_list[console.autocompletion_index];
         let (selected_text, quoted) = if selected_text.contains(" ") {
@@ -263,11 +277,80 @@ impl<'a> ConsoleSystem<'a> {
         if end_pos > new_input.len() {
             new_input += " ";
         }
-        console.set_input_and_cursor_x(end_pos.min(new_input.chars().count()), new_input);
-        console.full_autocompletion_list.clear();
-        console.filtered_autocompletion_list.clear();
-        console.autocompletion_open = false;
-        console.autocompletion_index = 0;
+        if close_autocompletion {
+            console.set_input_and_cursor_x(end_pos.min(new_input.chars().count()), new_input);
+            console.full_autocompletion_list.clear();
+            console.filtered_autocompletion_list.clear();
+            console.autocompletion_open = false;
+            console.autocompletion_index = 0;
+        } else {
+            console.set_input(new_input);
+        }
+    }
+
+    fn input_added(&mut self, console: &mut ConsoleComponent, keep_input_prompt: bool) {
+        let input = console.input.clone();
+        let args = CommandArguments::new(&input);
+        let command_def = self
+            .command_defs
+            .get(args.get_command_name().unwrap_or(&"".to_owned()));
+        console.add_entry(ConsoleSystem::create_console_entry(&args, command_def));
+        console.command_history.push(input);
+        if !keep_input_prompt {
+            console.set_input_and_cursor_x(0, String::with_capacity(32));
+        }
+        console.history_pos = 0;
+        // validate input
+        if let Some(command_def) = command_def {
+            let mandatory_arg_count = command_def.arguments.iter().take_while(|it| it.2).count();
+            let actual_arg_count = args.args.len() - 1;
+            if actual_arg_count < mandatory_arg_count
+                || actual_arg_count > command_def.arguments.len()
+            {
+                console.error(&format!(
+                    "Illegal number of parameters (expected at least {}, at most {}, provided {})",
+                    mandatory_arg_count,
+                    command_def.arguments.len(),
+                    actual_arg_count
+                ));
+                return;
+            }
+
+            let ok = command_def.arguments.iter().enumerate().all(
+                |(i, (param_name, arg_type, mandatory))| {
+                    let ok = match arg_type {
+                        CommandParamType::Float => args
+                            .as_str(i)
+                            .map(|it| it.parse::<f32>().is_ok())
+                            .unwrap_or(!*mandatory),
+                        CommandParamType::Int => args
+                            .as_str(i)
+                            .map(|it| it.parse::<i32>().is_ok())
+                            .unwrap_or(!*mandatory),
+                        CommandParamType::String => true,
+                    };
+                    if !ok {
+                        console.error(&format!(
+                            "{}, the {}. parameter ('{}') must be {}",
+                            param_name,
+                            i,
+                            args.as_str(i).unwrap_or(""),
+                            match *arg_type {
+                                CommandParamType::Float => "float",
+                                CommandParamType::Int => "int",
+                                CommandParamType::String => "string",
+                            }
+                        ));
+                    }
+                    ok
+                },
+            );
+            if ok {
+                console.command_to_execute = Some(args);
+            }
+        } else {
+            console.error("Unknown command")
+        }
     }
 
     fn open_autocompletion(&self, console: &mut ConsoleComponent) {
@@ -295,6 +378,7 @@ impl<'a> ConsoleSystem<'a> {
             console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
             console.autocompletion_open = true;
         }
+        console.autocompletion_open = !console.full_autocompletion_list.is_empty();
         console.filter_autocompletion_list();
     }
 
@@ -348,6 +432,7 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_attach_camera_to());
         ConsoleSystem::add_command(&mut command_defs, cmd_follow());
         ConsoleSystem::add_command(&mut command_defs, cmd_control());
+        ConsoleSystem::add_command(&mut command_defs, cmd_change_outlook());
 
         return command_defs;
     }
@@ -633,6 +718,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                             console.autocompletion_index =
                                 console.filtered_autocompletion_list.len() - 1;
                         }
+                        self.autocompletion_selected(console, false);
                     } else {
                         if console.history_pos < console.command_history.len() {
                             console.history_pos += 1;
@@ -650,6 +736,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         } else {
                             console.autocompletion_index = 0;
                         }
+                        self.autocompletion_selected(console, false);
                     } else {
                         if console.history_pos > 1 {
                             console.history_pos -= 1;
@@ -702,19 +789,19 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     console.set_input(console.input.clone());
                     console.key_repeat_allowed_at = now.add_seconds(repeat_time);
                 } else if input.is_key_down(Scancode::LCtrl)
-                    && input.is_key_just_pressed(Scancode::Space)
+                    && input.is_key_just_released(Scancode::Space)
                 {
                     self.open_autocompletion(console);
-                } else if (input.is_key_just_pressed(Scancode::Space)
-                    || input.is_key_just_pressed(Scancode::Tab)
-                    || input.is_key_just_pressed(Scancode::Return))
+                } else if (input.is_key_just_released(Scancode::Space)
+                    || input.is_key_just_released(Scancode::Tab)
+                    || (input.is_key_just_released(Scancode::Return))
+                        && !input.is_key_down(Scancode::LCtrl))
                     && console.autocompletion_open
                 {
-                    self.autocompletion_selected(console);
-                } else if !input.text.is_empty() {
-                    // two spaces are not allowed
-                    if input.text != " "
-                        || console.cursor_inside_quotes
+                    self.autocompletion_selected(console, !input.is_key_down(Scancode::LCtrl));
+                    self.open_autocompletion(console); // open autocompletion for the next param if any
+                } else if input.is_key_just_released(Scancode::Space) {
+                    if console.cursor_inside_quotes
                         || (console.cursor_x > 0
                             && !console
                                 .input
@@ -723,82 +810,19 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 .unwrap_or('x')
                                 .is_whitespace())
                     {
-                        let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
-                        console.input.insert_str(idx, &input.text);
-                        console.set_input_and_cursor_x(console.cursor_x + 1, console.input.clone());
-                        if !console.autocompletion_open {
-                            self.open_autocompletion(console);
-                        }
+                        self.insert_str_to_prompt(" ", console)
                     }
+                } else if !input.text.is_empty() && !input.is_key_down(Scancode::Space) {
+                    // spaces are handled above, because typing space can open the autocompletion, then
+                    // releasing it can choose the first option immediately
+                    // two spaces are not allowed
+                    self.insert_str_to_prompt(&input.text, console)
                 } else if input.is_key_just_released(Scancode::Escape)
                     && console.autocompletion_open
                 {
                     console.close_autocompletion();
                 } else if input.is_key_just_released(Scancode::Return) {
-                    // PRESS ENTER
-                    let input = console.input.clone();
-                    let args = CommandArguments::new(&input);
-                    let command_def = self
-                        .command_defs
-                        .get(args.get_command_name().unwrap_or(&"".to_owned()));
-                    console.add_entry(ConsoleSystem::create_console_entry(&args, command_def));
-                    console.command_history.push(input);
-                    console.set_input_and_cursor_x(0, String::with_capacity(32));
-                    console.history_pos = 0;
-                    // validate input
-                    if let Some(command_def) = command_def {
-                        let mandatory_arg_count =
-                            command_def.arguments.iter().take_while(|it| it.2).count();
-                        let actual_arg_count = args.args.len() - 1;
-                        if actual_arg_count < mandatory_arg_count
-                            || actual_arg_count > command_def.arguments.len()
-                        {
-                            console.error(&format!(
-                                "Illegal number of parameters (expected at least {}, at most {}, provided {})",
-                                mandatory_arg_count,
-                                command_def.arguments.len(),
-                                actual_arg_count
-                            ));
-                            continue;
-                        }
-
-                        let ok = command_def.arguments.iter().enumerate().all(
-                            |(i, (param_name, arg_type, mandatory))| {
-                                let ok = match arg_type {
-                                    CommandParamType::Float => args
-                                        .as_str(i)
-                                        .map(|it| it.parse::<f32>().is_ok())
-                                        .unwrap_or(!*mandatory),
-                                    CommandParamType::Int => args
-                                        .as_str(i)
-                                        .map(|it| it.parse::<i32>().is_ok())
-                                        .unwrap_or(!*mandatory),
-                                    CommandParamType::String => true,
-                                };
-                                if !ok {
-                                    console.error(&format!(
-                                        "{}, the {}. parameter ('{}') must be {}",
-                                        param_name,
-                                        i,
-                                        args.as_str(i).unwrap_or(""),
-                                        match *arg_type {
-                                            CommandParamType::Float => "float",
-                                            CommandParamType::Int => "int",
-                                            CommandParamType::String => "string",
-                                        }
-                                    ));
-                                }
-                                ok
-                            },
-                        );
-                        if ok {
-                            console.command_to_execute = Some(args);
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        console.error("Unknown command")
-                    }
+                    self.input_added(console, input.is_key_down(Scancode::LCtrl))
                 }
             }
 
@@ -893,7 +917,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 {
                                     [1.0, 1.0, 1.0, console_color[3]] // active argument
                                 } else {
-                                    [85.0 / 255.0, 87.0 / 255.0, 87.0 / 255.0, console_color[3]]
+                                    [0.0, 0.0, 0.0, console_color[3]]
                                 };
                                 render_commands
                                     .prepare_for_2d()
@@ -945,7 +969,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         let color = if i == console.autocompletion_index {
                             [1.0, 1.0, 1.0, console_color[3]] // active argument
                         } else {
-                            [85.0 / 255.0, 87.0 / 255.0, 87.0 / 255.0, console_color[3]]
+                            [0.0, 0.0, 0.0, console_color[3]]
                         };
                         render_commands
                             .prepare_for_2d()
