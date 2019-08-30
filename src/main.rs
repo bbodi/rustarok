@@ -1270,8 +1270,8 @@ fn main() {
 fn imgui_frame(
     desktop_client_entity: Entity,
     video: &mut Video,
-    mut ecs_world: &mut specs::world::World,
-    mut rng: ThreadRng,
+    ecs_world: &mut specs::world::World,
+    rng: ThreadRng,
     sent_bytes_per_second: usize,
     mut map_name_filter: &mut ImString,
     all_map_names: &Vec<String>,

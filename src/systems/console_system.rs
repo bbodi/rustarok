@@ -1,9 +1,9 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::HumanInputComponent;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_attach_camera_to, cmd_change_outlook, cmd_control, cmd_follow, cmd_goto,
-    cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_pos, cmd_spawn_area,
-    cmd_spawn_effect, cmd_spawn_entity,
+    cmd_add_status, cmd_attach_camera_to, cmd_control_char, cmd_follow_char, cmd_goto, cmd_heal,
+    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_outlook, cmd_set_pos,
+    cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
@@ -14,28 +14,33 @@ use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use std::collections::HashMap;
 
-// apply the command without losing input
 // add a slider for a vairable?
-// ctrl-R history filtering
+
+#[derive(Eq, PartialEq)]
+enum AutocompletionType {
+    CommandName,
+    Param,
+    CommandHistory,
+}
 
 #[derive(Component)]
 pub struct ConsoleComponent {
-    pub command_history: Vec<String>,
-    pub rows: Vec<ConsoleEntry>,
-    pub history_pos: usize,
-    pub autocompletion_open: bool,
-    pub autocompletion_index: usize,
-    pub full_autocompletion_list: Vec<String>,
-    pub filtered_autocompletion_list: Vec<String>,
+    command_history: Vec<String>,
+    rows: Vec<ConsoleEntry>,
+    history_pos: usize,
+    autocompletion_open: Option<AutocompletionType>,
+    autocompletion_index: usize,
+    full_autocompletion_list: Vec<String>,
+    filtered_autocompletion_list: Vec<String>,
     cursor_x: usize,
-    pub cursor_inside_quotes: bool,
-    pub cursor_parameter_index: usize,
+    cursor_inside_quotes: bool,
+    cursor_parameter_index: usize,
     input: String,
     args: CommandArguments,
-    pub y_pos: i32,
-    pub cursor_shown: bool,
-    pub cursor_change: ElapsedTime,
-    pub key_repeat_allowed_at: ElapsedTime,
+    y_pos: i32,
+    cursor_shown: bool,
+    cursor_change: ElapsedTime,
+    key_repeat_allowed_at: ElapsedTime,
     pub command_to_execute: Option<CommandArguments>,
 }
 
@@ -45,7 +50,7 @@ impl ConsoleComponent {
             args: CommandArguments::new(""),
             autocompletion_index: 0,
             cursor_inside_quotes: false,
-            autocompletion_open: false,
+            autocompletion_open: None,
             cursor_parameter_index: 0,
             full_autocompletion_list: vec![],
             filtered_autocompletion_list: vec![],
@@ -80,6 +85,7 @@ impl ConsoleComponent {
 
     pub fn cursor_or_input_has_changed(&mut self) {
         // check if cursor is inside quotes
+        self.cursor_inside_quotes = false;
         for ch in self.input.chars().take(self.cursor_x) {
             if ch == '"' && self.cursor_inside_quotes {
                 self.cursor_inside_quotes = false;
@@ -104,18 +110,22 @@ impl ConsoleComponent {
     }
 
     fn close_autocompletion(&mut self) {
-        self.autocompletion_open = false;
+        self.autocompletion_open = None;
         self.autocompletion_index = 0;
         self.full_autocompletion_list.clear();
         self.filtered_autocompletion_list.clear();
     }
 
     pub fn filter_autocompletion_list(&mut self) {
-        if self.autocompletion_open {
+        if self.autocompletion_open.is_some() {
             let param = self.args.args.get(self.cursor_parameter_index);
             let current_word = param
                 .map(|param| {
-                    let filtering_chars = self.cursor_x - param.start_pos;
+                    let filtering_chars = if param.start_pos > self.cursor_x {
+                        self.cursor_x
+                    } else {
+                        self.cursor_x - param.start_pos
+                    };
                     param.text.chars().take(filtering_chars).collect()
                 })
                 .unwrap_or("".to_owned());
@@ -147,7 +157,6 @@ impl ConsoleComponent {
             };
             if self.filtered_autocompletion_list.is_empty() {
                 self.close_autocompletion();
-                self.autocompletion_index = 0;
             } else {
                 self.autocompletion_index = self
                     .autocompletion_index
@@ -178,6 +187,177 @@ pub struct ConsoleSystem<'a> {
 impl<'a> ConsoleSystem<'a> {
     pub fn new(command_defs: &'a HashMap<String, CommandDefinition>) -> ConsoleSystem {
         ConsoleSystem { command_defs }
+    }
+
+    fn handle_backspace(
+        input: &HumanInputComponent,
+        console: &mut ConsoleComponent,
+        now: ElapsedTime,
+        repeat_time: f32,
+    ) {
+        let (new_input, new_x) =
+            if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl) {
+                // find first non-alpha character
+                let prev_char_is_space = console
+                    .input
+                    .chars()
+                    .nth(console.cursor_x as usize - 1)
+                    .unwrap()
+                    .is_whitespace();
+                let predicate = |ch: char| -> bool {
+                    if prev_char_is_space {
+                        !ch.is_whitespace()
+                    } else {
+                        ch.is_whitespace()
+                    }
+                };
+
+                let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+                let (new_input, new_x) =
+                    if let Some(ix) = console.input[0..idx].chars().rev().position(predicate) {
+                        (
+                            (console
+                                .input
+                                .chars()
+                                .take(console.cursor_x - ix)
+                                .collect::<String>()
+                                + &console
+                                    .input
+                                    .chars()
+                                    .skip(console.cursor_x)
+                                    .collect::<String>()),
+                            console.cursor_x - ix,
+                        )
+                    } else {
+                        // not found, remove everything
+                        ("".to_owned(), 0)
+                    };
+                (new_input, new_x)
+            } else {
+                if console.cursor_x as usize >= console.input.chars().count() {
+                    console.input.pop();
+                } else {
+                    let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x - 1);
+                    console.input.remove(idx);
+                }
+                (console.input.clone(), console.cursor_x - 1)
+            };
+        console.set_input_and_cursor_x(new_x, new_input);
+        console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+    }
+
+    fn handle_delete_key(
+        input: &HumanInputComponent,
+        console: &mut ConsoleComponent,
+        now: ElapsedTime,
+        repeat_time: f32,
+    ) {
+        let new_input = if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl)
+        {
+            // find first non-alpha character
+            let next_char_is_space = console
+                .input
+                .chars()
+                .nth(console.cursor_x as usize)
+                .unwrap()
+                .is_whitespace();
+            let predicate = |ch: char| -> bool {
+                if next_char_is_space {
+                    !ch.is_whitespace()
+                } else {
+                    ch.is_whitespace()
+                }
+            };
+            let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+            if let Some(ix) = console.input[idx..].chars().position(predicate) {
+                console
+                    .input
+                    .chars()
+                    .take(console.cursor_x)
+                    .collect::<String>()
+                    + &console
+                        .input
+                        .chars()
+                        .skip(console.cursor_x + ix)
+                        .collect::<String>()
+            } else {
+                // not found, remove everything after the cursor
+                console
+                    .input
+                    .chars()
+                    .take(console.cursor_x)
+                    .collect::<String>()
+            }
+        } else {
+            if console.cursor_x as usize >= console.input.chars().count() - 1 {
+                console.input.pop();
+            } else {
+                let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+                console.input.remove(idx);
+            }
+            console.input.clone()
+        };
+        console.set_input(new_input);
+        console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+    }
+
+    fn handle_right_cursor(input: &HumanInputComponent, console: &mut ConsoleComponent) {
+        if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl) {
+            // find first non-alpha character
+            let next_char_is_space = console
+                .input
+                .chars()
+                .nth(console.cursor_x as usize)
+                .unwrap()
+                .is_whitespace();
+            let predicate = |ch: char| -> bool {
+                if next_char_is_space {
+                    !ch.is_whitespace()
+                } else {
+                    ch.is_whitespace()
+                }
+            };
+            let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+            if let Some(ix) = console.input[idx..].chars().position(predicate) {
+                console.cursor_x += ix;
+            } else {
+                // not found, jump to the end
+                console.cursor_x = console.input.chars().count();
+            }
+        } else {
+            console.cursor_x = (console.cursor_x + 1).min(console.input.chars().count());
+        }
+        console.set_cursor_x(console.cursor_x);
+    }
+
+    fn handle_left_cursor(input: &HumanInputComponent, console: &mut ConsoleComponent) {
+        if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl) {
+            // find first non-alpha character
+            let prev_char_is_space = console
+                .input
+                .chars()
+                .nth(console.cursor_x as usize - 1)
+                .unwrap()
+                .is_whitespace();
+            let predicate = |ch: char| -> bool {
+                if prev_char_is_space {
+                    !ch.is_whitespace()
+                } else {
+                    ch.is_whitespace()
+                }
+            };
+
+            let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
+            if let Some(ix) = console.input[0..idx].chars().rev().position(predicate) {
+                console.cursor_x -= ix;
+            } else {
+                // not found, jump to the beginning
+                console.cursor_x = 0;
+            }
+        } else {
+            console.cursor_x = (console.cursor_x - 1).max(0);
+        }
+        console.set_cursor_x(console.cursor_x);
     }
 
     fn create_console_entry(
@@ -214,8 +394,13 @@ impl<'a> ConsoleSystem<'a> {
         let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
         console.input.insert_str(idx, text);
         console.set_input_and_cursor_x(console.cursor_x + 1, console.input.clone());
-        if !console.autocompletion_open {
-            self.open_autocompletion(console);
+        if console.autocompletion_open.is_none() {
+            let autocompletion_type = if console.cursor_parameter_index == 0 {
+                AutocompletionType::CommandName
+            } else {
+                AutocompletionType::Param
+            };
+            self.open_autocompletion(console, autocompletion_type);
         }
     }
 
@@ -245,10 +430,17 @@ impl<'a> ConsoleSystem<'a> {
         }
     }
 
-    fn autocompletion_selected(&self, console: &mut ConsoleComponent, close_autocompletion: bool) {
+    fn autocompletion_selected(
+        &mut self,
+        console: &mut ConsoleComponent,
+        close_autocompletion: bool,
+        autocompletion_by_pressing_enter: bool,
+    ) {
         let mut arg = CommandArguments::new(&console.input);
         let selected_text = &console.filtered_autocompletion_list[console.autocompletion_index];
-        let (selected_text, quoted) = if selected_text.contains(" ") {
+        let is_parameter_completion =
+            Some(AutocompletionType::Param) == console.autocompletion_open;
+        let (selected_text, quoted) = if is_parameter_completion && selected_text.contains(" ") {
             (format!("\"{}\"", selected_text), true)
         } else {
             (selected_text.clone(), false)
@@ -258,38 +450,54 @@ impl<'a> ConsoleSystem<'a> {
         } else {
             arg.args[console.cursor_parameter_index - 1].end_pos + 2 + selected_text.chars().count()
         };
-        if arg.args.len() < console.cursor_parameter_index + 1 {
-            arg.args.push(CommandElement {
-                text: selected_text,
-                start_pos: 0,
-                end_pos,
-                qouted: quoted,
-            });
+        let new_input = if console.autocompletion_open == Some(AutocompletionType::CommandHistory) {
+            selected_text
         } else {
-            arg.args[console.cursor_parameter_index].text = selected_text;
-        }
-        let mut new_input = arg
-            .args
-            .iter()
-            .map(|it| it.text.as_str())
-            .collect::<Vec<&str>>()
-            .join(" ");
-        if end_pos > new_input.len() {
-            new_input += " ";
-        }
+            if arg.args.len() < console.cursor_parameter_index + 1 {
+                arg.args.push(CommandElement {
+                    text: selected_text,
+                    start_pos: 0,
+                    end_pos,
+                    qouted: quoted,
+                });
+            } else {
+                arg.args[console.cursor_parameter_index].text = selected_text;
+            }
+            let mut new_input = arg
+                .args
+                .iter()
+                .map(|it| it.text.as_str())
+                .collect::<Vec<&str>>()
+                .join(" ");
+            if end_pos > new_input.len() {
+                new_input += " ";
+            }
+            new_input
+        };
         if close_autocompletion {
             console.set_input_and_cursor_x(end_pos.min(new_input.chars().count()), new_input);
-            console.full_autocompletion_list.clear();
-            console.filtered_autocompletion_list.clear();
-            console.autocompletion_open = false;
-            console.autocompletion_index = 0;
+            console.close_autocompletion();
+            let command_def = self
+                .command_defs
+                .get(arg.get_command_name().unwrap_or(&"".to_owned()));
+            if let Some(command_def) = command_def {
+                let has_no_param = command_def.arguments.is_empty();
+                let last_param_was_completed =
+                    command_def.arguments.len() <= console.cursor_parameter_index;
+                if (has_no_param || last_param_was_completed) && autocompletion_by_pressing_enter {
+                    // execute the command immediately if it does not have any parameters,
+                    // or the last parameter was autocompleted
+                    // and autocompletion was done by pressing enter
+                    self.input_added(console, false);
+                }
+            }
         } else {
             console.set_input(new_input);
         }
     }
 
     fn input_added(&mut self, console: &mut ConsoleComponent, keep_input_prompt: bool) {
-        let input = console.input.clone();
+        let input = console.input.trim().to_owned();
         let args = CommandArguments::new(&input);
         let command_def = self
             .command_defs
@@ -353,32 +561,51 @@ impl<'a> ConsoleSystem<'a> {
         }
     }
 
-    fn open_autocompletion(&self, console: &mut ConsoleComponent) {
-        let command_def = self.command_defs.get(
-            CommandArguments::new(&console.input)
-                .get_command_name()
-                .unwrap_or(&"".to_owned()),
-        );
-        if console.cursor_parameter_index != 0 {
-            if let Some(list) = command_def.and_then(|it| {
-                it.autocompletion
-                    .get_autocompletion_list(console.cursor_parameter_index - 1)
-            }) {
-                console.full_autocompletion_list = list;
+    fn open_autocompletion(
+        &self,
+        console: &mut ConsoleComponent,
+        autocompletion: AutocompletionType,
+    ) {
+        match autocompletion {
+            AutocompletionType::CommandName => {
+                // list commands
+                console.full_autocompletion_list = self
+                    .command_defs
+                    .keys()
+                    .map(|it| it.to_owned())
+                    .collect::<Vec<String>>();
                 console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
-                console.autocompletion_open = true;
             }
-        } else {
-            // list commands
-            console.full_autocompletion_list = self
-                .command_defs
-                .keys()
-                .map(|it| it.to_owned())
-                .collect::<Vec<String>>();
-            console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
-            console.autocompletion_open = true;
+            AutocompletionType::Param => {
+                let command_def = self.command_defs.get(
+                    CommandArguments::new(&console.input)
+                        .get_command_name()
+                        .unwrap_or(&"".to_owned()),
+                );
+
+                if let Some(list) = command_def.and_then(|it| {
+                    let param_index = console.cursor_parameter_index;
+                    if it.arguments.len() < console.cursor_parameter_index {
+                        None
+                    } else {
+                        it.autocompletion
+                            .get_autocompletion_list(console.cursor_parameter_index - 1)
+                    }
+                }) {
+                    console.full_autocompletion_list = list;
+                    console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
+                }
+            }
+            AutocompletionType::CommandHistory => {
+                console.full_autocompletion_list = console.command_history.clone();
+                console.filtered_autocompletion_list = console.full_autocompletion_list.clone();
+            }
         }
-        console.autocompletion_open = !console.full_autocompletion_list.is_empty();
+        console.autocompletion_open = if console.full_autocompletion_list.is_empty() {
+            None
+        } else {
+            Some(autocompletion)
+        };
         console.filter_autocompletion_list();
     }
 
@@ -430,9 +657,9 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_kill_all());
         ConsoleSystem::add_command(&mut command_defs, cmd_goto());
         ConsoleSystem::add_command(&mut command_defs, cmd_attach_camera_to());
-        ConsoleSystem::add_command(&mut command_defs, cmd_follow());
-        ConsoleSystem::add_command(&mut command_defs, cmd_control());
-        ConsoleSystem::add_command(&mut command_defs, cmd_change_outlook());
+        ConsoleSystem::add_command(&mut command_defs, cmd_follow_char());
+        ConsoleSystem::add_command(&mut command_defs, cmd_control_char());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook());
 
         return command_defs;
     }
@@ -711,14 +938,14 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 }
 
                 if input.is_key_just_pressed(Scancode::Up) {
-                    if console.autocompletion_open {
+                    if console.autocompletion_open.is_some() {
                         if console.autocompletion_index > 0 {
                             console.autocompletion_index -= 1;
                         } else {
                             console.autocompletion_index =
                                 console.filtered_autocompletion_list.len() - 1;
                         }
-                        self.autocompletion_selected(console, false);
+                        self.autocompletion_selected(console, false, false);
                     } else {
                         if console.history_pos < console.command_history.len() {
                             console.history_pos += 1;
@@ -728,7 +955,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         console.set_input_and_cursor_x(new_input.chars().count(), new_input);
                     }
                 } else if input.is_key_just_pressed(Scancode::Down) {
-                    if console.autocompletion_open {
+                    if console.autocompletion_open.is_some() {
                         if console.autocompletion_index
                             < console.filtered_autocompletion_list.len() - 1
                         {
@@ -736,7 +963,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         } else {
                             console.autocompletion_index = 0;
                         }
-                        self.autocompletion_selected(console, false);
+                        self.autocompletion_selected(console, false, false);
                     } else {
                         if console.history_pos > 1 {
                             console.history_pos -= 1;
@@ -768,38 +995,38 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     && console.cursor_x > 0
                     && console.key_repeat_allowed_at.is_earlier_than(now)
                 {
-                    if console.cursor_x as usize >= console.input.chars().count() {
-                        console.input.pop();
-                    } else {
-                        let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x - 1);
-                        console.input.remove(idx);
-                    }
-                    console.set_input_and_cursor_x(console.cursor_x - 1, console.input.clone());
-                    console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+                    ConsoleSystem::handle_backspace(input, console, now, repeat_time);
                 } else if input.is_key_down(Scancode::Delete)
                     && console.cursor_x < console.input.chars().count()
                     && console.key_repeat_allowed_at.is_earlier_than(now)
                 {
-                    if console.cursor_x as usize >= console.input.chars().count() - 1 {
-                        console.input.pop();
-                    } else {
-                        let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
-                        console.input.remove(idx);
-                    }
-                    console.set_input(console.input.clone());
-                    console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+                    ConsoleSystem::handle_delete_key(input, console, now, repeat_time);
                 } else if input.is_key_down(Scancode::LCtrl)
                     && input.is_key_just_released(Scancode::Space)
                 {
-                    self.open_autocompletion(console);
+                    let autocompletion_type = if console.cursor_parameter_index == 0 {
+                        AutocompletionType::CommandName
+                    } else {
+                        AutocompletionType::Param
+                    };
+                    self.open_autocompletion(console, autocompletion_type);
                 } else if (input.is_key_just_released(Scancode::Space)
                     || input.is_key_just_released(Scancode::Tab)
                     || (input.is_key_just_released(Scancode::Return))
                         && !input.is_key_down(Scancode::LCtrl))
-                    && console.autocompletion_open
+                    && console.autocompletion_open.is_some()
                 {
-                    self.autocompletion_selected(console, !input.is_key_down(Scancode::LCtrl));
-                    self.open_autocompletion(console); // open autocompletion for the next param if any
+                    self.autocompletion_selected(
+                        console,
+                        !input.is_key_down(Scancode::LCtrl),
+                        input.is_key_just_released(Scancode::Return),
+                    );
+                    self.open_autocompletion(console, AutocompletionType::Param); // open autocompletion for the next param if any
+                } else if input.is_key_down(Scancode::LCtrl)
+                    && input.is_key_just_released(Scancode::R)
+                {
+                    console.set_input_and_cursor_x(0, "".to_owned());
+                    self.open_autocompletion(console, AutocompletionType::CommandHistory);
                 } else if input.is_key_just_released(Scancode::Space) {
                     if console.cursor_inside_quotes
                         || (console.cursor_x > 0
@@ -818,7 +1045,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     // two spaces are not allowed
                     self.insert_str_to_prompt(&input.text, console)
                 } else if input.is_key_just_released(Scancode::Escape)
-                    && console.autocompletion_open
+                    && console.autocompletion_open.is_some()
                 {
                     console.close_autocompletion();
                 } else if input.is_key_just_released(Scancode::Return) {
@@ -936,7 +1163,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     }
                 }
                 // autocompletion
-                if console.autocompletion_open {
+                if console.autocompletion_open.is_some() {
                     let longest_text_len: usize = console
                         .filtered_autocompletion_list
                         .iter()
@@ -980,66 +1207,5 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 }
             }
         }
-    }
-}
-
-impl<'a> ConsoleSystem<'a> {
-    fn handle_right_cursor(input: &HumanInputComponent, console: &mut ConsoleComponent) {
-        if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl) {
-            // find first non-alpha character
-            let next_char_is_space = console
-                .input
-                .chars()
-                .nth(console.cursor_x as usize)
-                .unwrap()
-                .is_whitespace();
-            let predicate = |ch: char| -> bool {
-                if next_char_is_space {
-                    !ch.is_whitespace()
-                } else {
-                    ch.is_whitespace()
-                }
-            };
-            let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
-            if let Some(ix) = console.input[idx..].chars().position(predicate) {
-                console.cursor_x += ix;
-            } else {
-                // not found, jump to the end
-                console.cursor_x = console.input.chars().count();
-            }
-        } else {
-            console.cursor_x = (console.cursor_x + 1).min(console.input.chars().count());
-        }
-        console.set_cursor_x(console.cursor_x);
-    }
-
-    fn handle_left_cursor(input: &HumanInputComponent, console: &mut ConsoleComponent) {
-        if input.is_key_down(Scancode::LCtrl) || input.is_key_down(Scancode::RCtrl) {
-            // find first non-alpha character
-            let prev_char_is_space = console
-                .input
-                .chars()
-                .nth(console.cursor_x as usize - 1)
-                .unwrap()
-                .is_whitespace();
-            let predicate = |ch: char| -> bool {
-                if prev_char_is_space {
-                    !ch.is_whitespace()
-                } else {
-                    ch.is_whitespace()
-                }
-            };
-
-            let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
-            if let Some(ix) = console.input[0..idx].chars().rev().position(predicate) {
-                console.cursor_x -= ix;
-            } else {
-                // not found, jump to the beginning
-                console.cursor_x = 0;
-            }
-        } else {
-            console.cursor_x = (console.cursor_x - 1).max(0);
-        }
-        console.set_cursor_x(console.cursor_x);
     }
 }

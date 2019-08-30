@@ -241,7 +241,7 @@ pub struct HumanInputComponent {
     pub is_console_open: bool,
     pub username: String,
     pub inputs: Vec<sdl2::event::Event>,
-    skills_for_keys: [Option<Skills>; 8],
+    skills_for_keys: [Option<Skills>; 9],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,

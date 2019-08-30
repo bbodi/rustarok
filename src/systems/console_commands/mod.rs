@@ -41,9 +41,9 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
     }
 }
 
-pub(super) fn cmd_change_outlook() -> CommandDefinition {
+pub(super) fn cmd_set_outlook() -> CommandDefinition {
     CommandDefinition {
-        name: "change_outlook".to_string(),
+        name: "set_outlook".to_string(),
         arguments: vec![
             ("outlook", CommandParamType::String, true),
             ("[username]", CommandParamType::String, false),
@@ -709,9 +709,9 @@ pub(super) fn cmd_attach_camera_to() -> CommandDefinition {
     }
 }
 
-pub(super) fn cmd_control() -> CommandDefinition {
+pub(super) fn cmd_control_char() -> CommandDefinition {
     CommandDefinition {
-        name: "control".to_string(),
+        name: "control_char".to_string(),
         arguments: vec![("username", CommandParamType::String, true)],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
@@ -743,9 +743,9 @@ pub(super) fn cmd_control() -> CommandDefinition {
     }
 }
 
-pub(super) fn cmd_follow() -> CommandDefinition {
+pub(super) fn cmd_follow_char() -> CommandDefinition {
     CommandDefinition {
-        name: "follow".to_string(),
+        name: "follow_char3".to_string(),
         arguments: vec![("username", CommandParamType::String, true)],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
