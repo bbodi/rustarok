@@ -1,12 +1,16 @@
 use crate::asset::str::{KeyFrameType, StrLayer};
+use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
     EffectFrameCacheKey, RenderCommandCollectorComponent,
 };
 use crate::systems::render_sys::DamageRenderSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{GlTexture, VertexArray, VertexAttribDefinition, Video, TEXTURE_0};
-use nalgebra::{Matrix4, Rotation3, Vector3};
+use crate::video::{
+    GlTexture, VertexArray, VertexAttribDefinition, Video, TEXTURE_0, TEXTURE_1, TEXTURE_2,
+};
+use crate::{MapRenderData, Shaders};
+use nalgebra::{Matrix3, Matrix4, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -206,6 +210,47 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         }
     }
 
+    fn render_ground(
+        shaders: &Shaders,
+        projection_matrix: &Matrix4<f32>,
+        map_render_data: &MapRenderData,
+        model_view: &Matrix4<f32>,
+        normal_matrix: &Matrix3<f32>,
+    ) {
+        let shader = shaders.ground_shader.gl_use();
+        shader.set_mat4("projection", &projection_matrix);
+        shader.set_mat4("model_view", &model_view);
+        shader.set_mat3("normal_matrix", &normal_matrix);
+        shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
+        shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
+        shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
+        shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
+        shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
+        map_render_data.texture_atlas.bind(TEXTURE_0);
+        shader.set_int("gnd_texture_atlas", 0);
+        map_render_data.tile_color_texture.bind(TEXTURE_1);
+        shader.set_int("tile_color_texture", 1);
+        map_render_data.lightmap_texture.bind(TEXTURE_2);
+        shader.set_int("lightmap_texture", 2);
+        shader.set_int(
+            "use_tile_color",
+            if map_render_data.use_tile_colors {
+                1
+            } else {
+                0
+            },
+        );
+        shader.set_int(
+            "use_lightmap",
+            if map_render_data.use_lightmaps { 1 } else { 0 },
+        );
+        shader.set_int(
+            "use_lighting",
+            if map_render_data.use_lighting { 1 } else { 0 },
+        );
+        map_render_data.ground_vertex_array.bind().draw();
+    }
+
     pub fn create_number_vertex_array(&self, number: u32) -> VertexArray {
         let digits = DamageRenderSystem::get_digits(number);
         // create vbo based on the numbers
@@ -373,13 +418,20 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
         specs::ReadStorage<'a, RenderCommandCollectorComponent>,
         specs::ReadStorage<'a, BrowserClient>,
+        specs::ReadStorage<'a, CameraComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (render_commands_storage, browser_client_storage,mut system_benchmark, system_vars): Self::SystemData,
+        (
+            render_commands_storage,
+            browser_client_storage,
+            camera_storage,
+            mut system_benchmark,
+            system_vars,
+        ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem");
 
@@ -387,10 +439,27 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
 
-        for (render_commands, _not_browser) in
-            (&render_commands_storage, !&browser_client_storage).join()
+        for (render_commands, camera, _not_browser) in (
+            &render_commands_storage,
+            &camera_storage,
+            !&browser_client_storage,
+        )
+            .join()
         {
             let render_commands: &RenderCommandCollectorComponent = render_commands;
+
+            /////////////////////////////////
+            // GROUND
+            /////////////////////////////////
+            if system_vars.map_render_data.draw_ground {
+                OpenGlRenderSystem::render_ground(
+                    &system_vars.assets.shaders,
+                    &system_vars.matrices.projection,
+                    &system_vars.map_render_data,
+                    &camera.view_matrix,
+                    &camera.normal_matrix,
+                );
+            }
 
             /////////////////////////////////
             // 3D Rectangle

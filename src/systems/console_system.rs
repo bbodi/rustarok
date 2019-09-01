@@ -1,9 +1,9 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::HumanInputComponent;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_attach_camera_to, cmd_control_char, cmd_follow_char, cmd_goto, cmd_heal,
-    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_set_outlook, cmd_set_pos,
-    cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
+    cmd_add_status, cmd_control_char, cmd_follow_char, cmd_goto, cmd_heal, cmd_kill_all,
+    cmd_list_entities, cmd_list_players, cmd_set_outlook, cmd_set_pos, cmd_spawn_area,
+    cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
@@ -390,7 +390,12 @@ impl<'a> ConsoleSystem<'a> {
         return entry;
     }
 
-    fn insert_str_to_prompt(&mut self, text: &str, console: &mut ConsoleComponent) {
+    fn insert_str_to_prompt(
+        &mut self,
+        text: &str,
+        console: &mut ConsoleComponent,
+        input_storage: &specs::ReadStorage<HumanInputComponent>,
+    ) {
         let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
         console.input.insert_str(idx, text);
         console.set_input_and_cursor_x(console.cursor_x + 1, console.input.clone());
@@ -400,7 +405,7 @@ impl<'a> ConsoleSystem<'a> {
             } else {
                 AutocompletionType::Param
             };
-            self.open_autocompletion(console, autocompletion_type);
+            self.open_autocompletion(console, autocompletion_type, &input_storage);
         }
     }
 
@@ -565,6 +570,7 @@ impl<'a> ConsoleSystem<'a> {
         &self,
         console: &mut ConsoleComponent,
         autocompletion: AutocompletionType,
+        input_storage: &specs::ReadStorage<HumanInputComponent>,
     ) {
         match autocompletion {
             AutocompletionType::CommandName => {
@@ -588,8 +594,10 @@ impl<'a> ConsoleSystem<'a> {
                     if it.arguments.len() < console.cursor_parameter_index {
                         None
                     } else {
-                        it.autocompletion
-                            .get_autocompletion_list(console.cursor_parameter_index - 1)
+                        it.autocompletion.get_autocompletion_list(
+                            console.cursor_parameter_index - 1,
+                            input_storage,
+                        )
                     }
                 }) {
                     console.full_autocompletion_list = list;
@@ -656,7 +664,6 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_heal());
         ConsoleSystem::add_command(&mut command_defs, cmd_kill_all());
         ConsoleSystem::add_command(&mut command_defs, cmd_goto());
-        ConsoleSystem::add_command(&mut command_defs, cmd_attach_camera_to());
         ConsoleSystem::add_command(&mut command_defs, cmd_follow_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_control_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook());
@@ -827,7 +834,11 @@ mod tests {
 }
 
 pub trait AutocompletionProvider {
-    fn get_autocompletion_list(&self, param_index: usize) -> Option<Vec<String>>;
+    fn get_autocompletion_list(
+        &self,
+        param_index: usize,
+        input_storage: &specs::ReadStorage<HumanInputComponent>,
+    ) -> Option<Vec<String>>;
 }
 
 pub struct BasicAutocompletionProvider(Box<dyn Fn(usize) -> Option<Vec<String>>>);
@@ -842,8 +853,57 @@ impl BasicAutocompletionProvider {
 }
 
 impl AutocompletionProvider for BasicAutocompletionProvider {
-    fn get_autocompletion_list(&self, param_index: usize) -> Option<Vec<String>> {
+    fn get_autocompletion_list(
+        &self,
+        param_index: usize,
+        _input_storage: &specs::ReadStorage<HumanInputComponent>,
+    ) -> Option<Vec<String>> {
         (self.0)(param_index)
+    }
+}
+
+pub struct AutocompletionProviderWithUsernameCompletion(
+    Box<
+        dyn Fn(
+            usize,
+            Box<dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>>,
+            &specs::ReadStorage<HumanInputComponent>,
+        ) -> Option<Vec<String>>,
+    >,
+);
+
+impl AutocompletionProviderWithUsernameCompletion {
+    pub fn new<F>(callback: F) -> Box<dyn AutocompletionProvider>
+    where
+        F: Fn(
+                usize,
+                Box<dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>>,
+                &specs::ReadStorage<HumanInputComponent>,
+            ) -> Option<Vec<String>>
+            + 'static,
+    {
+        Box::new(AutocompletionProviderWithUsernameCompletion(Box::new(
+            callback,
+        )))
+    }
+}
+
+impl AutocompletionProvider for AutocompletionProviderWithUsernameCompletion {
+    fn get_autocompletion_list(
+        &self,
+        param_index: usize,
+        input_storage: &specs::ReadStorage<HumanInputComponent>,
+    ) -> Option<Vec<String>> {
+        let username_completor: Box<
+            dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>,
+        > = Box::new(|input_storage| {
+            let mut usernames = Vec::with_capacity(12);
+            for input in input_storage.join() {
+                usernames.push(input.username.clone());
+            }
+            usernames
+        });
+        (self.0)(param_index, username_completor, input_storage)
     }
 }
 
@@ -1009,7 +1069,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     } else {
                         AutocompletionType::Param
                     };
-                    self.open_autocompletion(console, autocompletion_type);
+                    self.open_autocompletion(console, autocompletion_type, &input_storage);
                 } else if (input.is_key_just_released(Scancode::Space)
                     || input.is_key_just_released(Scancode::Tab)
                     || (input.is_key_just_released(Scancode::Return))
@@ -1021,12 +1081,33 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         !input.is_key_down(Scancode::LCtrl),
                         input.is_key_just_released(Scancode::Return),
                     );
-                    self.open_autocompletion(console, AutocompletionType::Param); // open autocompletion for the next param if any
+                    if let Some(command_def) = self
+                        .command_defs
+                        .get(console.args.get_command_name().unwrap_or(&"".to_owned()))
+                    {
+                        if command_def
+                            .arguments
+                            .get((console.cursor_parameter_index as i32 - 1).max(0) as usize)
+                            .map(|it| it.2)
+                            .unwrap_or(false)
+                        {
+                            // if there is next command and it is mandatory
+                            self.open_autocompletion(
+                                console,
+                                AutocompletionType::Param,
+                                &input_storage,
+                            );
+                        }
+                    }
                 } else if input.is_key_down(Scancode::LCtrl)
                     && input.is_key_just_released(Scancode::R)
                 {
                     console.set_input_and_cursor_x(0, "".to_owned());
-                    self.open_autocompletion(console, AutocompletionType::CommandHistory);
+                    self.open_autocompletion(
+                        console,
+                        AutocompletionType::CommandHistory,
+                        &input_storage,
+                    );
                 } else if input.is_key_just_released(Scancode::Space) {
                     if console.cursor_inside_quotes
                         || (console.cursor_x > 0
@@ -1037,13 +1118,13 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 .unwrap_or('x')
                                 .is_whitespace())
                     {
-                        self.insert_str_to_prompt(" ", console)
+                        self.insert_str_to_prompt(" ", console, &input_storage)
                     }
                 } else if !input.text.is_empty() && !input.is_key_down(Scancode::Space) {
                     // spaces are handled above, because typing space can open the autocompletion, then
                     // releasing it can choose the first option immediately
                     // two spaces are not allowed
-                    self.insert_str_to_prompt(&input.text, console)
+                    self.insert_str_to_prompt(&input.text, console, &input_storage)
                 } else if input.is_key_just_released(Scancode::Escape)
                     && console.autocompletion_open.is_some()
                 {

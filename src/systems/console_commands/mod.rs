@@ -18,8 +18,9 @@ use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{AttackComponent, AttackType, MinionComponent, StrEffectComponent};
 use crate::consts::{JobId, MonsterId};
 use crate::systems::console_system::{
-    AutocompletionProvider, BasicAutocompletionProvider, CommandDefinition, CommandParamType,
-    ConsoleComponent, ConsoleEntry, ConsoleSystem, ConsoleWordType,
+    AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
+    BasicAutocompletionProvider, CommandDefinition, CommandParamType, ConsoleComponent,
+    ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine, PLAYABLE_OUTLOOKS};
@@ -36,7 +37,11 @@ struct SpawnEffectAutocompletion {
 }
 
 impl AutocompletionProvider for SpawnEffectAutocompletion {
-    fn get_autocompletion_list(&self, _param_index: usize) -> Option<Vec<String>> {
+    fn get_autocompletion_list(
+        &self,
+        _param_index: usize,
+        _input_storage: &specs::ReadStorage<HumanInputComponent>,
+    ) -> Option<Vec<String>> {
         Some(self.effect_names.clone())
     }
 }
@@ -48,24 +53,26 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
             ("outlook", CommandParamType::String, true),
             ("[username]", CommandParamType::String, false),
         ],
-        autocompletion: BasicAutocompletionProvider::new(|index| {
-            if index == 0 {
-                Some(
-                    [
-                        PLAYABLE_OUTLOOKS
-                            .iter()
-                            .map(|it| format!("{:?}", it))
-                            .collect::<Vec<_>>(),
-                        MonsterId::iter()
-                            .map(|it| it.to_string())
-                            .collect::<Vec<_>>(),
-                    ]
-                    .concat(),
-                )
-            } else {
-                None
-            }
-        }),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(
+                        [
+                            PLAYABLE_OUTLOOKS
+                                .iter()
+                                .map(|it| format!("{:?}", it))
+                                .collect::<Vec<_>>(),
+                            MonsterId::iter()
+                                .map(|it| it.to_string())
+                                .collect::<Vec<_>>(),
+                        ]
+                        .concat(),
+                    )
+                } else {
+                    Some(username_completor(input_storage))
+                }
+            },
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let job_name = args.as_str(0).unwrap();
             let username = args.as_str(1);
@@ -496,7 +503,15 @@ pub(super) fn cmd_heal() -> CommandDefinition {
             ("value", CommandParamType::Int, true),
             ("[username]", CommandParamType::String, false),
         ],
-        autocompletion: BasicAutocompletionProvider::new(|index| None),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 1 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let value = args.as_int(0).unwrap().max(0);
             let username = args.as_str(1);
@@ -646,13 +661,17 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
             ("[value]", CommandParamType::Int, false),
             ("[username]", CommandParamType::String, false),
         ],
-        autocompletion: BasicAutocompletionProvider::new(|index| {
-            if index == 0 {
-                Some(STATUS_NAMES.iter().map(|it| (*it).to_owned()).collect())
-            } else {
-                None
-            }
-        }),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(STATUS_NAMES.iter().map(|it| (*it).to_owned()).collect())
+                } else if index == 3 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let status_name = args.as_str(0).unwrap();
             let time = args.as_int(1).unwrap();
@@ -681,30 +700,33 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
     }
 }
 
-pub(super) fn cmd_attach_camera_to() -> CommandDefinition {
+pub(super) fn cmd_follow_char() -> CommandDefinition {
     CommandDefinition {
-        name: "attach_camera_to".to_string(),
-        arguments: vec![("charname", CommandParamType::String, true)],
-        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        name: "follow_char".to_string(),
+        arguments: vec![("username", CommandParamType::String, true)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
 
             let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            let mut storage = ecs_world.write_storage::<CameraComponent>();
-            let camera_component = storage.get_mut(self_entity_id).unwrap();
             if let Some(target_entity_id) = target_entity_id {
-                camera_component.followed_controller = Some(target_entity_id);
-            } else {
+                // remove controller from self
                 ecs_world
-                    .write_storage::<ConsoleComponent>()
+                    .write_storage::<ControllerComponent>()
+                    .remove(self_entity_id);
+
+                // set camera to follow target
+                ecs_world
+                    .write_storage::<CameraComponent>()
                     .get_mut(self_entity_id)
                     .unwrap()
-                    .add_entry(ConsoleEntry::new().add(
-                        "Character was not found, camera is free",
-                        ConsoleWordType::Normal,
-                    ));
+                    .followed_controller = Some(target_entity_id);
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
             }
-            Ok(())
         }),
     }
 }
@@ -712,12 +734,12 @@ pub(super) fn cmd_attach_camera_to() -> CommandDefinition {
 pub(super) fn cmd_control_char() -> CommandDefinition {
     CommandDefinition {
         name: "control_char".to_string(),
-        arguments: vec![("username", CommandParamType::String, true)],
+        arguments: vec![("charname", CommandParamType::String, true)],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
+            let charname = args.as_str(0).unwrap();
 
-            let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
+            let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, charname);
             if let Some(target_char_id) = target_char_id {
                 // remove current controller and add a new one
                 // TODO: skills should be reassigned as well
@@ -743,40 +765,13 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
     }
 }
 
-pub(super) fn cmd_follow_char() -> CommandDefinition {
-    CommandDefinition {
-        name: "follow_char3".to_string(),
-        arguments: vec![("username", CommandParamType::String, true)],
-        autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
-
-            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            if let Some(target_entity_id) = target_entity_id {
-                // remove controller from self
-                ecs_world
-                    .write_storage::<ControllerComponent>()
-                    .remove(self_entity_id);
-
-                // set camera to follow target
-                ecs_world
-                    .write_storage::<CameraComponent>()
-                    .get_mut(self_entity_id)
-                    .unwrap()
-                    .followed_controller = Some(target_entity_id);
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
-    }
-}
-
 pub(super) fn cmd_goto() -> CommandDefinition {
     CommandDefinition {
         name: "goto".to_string(),
         arguments: vec![("username", CommandParamType::String, true)],
-        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
 
@@ -815,7 +810,15 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
             ("y", CommandParamType::Int, true),
             ("[username]", CommandParamType::String, false),
         ],
-        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 2 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
         action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
             let x = args.as_int(0).unwrap();
             let y = args.as_int(1).unwrap();

@@ -16,8 +16,8 @@ use crate::systems::render::render_command::{RenderCommandCollectorComponent, Ui
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
+use crate::video::VertexArray;
 use crate::video::VertexAttribDefinition;
-use crate::video::{VertexArray, TEXTURE_0, TEXTURE_1, TEXTURE_2};
 use crate::{ElapsedTime, MapRenderData, PhysicEngine, Shaders, SpriteResource};
 use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use specs::prelude::*;
@@ -880,16 +880,6 @@ fn render_client(
     map_render_data: &MapRenderData,
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
-    if map_render_data.draw_ground {
-        render_ground(
-            shaders,
-            projection_matrix,
-            map_render_data,
-            &view,
-            &normal_matrix,
-        );
-    }
-
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
         for model_instance in &map_render_data.model_instances {
@@ -924,47 +914,6 @@ fn render_client(
                 .add_model_command(&model_instance.name, &model_instance.matrix);
         }
     }
-}
-
-fn render_ground(
-    shaders: &Shaders,
-    projection_matrix: &Matrix4<f32>,
-    map_render_data: &MapRenderData,
-    model_view: &Matrix4<f32>,
-    normal_matrix: &Matrix3<f32>,
-) {
-    let shader = shaders.ground_shader.gl_use();
-    shader.set_mat4("projection", &projection_matrix);
-    shader.set_mat4("model_view", &model_view);
-    shader.set_mat3("normal_matrix", &normal_matrix);
-    shader.set_vec3("light_dir", &map_render_data.rsw.light.direction);
-    shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
-    shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
-    shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-    shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
-    map_render_data.texture_atlas.bind(TEXTURE_0);
-    shader.set_int("gnd_texture_atlas", 0);
-    map_render_data.tile_color_texture.bind(TEXTURE_1);
-    shader.set_int("tile_color_texture", 1);
-    map_render_data.lightmap_texture.bind(TEXTURE_2);
-    shader.set_int("lightmap_texture", 2);
-    shader.set_int(
-        "use_tile_color",
-        if map_render_data.use_tile_colors {
-            1
-        } else {
-            0
-        },
-    );
-    shader.set_int(
-        "use_lightmap",
-        if map_render_data.use_lightmaps { 1 } else { 0 },
-    );
-    shader.set_int(
-        "use_lighting",
-        if map_render_data.use_lighting { 1 } else { 0 },
-    );
-    map_render_data.ground_vertex_array.bind().draw();
 }
 
 pub struct DamageRenderSystem {}
