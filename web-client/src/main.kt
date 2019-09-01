@@ -20,7 +20,7 @@ class TextureData(private val native: dynamic) {
 }
 
 interface DatabaseTextureEntry {
-    val gl_textures: Array<Any>
+    val gl_textures: Array<TextureData>
     val hash: String
 }
 
@@ -34,7 +34,7 @@ var gl = canvas.getContext("webgl2") as WebGL2RenderingContext
 var VIDEO_WIDTH = 0
 var VIDEO_HEIGHT = 0
 var PROJECTION_MATRIX: Float32Array = 0.asDynamic()
-var VIEW_MATRIX: Float32Array = 0.asDynamic()
+var VIEW_MATRIX: Float32Array = Float32Array(16)
 var state = 0
 
 sealed class RenderCommand {
@@ -44,12 +44,15 @@ sealed class RenderCommand {
                         val offset: Float32Array,
                         val w: Float,
                         val h: Float) : RenderCommand()
+
+    data class Number3D(val value: Int,
+                        val matrix: Float32Array,
+                        val color: Float32Array,
+                        val offset: Float32Array,
+                        val size: Float) : RenderCommand()
 }
 
-val sprite_render_commands = arrayListOf<RenderCommand.Sprite3D>()
-
-val sprite_gl_program = load_sprite_shader(gl)
-val sprite_buffer = create_sprite_buffer(gl)
+val render_commands = RenderCommands()
 
 var socket: WebSocket = 0.asDynamic()
 
@@ -96,13 +99,15 @@ fun main() {
                         val map = hashMapOf<String, DatabaseTextureEntry>()
                         for (key in keys) {
                             val databaseTextureEntry: DatabaseTextureEntry = texture_db[key]
+                            for (i in databaseTextureEntry.gl_textures.indices) {
+                                databaseTextureEntry.gl_textures[i] = TextureData(databaseTextureEntry.gl_textures[i])
+                            }
                             map[key] = databaseTextureEntry
                             if (key == "[100, 97, 116, 97, 92, 115, 112, 114, 105, 116, 101, 92, 195, 128, 195, 142, 194, 176, 194, 163, 195, 129, 194, 183, 92, 194, 184, 195, 182, 195, 133, 195, 171, 92, 194, 191, 194, 169, 92, 195, 133, 194, 169, 194, 183, 195, 167, 194, 188, 194, 188, 195, 128, 195, 140, 194, 180, 195, 181, 95, 194, 191, 194, 169]") {
                                 js("debugger")
                             }
                             path_to_server_gl_indices[key] = databaseTextureEntry
                             for ((i, glTexture) in databaseTextureEntry.gl_textures.withIndex()) {
-                                val glTexture = TextureData(glTexture)
                                 server_texture_index_to_path[glTexture.server_gl_index] = Triple(glTexture, key, i)
                             }
                         }
@@ -114,7 +119,8 @@ fun main() {
                             }))
                         }
                     }
-                }.readAsText(blob)
+                }
+                        .readAsText(blob)
             }
             1 -> {
                 console.info("Received missing textures")
@@ -150,13 +156,22 @@ fun main() {
                 VIEW_MATRIX = reader.next_matrix()
 
                 while (reader.has_next()) {
-                    sprite_render_commands.add(RenderCommand.Sprite3D(w = reader.next_f32(),
-                                                                      h = reader.next_f32(),
-                                                                      color = reader.next_v4(),
-                                                                      offset = reader.next_v2(),
-                                                                      matrix = reader.next_matrix(),
-                                                                      server_texture_id = reader.next_u16()))
-                    val _dummy = reader.next_u16()
+                    for (i in 0 until reader.next_u32()) {
+                        render_commands.sprite_render_commands.add(RenderCommand.Sprite3D(w = reader.next_f32(),
+                                                                                          h = reader.next_f32(),
+                                                                                          color = reader.next_v4(),
+                                                                                          offset = reader.next_v2(),
+                                                                                          matrix = reader.next_matrix(),
+                                                                                          server_texture_id = reader.next_u32()))
+                    }
+
+                    for (i in 0 until reader.next_u32()) {
+                        render_commands.number_render_commands.add(RenderCommand.Number3D(size = reader.next_f32(),
+                                                                                          color = reader.next_v4(),
+                                                                                          offset = reader.next_v2(),
+                                                                                          matrix = reader.next_matrix(),
+                                                                                          value = reader.next_u32()))
+                    }
                 }
             }
             else -> {
@@ -175,8 +190,8 @@ fun start_frame(socket: WebSocket) {
     Input.register_event_handlers(canvas, document)
 
     tick = { s: Double ->
-        render(gl, sprite_render_commands)
-        sprite_render_commands.clear()
+        render_commands.render(gl)
+        render_commands.clear()
 
         val now = Date.now()
         val elapsed = now - last_tick
@@ -190,35 +205,9 @@ fun start_frame(socket: WebSocket) {
     window.requestAnimationFrame(tick)
 }
 
-fun render(gl: WebGL2RenderingContext, sprite_render_commands: ArrayList<RenderCommand.Sprite3D>) {
-    gl.useProgram(sprite_gl_program.program)
-    gl.activeTexture(WebGLRenderingContext.TEXTURE0)
-    gl.uniform1i(sprite_gl_program.model_texture, 0)
-    gl.uniformMatrix4fv(sprite_gl_program.projection_mat, false, PROJECTION_MATRIX)
 
-    gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, sprite_buffer)
-    gl.enableVertexAttribArray(sprite_gl_program.a_pos)
-    gl.enableVertexAttribArray(sprite_gl_program.a_uv)
-    gl.vertexAttribPointer(sprite_gl_program.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
-    gl.vertexAttribPointer(sprite_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 2 * 4)
-
-    for (render_command in sprite_render_commands) {
-        gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
-        gl.uniform4fv(sprite_gl_program.color, render_command.color)
-        gl.uniformMatrix4fv(sprite_gl_program.model, false, render_command.matrix)
-        gl.uniform2fv(sprite_gl_program.offset, render_command.offset)
-        gl.uniform2fv(sprite_gl_program.size, arrayOf(render_command.w, render_command.h))
-
-        gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_texture(render_command.server_texture_id))
-        gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
-    }
-}
-
-private suspend fun load_texture(glTexture: TextureData, path: String, i: Int): WebGLTexture {
-    val raw_data =
-            IndexedDb.get_texture(path, i) ?: Uint8Array(glTexture.width * glTexture.height * 4).apply {
-                this.asDynamic().fill(150)
-            }
+private suspend fun load_texture(glTexture: TextureData, path: String, i: Int): WebGLTexture? {
+    val raw_data = IndexedDb.get_texture(path, i) ?: return null
     val texture_obj = gl.createTexture()!!
     gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture_obj)
     gl.texParameteri(WebGLRenderingContext.TEXTURE_2D,
@@ -251,7 +240,7 @@ private suspend fun load_texture(glTexture: TextureData, path: String, i: Int): 
 }
 
 val dummy_texture = gl.createTexture()!!
-private fun get_or_load_texture(server_texture_id: Int): WebGLTexture {
+fun get_or_load_texture(server_texture_id: Int): WebGLTexture {
     val texture_id = server_to_client_gl_indices[server_texture_id]
     if (texture_id == null) {
         console.log("Loading texture $server_texture_id")
@@ -264,8 +253,12 @@ private fun get_or_load_texture(server_texture_id: Int): WebGLTexture {
             } else {
                 val (glTexture, path, i) = maybe
                 val new_texture_id = load_texture(glTexture, path, i)
-                console.log("Texture was loaded: $server_texture_id")
-                server_to_client_gl_indices[server_texture_id] = new_texture_id
+                if (new_texture_id == null) {
+                    console.error("Texture was not found: $server_texture_id")
+                } else {
+                    console.log("Texture was loaded: $server_texture_id")
+                    server_to_client_gl_indices[server_texture_id] = new_texture_id
+                }
             }
         }
         return dummy_texture
@@ -289,6 +282,12 @@ class BufferReader(val buffer: ArrayBuffer) {
         val ret = view.getUint16(offset, true)
         offset += 2
         return ret as Int
+    }
+
+    fun next_u32(): Int {
+        val ret = view.getUint32(offset, true)
+        offset += 4
+        return ret
     }
 
     fun next_f32(): Float {
@@ -346,136 +345,3 @@ suspend fun Job.await() {
         window.setTimeout(handler, 100)
     }.await()
 }
-
-fun create_sprite_buffer(gl: WebGL2RenderingContext): WebGLBuffer {
-    val buffer = gl.createBuffer()!!
-    gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
-    gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
-                  Float32Array(arrayOf(-0.5f, +0.5f, 0.0f, 0.0f,
-                                       +0.5f, +0.5f, 1.0f, 0.0f,
-                                       -0.5f, -0.5f, 0.0f, 1.0f,
-                                       +0.5f, -0.5f, 1.0f, 1.0f)),
-                  WebGLRenderingContext.STATIC_DRAW)
-    return buffer
-}
-
-fun load_sprite_shader(gl: WebGL2RenderingContext): SpriteShader {
-    val vs = gl.createShader(WebGLRenderingContext.VERTEX_SHADER).apply {
-        gl.shaderSource(this, """#version 300 es
-layout (location = 0) in vec2 Position;
-layout (location = 1) in vec2 aTexCoord;
-
-uniform mat4 view;
-uniform mat4 model;
-uniform mat4 projection;
-uniform vec2 size;
-uniform vec2 offset;
-
-out vec2 tex_coord;
-
-void main() {
-    vec4 pos = vec4(Position.x * size.x, Position.y * size.y, 0.0, 1.0);
-    pos.x += offset.x;
-    pos.y -= offset.y;
-    mat4 model_view = view * model;
-    model_view[0][0] = 1.0;
-    model_view[0][1] = 0.0;
-    model_view[0][2] = 0.0;
-
-//    if (spherical == 1) {
-        // Second colunm.
-        model_view[1][0] = 0.0;
-        model_view[1][1] = 1.0;
-        model_view[1][2] = 0.0;
-//    }
-
-    // Thrid colunm.
-    model_view[2][0] = 0.0;
-    model_view[2][1] = 0.0;
-    model_view[2][2] = 1.0;
-
-    gl_Position = projection * model_view * pos;
-    tex_coord = aTexCoord;
-}""")
-        gl.compileShader(this)
-
-        if (gl.getShaderParameter(this, WebGLRenderingContext.COMPILE_STATUS) != null) {
-            val error = gl.getShaderInfoLog(this)
-            if (!error.isNullOrEmpty()) {
-                gl.deleteShader(this)
-
-                throw IllegalArgumentException(error)
-            }
-        }
-
-    }
-
-    val fs = gl.createShader(WebGLRenderingContext.FRAGMENT_SHADER).apply {
-        gl.shaderSource(this, """#version 300 es
-precision mediump float;
-
-in vec2 tex_coord;
-
-uniform vec4 color;
-uniform sampler2D model_texture;
-
-out vec4 out_color;
-
-void main() {
-    vec4 texture = texture(model_texture, tex_coord);
-    if (texture.a == 0.0 || color.a == 0.0) {
-        discard;
-    } else {
-        out_color = texture * color;
-    }
-
-}""")
-        gl.compileShader(this)
-
-        if (gl.getShaderParameter(this, WebGLRenderingContext.COMPILE_STATUS) != null) {
-            val error = gl.getShaderInfoLog(this)
-            if (!error.isNullOrEmpty()) {
-                gl.deleteShader(this)
-
-                throw IllegalArgumentException(error)
-            }
-        }
-    }
-
-    val program = gl.createProgram()
-    gl.attachShader(program, vs)
-    gl.attachShader(program, fs)
-    gl.linkProgram(program)
-
-    if (gl.getProgramParameter(program, WebGLRenderingContext.LINK_STATUS) != null) {
-        val error = gl.getProgramInfoLog(program)
-        if (!error.isNullOrEmpty()) {
-            gl.deleteProgram(program)
-            gl.deleteShader(vs)
-            gl.deleteShader(fs)
-
-            throw IllegalArgumentException(error)
-        }
-    }
-    return SpriteShader(program = program!!,
-                        projection_mat = gl.getUniformLocation(program, "projection")!!,
-                        view_mat = gl.getUniformLocation(program, "view")!!,
-                        model_texture = gl.getUniformLocation(program, "model_texture")!!,
-                        size = gl.getUniformLocation(program, "size")!!,
-                        model = gl.getUniformLocation(program, "model")!!,
-                        color = gl.getUniformLocation(program, "color")!!,
-                        a_pos = gl.getAttribLocation(program, "Position"),
-                        a_uv = gl.getAttribLocation(program, "aTexCoord"),
-                        offset = gl.getUniformLocation(program, "offset")!!)
-}
-
-data class SpriteShader(val program: WebGLProgram,
-                        val projection_mat: WebGLUniformLocation,
-                        val view_mat: WebGLUniformLocation,
-                        val model_texture: WebGLUniformLocation,
-                        val size: WebGLUniformLocation,
-                        val model: WebGLUniformLocation,
-                        val color: WebGLUniformLocation,
-                        val offset: WebGLUniformLocation,
-                        val a_pos: Int,
-                        val a_uv: Int)

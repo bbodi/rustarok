@@ -16,9 +16,12 @@ pub mod status;
 
 #[derive(Component)]
 pub struct BrowserClient {
-    pub websocket: Mutex<websocket::sync::Client<TcpStream>>,
+    websocket: Mutex<websocket::sync::Client<TcpStream>>,
     pub ping: u16,
     pub state: usize,
+    pub sum_sent_bytes: u64,
+    pub current_bytes_per_second: u32,
+    pub prev_bytes_per_second: u32,
 }
 
 impl Drop for BrowserClient {
@@ -33,7 +36,39 @@ impl BrowserClient {
             websocket: Mutex::new(websocket),
             ping: 0,
             state: 0,
+            sum_sent_bytes: 0,
+            current_bytes_per_second: 0,
+            prev_bytes_per_second: 0,
         }
+    }
+
+    pub fn send_message(&mut self, buf: &Vec<u8>) {
+        self.sum_sent_bytes += buf.len() as u64;
+        self.current_bytes_per_second += buf.len() as u32;
+        let msg = websocket::Message::binary(buf.as_slice());
+        let _ = self.websocket.lock().unwrap().send_message(&msg);
+    }
+
+    pub fn set_ping(&mut self, ping: u128) {
+        self.ping = ping as u16
+    }
+
+    pub fn send_ping(&mut self, buf: &[u8]) {
+        self.sum_sent_bytes += buf.len() as u64;
+        self.current_bytes_per_second += buf.len() as u32;
+        let msg = websocket::Message::ping(buf);
+        let _ = self.websocket.lock().unwrap().send_message(&msg);
+    }
+
+    pub fn reset_byte_per_second(&mut self) {
+        self.prev_bytes_per_second = self.current_bytes_per_second;
+        self.current_bytes_per_second = 0;
+    }
+
+    pub fn receive(
+        &mut self,
+    ) -> websocket::result::WebSocketResult<websocket::message::OwnedMessage> {
+        self.websocket.lock().unwrap().recv_message()
     }
 }
 

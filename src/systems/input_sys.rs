@@ -53,9 +53,8 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
         for (controller_id, client, input_producer) in
             (&entities, &mut browser_client_storage, &mut input_storage).join()
         {
-            let sh = client.websocket.lock().unwrap().recv_message();
-            if let Ok(msg) = sh {
-                match msg {
+            match client.receive() {
+                Ok(msg) => match msg {
                     OwnedMessage::Pong(buf) => {
                         let ping_time = u128::from_le_bytes([
                             buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
@@ -204,18 +203,31 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                             &input_producer.username,
                         );
                     }
+                },
+                Err(WebSocketError::IoError(e)) => {
+                    if e.kind() == ErrorKind::ConnectionAborted {
+                        // 10053, ConnectionAborted
+                        log::info!("Client '{:?}' has disconnected", controller_id);
+                        BrowserInputProducerSystem::remove_browser_client(
+                            &entities,
+                            &char_state_storage,
+                            controller_id,
+                            &input_producer.username,
+                        );
+                    }
                 }
-            } else if let Err(WebSocketError::IoError(e)) = sh {
-                if e.kind() == ErrorKind::ConnectionAborted {
-                    // 10053, ConnectionAborted
-                    log::info!("Client '{:?}' has disconnected", controller_id);
-                    BrowserInputProducerSystem::remove_browser_client(
-                        &entities,
-                        &char_state_storage,
-                        controller_id,
-                        &input_producer.username,
-                    );
-                }
+                Err(WebSocketError::ProtocolError(_)) => {}
+                Err(WebSocketError::RequestError(_)) => {}
+                Err(WebSocketError::ResponseError(_)) => {}
+                Err(WebSocketError::DataFrameError(_)) => {}
+                Err(WebSocketError::NoDataAvailable) => {}
+                Err(WebSocketError::HttpError(_)) => {}
+                Err(WebSocketError::UrlError(_)) => {}
+                Err(WebSocketError::WebSocketUrlError(_)) => {}
+                Err(WebSocketError::TlsError(_)) => {}
+                Err(WebSocketError::TlsHandshakeFailure) => {}
+                Err(WebSocketError::TlsHandshakeInterruption) => {}
+                Err(WebSocketError::Utf8Error(_)) => {}
             }
         }
     }

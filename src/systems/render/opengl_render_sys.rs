@@ -496,59 +496,54 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 }
             }
 
-            /////////////////////////////////
-            // 3D Sprites
-            /////////////////////////////////
             {
                 let shader = system_vars.assets.shaders.sprite_shader.gl_use();
-                let vao_bind = system_vars
-                    .map_render_data
-                    .centered_sprite_vertex_array
-                    .bind();
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &render_commands.view_matrix);
                 shader.set_int("model_texture", 0);
                 unsafe {
                     gl::ActiveTexture(gl::TEXTURE0);
                 }
-                for command in &render_commands.billboard_commands {
-                    shader.set_vec2("size", &[command.texture_width, command.texture_height]);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_vec2("offset", &command.common.offset);
+                /////////////////////////////////
+                // 3D Sprites
+                /////////////////////////////////
+                {
+                    let vao_bind = system_vars
+                        .map_render_data
+                        .centered_sprite_vertex_array
+                        .bind();
+                    for command in &render_commands.billboard_commands {
+                        shader.set_vec2("size", &[command.texture_width, command.texture_height]);
+                        shader.set_mat4("model", &command.common.matrix);
+                        shader.set_vec4("color", &command.common.color);
+                        shader.set_vec2("offset", &command.common.offset);
 
-                    unsafe {
-                        gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
+                        unsafe {
+                            gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
+                        }
+                        vao_bind.draw();
                     }
-                    vao_bind.draw();
                 }
-            }
 
-            /////////////////////////////////
-            // 3D NUMBERS
-            /////////////////////////////////
-            {
-                unsafe {
-                    gl::Disable(gl::DEPTH_TEST);
-                }
-                let shader = system_vars.assets.shaders.sprite_shader.gl_use();
-                shader.set_mat4("projection", &system_vars.matrices.projection);
-                shader.set_mat4("view", &render_commands.view_matrix);
-                shader.set_int("model_texture", 0);
-                unsafe {
-                    gl::ActiveTexture(gl::TEXTURE0);
-                }
-                system_vars.assets.sprites.numbers.bind(TEXTURE_0);
-                for command in &render_commands.number_3d_commands {
-                    shader.set_vec2("size", &[command.common.size, command.common.size]);
-                    shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec4("color", &command.common.color);
-                    shader.set_vec2("offset", &command.common.offset);
+                /////////////////////////////////
+                // 3D NUMBERS
+                /////////////////////////////////
+                {
+                    unsafe {
+                        gl::Disable(gl::DEPTH_TEST);
+                    }
+                    system_vars.assets.sprites.numbers.bind(TEXTURE_0);
+                    for command in &render_commands.number_3d_commands {
+                        shader.set_vec2("size", &[command.common.size, command.common.size]);
+                        shader.set_mat4("model", &command.common.matrix);
+                        shader.set_vec4("color", &command.common.color);
+                        shader.set_vec2("offset", &command.common.offset);
 
-                    self.create_number_vertex_array(command.value).bind().draw();
-                }
-                unsafe {
-                    gl::Enable(gl::DEPTH_TEST);
+                        self.create_number_vertex_array(command.value).bind().draw();
+                    }
+                    unsafe {
+                        gl::Enable(gl::DEPTH_TEST);
+                    }
                 }
             }
 

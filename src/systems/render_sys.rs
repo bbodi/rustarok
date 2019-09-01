@@ -318,7 +318,14 @@ impl RenderDesktopClientSystem {
                 } => {
                     let body_sprite = if char_state.statuses.is_mounted() {
                         let sprites = &system_vars.assets.sprites;
-                        &sprites.mounted_character_sprites[&job_id][sex as usize]
+                        &sprites
+                            .mounted_character_sprites
+                            .get(&job_id)
+                            .and_then(|it| it.get(sex as usize))
+                            .unwrap_or_else(|| {
+                                let sprites = &system_vars.assets.sprites.character_sprites;
+                                &sprites[&job_id][sex as usize]
+                            })
                     } else {
                         let sprites = &system_vars.assets.sprites.character_sprites;
                         &sprites[&job_id][sex as usize]

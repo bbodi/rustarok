@@ -142,13 +142,11 @@ impl ConsoleComponent {
                     .filter(|(matc, _text)| matc.is_some())
                     .collect();
                 filtered_and_sorted.sort_by(|(matc1, _), (matc2, _)| {
-                    matc1
+                    matc2
                         .as_ref()
                         .unwrap()
-                        .matches()
-                        .get(0)
-                        .unwrap_or(&100)
-                        .cmp(matc2.as_ref().unwrap().matches().get(0).unwrap_or(&100))
+                        .score()
+                        .cmp(&matc1.as_ref().unwrap().score())
                 });
                 filtered_and_sorted
                     .drain(..)

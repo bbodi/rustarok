@@ -26,6 +26,7 @@ extern crate websocket;
 
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryInto;
 use std::time::{Duration, Instant, SystemTime};
 use strum::IntoEnumIterator;
 
@@ -790,7 +791,7 @@ fn main() {
             status_icons,
             sounds,
         },
-        tick: 0,
+        tick: 1,
         dt: DeltaTime(0.0),
         time: ElapsedTime(0.0),
         matrices: render_matrices,
@@ -1016,9 +1017,10 @@ fn main() {
     'running: loop {
         match websocket_server.accept() {
             Ok(wsupgrade) => {
-                let mut browser_client = wsupgrade.accept().unwrap();
-                browser_client.set_nonblocking(true).unwrap();
+                let browser_socket = wsupgrade.accept().unwrap();
+                browser_socket.set_nonblocking(true).unwrap();
 
+                let mut browser_client = BrowserClient::new(browser_socket);
                 {
                     let asset_db: &AssetDatabase = &ecs_world.read_resource();
                     let welcome_data = json!({
@@ -1031,15 +1033,10 @@ fn main() {
                                             .projection.as_slice()
                     });
                     let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
-                    let welcome_msg = websocket::Message::binary(&welcome_msg[..]);
-                    let _ = browser_client.send_message(&welcome_msg).unwrap();
+                    browser_client.send_message(&welcome_msg);
                 };
 
-                let browser_client_entity = ecs_world
-                    .create_entity()
-                    .with(BrowserClient::new(browser_client))
-                    .build();
-
+                let browser_client_entity = ecs_world.create_entity().with(browser_client).build();
                 log::info!("Client connected: {:?}", browser_client_entity);
             }
             _ => { /* Nobody tried to connect, move on.*/ }
@@ -1059,8 +1056,7 @@ fn main() {
             )
                 .join()
             {
-                let sh = client.websocket.lock().unwrap().recv_message();
-                if let Ok(msg) = sh {
+                if let Ok(msg) = client.receive() {
                     match msg {
                         OwnedMessage::Binary(_buf) => {}
                         OwnedMessage::Text(text) => {
@@ -1077,8 +1073,7 @@ fn main() {
                                         mismatched_texture.as_str().unwrap_or(""),
                                         &mut response_buf,
                                     );
-                                    let msg = websocket::Message::binary(&response_buf[..]);
-                                    let _ = client.websocket.lock().unwrap().send_message(&msg);
+                                    client.send_message(&response_buf);
                                     response_buf.clear();
                                 }
                                 // send closing message
@@ -1087,8 +1082,7 @@ fn main() {
                                     response_buf.push(0x6B);
                                     response_buf.push(0x00);
                                     response_buf.push(0xB5);
-                                    let msg = websocket::Message::binary(&response_buf[..]);
-                                    let _ = client.websocket.lock().unwrap().send_message(&msg);
+                                    client.send_message(&response_buf);
                                 }
                                 let char_entity_id = entities.create();
                                 components::char::attach_human_player_components(
@@ -1110,7 +1104,15 @@ fn main() {
                         }
                         OwnedMessage::Close(_) => {}
                         OwnedMessage::Ping(_) => {}
-                        OwnedMessage::Pong(_) => {}
+                        OwnedMessage::Pong(buf) => {
+                            let now_ms = SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            let (int_bytes, rest) = buf.split_at(std::mem::size_of::<u128>());
+                            let ping_sent = u128::from_le_bytes(int_bytes.try_into().unwrap());
+                            client.set_ping(now_ms - ping_sent);
+                        }
                     }
                 }
             }
@@ -1232,14 +1234,10 @@ fn main() {
                 .unwrap()
                 .as_millis();
             let data = now_ms.to_le_bytes();
-            let browser_storage = ecs_world.write_storage::<BrowserClient>();
-            for browser_client in browser_storage.join() {
-                let message = websocket::Message::ping(&data[..]);
-                //                let _ = browser_client
-                //                    .websocket
-                //                    .lock()
-                //                    .unwrap()
-                //                    .send_message(&message);
+            let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
+            for browser_client in (&mut browser_storage).join() {
+                browser_client.send_ping(&data);
+                browser_client.reset_byte_per_second();
             }
         }
         fps_counter += 1;

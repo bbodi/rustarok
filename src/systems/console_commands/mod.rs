@@ -15,7 +15,9 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, MainStatuses,
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
-use crate::components::{AttackComponent, AttackType, MinionComponent, StrEffectComponent};
+use crate::components::{
+    AttackComponent, AttackType, BrowserClient, MinionComponent, StrEffectComponent,
+};
 use crate::consts::{JobId, MonsterId};
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
@@ -474,29 +476,83 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
         action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
+            print_console(
+                &mut ecs_world.write_storage::<ConsoleComponent>(),
+                self_controller_id,
+                ConsoleEntry::new().add(
+                    &format!(
+                        "{:15}{:15}{:17}{:15}",
+                        "name", "traffic(sum)", "traffic/sec[KB]", "ping[ms]",
+                    ),
+                    ConsoleWordType::CommandName,
+                ),
+            );
             for (entity_id, human) in (
                 &ecs_world.entities(),
                 &ecs_world.read_storage::<HumanInputComponent>(),
             )
                 .join()
             {
-                ecs_world
-                    .write_storage::<ConsoleComponent>()
-                    .get_mut(self_controller_id)
-                    .unwrap()
-                    .add_entry(ConsoleEntry::new().add(
+                let (prev_bytes_per_second, sum_sent_bytes, ping) = ecs_world
+                    .read_storage::<BrowserClient>()
+                    .get(entity_id)
+                    .map(|it| (it.prev_bytes_per_second, it.sum_sent_bytes, it.ping))
+                    .unwrap_or((0, 0, 0));
+                print_console(
+                    &mut ecs_world.write_storage::<ConsoleComponent>(),
+                    self_controller_id,
+                    ConsoleEntry::new().add(
                         &format!(
-                            "id: {}, gen: {:?}, name: {}",
-                            entity_id.id(),
-                            entity_id.gen(),
-                            &human.username
+                            "{:15}{:15}{:17}{:15}",
+                            &human.username,
+                            humanize_byte(sum_sent_bytes),
+                            format!("{:.2} KB", prev_bytes_per_second as f32 / KIB as f32),
+                            ping,
                         ),
                         ConsoleWordType::Normal,
-                    ));
+                    ),
+                );
             }
             Ok(())
         }),
     }
+}
+
+/// bytes size for 1 kibibyte
+const KIB: u64 = 1_024;
+/// bytes size for 1 mebibyte
+const MIB: u64 = 1_048_576;
+/// bytes size for 1 gibibyte
+const GIB: u64 = 1_073_741_824;
+/// bytes size for 1 tebibyte
+const TIB: u64 = 1_099_511_627_776;
+/// bytes size for 1 pebibyte
+const PIB: u64 = 1_125_899_906_842_624;
+fn humanize_byte(bytes: u64) -> String {
+    if bytes / PIB > 0 {
+        format!("{:.2} PB", bytes as f32 / PIB as f32)
+    } else if bytes / TIB > 0 {
+        format!("{:.2} TB", bytes as f32 / TIB as f32)
+    } else if bytes / GIB > 0 {
+        format!("{:.2} GB", bytes as f32 / GIB as f32)
+    } else if bytes / MIB > 0 {
+        format!("{:.2} MB", bytes as f32 / MIB as f32)
+    } else if bytes / KIB > 0 {
+        format!("{:.2} KB", bytes as f32 / KIB as f32)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+fn print_console(
+    console_storage: &mut WriteStorage<ConsoleComponent>,
+    self_controller_id: Entity,
+    entry: ConsoleEntry,
+) {
+    console_storage
+        .get_mut(self_controller_id)
+        .unwrap()
+        .add_entry(entry);
 }
 
 pub(super) fn cmd_heal() -> CommandDefinition {
@@ -831,7 +887,9 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
     CommandDefinition {
         name: "control_char".to_string(),
         arguments: vec![("charname", CommandParamType::String, true)],
-        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
         action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let charname = args.as_str(0).unwrap();
 

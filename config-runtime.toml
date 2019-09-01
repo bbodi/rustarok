@@ -2,6 +2,9 @@
 sleep_ms = 0
 minions_enabled = false
 
+[network]
+    send_render_data_every_nth_frame = 1
+
 [console]
     color = [0.0, 0.0, 0.0, 0.7]
 

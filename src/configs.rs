@@ -39,11 +39,17 @@ pub struct DevConfigConsole {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DevConfigNetwork {
+    pub send_render_data_every_nth_frame: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DevConfig {
     pub sleep_ms: u64,
     pub minions_enabled: bool,
     pub stats: DevConfigStats,
     pub console: DevConfigConsole,
+    pub network: DevConfigNetwork,
 }
 
 impl DevConfig {
