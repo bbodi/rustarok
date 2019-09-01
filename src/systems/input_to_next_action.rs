@@ -35,7 +35,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("InputToNextActionSystem");
-        for (self_id, input, controller) in
+        for (_self_id, input, controller) in
             (&entities, &input_storage, &mut controller_storage).join()
         {
             let self_char_comp = char_state_storage
@@ -65,7 +65,6 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             );
             let (cursor_frame, cursor_color) = InputToNextActionSystem::determine_cursor(
                 system_vars.time,
-                input,
                 controller,
                 &char_state_storage,
                 self_char_comp.team,
@@ -245,7 +244,6 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
 impl InputToNextActionSystem {
     pub fn determine_cursor(
         now: ElapsedTime,
-        input: &HumanInputComponent,
         controller: &ControllerComponent,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         self_team: Team,

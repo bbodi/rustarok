@@ -1,3 +1,4 @@
+use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::video::GlTexture;
 use std::collections::HashMap;
@@ -36,7 +37,12 @@ pub struct StrKeyFrame {
 }
 
 impl StrFile {
-    pub(super) fn load(asset_loader: &AssetLoader, mut buf: BinaryReader, str_name: &str) -> Self {
+    pub(super) fn load(
+        asset_loader: &AssetLoader,
+        asset_database: &mut AssetDatabase,
+        mut buf: BinaryReader,
+        str_name: &str,
+    ) -> Self {
         let header = buf.string(4);
         if header != "STRM" {
             panic!("Invalig STR header: {}", header);
@@ -87,7 +93,12 @@ impl StrFile {
                                 );
                                 asset_loader.backup_surface()
                             });
-                            let texture = GlTexture::from_surface(surface, gl::NEAREST);
+                            let texture = AssetLoader::create_texture_from_surface(
+                                &texture_name,
+                                surface,
+                                gl::NEAREST,
+                                asset_database,
+                            );
                             textures.push(texture);
                             let size = texture_names_to_index.len();
                             texture_names_to_index.insert(texture_name.clone(), size);

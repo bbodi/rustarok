@@ -1,3 +1,4 @@
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
     CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
 };
@@ -41,14 +42,15 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, BrowserClient>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::Write<'a, LazyUpdate>,
     );
 
     fn run(
         &mut self,
-        (entities, mut input_storage, mut browser_client_storage, _updater): Self::SystemData,
+        (entities, mut input_storage, mut browser_client_storage, char_state_storage, _updater): Self::SystemData,
     ) {
-        for (entity_id, client, input_producer) in
+        for (controller_id, client, input_producer) in
             (&entities, &mut browser_client_storage, &mut input_storage).join()
         {
             let sh = client.websocket.lock().unwrap().recv_message();
@@ -188,21 +190,31 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(entity_id).unwrap();
+                                    entities.delete(controller_id).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
                         log::warn!("Unknown msg: {:?}", msg);
-                        entities.delete(entity_id).unwrap();
+                        BrowserInputProducerSystem::remove_browser_client(
+                            &entities,
+                            &char_state_storage,
+                            controller_id,
+                            &input_producer.username,
+                        );
                     }
                 }
             } else if let Err(WebSocketError::IoError(e)) = sh {
                 if e.kind() == ErrorKind::ConnectionAborted {
                     // 10053, ConnectionAborted
-                    log::info!("Client '{:?}' has disconnected", entity_id);
-                    entities.delete(entity_id).unwrap();
+                    log::info!("Client '{:?}' has disconnected", controller_id);
+                    BrowserInputProducerSystem::remove_browser_client(
+                        &entities,
+                        &char_state_storage,
+                        controller_id,
+                        &input_producer.username,
+                    );
                 }
             }
         }
@@ -385,5 +397,22 @@ impl InputConsumerSystem {
             / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
         return v2!(world_pos.x, world_pos.z);
+    }
+}
+
+impl BrowserInputProducerSystem {
+    fn remove_browser_client(
+        entities: &Entities,
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        controller_id: Entity,
+        username: &str,
+    ) {
+        for (char_id, char_state) in (entities, char_state_storage).join() {
+            if char_state.name == username {
+                entities.delete(char_id).unwrap();
+                break;
+            }
+        }
+        entities.delete(controller_id).unwrap();
     }
 }

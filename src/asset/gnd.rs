@@ -2,6 +2,7 @@ use nalgebra::{Rotation3, Vector3};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 
+use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::video::GlTexture;
 
@@ -369,6 +370,7 @@ impl Gnd {
         tiles_color_buffer: &mut Vec<u8>,
         width: u32,
         height: u32,
+        asset_database: &mut AssetDatabase,
     ) -> GlTexture {
         let tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,
@@ -395,7 +397,12 @@ impl Gnd {
             )
             .unwrap();
 
-        GlTexture::from_surface(scaled_tiles_color_surface, gl::LINEAR)
+        return AssetLoader::create_texture_from_surface(
+            "ground_tile_color",
+            scaled_tiles_color_surface,
+            gl::LINEAR,
+            asset_database,
+        );
     }
 
     fn lightmap_atlas(
@@ -699,6 +706,7 @@ impl Gnd {
 
     pub fn create_gl_texture_atlas(
         asset_loader: &AssetLoader,
+        asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
     ) -> GlTexture {
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names
@@ -713,7 +721,12 @@ impl Gnd {
             })
             .collect();
         let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
-        GlTexture::from_surface(surface_atlas, gl::NEAREST)
+        return AssetLoader::create_texture_from_surface(
+            "gnd_surface_atlas",
+            surface_atlas,
+            gl::NEAREST,
+            asset_database,
+        );
     }
 
     fn create_texture_atlas(

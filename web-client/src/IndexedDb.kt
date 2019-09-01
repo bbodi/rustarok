@@ -28,6 +28,9 @@ object IndexedDb {
         for (entry in entries) {
             val client_entry: TextureEntry? = make_await { store.get(entry.key) }
             if (client_entry != null) {
+                if (client_entry.path == "[100, 97, 116, 97, 92, 115, 112, 114, 105, 116, 101, 92, 195, 128, 195, 142, 194, 176, 194, 163, 195, 129, 194, 183, 92, 194, 184, 195, 182, 195, 133, 195, 171, 92, 194, 191, 194, 169, 92, 195, 133, 194, 169, 194, 183, 195, 167, 194, 188, 194, 188, 195, 128, 195, 140, 194, 180, 195, 181, 95, 194, 191, 194, 169]") {
+                    js("debugger")
+                }
                 if (client_entry.count != entry.value.gl_textures.size ||
                         client_entry.hash != entry.value.hash) {
                     mismatched_textures.add(entry.key)
@@ -77,20 +80,30 @@ object IndexedDb {
         val db = open()
         val tx = db.transaction("texture_data", "readwrite")
         val store = tx.objectStore("texture_data")
-        make_await<dynamic> {
+        val key = "${path}_$texture_index"
+        val result = make_await<dynamic> {
             store.put(object {
                 val w = w
                 val h = h
                 val raw = rawData
-            }, "${path}_$texture_index")
+            }, key)
+        }
+        if (result != key) {
+            js("debugger")
         }
     }
 
-    suspend fun get_texture(path: String, i: Int): Uint8Array {
+    suspend fun get_texture(path: String, i: Int): Uint8Array? {
         val db = open()
         val tx = db.transaction("texture_data", "readwrite")
         val store = tx.objectStore("texture_data")
-        return make_await<dynamic> { store.get("${path}_$i") }.raw
+        val sh = make_await<dynamic> { store.get("${path}_$i") }
+        return if (sh != null) {
+//            js("debugger")
+            sh.raw
+        } else {
+            null
+        }
     }
 }
 
@@ -103,5 +116,9 @@ suspend fun <T> make_await(block: () -> dynamic): T {
         req.onerror = { event: dynamic ->
             reject(event)
         }
+    }.catch { e ->
+        console.error(e)
+        throw e
+        0.asDynamic()
     }.await()
 }

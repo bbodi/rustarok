@@ -51,7 +51,7 @@ use crate::asset::rsw::Rsw;
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
-    CharType, CharacterStateComponent, Percentage, PhysicsComponent,
+    CharType, CharacterStateComponent, NpcComponent, Percentage, PhysicsComponent,
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
@@ -569,8 +569,12 @@ fn main() {
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
-    let (map_render_data, physics_world) =
-        load_map("prontera", &asset_loader, config.quick_startup);
+    let (map_render_data, physics_world) = load_map(
+        "prontera",
+        &asset_loader,
+        &mut asset_database,
+        config.quick_startup,
+    );
 
     let skill_name_font =
         Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-B.ttf", 32).unwrap();
@@ -601,14 +605,26 @@ fn main() {
             &skill_key_font,
             &skill_key_font_bold_outline,
             "absorb",
+            &mut asset_database,
         ),
         attack_blocked: Video::create_outline_text_texture(
             &skill_key_font,
             &skill_key_font_bold_outline,
             "block",
+            &mut asset_database,
         ),
-        minus: Video::create_outline_text_texture(&small_font, &small_font_outline, "-"),
-        plus: Video::create_outline_text_texture(&small_font, &small_font_outline, "+"),
+        minus: Video::create_outline_text_texture(
+            &small_font,
+            &small_font_outline,
+            "-",
+            &mut asset_database,
+        ),
+        plus: Video::create_outline_text_texture(
+            &small_font,
+            &small_font_outline,
+            "+",
+            &mut asset_database,
+        ),
     };
 
     for name in &[
@@ -622,13 +638,23 @@ fn main() {
     ] {
         texts.custom_texts.insert(
             name.to_string(),
-            Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
+            Video::create_outline_text_texture(
+                &skill_key_font,
+                &skill_key_font_outline,
+                name,
+                &mut asset_database,
+            ),
         );
     }
     STATUS_NAMES.iter().for_each(|name| {
         texts.custom_texts.insert(
             name.to_string(),
-            Video::create_outline_text_texture(&skill_key_font, &skill_key_font_outline, name),
+            Video::create_outline_text_texture(
+                &skill_key_font,
+                &skill_key_font_outline,
+                name,
+                &mut asset_database,
+            ),
         );
     });
 
@@ -639,6 +665,7 @@ fn main() {
                 &small_font,
                 &small_font_outline,
                 &format!("{:+}", i),
+                &mut asset_database,
             ),
         );
     }
@@ -649,26 +676,26 @@ fn main() {
             &skill_name_font,
             &skill_name_font_outline,
             &format!("{:?}", skill),
+            &mut asset_database,
         );
         texts.skill_name_texts.insert(skill, texture);
 
         let skill_icon = asset_loader
-            .load_sdl_surface(skill.get_icon_path())
+            .load_texture(skill.get_icon_path(), gl::NEAREST, &mut asset_database)
             .unwrap();
-        skill_icons.insert(skill, GlTexture::from_surface(skill_icon, gl::NEAREST));
+        skill_icons.insert(skill, skill_icon);
     }
 
     let mut status_icons = HashMap::new();
     status_icons.insert(
         "shield",
-        GlTexture::from_surface(
-            asset_loader
-                .load_sdl_surface(
-                    "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\pa_shieldchain.bmp",
-                )
-                .unwrap(),
-            gl::NEAREST,
-        ),
+        asset_loader
+            .load_texture(
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\pa_shieldchain.bmp",
+                gl::NEAREST,
+                &mut asset_database,
+            )
+            .unwrap(),
     );
 
     for skill_key in SkillKey::iter() {
@@ -676,6 +703,7 @@ fn main() {
             &skill_key_font,
             &skill_key_font_bold_outline,
             &format!("{:?}", skill_key),
+            &mut asset_database,
         );
         texts.skill_key_texts.insert(skill_key, texture);
     }
@@ -687,6 +715,7 @@ fn main() {
 
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
+    ecs_world.register::<NpcComponent>();
     ecs_world.register::<HumanInputComponent>();
     ecs_world.register::<RenderCommandCollectorComponent>();
     ecs_world.register::<AudioCommandCollectorComponent>();
@@ -747,6 +776,8 @@ fn main() {
         .with_thread_local(sound_system)
         .with_thread_local(FrameEndSystem)
         .build();
+
+    ecs_world.add_resource(asset_database);
 
     ecs_world.add_resource(SystemVariables {
         asset_loader,
@@ -988,18 +1019,21 @@ fn main() {
                 let mut browser_client = wsupgrade.accept().unwrap();
                 browser_client.set_nonblocking(true).unwrap();
 
-                let welcome_data = json!({
-                    "screen_width": VIDEO_WIDTH,
-                    "screen_height": VIDEO_HEIGHT,
-                    "asset_database": serde_json::to_value(&asset_database).unwrap(),
-                    "projection_mat": ecs_world
-                                        .read_resource::<SystemVariables>()
-                                        .matrices
-                                        .projection.as_slice()
-                });
-                let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
-                let welcome_msg = websocket::Message::binary(&welcome_msg[..]);
-                let _ = browser_client.send_message(&welcome_msg).unwrap();
+                {
+                    let asset_db: &AssetDatabase = &ecs_world.read_resource();
+                    let welcome_data = json!({
+                        "screen_width": VIDEO_WIDTH,
+                        "screen_height": VIDEO_HEIGHT,
+                        "asset_database": serde_json::to_value(asset_db).unwrap(),
+                        "projection_mat": ecs_world
+                                            .read_resource::<SystemVariables>()
+                                            .matrices
+                                            .projection.as_slice()
+                    });
+                    let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
+                    let welcome_msg = websocket::Message::binary(&welcome_msg[..]);
+                    let _ = browser_client.send_message(&welcome_msg).unwrap();
+                };
 
                 let browser_client_entity = ecs_world
                     .create_entity()
@@ -1039,13 +1073,22 @@ fn main() {
                                 let mut response_buf =
                                     Vec::with_capacity(mismatched_textures.len() * 256 * 256);
                                 for mismatched_texture in mismatched_textures {
-                                    asset_database.copy_texture(
+                                    ecs_world.read_resource::<AssetDatabase>().copy_texture(
                                         mismatched_texture.as_str().unwrap_or(""),
                                         &mut response_buf,
                                     );
                                     let msg = websocket::Message::binary(&response_buf[..]);
                                     let _ = client.websocket.lock().unwrap().send_message(&msg);
                                     response_buf.clear();
+                                }
+                                // send closing message
+                                {
+                                    response_buf.push(0xB1);
+                                    response_buf.push(0x6B);
+                                    response_buf.push(0x00);
+                                    response_buf.push(0xB5);
+                                    let msg = websocket::Message::binary(&response_buf[..]);
+                                    let _ = client.websocket.lock().unwrap().send_message(&msg);
                                 }
                                 let char_entity_id = entities.create();
                                 components::char::attach_human_player_components(
@@ -1138,6 +1181,7 @@ fn main() {
             let (map_render_data, physics_world) = load_map(
                 &new_map_name,
                 &ecs_world.read_resource::<SystemVariables>().asset_loader,
+                &mut ecs_world.write_resource::<AssetDatabase>(),
                 config.quick_startup,
             );
             ecs_world
@@ -1511,6 +1555,9 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
         .head_sprites[Sex::Male as usize]
         .len();
     let entity_id = ecs_world.create_entity().build();
+    ecs_world
+        .read_resource::<LazyUpdate>()
+        .insert(entity_id, NpcComponent);
     components::char::attach_char_components(
         "minion".to_owned(),
         entity_id,
@@ -1597,6 +1644,7 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
 fn load_map(
     map_name: &str,
     asset_loader: &AssetLoader,
+    asset_database: &mut AssetDatabase,
     quick_loading: bool,
 ) -> (MapRenderData, PhysicEngine) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
@@ -1703,7 +1751,8 @@ fn load_map(
         models
             .iter()
             .map(|(name, rsm)| {
-                let textures = Rsm::load_textures(&asset_loader, &rsm.texture_names);
+                let textures =
+                    Rsm::load_textures(&asset_loader, asset_database, &rsm.texture_names);
                 log::trace!("{} textures loaded for model {}", textures.len(), name.0);
                 let (data_for_rendering_full_model, bbox): (
                     Vec<DataForRenderingSingleNode>,
@@ -1800,12 +1849,17 @@ fn load_map(
         })
         .collect();
 
-    let (elapsed, texture_atlas) =
-        measure_time(|| Gnd::create_gl_texture_atlas(&asset_loader, &ground.texture_names));
+    let (elapsed, texture_atlas) = measure_time(|| {
+        Gnd::create_gl_texture_atlas(&asset_loader, asset_database, &ground.texture_names)
+    });
     log::info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
 
-    let tile_color_texture =
-        Gnd::create_tile_color_texture(&mut ground.tiles_color_image, ground.width, ground.height);
+    let tile_color_texture = Gnd::create_tile_color_texture(
+        &mut ground.tiles_color_image,
+        ground.width,
+        ground.height,
+        asset_database,
+    );
     let lightmap_texture =
         Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
 
@@ -1975,47 +2029,65 @@ fn load_map(
 
         str_effects.insert(
             "firewall".to_owned(),
-            asset_loader.load_effect("firewall").unwrap(),
+            asset_loader
+                .load_effect("firewall", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "StrEffect::StormGust".to_owned(),
-            asset_loader.load_effect("stormgust").unwrap(),
+            asset_loader
+                .load_effect("stormgust", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "StrEffect::LordOfVermilion".to_owned(),
-            asset_loader.load_effect("lord").unwrap(),
+            asset_loader.load_effect("lord", asset_database).unwrap(),
         );
         str_effects.insert(
             "StrEffect::Lightning".to_owned(),
-            asset_loader.load_effect("lightning").unwrap(),
+            asset_loader
+                .load_effect("lightning", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "StrEffect::Concentration".to_owned(),
-            asset_loader.load_effect("concentration").unwrap(),
+            asset_loader
+                .load_effect("concentration", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "StrEffect::Moonstar".to_owned(),
-            asset_loader.load_effect("moonstar").unwrap(),
+            asset_loader
+                .load_effect("moonstar", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "hunter_poison".to_owned(),
-            asset_loader.load_effect("hunter_poison").unwrap(),
+            asset_loader
+                .load_effect("hunter_poison", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "quagmire".to_owned(),
-            asset_loader.load_effect("quagmire").unwrap(),
+            asset_loader
+                .load_effect("quagmire", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "firewall_blue".to_owned(),
-            asset_loader.load_effect("firewall_blue").unwrap(),
+            asset_loader
+                .load_effect("firewall_blue", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "firepillarbomb".to_owned(),
-            asset_loader.load_effect("firepillarbomb").unwrap(),
+            asset_loader
+                .load_effect("firepillarbomb", asset_database)
+                .unwrap(),
         );
         str_effects.insert(
             "ramadan".to_owned(),
-            asset_loader.load_effect("ramadan").unwrap(),
+            asset_loader.load_effect("ramadan", asset_database).unwrap(),
         );
         str_effects
     });

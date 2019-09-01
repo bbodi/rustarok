@@ -1,4 +1,4 @@
-use crate::video::GlTextureIndex;
+use crate::video::{GlTexture, GlTextureIndex};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
@@ -31,14 +31,15 @@ impl AssetDatabase {
         }
     }
 
-    pub fn register_texture(&mut self, path: &str, textures: &[(GlTextureIndex, u32, u32)]) {
+    pub fn register_texture(&mut self, path: &str, textures: &[&GlTexture]) {
         let mut hasher = DefaultHasher::new();
 
-        for (texture_id, w, h) in textures {
-            let mut buffer = Vec::<u8>::with_capacity((w * h * 4) as usize);
+        for texture in textures {
+            let mut buffer =
+                Vec::<u8>::with_capacity((texture.width * texture.height * 4) as usize);
             unsafe {
                 gl::ActiveTexture(gl::TEXTURE0);
-                gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
+                gl::BindTexture(gl::TEXTURE_2D, texture.id().0);
                 gl::GetTexImage(
                     gl::TEXTURE_2D,
                     0,
@@ -55,7 +56,10 @@ impl AssetDatabase {
             format!("{:?}", path.as_bytes()),
             TextureDatabaseEntry {
                 hash: hash.to_string(),
-                gl_textures: textures.iter().map(|it| *it).collect(),
+                gl_textures: textures
+                    .iter()
+                    .map(|it| (it.id(), it.width as u32, it.height as u32))
+                    .collect(),
             },
         );
     }

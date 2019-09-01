@@ -1,8 +1,8 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, create_monster, CharOutlook, CharType, CharacterStateComponent,
-    PhysicsComponent,
+    attach_char_components, create_monster, CharOutlook, CharState, CharType,
+    CharacterStateComponent, ComponentRadius, NpcComponent, PhysicsComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
@@ -73,7 +73,7 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let job_name = args.as_str(0).unwrap();
             let username = args.as_str(1);
 
@@ -91,7 +91,7 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
                     if let Ok(job_id) = job_id {
                         target_char.outlook = match target_char.outlook {
                             CharOutlook::Player {
-                                job_id: old_job_id,
+                                job_id: _old_job_id,
                                 head_index,
                                 sex,
                             } => CharOutlook::Player {
@@ -129,8 +129,8 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
     CommandDefinition {
         name: "list_entities".to_string(),
         arguments: vec![],
-        autocompletion: BasicAutocompletionProvider::new(|index| None),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
             let mut entities = HashMap::with_capacity(32);
             entities.insert("all", 0);
             entities.insert("left_team", 0);
@@ -182,7 +182,7 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
                 for (name, count) in &entities {
                     ecs_world
                         .write_storage::<ConsoleComponent>()
-                        .get_mut(self_entity_id)
+                        .get_mut(self_controller_id)
                         .unwrap()
                         .add_entry(
                             ConsoleEntry::new()
@@ -214,7 +214,7 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
             ]),
             _ => None,
         }),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let type_name = args.as_str(0).unwrap();
             let mut entity_ids = Vec::with_capacity(32);
             for (entity_id, char_state) in (
@@ -265,7 +265,7 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                         .is_some(),
                     _ => false,
                 };
-                if need_delete {
+                if need_delete && entity_id != self_char_id {
                     entity_ids.push(entity_id);
                 }
             }
@@ -300,7 +300,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             1 => Some(vec!["left".to_owned(), "right".to_owned()]),
             _ => None,
         }),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let type_name = args.as_str(0).unwrap();
             let team = match args.as_str(1).unwrap() {
                 "left" => Team::Left,
@@ -397,6 +397,9 @@ fn create_random_char_minion(
         .head_sprites[Sex::Male as usize]
         .len();
     let entity_id = ecs_world.create_entity().build();
+    ecs_world
+        .read_resource::<LazyUpdate>()
+        .insert(entity_id, NpcComponent);
     attach_char_components(
         "minion".to_owned(),
         entity_id,
@@ -425,7 +428,7 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
         name: "spawn_effect".to_string(),
         arguments: vec![("effect_name", CommandParamType::String, true)],
         autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let new_str_name = args.as_str(0).unwrap();
             {
                 let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
@@ -436,7 +439,7 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
                 {
                     system_vars
                         .asset_loader
-                        .load_effect(new_str_name)
+                        .load_effect(new_str_name, &mut ecs_world.write_resource())
                         .and_then(|str_file| {
                             Ok(system_vars
                                 .map_render_data
@@ -470,7 +473,7 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
         name: "list_players".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
             for (entity_id, human) in (
                 &ecs_world.entities(),
                 &ecs_world.read_storage::<HumanInputComponent>(),
@@ -479,7 +482,7 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
             {
                 ecs_world
                     .write_storage::<ConsoleComponent>()
-                    .get_mut(self_entity_id)
+                    .get_mut(self_controller_id)
                     .unwrap()
                     .add_entry(ConsoleEntry::new().add(
                         &format!(
@@ -512,7 +515,7 @@ pub(super) fn cmd_heal() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let value = args.as_int(0).unwrap().max(0);
             let username = args.as_str(1);
             let entity_id = if let Some(username) = username {
@@ -523,7 +526,6 @@ pub(super) fn cmd_heal() -> CommandDefinition {
 
             if let Some(entity_id) = entity_id {
                 let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-                let now = system_vars.time;
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self_char_id,
                     dst_entity: entity_id,
@@ -560,7 +562,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                 None
             }
         }),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let name = args.as_str(0).unwrap();
             let value = args.as_int(1).unwrap_or(0);
             let width = args.as_int(2).unwrap_or(2);
@@ -624,18 +626,18 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
 fn create_status_payload(
     name: &str,
-    self_entity_id: Entity,
+    self_controller_id: Entity,
     now: ElapsedTime,
     time: i32,
     value: i32,
 ) -> Result<ApplyStatusComponentPayload, String> {
     match name {
         "absorb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            AbsorbStatus::new(self_entity_id, now, time as f32 / 1000.0),
+            AbsorbStatus::new(self_controller_id, now, time as f32 / 1000.0),
         ))),
         "firebomb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             FireBombStatus {
-                caster_entity_id: self_entity_id,
+                caster_entity_id: self_controller_id,
                 started: now,
                 until: now.add_seconds(time as f32 / 1000.0),
             },
@@ -672,7 +674,7 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let status_name = args.as_str(0).unwrap();
             let time = args.as_int(1).unwrap();
             let value = args.as_int(2).unwrap_or(0);
@@ -700,6 +702,100 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
     }
 }
 
+pub(super) fn cmd_set_team() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_team".to_string(),
+        arguments: vec![
+            ("team", CommandParamType::String, true),
+            ("charname", CommandParamType::String, false),
+        ],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(vec!["left".to_owned(), "right".to_owned()])
+                } else if index == 1 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let team = match args.as_str(0).unwrap() {
+                "left" => Team::Left,
+                _ => Team::Right,
+            };
+            let username = args.as_str(1);
+
+            let target_entity_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(target_char_id) = target_entity_id {
+                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                let char_state = char_storage.get_mut(target_char_id).unwrap();
+                char_state.team = team;
+
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_resurrect() -> CommandDefinition {
+    CommandDefinition {
+        name: "resurrect".to_string(),
+        arguments: vec![("charname", CommandParamType::String, true)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, _self_char_id, args, ecs_world| {
+            let username = args.as_str(0).unwrap();
+            let target_entity_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
+            if let Some(target_char_id) = target_entity_id {
+                let pos2d = {
+                    // remove death status (that is the only status a death character has)
+                    let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                    let char_state = char_storage.get_mut(target_char_id).unwrap();
+                    char_state.statuses.remove_all();
+                    char_state.set_state(CharState::Idle, char_state.dir());
+
+                    // give him max hp/sp
+                    char_state.hp = char_state.calculated_attribs().max_hp;
+                    char_state.pos()
+                };
+
+                // give him back it's physic component
+                let physics_component = PhysicsComponent::new(
+                    &mut ecs_world.write_resource::<PhysicEngine>(),
+                    pos2d,
+                    ComponentRadius(1),
+                    target_char_id,
+                    CollisionGroup::Player,
+                    &[CollisionGroup::NonPlayer],
+                );
+                ecs_world
+                    .write_storage::<PhysicsComponent>()
+                    .insert(target_char_id, physics_component);
+
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
 pub(super) fn cmd_follow_char() -> CommandDefinition {
     CommandDefinition {
         name: "follow_char".to_string(),
@@ -707,7 +803,7 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
 
             let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
@@ -715,12 +811,12 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
                 // remove controller from self
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .remove(self_entity_id);
+                    .remove(self_controller_id);
 
                 // set camera to follow target
                 ecs_world
                     .write_storage::<CameraComponent>()
-                    .get_mut(self_entity_id)
+                    .get_mut(self_controller_id)
                     .unwrap()
                     .followed_controller = Some(target_entity_id);
                 Ok(())
@@ -736,7 +832,7 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
         name: "control_char".to_string(),
         arguments: vec![("charname", CommandParamType::String, true)],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let charname = args.as_str(0).unwrap();
 
             let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, charname);
@@ -745,18 +841,18 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
                 // TODO: skills should be reassigned as well
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .remove(self_entity_id);
+                    .remove(self_controller_id);
 
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .insert(self_entity_id, ControllerComponent::new(target_char_id));
+                    .insert(self_controller_id, ControllerComponent::new(target_char_id));
 
                 // set camera to follow target
                 ecs_world
                     .write_storage::<CameraComponent>()
-                    .get_mut(self_entity_id)
+                    .get_mut(self_controller_id)
                     .unwrap()
-                    .followed_controller = Some(self_entity_id);
+                    .followed_controller = Some(self_controller_id);
                 Ok(())
             } else {
                 Err("The user was not found".to_owned())
@@ -772,7 +868,7 @@ pub(super) fn cmd_goto() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
 
             let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
@@ -819,7 +915,7 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_entity_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let x = args.as_int(0).unwrap();
             let y = args.as_int(1).unwrap();
             let username = args.as_str(2);

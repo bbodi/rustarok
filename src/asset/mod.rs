@@ -6,6 +6,7 @@ use crate::asset::rsm::Rsm;
 use crate::asset::rsw::Rsw;
 use crate::asset::spr::{SpriteFile, SpriteTexture};
 use crate::asset::str::StrFile;
+use crate::video::{GlTexture, GlTextureIndex};
 use crate::ModelName;
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
@@ -194,11 +195,16 @@ impl AssetLoader {
             .collect()
     }
 
-    pub fn load_effect(&self, effect_name: &str) -> Result<StrFile, String> {
+    pub fn load_effect(
+        &self,
+        effect_name: &str,
+        asset_database: &mut AssetDatabase,
+    ) -> Result<StrFile, String> {
         let file_name = format!("data\\texture\\effect\\{}.str", effect_name);
         let content = self.get_content(&file_name)?;
         return Ok(StrFile::load(
             &self,
+            asset_database,
             BinaryReader::from_vec(content),
             effect_name,
         ));
@@ -243,7 +249,7 @@ impl AssetLoader {
         return rwops.load_wav();
     }
 
-    pub fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
+    fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
         let buffer = self.get_content(path)?;
         let rwops = sdl2::rwops::RWops::from_bytes(buffer.as_slice())?;
         let mut surface = rwops.load()?;
@@ -264,6 +270,74 @@ impl AssetLoader {
         return Ok(optimized_surf);
     }
 
+    pub fn create_texture_from_surface(
+        name: &str,
+        surface: sdl2::surface::Surface,
+        min_mag: u32,
+        asset_db: &mut AssetDatabase,
+    ) -> GlTexture {
+        let ret = AssetLoader::create_texture_from_surface_inner(surface, min_mag);
+        asset_db.register_texture(&name, &[&ret]);
+        log::trace!("Texture was created loaded: {}", name);
+        ret
+    }
+
+    pub fn load_texture(
+        &self,
+        path: &str,
+        min_mag: u32,
+        asset_db: &mut AssetDatabase,
+    ) -> Result<GlTexture, String> {
+        let surface = self.load_sdl_surface(&path);
+        return surface.map(|surface| {
+            AssetLoader::create_texture_from_surface(path, surface, min_mag, asset_db)
+        });
+    }
+
+    pub fn create_texture_from_surface_inner(
+        mut surface: sdl2::surface::Surface,
+        min_mag: u32,
+    ) -> GlTexture {
+        let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
+            let mut optimized_surf = sdl2::surface::Surface::new(
+                surface.width(),
+                surface.height(),
+                PixelFormatEnum::RGBA32,
+            )
+            .unwrap();
+            surface
+                .set_color_key(true, sdl2::pixels::Color::RGB(255, 0, 255))
+                .unwrap();
+            surface.blit(None, &mut optimized_surf, None).unwrap();
+            optimized_surf
+        } else {
+            surface
+        };
+        let mut texture_id = GlTextureIndex(0);
+        unsafe {
+            gl::GenTextures(1, &mut texture_id.0);
+            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,               // Pyramid level (for mip-mapping) - 0 is the top level
+                gl::RGBA as i32, // Internal colour format to convert to
+                surface.width() as i32,
+                surface.height() as i32,
+                0,               // border
+                gl::RGBA as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                gl::UNSIGNED_BYTE,
+                surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
+            );
+
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min_mag as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, min_mag as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+            gl::GenerateMipmap(gl::TEXTURE_2D);
+        }
+        GlTexture::new(texture_id, surface.width() as i32, surface.height() as i32)
+    }
+
     pub fn load_spr_and_act(
         &self,
         path: &str,
@@ -278,16 +352,7 @@ impl AssetLoader {
         let content = self.get_content(&format!("{}.act", path))?;
         let action = ActionFile::load(BinaryReader::from_vec(content));
 
-        let s = frames
-            .iter()
-            .map(|it| {
-                (
-                    it.texture.id(),
-                    it.texture.width as u32,
-                    it.texture.height as u32,
-                )
-            })
-            .collect::<Vec<_>>();
+        let s = frames.iter().map(|it| &it.texture).collect::<Vec<_>>();
         asset_db.register_texture(&path.to_string(), s.as_slice());
 
         return Ok(SpriteResource {

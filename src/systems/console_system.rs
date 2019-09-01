@@ -2,8 +2,8 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::HumanInputComponent;
 use crate::systems::console_commands::{
     cmd_add_status, cmd_control_char, cmd_follow_char, cmd_goto, cmd_heal, cmd_kill_all,
-    cmd_list_entities, cmd_list_players, cmd_set_outlook, cmd_set_pos, cmd_spawn_area,
-    cmd_spawn_effect, cmd_spawn_entity,
+    cmd_list_entities, cmd_list_players, cmd_resurrect, cmd_set_outlook, cmd_set_pos, cmd_set_team,
+    cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
@@ -590,7 +590,6 @@ impl<'a> ConsoleSystem<'a> {
                 );
 
                 if let Some(list) = command_def.and_then(|it| {
-                    let param_index = console.cursor_parameter_index;
                     if it.arguments.len() < console.cursor_parameter_index {
                         None
                     } else {
@@ -667,6 +666,8 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_follow_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_control_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook());
+        ConsoleSystem::add_command(&mut command_defs, cmd_resurrect());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_team());
 
         return command_defs;
     }
@@ -1011,7 +1012,11 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                             console.history_pos += 1;
                         }
                         let idx = console.command_history.len() - console.history_pos;
-                        let new_input = console.command_history[idx].clone();
+                        let new_input = console
+                            .command_history
+                            .get(idx)
+                            .unwrap_or(&"".to_owned())
+                            .clone();
                         console.set_input_and_cursor_x(new_input.chars().count(), new_input);
                     }
                 } else if input.is_key_just_pressed(Scancode::Down) {

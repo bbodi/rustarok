@@ -1,11 +1,11 @@
 use crate::asset::database::AssetDatabase;
+use crate::asset::AssetLoader;
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
 use nalgebra::{Matrix3, Matrix4};
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::BlendMode;
-use sdl2::surface::Surface;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{GLContext, Window};
 use sdl2::EventPump;
@@ -91,18 +91,39 @@ impl Video {
         ttf_context.load_font(font_path, size)
     }
 
-    pub fn create_text_texture<'a, 'b>(font: &sdl2::ttf::Font<'a, 'b>, text: &str) -> GlTexture {
+    pub fn create_text_texture<'a, 'b>(
+        font: &sdl2::ttf::Font<'a, 'b>,
+        text: &str,
+        asset_database: &mut AssetDatabase,
+    ) -> GlTexture {
         let surface = font
             .render(text)
             .blended(Color::RGBA(255, 255, 255, 255))
             .unwrap();
-        return GlTexture::from_surface(surface, gl::LINEAR);
+        return AssetLoader::create_texture_from_surface(
+            &format!("text_{}", text),
+            surface,
+            gl::LINEAR,
+            asset_database,
+        );
+    }
+
+    pub fn create_text_texture_inner<'a, 'b>(
+        font: &sdl2::ttf::Font<'a, 'b>,
+        text: &str,
+    ) -> GlTexture {
+        let surface = font
+            .render(text)
+            .blended(Color::RGBA(255, 255, 255, 255))
+            .unwrap();
+        return AssetLoader::create_texture_from_surface_inner(surface, gl::LINEAR);
     }
 
     pub fn create_outline_text_texture<'a, 'b>(
         font: &sdl2::ttf::Font<'a, 'b>,
         outline_font: &sdl2::ttf::Font<'a, 'b>,
         text: &str,
+        asset_database: &mut AssetDatabase,
     ) -> GlTexture {
         let mut bg_surface = outline_font
             .render(text)
@@ -125,7 +146,12 @@ impl Video {
                 ),
             )
             .unwrap();
-        return GlTexture::from_surface(bg_surface, gl::NEAREST);
+        return AssetLoader::create_texture_from_surface(
+            &format!("outlinetext_{}", text),
+            bg_surface,
+            gl::NEAREST,
+            asset_database,
+        );
     }
 }
 
@@ -167,6 +193,14 @@ pub const TEXTURE_1: GlTextureIndex = GlTextureIndex(gl::TEXTURE1);
 pub const TEXTURE_2: GlTextureIndex = GlTextureIndex(gl::TEXTURE2);
 
 impl GlTexture {
+    pub fn new(texture_id: GlTextureIndex, width: i32, height: i32) -> GlTexture {
+        GlTexture {
+            context: Arc::new(GlTextureContext(texture_id)),
+            width,
+            height,
+        }
+    }
+
     pub fn id(&self) -> GlTextureIndex {
         (self.context.0).clone()
     }
@@ -193,54 +227,12 @@ impl GlTexture {
         surface.blit(None, &mut optimized_surf, None).unwrap();
         log::trace!("Texture from file --> {}", &path);
         let (w, h) = (surface.width(), surface.height());
-        let ret = GlTexture::from_surface(optimized_surf, gl::NEAREST);
-        asset_database.register_texture(&path.to_string(), &[(ret.context.0, w, h)]);
-        return ret;
-    }
-
-    pub fn from_surface(mut surface: Surface, min_mag: u32) -> GlTexture {
-        let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
-            let mut optimized_surf = sdl2::surface::Surface::new(
-                surface.width(),
-                surface.height(),
-                PixelFormatEnum::RGBA32,
-            )
-            .unwrap();
-            surface
-                .set_color_key(true, Color::RGB(255, 0, 255))
-                .unwrap();
-            surface.blit(None, &mut optimized_surf, None).unwrap();
-            optimized_surf
-        } else {
-            surface
-        };
-        let mut texture_id = GlTextureIndex(0);
-        unsafe {
-            gl::GenTextures(1, &mut texture_id.0);
-            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,               // Pyramid level (for mip-mapping) - 0 is the top level
-                gl::RGBA as i32, // Internal colour format to convert to
-                surface.width() as i32,
-                surface.height() as i32,
-                0,               // border
-                gl::RGBA as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
-                gl::UNSIGNED_BYTE,
-                surface.without_lock().unwrap().as_ptr() as *const gl::types::GLvoid,
-            );
-
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min_mag as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, min_mag as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-            gl::GenerateMipmap(gl::TEXTURE_2D);
-        }
-        GlTexture {
-            context: Arc::new(GlTextureContext(texture_id)),
-            width: surface.width() as i32,
-            height: surface.height() as i32,
-        }
+        return AssetLoader::create_texture_from_surface(
+            &path.to_string(),
+            optimized_surf,
+            gl::NEAREST,
+            asset_database,
+        );
     }
 
     pub fn from_data(data: &Vec<u8>, width: i32, height: i32) -> GlTexture {

@@ -702,7 +702,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let texture = self
                         .text_cache
                         .entry(command.text.clone()) // TODO: why clone ?
-                        .or_insert(Video::create_text_texture(
+                        .or_insert(Video::create_text_texture_inner(
                             &self.fonts.normal_font,
                             &command.text,
                         ));

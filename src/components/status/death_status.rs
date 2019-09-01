@@ -10,15 +10,17 @@ use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use specs::{Entity, LazyUpdate};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DeathStatus {
     pub started: ElapsedTime,
     pub remove_char_at: ElapsedTime,
+    is_npc: bool,
 }
 
 impl DeathStatus {
-    pub fn new(now: ElapsedTime) -> Box<DeathStatus> {
+    pub fn new(now: ElapsedTime, is_npc: bool) -> Box<DeathStatus> {
         Box::new(DeathStatus {
+            is_npc,
             started: now,
             remove_char_at: now.add_seconds(2.0),
         })
@@ -47,7 +49,11 @@ impl Status for DeathStatus {
             1.0,
             1.0,
             1.0,
-            1.0 - now.percentage_between(self.started, self.remove_char_at),
+            if self.is_npc {
+                1.0 - now.percentage_between(self.started, self.remove_char_at)
+            } else {
+                1.0
+            },
         ]
     }
 
@@ -65,9 +71,6 @@ impl Status for DeathStatus {
         entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.remove_char_at.is_earlier_than(system_vars.time) {
-            entities.delete(self_char_id).unwrap();
-        }
         StatusUpdateResult::KeepIt
     }
 

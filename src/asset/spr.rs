@@ -1,4 +1,4 @@
-use crate::asset::BinaryReader;
+use crate::asset::{AssetLoader, BinaryReader};
 use crate::video::GlTexture;
 use sdl2::pixels::PixelFormatEnum;
 
@@ -178,7 +178,7 @@ impl SpriteTexture {
         SpriteTexture {
             original_width: frame.width,
             original_height: frame.height,
-            texture: GlTexture::from_surface(opengl_surface, gl::NEAREST),
+            texture: AssetLoader::create_texture_from_surface_inner(opengl_surface, gl::NEAREST),
         }
     }
 }

@@ -769,6 +769,12 @@ impl Team {
     }
 }
 
+pub struct NpcComponent;
+
+impl Component for NpcComponent {
+    type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pub name: String, // characters also has names so it is possible to follow them with a camera

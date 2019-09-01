@@ -13,7 +13,7 @@ use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
@@ -366,11 +366,25 @@ impl Statuses {
         self.statuses[status as usize] = None;
     }
 
-    pub unsafe fn hack_cast<T>(boxx: &Box<dyn Status>) -> &T {
-        // TODO: I could not get back a PosionStatus struct from a Status trait without unsafe, HELP
-        // hacky as hell, nothing guarantees that the first pointer in a Trait is the value pointer
-        let raw_object: *const T = std::mem::transmute(boxx);
-        return &*raw_object;
+    unsafe fn trait_to_struct<T>(boxx: &Box<dyn Status>) -> &T {
+        return unsafe { std::mem::transmute::<_, &Box<T>>(boxx) };
+    }
+
+    pub fn get_status<F, T: 'static, R>(&self, func: F) -> Option<R>
+    where
+        F: Fn(&T) -> R,
+    {
+        let requested_type_id = TypeId::of::<T>();
+        for status in self.statuses.iter().filter(|it| it.is_some()) {
+            let guard = status.as_ref().unwrap().lock().unwrap();
+            let boxx: &Box<dyn Status> = &guard;
+            let type_id = boxx.as_ref().type_id();
+            if requested_type_id == type_id {
+                let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
+                return Some(func(param));
+            }
+        }
+        return None;
     }
 
     pub fn add_poison(
@@ -383,7 +397,11 @@ impl Statuses {
             let status = &self.statuses[MainStatuses::Poison as usize];
             if let Some(current_poison) = status {
                 let boxx: &Box<dyn Status> = &*current_poison.lock().unwrap();
-                unsafe { Statuses::hack_cast::<PoisonStatus>(boxx).until.max(until) }
+                unsafe {
+                    Statuses::trait_to_struct::<PoisonStatus>(boxx)
+                        .until
+                        .max(until)
+                }
             } else {
                 until
             }

@@ -1,7 +1,9 @@
 use specs::prelude::*;
 
 use crate::common::v2_to_p2;
-use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, PhysicsComponent};
+use crate::components::char::{
+    CharState, CharacterStateComponent, EntityTarget, NpcComponent, PhysicsComponent,
+};
 use crate::components::controller::WorldCoords;
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::status::death_status::DeathStatus;
@@ -16,6 +18,7 @@ pub struct CharacterStateUpdateSystem;
 impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
     type SystemData = (
         specs::Entities<'a>,
+        specs::ReadStorage<'a, NpcComponent>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
@@ -29,6 +32,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         &mut self,
         (
             entities,
+            npc_storage,
             mut physics_storage,
             mut char_state_storage,
             mut system_vars,
@@ -55,16 +59,29 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
 
             // pakold külön componensbe augy a dolgokat, hogy innen be tudjam álltiani a
             // target et None-ra ha az halott, meg a fenti position hack se kelllejn
-            if char_comp.hp <= 0 && *char_comp.state() != CharState::Dead {
+            let is_dead = *char_comp.state() == CharState::Dead;
+            if char_comp.hp <= 0 && !is_dead {
                 log::debug!("Entity has died {:?}", char_entity_id);
                 char_comp.set_state(CharState::Dead, char_comp.dir());
                 char_comp.statuses.remove_all();
-                char_comp.statuses.add(DeathStatus::new(system_vars.time));
+                char_comp.statuses.add(DeathStatus::new(
+                    system_vars.time,
+                    npc_storage.get(char_entity_id).is_some(),
+                ));
                 // remove rigid bodies from the physic simulation
                 if let Some(phys_comp) = physics_storage.get(char_entity_id) {
                     collisions_resource.remove_collider_handle(phys_comp.collider_handle);
                     physics_world.bodies.remove(phys_comp.body_handle);
                     physics_storage.remove(char_entity_id);
+                }
+                continue;
+            } else if is_dead && npc_storage.get(char_entity_id).is_some() {
+                let remove_char_at = char_comp
+                    .statuses
+                    .get_status::<_, DeathStatus, _>(|status| status.remove_char_at)
+                    .unwrap();
+                if remove_char_at.is_earlier_than(system_vars.time) {
+                    entities.delete(char_entity_id).unwrap();
                 }
                 continue;
             }

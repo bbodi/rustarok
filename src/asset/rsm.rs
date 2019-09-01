@@ -1,3 +1,4 @@
+use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use crate::{DataForRenderingSingleNode, SameTextureNodeFaces};
@@ -416,6 +417,7 @@ impl Rsm {
 
     pub fn load_textures(
         asset_loader: &AssetLoader,
+        asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
     ) -> Vec<GlTexture> {
         texture_names
@@ -428,7 +430,12 @@ impl Rsm {
                     log::warn!("Missing texture: {}, {}", path, e);
                     asset_loader.backup_surface()
                 });
-                let ret = GlTexture::from_surface(surface, gl::NEAREST);
+                let ret = AssetLoader::create_texture_from_surface(
+                    &path,
+                    surface,
+                    gl::NEAREST,
+                    asset_database,
+                );
                 log::trace!("Texture was created loaded: {}", path);
                 return ret;
             })

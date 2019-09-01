@@ -18,8 +18,8 @@ use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::VertexArray;
 use crate::video::VertexAttribDefinition;
-use crate::{ElapsedTime, MapRenderData, PhysicEngine, Shaders, SpriteResource};
-use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
+use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource};
+use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
 
@@ -115,10 +115,6 @@ impl RenderDesktopClientSystem {
                     .map(|it| it.controlled_char.pos())
                     .as_ref(),
                 &camera.camera,
-                &camera.view_matrix,
-                &camera.normal_matrix,
-                &system_vars.assets.shaders,
-                &system_vars.matrices.projection,
                 &system_vars.map_render_data,
                 render_commands,
             );
@@ -208,7 +204,6 @@ impl RenderDesktopClientSystem {
             self.draw_characters(
                 &camera,
                 controller,
-                input,
                 render_commands,
                 &system_vars,
                 char_state_storage,
@@ -250,7 +245,6 @@ impl RenderDesktopClientSystem {
         followed_char_id: Entity,
         select_skill_target: Option<(SkillKey, Skills)>,
         rendering_entity_id: Entity,
-        input: &HumanInputComponent,
         entities_below_cursor: &EntitiesBelowCursor,
         desktop_target: &Option<EntityTarget>,
     ) -> bool {
@@ -297,7 +291,6 @@ impl RenderDesktopClientSystem {
         &self,
         camera: &CameraComponent,
         controller: &mut Option<ControllerAndControlled>,
-        input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
@@ -345,7 +338,6 @@ impl RenderDesktopClientSystem {
                             controller.controller.controlled_entity,
                             controller.controller.select_skill_target,
                             rendering_entity_id,
-                            input,
                             &controller.controller.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
@@ -470,7 +462,6 @@ impl RenderDesktopClientSystem {
                             controller.controller.controlled_entity,
                             controller.controller.select_skill_target,
                             rendering_entity_id,
-                            input,
                             &controller.controller.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
@@ -502,7 +493,7 @@ impl RenderDesktopClientSystem {
                         &pos,
                         [0, 0],
                         true,
-                        5.0,
+                        1.0,
                         play_mode,
                         &color,
                         render_commands,
@@ -873,10 +864,6 @@ pub fn render_action(
 fn render_client(
     char_pos: Option<&Vector2<f32>>,
     camera: &Camera,
-    view: &Matrix4<f32>,
-    normal_matrix: &Matrix3<f32>,
-    shaders: &Shaders,
-    projection_matrix: &Matrix4<f32>,
     map_render_data: &MapRenderData,
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
