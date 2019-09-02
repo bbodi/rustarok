@@ -1,10 +1,7 @@
-import kotlinx.coroutines.GlobalScope
+package rustarok
+
 import kotlinx.coroutines.await
-import kotlinx.coroutines.launch
-import org.khronos.webgl.ArrayBufferView
 import org.khronos.webgl.Uint8Array
-import org.w3c.dom.WorkerGlobalScope
-import org.w3c.files.Blob
 import kotlin.js.Promise
 
 external interface IDBFactory {
@@ -18,7 +15,8 @@ external interface IDBDatabase {
 data class TextureEntry(val path: String, val hash: String, val count: Int)
 
 object IndexedDb {
-    private val indexedDb: IDBFactory = js("window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB")
+    private val indexedDb: IDBFactory =
+            js("window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB")
 
     suspend fun collect_mismatched_textures(entries: Map<String, DatabaseTextureEntry>): ArrayList<String> {
         val db = open()

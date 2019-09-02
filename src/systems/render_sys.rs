@@ -52,8 +52,7 @@ impl RenderDesktopClientSystem {
                     i as i32,
                     VertexArray::new(
                         gl::LINE_STRIP,
-                        &pts,
-                        pts.len(),
+                        pts,
                         vec![VertexAttribDefinition {
                             number_of_components: 2,
                             offset_of_first_element: 0,

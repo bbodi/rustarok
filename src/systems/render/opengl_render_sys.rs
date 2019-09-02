@@ -180,8 +180,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 let bottom_right = v3!(0.5, 0.0, -0.5);
                 VertexArray::new(
                     gl::LINE_LOOP,
-                    &[bottom_left, top_left, top_right, bottom_right],
-                    4,
+                    vec![bottom_left, top_left, top_right, bottom_right],
                     vec![VertexAttribDefinition {
                         number_of_components: 3,
                         offset_of_first_element: 0,
@@ -197,8 +196,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                     .collect();
                 VertexArray::new(
                     gl::LINE_LOOP,
-                    coords.as_slice(),
-                    coords.len(),
+                    coords,
                     vec![VertexAttribDefinition {
                         number_of_components: 3,
                         offset_of_first_element: 0,
@@ -225,7 +223,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         shader.set_vec3("light_ambient", &map_render_data.rsw.light.ambient);
         shader.set_vec3("light_diffuse", &map_render_data.rsw.light.diffuse);
         shader.set_f32("light_opacity", map_render_data.rsw.light.opacity);
-        shader.set_vec3("in_lightWheight", &map_render_data.light_wheight);
         map_render_data.texture_atlas.bind(TEXTURE_0);
         shader.set_int("gnd_texture_atlas", 0);
         map_render_data.tile_color_texture.bind(TEXTURE_1);
@@ -283,8 +280,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         });
         return VertexArray::new(
             gl::TRIANGLES,
-            &vertices,
-            vertices.len(),
+            vertices,
             vec![
                 VertexAttribDefinition {
                     number_of_components: 2,
@@ -371,13 +367,12 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         return Some(EffectFrameCache {
             pos_vao: VertexArray::new(
                 gl::TRIANGLE_STRIP,
-                &[
+                vec![
                     [xy[0], xy[4], 0.0, 0.0],
                     [xy[1], xy[5], 1.0, 0.0],
                     [xy[3], xy[7], 0.0, 1.0],
                     [xy[2], xy[6], 1.0, 1.0],
                 ],
-                4,
                 vec![
                     VertexAttribDefinition {
                         // xy

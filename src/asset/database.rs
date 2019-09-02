@@ -53,7 +53,7 @@ impl AssetDatabase {
         let hash = hasher.finish();
 
         self.texture_db.entries.insert(
-            format!("{:?}", path.as_bytes()),
+            AssetDatabase::replace_non_ascii_chars(&path),
             TextureDatabaseEntry {
                 hash: hash.to_string(),
                 gl_textures: textures
@@ -64,7 +64,19 @@ impl AssetDatabase {
         );
     }
 
-    pub fn copy_texture(&self, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
+    fn replace_non_ascii_chars(name: &str) -> String {
+        name.chars()
+            .map(|it| {
+                if it.is_ascii() {
+                    it.to_string()
+                } else {
+                    format!("{:?}", it.to_string().as_bytes())
+                }
+            })
+            .collect()
+    }
+
+    pub fn copy_texture_into(&self, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
         if let Some(texture_entry) = self.texture_db.entries.get(path_in_byte_form) {
             let mut offset = 0;
             dst_buf

@@ -234,34 +234,6 @@ impl GlTexture {
             asset_database,
         );
     }
-
-    pub fn from_data(data: &Vec<u8>, width: i32, height: i32) -> GlTexture {
-        let mut texture_id = GlTextureIndex(0);
-        unsafe {
-            gl::GenTextures(1, &mut texture_id.0);
-            log::debug!("Texture from_data {}", texture_id.0);
-            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,               // Pyramid level (for mip-mapping) - 0 is the top level
-                gl::RGBA as i32, // Internal colour format to convert to
-                width,
-                height,
-                0,        // border
-                gl::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
-                gl::UNSIGNED_BYTE,
-                data.as_ptr() as *const gl::types::GLvoid,
-            );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            gl::GenerateMipmap(gl::TEXTURE_2D);
-        }
-        GlTexture {
-            context: Arc::new(GlTextureContext(texture_id)),
-            width,
-            height,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -319,6 +291,7 @@ impl Drop for VertexArrayResource {
 
 #[derive(Clone, Debug)]
 pub struct VertexArray {
+    pub raw: Vec<u8>,
     buffers: Arc<VertexArrayResource>,
     vertex_count: usize,
     stride: gl::types::GLint,
@@ -355,12 +328,20 @@ impl VertexArray {
         }
     }
 
+    pub fn raw_len(&self) -> usize {
+        self.raw.len()
+    }
+
+    pub fn copy_into(&self, dst_buf: &mut Vec<u8>) {
+        dst_buf.extend_from_slice(self.raw.as_slice());
+    }
+
     pub fn new<T>(
         draw_mode: u32,
-        vertices: &[T],
-        vertex_count: usize,
+        mut vertices: Vec<T>,
         definitions: Vec<VertexAttribDefinition>,
     ) -> VertexArray {
+        let vertex_count = vertices.len();
         let mut vbo: gl::types::GLuint = 0;
         unsafe {
             gl::GenBuffers(1, &mut vbo);
@@ -397,8 +378,13 @@ impl VertexArray {
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
             gl::BindVertexArray(0);
         }
-
+        let p = vertices.as_mut_ptr();
+        let len = vertices.len() * std::mem::size_of::<T>();
+        let cap = vertices.capacity() * std::mem::size_of::<T>();
+        std::mem::forget(vertices);
+        let raw: Vec<u8> = unsafe { Vec::from_raw_parts(p as *mut u8, len, cap) };
         VertexArray {
+            raw,
             draw_mode,
             buffers: Arc::new(VertexArrayResource {
                 buffer_id: vbo,

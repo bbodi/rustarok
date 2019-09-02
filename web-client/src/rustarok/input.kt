@@ -1,5 +1,6 @@
+package rustarok
+
 import org.khronos.webgl.ArrayBuffer
-import org.khronos.webgl.ArrayBufferView
 import org.khronos.webgl.DataView
 import org.khronos.webgl.Uint8Array
 import org.w3c.dom.Document

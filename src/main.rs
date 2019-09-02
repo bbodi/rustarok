@@ -24,6 +24,7 @@ extern crate strum_macros;
 extern crate sublime_fuzzy;
 extern crate websocket;
 
+use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -48,7 +49,7 @@ use specs::Join;
 use crate::asset::gat::{CellType, Gat};
 use crate::asset::gnd::Gnd;
 use crate::asset::rsm::{BoundingBox, Rsm};
-use crate::asset::rsw::Rsw;
+use crate::asset::rsw::{Rsw, WaterData};
 use crate::asset::str::StrFile;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::components::char::{
@@ -570,8 +571,9 @@ fn main() {
         ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
     };
 
+    let map_name = "prontera";
     let (map_render_data, physics_world) = load_map(
-        "prontera",
+        map_name,
         &asset_loader,
         &mut asset_database,
         config.quick_startup,
@@ -1023,12 +1025,19 @@ fn main() {
                 let mut browser_client = BrowserClient::new(browser_socket);
                 {
                     let asset_db: &AssetDatabase = &ecs_world.read_resource();
+                    let system_vars = &ecs_world.read_resource::<SystemVariables>();
                     let welcome_data = json!({
                         "screen_width": VIDEO_WIDTH,
                         "screen_height": VIDEO_HEIGHT,
+                        "map_name": map_name,
                         "asset_database": serde_json::to_value(asset_db).unwrap(),
-                        "projection_mat": ecs_world
-                                            .read_resource::<SystemVariables>()
+                        "ground": json!({
+                            "light_dir" : system_vars.map_render_data.rsw.light.direction,
+                            "light_ambient" : system_vars.map_render_data.rsw.light.ambient,
+                            "light_diffuse" : system_vars.map_render_data.rsw.light.diffuse,
+                            "light_opacity" : system_vars.map_render_data.rsw.light.opacity,
+                        }),
+                        "projection_mat": system_vars
                                             .matrices
                                             .projection.as_slice()
                     });
@@ -1069,10 +1078,12 @@ fn main() {
                                 let mut response_buf =
                                     Vec::with_capacity(mismatched_textures.len() * 256 * 256);
                                 for mismatched_texture in mismatched_textures {
-                                    ecs_world.read_resource::<AssetDatabase>().copy_texture(
-                                        mismatched_texture.as_str().unwrap_or(""),
-                                        &mut response_buf,
-                                    );
+                                    ecs_world
+                                        .read_resource::<AssetDatabase>()
+                                        .copy_texture_into(
+                                            mismatched_texture.as_str().unwrap_or(""),
+                                            &mut response_buf,
+                                        );
                                     client.send_message(&response_buf);
                                     response_buf.clear();
                                 }
@@ -1084,6 +1095,40 @@ fn main() {
                                     response_buf.push(0xB5);
                                     client.send_message(&response_buf);
                                 }
+                            }
+                            if let Some(mismatched_vertex_buffers) =
+                                deserialized["mismatched_vertex_buffers"].as_array()
+                            {
+                                log::trace!(
+                                    "mismatched_vertex_buffers: {:?}",
+                                    mismatched_vertex_buffers
+                                );
+                                let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                                for mismatched_vertex_buffer in mismatched_vertex_buffers {
+                                    if let Some("3d_ground") = mismatched_vertex_buffer.as_str() {
+                                        response_buf.write_u8(1).unwrap();
+                                        let ground_vao = &ecs_world
+                                            .read_resource::<SystemVariables>()
+                                            .map_render_data
+                                            .ground_vertex_array;
+                                        response_buf
+                                            .write_u32::<LittleEndian>(ground_vao.raw_len() as u32)
+                                            .unwrap();
+                                        ground_vao.copy_into(&mut response_buf);
+                                        client.send_message(&response_buf);
+                                        response_buf.clear();
+                                    }
+                                }
+                                // send closing message
+                                {
+                                    response_buf.push(0xB1);
+                                    response_buf.push(0x6B);
+                                    response_buf.push(0x00);
+                                    response_buf.push(0xB5);
+                                    client.send_message(&response_buf);
+                                }
+                            }
+                            if deserialized["ready"].as_bool().is_some() {
                                 let char_entity_id = entities.create();
                                 components::char::attach_human_player_components(
                                     "browser",
@@ -1593,7 +1638,6 @@ pub struct MapRenderData {
     pub gat: Gat,
     pub gnd: Gnd,
     pub rsw: Rsw,
-    pub light_wheight: [f32; 3],
     pub use_tile_colors: bool,
     pub use_lightmaps: bool,
     pub use_lighting: bool,
@@ -1639,16 +1683,25 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-fn load_map(
+struct GroundLoadResult {
+    ground_vertex_array: VertexArray,
+    ground_walkability_mesh: VertexArray,
+    ground_walkability_mesh2: VertexArray,
+    ground_walkability_mesh3: VertexArray,
+    ground: Gnd,
+    texture_atlas: GlTexture,
+    tile_color_texture: GlTexture,
+    lightmap_texture: GlTexture,
+}
+
+fn load_ground(
     map_name: &str,
+    gat: &Gat,
+    water: &WaterData,
+    colliders: &Vec<(Vector2<f32>, Vector2<f32>)>,
     asset_loader: &AssetLoader,
     asset_database: &mut AssetDatabase,
-    quick_loading: bool,
-) -> (MapRenderData, PhysicEngine) {
-    let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
-    log::info!("rsw loaded: {}ms", elapsed.as_millis());
-    let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
-    let w = gat.width;
+) -> GroundLoadResult {
     let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
     let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
     let mut rotate_around_x_axis = |mut pos: Point3<f32>| {
@@ -1687,8 +1740,8 @@ fn load_map(
         .iter()
         .enumerate()
         .map(|(i, cell)| {
-            let x = (i as u32 % w) as f32;
-            let y = (i as u32 / w) as f32;
+            let x = (i as u32 % gat.width) as f32;
+            let y = (i as u32 / gat.width) as f32;
             if cell.cell_type & CellType::Walkable as u8 == 0 {
                 vec![
                     rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 1.0)),
@@ -1706,8 +1759,7 @@ fn load_map(
         .collect();
     let ground_walkability_mesh = VertexArray::new(
         gl::TRIANGLES,
-        &vertices,
-        vertices.len(),
+        vertices,
         vec![VertexAttribDefinition {
             number_of_components: 3,
             offset_of_first_element: 0,
@@ -1715,20 +1767,167 @@ fn load_map(
     );
     let ground_walkability_mesh2 = VertexArray::new(
         gl::TRIANGLES,
-        &vertices2,
-        vertices2.len(),
+        vertices2,
         vec![VertexAttribDefinition {
             number_of_components: 3,
             offset_of_first_element: 0,
         }],
     );
-    log::info!("gat loaded: {}ms", elapsed.as_millis());
+    let vertices: Vec<Point3<f32>> = colliders
+        .iter()
+        .map(|(extents, pos)| {
+            let x = pos.x - extents.x;
+            let x2 = pos.x + extents.x;
+            let y = pos.y - extents.y;
+            let y2 = pos.y + extents.y;
+            vec![
+                Point3::new(x, 3.0, y2),
+                Point3::new(x2, 3.0, y2),
+                Point3::new(x, 3.0, y),
+                Point3::new(x, 3.0, y),
+                Point3::new(x2, 3.0, y2),
+                Point3::new(x2, 3.0, y),
+            ]
+        })
+        .flatten()
+        .collect();
+    let ground_walkability_mesh3 = VertexArray::new(
+        gl::TRIANGLES,
+        vertices,
+        vec![VertexAttribDefinition {
+            number_of_components: 3,
+            offset_of_first_element: 0,
+        }],
+    );
     let (elapsed, mut ground) = measure_time(|| {
         asset_loader
-            .load_gnd(map_name, world.water.level, world.water.wave_height)
+            .load_gnd(map_name, water.level, water.wave_height)
             .unwrap()
     });
     log::info!("gnd loaded: {}ms", elapsed.as_millis());
+    let (elapsed, texture_atlas) = measure_time(|| {
+        Gnd::create_gl_texture_atlas(&asset_loader, asset_database, &ground.texture_names)
+    });
+    log::info!("gnd texture_atlas loaded: {}ms", elapsed.as_millis());
+
+    let tile_color_texture = Gnd::create_tile_color_texture(
+        &mut ground.tiles_color_image,
+        ground.width,
+        ground.height,
+        asset_database,
+    );
+    let lightmap_texture = Gnd::create_lightmap_texture(
+        &ground.lightmap_image,
+        ground.lightmaps.count,
+        asset_database,
+    );
+    let ground_vertex_array = VertexArray::new(
+        gl::TRIANGLES,
+        std::mem::replace(&mut ground.mesh, vec![]),
+        vec![
+            VertexAttribDefinition {
+                number_of_components: 3,
+                offset_of_first_element: 0,
+            },
+            VertexAttribDefinition {
+                // normals
+                number_of_components: 3,
+                offset_of_first_element: 3,
+            },
+            VertexAttribDefinition {
+                // texcoords
+                number_of_components: 2,
+                offset_of_first_element: 6,
+            },
+            VertexAttribDefinition {
+                // lightmap_coord
+                number_of_components: 2,
+                offset_of_first_element: 8,
+            },
+            VertexAttribDefinition {
+                // tile color coordinate
+                number_of_components: 2,
+                offset_of_first_element: 10,
+            },
+        ],
+    );
+    GroundLoadResult {
+        ground_vertex_array,
+        ground_walkability_mesh,
+        ground_walkability_mesh2,
+        ground_walkability_mesh3,
+        ground,
+        texture_atlas,
+        tile_color_texture,
+        lightmap_texture,
+    }
+}
+
+fn load_map(
+    map_name: &str,
+    asset_loader: &AssetLoader,
+    asset_database: &mut AssetDatabase,
+    quick_loading: bool,
+) -> (MapRenderData, PhysicEngine) {
+    let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
+    log::info!("rsw loaded: {}ms", elapsed.as_millis());
+    let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
+    log::info!("gat loaded: {}ms", elapsed.as_millis());
+    let w = gat.width;
+
+    let mut physics_world = PhysicEngine {
+        mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
+        geometrical_world: DefaultGeometricalWorld::new(),
+
+        bodies: DefaultBodySet::new(),
+        colliders: DefaultColliderSet::new(),
+        joint_constraints: DefaultJointConstraintSet::new(),
+        force_generators: DefaultForceGeneratorSet::new(),
+    };
+
+    let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
+        .rectangles
+        .iter()
+        .map(|cell| {
+            let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+            let half_w = cell.width as f32 / 2.0;
+            let x = cell.start_x as f32 + half_w;
+            let half_h = cell.height as f32 / 2.0;
+            let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
+            let half_extents = Vector2::new(half_w, half_h);
+
+            let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
+            let v = rot * Vector3::new(x, 0.0, y);
+            let v2 = Vector2::new(v.x, v.z);
+            let parent_rigid_body = RigidBodyDesc::new()
+                .translation(v2)
+                .gravity_enabled(false)
+                .status(nphysics2d::object::BodyStatus::Static)
+                .build();
+            let parent_handle = physics_world.bodies.insert(parent_rigid_body);
+            let cuboid = ColliderDesc::new(cuboid)
+                .density(10.0)
+                .collision_groups(
+                    CollisionGroups::new()
+                        .with_membership(&[CollisionGroup::StaticModel as usize])
+                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
+                )
+                .build(BodyPartHandle(parent_handle, 0));
+            let cuboid_pos = cuboid.position_wrt_body().translation.vector;
+            physics_world.colliders.insert(cuboid);
+            (half_extents, cuboid_pos)
+        })
+        .collect();
+
+    let ground_data = load_ground(
+        map_name,
+        &gat,
+        &world.water,
+        &colliders,
+        asset_loader,
+        asset_database,
+    );
+
     let (elapsed, models) = measure_time(|| {
         if !quick_loading {
             let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
@@ -1786,7 +1985,11 @@ fn load_map(
             let mut only_transition_matrix = Matrix4::<f32>::identity();
             only_transition_matrix.prepend_translation_mut(
                 &(model_instance.pos
-                    + Vector3::new(ground.width as f32, 0f32, ground.height as f32)),
+                    + Vector3::new(
+                        ground_data.ground.width as f32,
+                        0f32,
+                        ground_data.ground.height as f32,
+                    )),
             );
 
             let mut instance_matrix = only_transition_matrix.clone();
@@ -1847,20 +2050,6 @@ fn load_map(
         })
         .collect();
 
-    let (elapsed, texture_atlas) = measure_time(|| {
-        Gnd::create_gl_texture_atlas(&asset_loader, asset_database, &ground.texture_names)
-    });
-    log::info!("model texture_atlas loaded: {}ms", elapsed.as_millis());
-
-    let tile_color_texture = Gnd::create_tile_color_texture(
-        &mut ground.tiles_color_image,
-        ground.width,
-        ground.height,
-        asset_database,
-    );
-    let lightmap_texture =
-        Gnd::create_lightmap_texture(&ground.lightmap_image, ground.lightmaps.count);
-
     let s: Vec<[f32; 4]> = vec![
         [-0.5, 0.5, 0.0, 0.0],
         [0.5, 0.5, 1.0, 0.0],
@@ -1869,8 +2058,7 @@ fn load_map(
     ];
     let centered_sprite_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
-        &s,
-        4,
+        s,
         vec![
             VertexAttribDefinition {
                 number_of_components: 2,
@@ -1891,8 +2079,7 @@ fn load_map(
     ];
     let sprite_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
-        &s,
-        4,
+        s,
         vec![
             VertexAttribDefinition {
                 number_of_components: 2,
@@ -1908,119 +2095,17 @@ fn load_map(
     let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
     let rectangle_vertex_array = VertexArray::new(
         gl::TRIANGLE_STRIP,
-        &s,
-        4,
+        s,
         vec![VertexAttribDefinition {
             number_of_components: 2,
             offset_of_first_element: 0,
         }],
     );
 
-    let ground_vertex_array = VertexArray::new(
-        gl::TRIANGLES,
-        &ground.mesh,
-        ground.mesh.len(),
-        vec![
-            VertexAttribDefinition {
-                number_of_components: 3,
-                offset_of_first_element: 0,
-            },
-            VertexAttribDefinition {
-                // normals
-                number_of_components: 3,
-                offset_of_first_element: 3,
-            },
-            VertexAttribDefinition {
-                // texcoords
-                number_of_components: 2,
-                offset_of_first_element: 6,
-            },
-            VertexAttribDefinition {
-                // lightmap_coord
-                number_of_components: 2,
-                offset_of_first_element: 8,
-            },
-            VertexAttribDefinition {
-                // tile color coordinate
-                number_of_components: 2,
-                offset_of_first_element: 10,
-            },
-        ],
-    );
-
-    let mut physics_world = PhysicEngine {
-        mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
-        geometrical_world: DefaultGeometricalWorld::new(),
-
-        bodies: DefaultBodySet::new(),
-        colliders: DefaultColliderSet::new(),
-        joint_constraints: DefaultJointConstraintSet::new(),
-        force_generators: DefaultForceGeneratorSet::new(),
-    };
     physics_world
         .mechanical_world
         .solver
         .set_contact_model(Box::new(SignoriniModel::new()));
-    let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
-        .rectangles
-        .iter()
-        .map(|cell| {
-            let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
-            let half_w = cell.width as f32 / 2.0;
-            let x = cell.start_x as f32 + half_w;
-            let half_h = cell.height as f32 / 2.0;
-            let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
-            let half_extents = Vector2::new(half_w, half_h);
-
-            let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
-            let v = rot * Vector3::new(x, 0.0, y);
-            let v2 = Vector2::new(v.x, v.z);
-            let parent_rigid_body = RigidBodyDesc::new()
-                .translation(v2)
-                .gravity_enabled(false)
-                .status(nphysics2d::object::BodyStatus::Static)
-                .build();
-            let parent_handle = physics_world.bodies.insert(parent_rigid_body);
-            let cuboid = ColliderDesc::new(cuboid)
-                .density(10.0)
-                .collision_groups(
-                    CollisionGroups::new()
-                        .with_membership(&[CollisionGroup::StaticModel as usize])
-                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
-                )
-                .build(BodyPartHandle(parent_handle, 0));
-            let cuboid_pos = cuboid.position_wrt_body().translation.vector;
-            physics_world.colliders.insert(cuboid);
-            (half_extents, cuboid_pos)
-        })
-        .collect();
-    let vertices: Vec<Point3<f32>> = colliders
-        .iter()
-        .map(|(extents, pos)| {
-            let x = pos.x - extents.x;
-            let x2 = pos.x + extents.x;
-            let y = pos.y - extents.y;
-            let y2 = pos.y + extents.y;
-            vec![
-                Point3::new(x, 3.0, y2),
-                Point3::new(x2, 3.0, y2),
-                Point3::new(x, 3.0, y),
-                Point3::new(x, 3.0, y),
-                Point3::new(x2, 3.0, y2),
-                Point3::new(x2, 3.0, y),
-            ]
-        })
-        .flatten()
-        .collect();
-    let ground_walkability_mesh3 = VertexArray::new(
-        gl::TRIANGLES,
-        &vertices,
-        vertices.len(),
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    );
 
     let (elapsed, str_effects) = measure_time(|| {
         let mut str_effects: HashMap<String, StrFile> = HashMap::new();
@@ -2093,13 +2178,13 @@ fn load_map(
     (
         MapRenderData {
             gat,
-            gnd: ground,
+            gnd: ground_data.ground,
             rsw: world,
-            ground_vertex_array,
+            ground_vertex_array: ground_data.ground_vertex_array,
             models: model_render_datas,
-            texture_atlas,
-            tile_color_texture,
-            lightmap_texture,
+            texture_atlas: ground_data.texture_atlas,
+            tile_color_texture: ground_data.tile_color_texture,
+            lightmap_texture: ground_data.lightmap_texture,
             model_instances,
             centered_sprite_vertex_array,
             sprite_vertex_array,
@@ -2109,10 +2194,9 @@ fn load_map(
             use_lighting: true,
             draw_models: true,
             draw_ground: true,
-            ground_walkability_mesh,
-            ground_walkability_mesh2,
-            ground_walkability_mesh3,
-            light_wheight: [0f32; 3],
+            ground_walkability_mesh: ground_data.ground_walkability_mesh,
+            ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
+            ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
             str_effects,
         },
         physics_world,

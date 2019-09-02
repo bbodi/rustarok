@@ -282,6 +282,39 @@ impl AssetLoader {
         ret
     }
 
+    pub fn create_texture_from_data(
+        name: &str,
+        data: &Vec<u8>,
+        width: i32,
+        height: i32,
+        asset_db: &mut AssetDatabase,
+    ) -> GlTexture {
+        let mut texture_id = GlTextureIndex(0);
+        unsafe {
+            gl::GenTextures(1, &mut texture_id.0);
+            log::debug!("Texture from_data {}", texture_id.0);
+            gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
+            gl::TexImage2D(
+                gl::TEXTURE_2D,
+                0,               // Pyramid level (for mip-mapping) - 0 is the top level
+                gl::RGBA as i32, // Internal colour format to convert to
+                width,
+                height,
+                0,        // border
+                gl::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                gl::UNSIGNED_BYTE,
+                data.as_ptr() as *const gl::types::GLvoid,
+            );
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+            gl::GenerateMipmap(gl::TEXTURE_2D);
+        }
+        let texture = GlTexture::new(texture_id, width, height);
+
+        asset_db.register_texture(&name, &[&texture]);
+        return texture;
+    }
+
     pub fn load_texture(
         &self,
         path: &str,

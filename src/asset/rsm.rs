@@ -381,8 +381,7 @@ impl Rsm {
                     let renderable = SameTextureNodeFaces {
                         vao: VertexArray::new(
                             gl::TRIANGLES,
-                            &mesh,
-                            mesh.len(),
+                            mesh,
                             vec![
                                 VertexAttribDefinition {
                                     number_of_components: 3,

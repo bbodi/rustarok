@@ -359,11 +359,21 @@ impl Gnd {
         }
     }
 
-    pub fn create_lightmap_texture(lightmap: &Vec<u8>, count: u32) -> GlTexture {
+    pub fn create_lightmap_texture(
+        lightmap: &Vec<u8>,
+        count: u32,
+        asset_db: &mut AssetDatabase,
+    ) -> GlTexture {
         let width = ((count as f32).sqrt().round() as u32 * 8).next_power_of_two();
         let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
 
-        GlTexture::from_data(&lightmap, width as i32, height as i32)
+        AssetLoader::create_texture_from_data(
+            "ground_lightmap_texture",
+            lightmap,
+            width as i32,
+            height as i32,
+            asset_db,
+        )
     }
 
     pub fn create_tile_color_texture(
@@ -398,7 +408,7 @@ impl Gnd {
             .unwrap();
 
         return AssetLoader::create_texture_from_surface(
-            "ground_tile_color",
+            "ground_tile_color_texture",
             scaled_tiles_color_surface,
             gl::LINEAR,
             asset_database,
@@ -722,7 +732,7 @@ impl Gnd {
             .collect();
         let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
         return AssetLoader::create_texture_from_surface(
-            "gnd_surface_atlas",
+            "ground_texture_atlas",
             surface_atlas,
             gl::NEAREST,
             asset_database,

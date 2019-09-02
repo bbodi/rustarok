@@ -34,6 +34,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                 .dev_configs
                 .network
                 .send_render_data_every_nth_frame
+                .max(1)
             != 0
         {
             return;
@@ -46,6 +47,9 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             self.send_buffer.clear();
 
             for v in render_commands.view_matrix.as_slice() {
+                self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            for v in render_commands.normal_matrix.as_slice() {
                 self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
             /////////////////////////////////

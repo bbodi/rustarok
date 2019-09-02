@@ -956,6 +956,44 @@ pub(super) fn cmd_goto() -> CommandDefinition {
     }
 }
 
+pub(super) fn cmd_get_pos() -> CommandDefinition {
+    CommandDefinition {
+        name: "get_pos".to_string(),
+        arguments: vec![("[username]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
+        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(0);
+
+            let entity_id = if let Some(username) = username {
+                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(entity_id) = entity_id {
+                let hero_pos = {
+                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    let char_state = storage.get(entity_id).unwrap();
+                    char_state.pos()
+                };
+                print_console(
+                    &mut ecs_world.write_storage::<ConsoleComponent>(),
+                    self_controller_id,
+                    ConsoleEntry::new().add(
+                        &format!("{}, {}", hero_pos.x as i32, hero_pos.y as i32),
+                        ConsoleWordType::Normal,
+                    ),
+                );
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
 pub(super) fn cmd_set_pos() -> CommandDefinition {
     CommandDefinition {
         name: "set_pos".to_string(),
