@@ -127,27 +127,27 @@ impl FlyingNumberType {
         target_is_current_user: bool,
         target_is_friend: bool,
         damage_was_initiated_by_current_user: bool,
-    ) -> [f32; 3] {
+    ) -> [u8; 3] {
         match self {
             FlyingNumberType::Damage | FlyingNumberType::SubCombo => {
                 if target_is_current_user {
-                    [1.0, 0.0, 0.0]
+                    [255, 0, 0]
                 } else if target_is_friend {
-                    [1.0, 0.0, 0.0] // [1.0, 0.55, 0.0] orange
+                    [255, 0, 0] // [1.0, 0.55, 0.0] orange
                 } else if damage_was_initiated_by_current_user {
-                    [1.0, 1.0, 1.0]
+                    [255, 255, 255]
                 } else {
-                    [1.0, 1.0, 1.0]
+                    [255, 255, 255]
                     //                    [0.73, 0.73, 0.73] // simple damage by other, greyish
                 }
             }
-            FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
-            FlyingNumberType::Heal => [0.0, 1.0, 0.0],
-            FlyingNumberType::Poison => [0.55, 0.0, 0.55],
-            FlyingNumberType::Mana => [0.0, 0.0, 1.0],
-            FlyingNumberType::Crit => [1.0, 1.0, 1.0],
-            FlyingNumberType::Block => [1.0, 1.0, 1.0],
-            FlyingNumberType::Absorb => [1.0, 1.0, 1.0],
+            FlyingNumberType::Combo { .. } => [230, 230, 38],
+            FlyingNumberType::Heal => [0, 255, 0],
+            FlyingNumberType::Poison => [140, 0, 140],
+            FlyingNumberType::Mana => [0, 0, 255],
+            FlyingNumberType::Crit => [255, 255, 255],
+            FlyingNumberType::Block => [255, 255, 255],
+            FlyingNumberType::Absorb => [255, 255, 255],
         }
     }
 }

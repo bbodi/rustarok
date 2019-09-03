@@ -35,7 +35,7 @@ pub struct DevConfigStatsPlayer {
 
 #[derive(Debug, Deserialize)]
 pub struct DevConfigConsole {
-    pub color: [f32; 4],
+    pub color: [u8; 4],
 }
 
 #[derive(Debug, Deserialize)]

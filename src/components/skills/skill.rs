@@ -175,9 +175,9 @@ impl Skills {
             .rotation_rad(Vector3::y(), angle)
             .color(
                 &(if is_castable {
-                    [0.0, 1.0, 0.0, 1.0]
+                    [0, 255, 0, 255]
                 } else {
-                    [0.7, 0.7, 0.7, 1.0]
+                    [179, 179, 179, 255]
                 }),
             )
             .add_rectangle_command(casting_area_size)
@@ -652,7 +652,7 @@ impl SkillManifestation for PushBackWallSkill {
             .prepare_for_3d()
             .pos_2d(&self.pos)
             .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
-            .color(&[0.0, 1.0, 0.0, 1.0])
+            .color(&[0, 255, 0, 25])
             .add_rectangle_command(&(self.extents));
     }
 }
@@ -763,7 +763,7 @@ impl SkillManifestation for BrutalSkillManifest {
             .prepare_for_3d()
             .pos_2d(&self.pos)
             .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
-            .color(&[0.0, 1.0, 0.0, 1.0])
+            .color(&[0, 255, 0, 255])
             .add_rectangle_command(&(self.half_extents * 2.0));
     }
 }

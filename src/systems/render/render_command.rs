@@ -6,7 +6,7 @@ use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
 
-fn create_2d_matrix(pos: &[f32; 2], rotation_rad: f32) -> Matrix4<f32> {
+fn create_2d_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f32> {
     let mut matrix = Matrix4::<f32>::identity();
     matrix.prepend_translation_mut(&v3!(pos[0], pos[1], 0));
 
@@ -103,14 +103,14 @@ impl<'a> RenderCommandCollectorComponent {
 #[derive(Debug)]
 pub struct Trimesh2dRenderCommand {
     pub(super) vao: VertexArray,
-    pub(super) color: [f32; 4],
+    pub(super) color: [u8; 4],
     pub(super) size: [f32; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
 
 pub struct Common2DProperties {
-    pub(super) color: [f32; 4],
+    pub(super) color: [u8; 4],
     pub(super) size: [f32; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
@@ -118,8 +118,8 @@ pub struct Common2DProperties {
 
 pub struct Common2DPropBuilder<'a> {
     collector: &'a mut RenderCommandCollectorComponent,
-    color: [f32; 4],
-    screen_pos: [f32; 2],
+    color: [u8; 4],
+    screen_pos: [i16; 2],
     size: [f32; 2],
     rotation_rad: f32,
 }
@@ -128,8 +128,8 @@ impl<'a> Common2DPropBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollectorComponent) -> Common2DPropBuilder {
         Common2DPropBuilder {
             collector,
-            color: [1.0, 1.0, 1.0, 1.0],
-            screen_pos: [0.0, 0.0],
+            color: [255, 255, 255, 255],
+            screen_pos: [0, 0],
             size: [1.0, 1.0],
             rotation_rad: 0.0,
         }
@@ -207,12 +207,12 @@ impl<'a> Common2DPropBuilder<'a> {
             });
     }
 
-    pub fn color(&'a mut self, color: &[f32; 4]) -> &'a mut Common2DPropBuilder {
+    pub fn color(&'a mut self, color: &[u8; 4]) -> &'a mut Common2DPropBuilder {
         self.color = *color;
         self
     }
 
-    pub fn color_rgb(&mut self, color: &[f32; 3]) -> &'a mut Common2DPropBuilder {
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Common2DPropBuilder {
         self.color[0] = color[0];
         self.color[1] = color[1];
         self.color[2] = color[2];
@@ -220,7 +220,7 @@ impl<'a> Common2DPropBuilder<'a> {
     }
 
     pub fn screen_pos(&'a mut self, x: i32, y: i32) -> &'a mut Common2DPropBuilder {
-        self.screen_pos = [x as f32, y as f32];
+        self.screen_pos = [x as i16, y as i16];
         self
     }
 
@@ -257,7 +257,7 @@ pub enum UiLayer2d {
 
 #[derive(Debug)]
 pub struct Texture2dRenderCommand {
-    pub(super) color: [f32; 4],
+    pub(super) color: [u8; 4],
     pub(super) offset: [f32; 2],
     pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
@@ -270,7 +270,7 @@ pub struct Texture2dRenderCommand {
 #[derive(Debug)]
 pub struct Text2dRenderCommand {
     pub(super) text: String,
-    pub(super) color: [f32; 4],
+    pub(super) color: [u8; 4],
     pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) font: Font,
@@ -356,7 +356,7 @@ impl BillboardRenderCommand {
 
 #[derive(Debug)]
 pub struct Common3DProperties {
-    pub color: [f32; 4],
+    pub color: [u8; 4],
     pub offset: [f32; 2],
     pub size: f32,
     pub matrix: Matrix4<f32>,
@@ -364,7 +364,7 @@ pub struct Common3DProperties {
 
 pub struct Common3DPropBuilder<'a> {
     collector: &'a mut RenderCommandCollectorComponent,
-    color: [f32; 4],
+    color: [u8; 4],
     pos: Vector3<f32>,
     offset: [f32; 2],
     size: f32,
@@ -375,7 +375,7 @@ impl<'a> Common3DPropBuilder<'a> {
     fn new(collector: &mut RenderCommandCollectorComponent) -> Common3DPropBuilder {
         Common3DPropBuilder {
             collector,
-            color: [1.0, 1.0, 1.0, 1.0],
+            color: [255, 255, 255, 255],
             pos: Vector3::zeros(),
             offset: [0.0, 0.0],
             size: 1.0,
@@ -383,19 +383,19 @@ impl<'a> Common3DPropBuilder<'a> {
         }
     }
 
-    pub fn color(&mut self, color: &[f32; 4]) -> &'a mut Common3DPropBuilder {
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Common3DPropBuilder {
         self.color = *color;
         self
     }
 
-    pub fn color_rgb(&mut self, color: &[f32; 3]) -> &'a mut Common3DPropBuilder {
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Common3DPropBuilder {
         self.color[0] = color[0];
         self.color[1] = color[1];
         self.color[2] = color[2];
         self
     }
 
-    pub fn alpha(&mut self, a: f32) -> &'a mut Common3DPropBuilder {
+    pub fn alpha(&mut self, a: u8) -> &'a mut Common3DPropBuilder {
         self.color[3] = a;
         self
     }
@@ -481,11 +481,10 @@ impl<'a> Common3DPropBuilder<'a> {
             });
     }
 
-    pub fn add_model_command(&'a mut self, asset_db_model_index: usize, matrix: &Matrix4<f32>) {
+    pub fn add_model_command(&'a mut self, model_instance_index: usize, is_transparent: bool) {
         self.collector.model_commands.push(ModelRenderCommand {
-            asset_db_model_index,
-            matrix: *matrix,
-            alpha: self.color[3],
+            model_instance_index,
+            is_transparent,
         });
     }
 
@@ -527,7 +526,6 @@ pub struct Number3dRenderCommand {
 
 #[derive(Debug)]
 pub struct ModelRenderCommand {
-    pub(super) alpha: f32,
-    pub(super) asset_db_model_index: usize,
-    pub(super) matrix: Matrix4<f32>,
+    pub(super) is_transparent: bool,
+    pub(super) model_instance_index: usize,
 }

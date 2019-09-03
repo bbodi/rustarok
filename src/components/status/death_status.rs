@@ -44,15 +44,15 @@ impl Status for DeathStatus {
         false
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
+    fn get_render_color(&self, now: ElapsedTime) -> [u8; 4] {
         [
-            1.0,
-            1.0,
-            1.0,
+            255,
+            255,
+            255,
             if self.is_npc {
-                1.0 - now.percentage_between(self.started, self.remove_char_at)
+                255 - (now.percentage_between(self.started, self.remove_char_at) * 255.0) as u8
             } else {
-                1.0
+                255
             },
         ]
     }
@@ -90,7 +90,7 @@ impl Status for DeathStatus {
     ) {
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         None
     }
 

@@ -146,7 +146,7 @@ impl<'a, 'b> Fonts<'a, 'b> {
 struct EffectFrameCache {
     pub pos_vao: VertexArray,
     pub offset: [f32; 2],
-    pub color: [f32; 4],
+    pub color: [u8; 4],
     pub rotation_matrix: Matrix4<f32>,
     pub src_alpha: u32,
     pub dst_alpha: u32,
@@ -296,6 +296,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         );
     }
 
+    // TODO: refactor
     fn prepare_effect(layer: &StrLayer, key_index: i32) -> Option<EffectFrameCache> {
         let mut from_id = None;
         let mut to_id = None;
@@ -337,28 +338,32 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 from_frame.angle,
             )
         } else {
-            let delta = (key_index - from_frame.frame) as f32;
+            let frame_count = (to_frame.frame - from_frame.frame).max(1);
+            let frame_nth = key_index - from_frame.frame;
+            let delta = (frame_nth as f32 / frame_count as f32).min(1.0);
+            let from_coef = 1.0 - dbg!(delta);
+            let to_coef = delta;
             // morphing
             let color = [
-                from_frame.color[0] + to_frame.color[0] * delta,
-                from_frame.color[1] + to_frame.color[1] * delta,
-                from_frame.color[2] + to_frame.color[2] * delta,
-                from_frame.color[3] + to_frame.color[3] * delta,
+                (from_frame.color[0] as f32 * from_coef + to_frame.color[0] as f32 * to_coef) as u8,
+                (from_frame.color[1] as f32 * from_coef + to_frame.color[1] as f32 * to_coef) as u8,
+                (from_frame.color[2] as f32 * from_coef + to_frame.color[2] as f32 * to_coef) as u8,
+                (from_frame.color[3] as f32 * from_coef + to_frame.color[3] as f32 * to_coef) as u8,
             ];
             let xy = [
-                from_frame.xy[0] + to_frame.xy[0] * delta,
-                from_frame.xy[1] + to_frame.xy[1] * delta,
-                from_frame.xy[2] + to_frame.xy[2] * delta,
-                from_frame.xy[3] + to_frame.xy[3] * delta,
-                from_frame.xy[4] + to_frame.xy[4] * delta,
-                from_frame.xy[5] + to_frame.xy[5] * delta,
-                from_frame.xy[6] + to_frame.xy[6] * delta,
-                from_frame.xy[7] + to_frame.xy[7] * delta,
+                from_frame.xy[0] * from_coef + to_frame.xy[0] * to_coef,
+                from_frame.xy[1] * from_coef + to_frame.xy[1] * to_coef,
+                from_frame.xy[2] * from_coef + to_frame.xy[2] * to_coef,
+                from_frame.xy[3] * from_coef + to_frame.xy[3] * to_coef,
+                from_frame.xy[4] * from_coef + to_frame.xy[4] * to_coef,
+                from_frame.xy[5] * from_coef + to_frame.xy[5] * to_coef,
+                from_frame.xy[6] * from_coef + to_frame.xy[6] * to_coef,
+                from_frame.xy[7] * from_coef + to_frame.xy[7] * to_coef,
             ];
-            let angle = from_frame.angle + to_frame.angle * delta;
+            let angle = from_frame.angle * from_coef + to_frame.angle * to_coef;
             let pos = [
-                from_frame.pos[0] + to_frame.pos[0] * delta,
-                from_frame.pos[1] + to_frame.pos[1] * delta,
+                from_frame.pos[0] * from_coef + to_frame.pos[0] * to_coef,
+                from_frame.pos[1] * from_coef + to_frame.pos[1] * to_coef,
             ];
             (color, pos, xy, angle)
         };
@@ -468,7 +473,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &render_commands.view_matrix);
                 for command in &render_commands.rectangle_3d_commands {
-                    shader.set_vec4("color", &command.common.color);
+                    shader.set_vec4u8("color", &command.common.color);
                     shader.set_mat4("model", &command.common.matrix);
                     shader.set_vec2("size", &command.size);
                     centered_rectangle_vao_bind.draw();
@@ -484,7 +489,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.set_mat4("projection", &system_vars.matrices.projection);
                 shader.set_mat4("view", &render_commands.view_matrix);
                 for command in &render_commands.circle_3d_commands {
-                    shader.set_vec4("color", &command.common.color);
+                    shader.set_vec4u8("color", &command.common.color);
                     shader.set_mat4("model", &command.common.matrix);
                     shader.set_vec2(
                         "size",
@@ -513,7 +518,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     for command in &render_commands.billboard_commands {
                         shader.set_vec2("size", &[command.texture_width, command.texture_height]);
                         shader.set_mat4("model", &command.common.matrix);
-                        shader.set_vec4("color", &command.common.color);
+                        shader.set_vec4u8("color", &command.common.color);
                         shader.set_vec2("offset", &command.common.offset);
 
                         unsafe {
@@ -534,7 +539,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     for command in &render_commands.number_3d_commands {
                         shader.set_vec2("size", &[command.common.size, command.common.size]);
                         shader.set_mat4("model", &command.common.matrix);
-                        shader.set_vec4("color", &command.common.color);
+                        shader.set_vec4u8("color", &command.common.color);
                         shader.set_vec2("offset", &command.common.offset);
 
                         self.create_number_vertex_array(command.value).bind().draw();
@@ -573,7 +578,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         continue;
                     } else if let Some(Some(cached_frame)) = cached_frame {
                         shader.set_vec2("offset", &cached_frame.offset);
-                        shader.set_vec4("color", &cached_frame.color);
+                        shader.set_vec4u8("color", &cached_frame.color);
                         unsafe {
                             gl::BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
                         }
@@ -609,10 +614,22 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.set_int("use_lighting", map_render_data.use_lighting as i32);
 
                 for render_command in &render_commands.model_commands {
-                    shader.set_mat4("model", &render_command.matrix);
-                    shader.set_f32("alpha", render_command.alpha);
-                    let model_render_data =
-                        asset_database.get_model(render_command.asset_db_model_index);
+                    let matrix = &system_vars.map_render_data.model_instances
+                        [render_command.model_instance_index]
+                        .matrix;
+                    shader.set_mat4("model", matrix);
+                    shader.set_f32(
+                        "alpha",
+                        if render_command.is_transparent {
+                            0.3
+                        } else {
+                            1.0
+                        },
+                    );
+                    let asset_db_model_index = system_vars.map_render_data.model_instances
+                        [render_command.model_instance_index]
+                        .asset_db_model_index;
+                    let model_render_data = asset_database.get_model(asset_db_model_index);
                     for node_render_data in &model_render_data.model {
                         // TODO: optimize this
                         for face_render_data in node_render_data {
@@ -632,7 +649,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for trimesh_2d in &render_commands.trimesh_2d_commands {
                     // TODO: move bind out of the loop by grouping same vaos
                     shader.set_mat4("model", &trimesh_2d.matrix);
-                    shader.set_vec4("color", &trimesh_2d.color);
+                    shader.set_vec4u8("color", &trimesh_2d.color);
                     shader.set_vec2("size", &trimesh_2d.size);
                     shader.set_f32("z", 0.01 * trimesh_2d.layer as usize as f32);
                     trimesh_2d.vao.bind().draw();
@@ -660,7 +677,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
                     shader.set_vec2("offset", &command.offset);
                     shader.set_vec2("size", &[width * command.size, height * command.size]);
-                    shader.set_vec4("color", &command.color);
+                    shader.set_vec4u8("color", &command.color);
                     vertex_array_bind.draw();
                 }
             }
@@ -673,7 +690,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use();
                 shader.set_mat4("projection", &system_vars.matrices.ortho);
                 for command in &render_commands.rectangle_2d_commands {
-                    shader.set_vec4("color", &command.color);
+                    shader.set_vec4u8("color", &command.color);
                     shader.set_mat4("model", &command.matrix);
                     shader.set_vec2("size", &command.size);
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
@@ -710,7 +727,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
                     shader.set_vec2("offset", &[0.0, 0.0]);
                     shader.set_vec2("size", &[width * command.size, height * command.size]);
-                    shader.set_vec4("color", &command.color);
+                    shader.set_vec4u8("color", &command.color);
                     vertex_array_bind.draw();
                 }
             }

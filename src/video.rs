@@ -684,6 +684,26 @@ impl ActiveShaderProgram {
         }
     }
 
+    pub fn set_vec4u8(&self, name: &str, vector: &[u8; 4]) {
+        // TODO: save uniformlocations and reuse them
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        let f32_vec = vec![
+            vector[0] as f32 / 255.0,
+            vector[1] as f32 / 255.0,
+            vector[2] as f32 / 255.0,
+            vector[3] as f32 / 255.0,
+        ];
+        unsafe {
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform4fv(
+                location,
+                1, // count
+                f32_vec.as_ptr() as *const f32,
+            );
+        }
+    }
+
     pub fn set_int(&self, name: &str, value: i32) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {

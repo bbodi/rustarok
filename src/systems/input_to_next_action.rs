@@ -247,7 +247,7 @@ impl InputToNextActionSystem {
         controller: &ControllerComponent,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         self_team: Team,
-    ) -> (CursorFrame, [f32; 3]) {
+    ) -> (CursorFrame, [u8; 3]) {
         return if let Some((_skill_key, skill)) = controller.select_skill_target {
             let is_castable = char_state_storage
                 .get(controller.controlled_entity)
@@ -257,11 +257,11 @@ impl InputToNextActionSystem {
                 .unwrap_or(&ElapsedTime(0.0))
                 .is_earlier_than(now);
             if !is_castable {
-                (CURSOR_STOP, [1.0, 1.0, 1.0])
+                (CURSOR_STOP, [255, 255, 255])
             } else if skill.get_skill_target_type() != SkillTargetType::Area {
-                (CURSOR_TARGET, [1.0, 1.0, 1.0])
+                (CURSOR_TARGET, [255, 255, 255])
             } else {
-                (CURSOR_CLICK, [1.0, 1.0, 1.0])
+                (CURSOR_CLICK, [255, 255, 255])
             }
         } else if let Some(entity_below_cursor) =
             controller.entities_below_cursor.get_enemy_or_friend()
@@ -272,14 +272,14 @@ impl InputToNextActionSystem {
                 .unwrap_or(false);
             if entity_below_cursor == controller.controlled_entity || ent_is_dead_or_friend {
                 // self or dead
-                (CURSOR_NORMAL, [0.2, 0.46, 0.9])
+                (CURSOR_NORMAL, [51, 117, 230])
             } else {
-                (CURSOR_NORMAL, [1.0, 0.0, 0.0])
+                (CURSOR_NORMAL, [255, 0, 0])
             }
         } else if !controller.cell_below_cursor_walkable {
-            (CURSOR_STOP, [1.0, 1.0, 1.0])
+            (CURSOR_STOP, [255, 255, 255])
         } else {
-            (CURSOR_NORMAL, [1.0, 1.0, 1.0])
+            (CURSOR_NORMAL, [255, 255, 255])
         };
     }
 }

@@ -121,11 +121,11 @@ object IndexedDb {
         }
     }
 
-    suspend fun get_vertex_array(path: String, i: Int): StoredVertexArray? {
+    suspend fun get_vertex_array(path: String): StoredVertexArray? {
         val db = open()
         val tx = db.transaction("vertex_arrays", "readwrite")
         val store = tx.objectStore("vertex_arrays")
-        val result = make_await<dynamic> { store.get("${path}_$i") }
+        val result = make_await<dynamic> { store.get(path) }
         return if (result != null) {
             StoredVertexArray(result)
         } else {

@@ -96,7 +96,7 @@ where
         render_commands
             .prepare_for_3d()
             .pos_2d(&self.pos)
-            .color(&[0.0, 1.0, 0.0, 1.0])
+            .color(&[0, 255, 0, 255])
             .add_rectangle_command(&(self.extents));
 
         render_commands
@@ -104,9 +104,9 @@ where
             .pos_2d(&self.pos)
             .y(3.0)
             .color(&if self.next_action_at.is_earlier_than(now) {
-                [0.0, 1.0, 0.0, 1.0]
+                [0, 255, 0, 255]
             } else {
-                [0.3, 0.3, 0.3, 1.0]
+                [77, 77, 77, 255]
             })
             .add_billboard_command(&assets.texts.custom_texts[&self.name], false);
     }

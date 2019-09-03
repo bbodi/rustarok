@@ -5,7 +5,7 @@ import rustarok.*
 
 fun render_model(gl: WebGL2RenderingContext, command: RenderCommand.Model3D,
                  ground_command: RenderCommand.Ground3D, model_gl_program: ModelShader,
-                 models: Array<ModelData>) {
+                 models: Array<ModelData>, model_instances: ArrayList<ModelInstance>) {
     gl.useProgram(model_gl_program.program)
     gl.uniformMatrix4fv(model_gl_program.projection_mat, false, PROJECTION_MATRIX)
     gl.uniformMatrix4fv(model_gl_program.view, false, VIEW_MATRIX)
@@ -19,10 +19,10 @@ fun render_model(gl: WebGL2RenderingContext, command: RenderCommand.Model3D,
     gl.activeTexture(WebGLRenderingContext.TEXTURE0)
     gl.uniform1i(model_gl_program.model_texture, 0)
 
-    val model = models[command.model_index]
+    val model = models[model_instances[command.model_instance_index].index]
     for (node in model.nodes) {
-        gl.uniformMatrix4fv(model_gl_program.model, false, command.matrix)
-        gl.uniform1f(model_gl_program.alpha, command.alpha)
+        gl.uniformMatrix4fv(model_gl_program.model, false, model_instances[command.model_instance_index].matrix)
+        gl.uniform1f(model_gl_program.alpha, if (command.is_transparent) 0.3f else 1.0f)
 
         gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, node.buffer)
         gl.enableVertexAttribArray(model_gl_program.a_pos)
@@ -33,7 +33,8 @@ fun render_model(gl: WebGL2RenderingContext, command: RenderCommand.Model3D,
         gl.vertexAttribPointer(model_gl_program.a_vertex_normal, 3, WebGLRenderingContext.FLOAT, false, 8 * 4, 3 * 4)
         gl.vertexAttribPointer(model_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 8 * 4, 6 * 4)
 
-        gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(node.server_texture_id, WebGLRenderingContext.NEAREST))
+        gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,
+                       get_or_load_server_texture(node.server_texture_id, WebGLRenderingContext.NEAREST))
         gl.drawArrays(WebGLRenderingContext.TRIANGLES, 0, node.vertex_count)
     }
 }

@@ -24,7 +24,7 @@ use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
 
-pub const COLOR_WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
 /// The values that should be added to the sprite direction based on the camera
 /// direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
@@ -100,7 +100,7 @@ impl RenderDesktopClientSystem {
                     render_commands
                         .prepare_for_3d()
                         .radius(physics.radius.get())
-                        .color(&[1.0, 0.0, 1.0, 1.0])
+                        .color(&[255, 0, 255, 255])
                         .pos_2d(&pos)
                         .y(0.05)
                         .add_circle_command();
@@ -133,7 +133,7 @@ impl RenderDesktopClientSystem {
                             .pos_2d(&char_pos)
                             .y(0.0)
                             .radius(skill.get_casting_range())
-                            .color(&[0.0, 1.0, 0.0, 1.0])
+                            .color(&[0, 255, 0, 255])
                             .add_circle_command();
 
                         if skill.get_skill_target_type() == SkillTargetType::Area {
@@ -351,9 +351,9 @@ impl RenderDesktopClientSystem {
                             &controller.controlled_char.target,
                         ) {
                             let color = if controller.controlled_char.team == char_state.team {
-                                &[0.0, 0.0, 1.0, 0.7]
+                                &[0, 0, 255, 179]
                             } else {
-                                &[1.0, 0.0, 0.0, 0.7]
+                                &[255, 0, 0, 179]
                             };
                             let body_pos_offset = render_single_layer_action(
                                 system_vars.time,
@@ -475,9 +475,9 @@ impl RenderDesktopClientSystem {
                             &controller.controlled_char.target,
                         ) {
                             let color = if controller.controlled_char.team == char_state.team {
-                                &[0.0, 0.0, 1.0, 0.7]
+                                &[0, 0, 255, 179]
                             } else {
-                                &[1.0, 0.0, 0.0, 0.7]
+                                &[255, 0, 0, 179]
                             };
                             let _pos_offset = render_single_layer_action(
                                 system_vars.time,
@@ -693,7 +693,7 @@ pub fn render_single_layer_action<'a>(
     is_main: bool,
     size_multiplier: f32,
     play_mode: ActionPlayMode,
-    color: &[f32; 4],
+    color: &[u8; 4],
     render_commands: &'a mut RenderCommandCollectorComponent,
 ) -> [i32; 2] {
     let idx = {
@@ -753,7 +753,7 @@ pub fn render_single_layer_action<'a>(
 
     let mut color = color.clone();
     for i in 0..4 {
-        color[i] *= layer.color[i];
+        color[i] = (color[i] as u32 * layer.color[i] as u32 / 255) as u8;
     }
 
     let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
@@ -785,7 +785,7 @@ pub fn render_action(
     is_main: bool,
     size_multiplier: f32,
     play_mode: ActionPlayMode,
-    color: &[f32; 4],
+    color: &[u8; 4],
     render_commands: &mut RenderCommandCollectorComponent,
 ) -> [i32; 2] {
     let idx = {
@@ -848,7 +848,7 @@ pub fn render_action(
 
         let mut color = color.clone();
         for i in 0..4 {
-            color[i] *= layer.color[i];
+            color[i] = (color[i] as u32 * layer.color[i] as u32 / 255) as u8;
         }
 
         let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
@@ -882,7 +882,9 @@ fn render_client(
 ) {
     // cam area is [-20;20] width and [70;5] height
     if map_render_data.draw_models {
-        for model_instance in &map_render_data.model_instances {
+        for (model_instance_index, model_instance) in
+            map_render_data.model_instances.iter().enumerate()
+        {
             let min = model_instance.bottom_left_front;
             let max = model_instance.top_right_back;
 
@@ -900,7 +902,7 @@ fn render_client(
                     && char_pos.y <= min.z // character is behind
                     && max.y > 2.0
                 {
-                    0.3
+                    77
                 } else {
                     model_render_data.alpha
                 }
@@ -910,8 +912,7 @@ fn render_client(
 
             render_commands
                 .prepare_for_3d()
-                .alpha(alpha)
-                .add_model_command(model_instance.asset_db_model_index, &model_instance.matrix);
+                .add_model_command(model_instance_index, alpha != 255);
         }
     }
 }
@@ -1131,7 +1132,7 @@ impl DamageRenderSystem {
                     .scale(size * size_mult)
                     .pos(&pos)
                     .color_rgb(&color)
-                    .alpha(alpha)
+                    .alpha((alpha * 255.0).min(255.0) as u8)
                     .add_number_command(number_value, digit_count as u8);
             }
             FlyingNumberType::Block => {
@@ -1140,7 +1141,7 @@ impl DamageRenderSystem {
                     .pos(&pos)
                     .scale(size_mult)
                     .color_rgb(&color)
-                    .alpha(alpha)
+                    .alpha((alpha * 255.0).min(255.0) as u8)
                     .add_billboard_command(&assets.texts.attack_blocked, false);
             }
             FlyingNumberType::Absorb => {
@@ -1149,7 +1150,7 @@ impl DamageRenderSystem {
                     .pos(&pos)
                     .scale(size_mult)
                     .color_rgb(&color)
-                    .alpha(alpha)
+                    .alpha((alpha * 255.0).min(255.0) as u8)
                     .add_billboard_command(&assets.texts.attack_absorbed, false);
             }
         };
@@ -1237,7 +1238,7 @@ impl RenderDesktopClientSystem {
         let spr_x = bounding_rect_2d.bottom_left[0];
         let spr_w = bounding_rect_2d.top_right[0] - bounding_rect_2d.bottom_left[0];
         let bar_x = spr_x + (spr_w / 2) - (bar_w / 2);
-        let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+        let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
             render_commands
                 .prepare_for_2d()
                 .color(&color)
@@ -1248,24 +1249,24 @@ impl RenderDesktopClientSystem {
 
         let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
         let health_color = if is_self {
-            [0.29, 0.80, 0.11, 1.0] // for self, the health bar is green
+            [74, 204, 28, 255] // for self, the health bar is green
         } else if is_same_team {
-            [0.2, 0.46, 0.9, 1.0] // for friends, blue
+            [51, 117, 230, 255] // for friends, blue
         } else {
-            [0.79, 0.00, 0.21, 1.0] // for enemies, red
+            [201, 0, 54, 255] // for enemies, red
         };
-        let mana_color = [0.23, 0.79, 0.88, 1.0];
+        let mana_color = [59, 201, 224, 255];
         let bottom_bar_y = match char_state.typ {
             CharType::Player => {
-                draw_rect(0, 0, bar_w, 9, &[0.0, 0.0, 0.0, 1.0]); // black border
-                draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // center separator
+                draw_rect(0, 0, bar_w, 9, &[0, 0, 0, 255]); // black border
+                draw_rect(0, 0, bar_w, 5, &[0, 0, 0, 255]); // center separator
                 let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
                 draw_rect(1, 1, inner_w, 4, &health_color);
                 draw_rect(1, 6, bar_w - 2, 2, &mana_color);
                 9
             }
             _ => {
-                draw_rect(0, 0, bar_w, 5, &[0.0, 0.0, 0.0, 1.0]); // black border
+                draw_rect(0, 0, bar_w, 5, &[0, 0, 0, 255]); // black border
                 let inner_w = ((bar_w - 2) as f32 * hp_percentage) as i32;
                 draw_rect(1, 1, inner_w, 3, &health_color);
                 5
@@ -1277,9 +1278,9 @@ impl RenderDesktopClientSystem {
             .statuses
             .calc_largest_remaining_status_time_percent(now)
         {
-            let orange = [1.0, 0.55, 0.0, 1.0];
+            let orange = [255, 140, 0, 255];
             let w = bar_w - 4;
-            draw_rect(2, bottom_bar_y + 2, w, 2, &[0.0, 0.0, 0.0, 1.0]); // black bg
+            draw_rect(2, bottom_bar_y + 2, w, 2, &[0, 0, 0, 255]); // black bg
             let inner_w = (w as f32 * (1.0 - perc)) as i32;
             draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
         }
@@ -1303,9 +1304,9 @@ impl RenderDesktopClientSystem {
 
             // progress bar
             let color = if armor_bonus > 0 {
-                [0.0, 1.0, 0.0, 1.0]
+                [0, 255, 0, 255]
             } else {
-                [1.0, 0.0, 0.0, 1.0]
+                [255, 0, 0, 255]
             };
 
             let perc = (now.percentage_between(

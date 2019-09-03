@@ -1011,7 +1011,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
         name: "get_pos".to_string(),
         arguments: vec![("[username]", CommandParamType::String, false)],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |index, username_completor, input_storage| Some(username_completor(input_storage)),
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
         action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
             let username = args.as_str(0);

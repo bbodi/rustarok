@@ -29,7 +29,7 @@ pub trait Status: Any {
     fn can_target_move(&self) -> bool;
     fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4];
+    fn get_render_color(&self, now: ElapsedTime) -> [u8; 4];
     fn get_render_size(&self) -> f32;
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
     fn update(
@@ -255,8 +255,8 @@ impl Statuses {
         return &self.cached_modifier_collector;
     }
 
-    pub fn calc_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        let mut ret = [1.0, 1.0, 1.0, 1.0];
+    pub fn calc_render_color(&self, now: ElapsedTime) -> [u8; 4] {
+        let mut ret = [255, 255, 255, 255];
         for status in &mut self
             .statuses
             .iter()
@@ -270,7 +270,7 @@ impl Statuses {
                 .unwrap()
                 .get_render_color(now);
             for i in 0..4 {
-                ret[i] *= status_color[i];
+                ret[i] = (ret[i] as u32 * status_color[i] as u32 / 255) as u8;
             }
         }
         return ret;
@@ -439,8 +439,8 @@ impl Status for MountedStatus {
         true
     }
 
-    fn get_render_color(&self, _now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -517,8 +517,8 @@ impl Status for PoisonStatus {
         true
     }
 
-    fn get_render_color(&self, _now: ElapsedTime) -> [f32; 4] {
-        [0.5, 1.0, 0.5, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [128, 255, 128, 255]
     }
 
     fn get_render_size(&self) -> f32 {

@@ -88,7 +88,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                         .unwrap();
 
                     for v in &command.common.color {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+                        self.send_buffer.write_u8(*v).unwrap();
                     }
                     for v in &command.common.offset {
                         self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
@@ -115,7 +115,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                         .unwrap();
 
                     for v in &command.common.color {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+                        self.send_buffer.write_u8(*v).unwrap();
                     }
                     for v in &command.common.offset {
                         self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
@@ -142,15 +142,10 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                     .write_u32::<LittleEndian>(render_commands.model_commands.len() as u32)
                     .unwrap();
                 for command in &render_commands.model_commands {
-                    for v in &command.matrix {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-                    }
+                    let packed_int: u32 = ((command.is_transparent as u32) << 31)
+                        | command.model_instance_index as u32;
                     self.send_buffer
-                        .write_f32::<LittleEndian>(command.alpha)
-                        .unwrap();
-
-                    self.send_buffer
-                        .write_u32::<LittleEndian>(command.asset_db_model_index as u32)
+                        .write_u32::<LittleEndian>(packed_int)
                         .unwrap();
                 }
             }

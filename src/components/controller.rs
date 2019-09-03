@@ -100,7 +100,7 @@ pub struct ControllerComponent {
     pub bounding_rect_2d: HashMap<Entity, (SpriteBoundingRect, Team)>,
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
-    pub cursor_color: [f32; 3],
+    pub cursor_color: [u8; 3],
 }
 
 impl ControllerComponent {
@@ -114,7 +114,7 @@ impl ControllerComponent {
             entities_below_cursor: EntitiesBelowCursor::new(),
             bounding_rect_2d: HashMap::new(),
             cell_below_cursor_walkable: false,
-            cursor_color: [1.0, 1.0, 1.0],
+            cursor_color: [255, 255, 255],
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),

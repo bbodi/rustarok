@@ -34,7 +34,7 @@ impl RenderUI {
                     .as_f32()
                     > 0.1
                 {
-                    let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[f32; 4]| {
+                    let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
                         let bar_w = 540;
                         let bar_x = ((VIDEO_WIDTH / 2) - (bar_w / 2) - 2) as i32;
                         // .trimesh_2d(&system_vars.map_render_data.rectangle_vertex_array)
@@ -45,18 +45,12 @@ impl RenderUI {
                             .color(&color)
                             .add_rectangle_command(UiLayer2d::SelfCastingBar)
                     };
-                    draw_rect(0, 0, 540, 30, &[0.14, 0.36, 0.79, 0.3]); // transparent blue background
-                    draw_rect(2, 2, 536, 26, &[0.0, 0.0, 0.0, 1.0]); // black background
+                    draw_rect(0, 0, 540, 30, &[36, 92, 201, 77]); // transparent blue background
+                    draw_rect(2, 2, 536, 26, &[0, 0, 0, 255]); // black background
                     let percentage = system_vars
                         .time
                         .percentage_between(casting_info.cast_started, casting_info.cast_ends);
-                    draw_rect(
-                        3,
-                        3,
-                        (percentage * 543.0) as i32,
-                        24,
-                        &[0.14, 0.36, 0.79, 1.0],
-                    ); // inner fill
+                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[36, 92, 201, 255]); // inner fill
                 }
             }
             _ => {}
@@ -80,7 +74,7 @@ impl RenderUI {
                 skill_bar_width,
                 single_icon_size + (outer_border * 2 + inner_border * 2),
             )
-            .color(&[0.11, 0.25, 0.48, 1.0])
+            .color(&[28, 64, 122, 255])
             .add_rectangle_command(UiLayer2d::SkillBar);
 
         let mut x = start_x + outer_border;
@@ -93,13 +87,13 @@ impl RenderUI {
                     .unwrap_or(&ElapsedTime(0.0))
                     .is_later_than(system_vars.time);
                 let border_color = if not_castable {
-                    [0.7, 0.7, 0.7, 1.0] // grey
+                    [179, 179, 179, 255] // grey
                 } else {
                     controller
                         .select_skill_target
                         .filter(|it| it.0 == *skill_key)
-                        .map(|_it| [0.0, 1.0, 0.0, 1.0])
-                        .unwrap_or([0.0, 0.0, 0.0, 1.0])
+                        .map(|_it| [0, 255, 0, 255])
+                        .unwrap_or([0, 0, 0, 255])
                 };
                 render_commands
                     .prepare_for_2d()
@@ -120,9 +114,9 @@ impl RenderUI {
                     .size2(single_icon_size, single_icon_size)
                     .color(
                         &(if not_castable {
-                            [0.7, 0.7, 0.7, 1.0] // grey if not castable
+                            [179, 179, 179, 255] // grey if not castable
                         } else {
-                            [0.11, 0.25, 0.48, 1.0]
+                            [28, 64, 122, 255]
                         }),
                     )
                     .add_rectangle_command(UiLayer2d::SkillBar);
@@ -159,9 +153,9 @@ impl RenderUI {
                 .prepare_for_2d()
                 .color(
                     &(if not_castable {
-                        [0.7, 0.7, 0.7, 1.0]
+                        [179, 179, 179, 255]
                     } else {
-                        [1.0, 1.0, 1.0, 1.0]
+                        [255, 255, 255, 255]
                     }),
                 )
                 .screen_pos(
@@ -187,7 +181,7 @@ fn render_action_2d(
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector2<f32>,
-    color: &[f32; 3],
+    color: &[u8; 3],
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
     let idx = animated_sprite.action_index;

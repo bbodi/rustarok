@@ -24,7 +24,7 @@ extern crate strum_macros;
 extern crate sublime_fuzzy;
 extern crate websocket;
 
-use byteorder::WriteBytesExt;
+use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -1122,6 +1122,24 @@ fn main() {
                                     client.send_message(&response_buf);
                                 }
                             }
+                            if deserialized["send_me_model_instances"].as_bool().is_some() {
+                                let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                                for model_instance in &ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .map_render_data
+                                    .model_instances
+                                {
+                                    response_buf
+                                        .write_u32::<LittleEndian>(
+                                            model_instance.asset_db_model_index as u32,
+                                        )
+                                        .unwrap();
+                                    for v in &model_instance.matrix {
+                                        response_buf.write_f32::<LittleEndian>(*v).unwrap();
+                                    }
+                                }
+                                client.send_message(&response_buf);
+                            }
                             if let Some(missing_models) = deserialized["missing_models"].as_array()
                             {
                                 log::trace!("missing_models: {:?}", missing_models);
@@ -1670,13 +1688,8 @@ pub struct MapRenderData {
 
 pub struct ModelRenderData {
     pub bounding_box: BoundingBox,
-    pub alpha: f32,
+    pub alpha: u8,
     pub model: Vec<DataForRenderingSingleNode>,
-}
-
-pub struct EntityRenderData {
-    pub pos: Vector3<f32>,
-    //    pub texture: GlTexture,
 }
 
 pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;

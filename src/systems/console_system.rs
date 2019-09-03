@@ -409,7 +409,7 @@ impl<'a> ConsoleSystem<'a> {
 
     fn render_console_entry(
         render_commands: &mut RenderCommandCollectorComponent,
-        console_color: &[f32; 4],
+        console_color: &[u8; 4],
         input_row_y: i32,
         row_index: i32,
         row: &ConsoleEntry,
@@ -423,10 +423,10 @@ impl<'a> ConsoleSystem<'a> {
                     input_row_y - row_index * NORMAL_FONT_H,
                 )
                 .color(&match words.typ {
-                    ConsoleWordType::Normal => [0.8, 0.8, 0.8, console_color[3]],
-                    ConsoleWordType::Error => [1.0, 0.0, 0.0, console_color[3]],
-                    ConsoleWordType::CommandName => [0.5, 1.0, 0.5, console_color[3]],
-                    ConsoleWordType::Param => [0.5, 0.5, 1.0, console_color[3]],
+                    ConsoleWordType::Normal => [204, 204, 204, console_color[3]],
+                    ConsoleWordType::Error => [255, 0, 0, console_color[3]],
+                    ConsoleWordType::CommandName => [128, 255, 128, console_color[3]],
+                    ConsoleWordType::Param => [128, 128, 255, console_color[3]],
                 })
                 .add_text_command(&words.text, Font::Normal, UiLayer2d::ConsoleTexts);
             x += words.text.chars().count() as i32;
@@ -1156,7 +1156,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 - NORMAL_FONT_W / 2,
                             console.y_pos - NORMAL_FONT_H - 3,
                         )
-                        .color(&[1.0, 1.0, 1.0, console_color[3]])
+                        .color(&[255, 255, 255, console_color[3]])
                         .add_text_command("|", Font::Normal, UiLayer2d::ConsoleTexts)
                 }
 
@@ -1215,7 +1215,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 help_text_len as i32 * NORMAL_FONT_W + border_size * 2,
                                 NORMAL_FONT_H + border_size * 2,
                             )
-                            .color(&[55.0 / 255.0, 57.0 / 255.0, 57.0 / 255.0, console_color[3]])
+                            .color(&[55, 57, 57, console_color[3]])
                             .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
                         // text
                         let mut x: usize = border_size as usize;
@@ -1227,9 +1227,9 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                             .for_each(|(i, param_name)| {
                                 let color = if console.cursor_parameter_index as i32 - 1 == i as i32
                                 {
-                                    [1.0, 1.0, 1.0, console_color[3]] // active argument
+                                    [255, 255, 255, console_color[3]] // active argument
                                 } else {
-                                    [0.0, 0.0, 0.0, console_color[3]]
+                                    [0, 0, 0, console_color[3]]
                                 };
                                 render_commands
                                     .prepare_for_2d()
@@ -1269,7 +1269,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                 * console.filtered_autocompletion_list.iter().take(20).count()
                                     as i32,
                         )
-                        .color(&[55.0 / 255.0, 57.0 / 255.0, 57.0 / 255.0, console_color[3]])
+                        .color(&[55, 57, 57, console_color[3]])
                         .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
                     // texts
                     for (i, line) in console
@@ -1279,9 +1279,9 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         .enumerate()
                     {
                         let color = if i == console.autocompletion_index {
-                            [1.0, 1.0, 1.0, console_color[3]] // active argument
+                            [255, 255, 255, console_color[3]] // active argument
                         } else {
-                            [0.0, 0.0, 0.0, console_color[3]]
+                            [0, 0, 0, console_color[3]]
                         };
                         render_commands
                             .prepare_for_2d()

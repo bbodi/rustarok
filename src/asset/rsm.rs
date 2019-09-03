@@ -23,7 +23,7 @@ where
 pub struct Rsm {
     pub anim_len: i32,
     pub shade_type: i32,
-    pub alpha: f32,
+    pub alpha: u8,
     pub version: f32,
     pub texture_names: Vec<String>,
     pub nodes: Vec<RsmNode>,
@@ -258,11 +258,7 @@ impl Rsm {
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         let anim_len = buf.next_i32();
         let shade_type = buf.next_i32();
-        let alpha: f32 = if version >= 1.4 {
-            buf.next_u8() as f32 / 255.0
-        } else {
-            1.0
-        };
+        let alpha: u8 = if version >= 1.4 { buf.next_u8() } else { 255 };
 
         let _ = buf.string(16); // skip, reserved
 

@@ -5,6 +5,7 @@ import rustarok.*
 
 class Renderer(gl: WebGL2RenderingContext) {
     var models: Array<ModelData> = emptyArray()
+    var model_instances: ArrayList<ModelInstance> = arrayListOf()
     val sprite_gl_program = load_sprite_shader(gl)
     val ground_gl_program = load_ground_shader(gl)
     val model_gl_program = load_model_shader(gl)
@@ -93,7 +94,7 @@ class Renderer(gl: WebGL2RenderingContext) {
         // 3D MODELS
         /////////////////////////////////
         for (render_command in model3d_render_commands) {
-            render_model(gl, render_command, ground_render_command, model_gl_program, models)
+            render_model(gl, render_command, ground_render_command, model_gl_program, models, model_instances)
         }
     }
 

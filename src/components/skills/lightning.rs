@@ -25,7 +25,7 @@ impl LightningSkill {
                 .pos_2d(&pos)
                 .y(0.0)
                 .radius(1.0)
-                .color(&[0.0, 1.0, 0.0, 1.0])
+                .color(&[0, 255, 0, 255])
                 .add_circle_command()
         }
     }
@@ -178,7 +178,7 @@ impl SkillManifestation for LightningManifest {
                 .pos_2d(&pos)
                 .y(0.0)
                 .radius(1.0)
-                .color(&[0.0, 1.0, 0.0, 1.0])
+                .color(&[0, 255, 0, 255])
                 .add_circle_command();
         }
         // backwards
@@ -190,7 +190,7 @@ impl SkillManifestation for LightningManifest {
                     .pos_2d(&pos)
                     .y(0.0)
                     .radius(1.0)
-                    .color(&[0.0, 1.0, 0.0, 1.0])
+                    .color(&[0, 255, 0, 255])
                     .add_circle_command();
             }
         }

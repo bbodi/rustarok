@@ -19,6 +19,8 @@ class ModelData {
     val nodes = arrayListOf<ModelFace>()
 }
 
+data class ModelInstance(val index: Int, val matrix: Float32Array)
+
 class TextureData(private val native: dynamic) {
     val server_gl_index: Int
         get() = native[0]
@@ -87,6 +89,7 @@ enum class ApppState {
     ReceivingMismatchingTextures,
     ReceivingGroundVertexBuffer,
     ReceivingModels,
+    ReceivingModelInstances,
     ReceivingRenderCommands,
 }
 
@@ -106,9 +109,8 @@ sealed class RenderCommand {
                         val offset: Float32Array,
                         val size: Float) : RenderCommand()
 
-    data class Model3D(val model_index: Int,
-                       val matrix: Float32Array,
-                       val alpha: Float) : RenderCommand()
+    data class Model3D(val model_instance_index: Int,
+                       val is_transparent: Boolean) : RenderCommand()
 
     data class Ground3D(val light_dir: Float32Array,
                         val light_ambient: Float32Array,
@@ -121,7 +123,7 @@ sealed class RenderCommand {
 
 var socket: WebSocket = 0.asDynamic()
 var dummy_texture: WebGLTexture = 0.asDynamic()
-val jobs = arrayListOf<suspend ()->Unit>()
+val jobs = arrayListOf<suspend () -> Unit>()
 
 fun main() {
     if (canvas.getContext("webgl2") == null) {
@@ -146,7 +148,7 @@ fun main() {
     }
 
     GlobalScope.launch {
-        while(true) {
+        while (true) {
             delay(100)
             console.log(jobs.size)
             while (jobs.iterator().hasNext()) {
@@ -185,7 +187,7 @@ fun main() {
                         console.log("All textures have been downloaded")
 
                         val mismatched_vertex_buffers = arrayListOf<String>()
-                        val ground_vertex_array_data = IndexedDb.get_vertex_array("${map_name}_ground", 0)
+                        val ground_vertex_array_data = IndexedDb.get_vertex_array("${map_name}_ground")
                         if (ground_vertex_array_data == null) {
                             console.info("${map_name}_ground is missing")
                             mismatched_vertex_buffers.add("3d_ground")
@@ -279,12 +281,11 @@ fun main() {
                         }
                         renderer.models = model_index_to_models
 
-                        socket.send(JSON.stringify(object {
-                            val ready = true
-                        }))
                         welcome_msg = null
-                        state = ApppState.ReceivingRenderCommands
-                        start_frame(socket, renderer)
+                        state = ApppState.ReceivingModelInstances
+                        socket.send(JSON.stringify(object {
+                            val send_me_model_instances = true
+                        }))
                     } else {
                         while (reader.has_next()) {
                             val model_name = reader.next_string_with_length()
@@ -311,6 +312,22 @@ fun main() {
                     }
                 }
             }
+            ApppState.ReceivingModelInstances -> {
+                GlobalScope.launch {
+                    val reader = BufferReader(event.data as ArrayBuffer)
+                    while (reader.has_next()) {
+                        val model_index = reader.next_u32()
+                        val matrix = reader.next_4x4matrix()
+                        renderer.model_instances.add(ModelInstance(model_index, matrix))
+                    }
+
+                    socket.send(JSON.stringify(object {
+                        val ready = true
+                    }))
+                    state = ApppState.ReceivingRenderCommands
+                    start_frame(socket, renderer)
+                }
+            }
             ApppState.ReceivingRenderCommands -> {
                 renderer.clear()
                 val reader = BufferReader(event.data as ArrayBuffer)
@@ -322,7 +339,7 @@ fun main() {
                         renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
                                 w = reader.next_f32(),
                                 h = reader.next_f32(),
-                                color = reader.next_v4(),
+                                color = reader.next_color4_u8(),
                                 offset = reader.next_v2(),
                                 matrix = reader.next_4x4matrix(),
                                 server_texture_id = reader.next_u32()))
@@ -331,7 +348,7 @@ fun main() {
                     for (i in 0 until reader.next_u32()) {
                         renderer.number_render_commands.add(RenderCommand.Number3D(
                                 size = reader.next_f32(),
-                                color = reader.next_v4(),
+                                color = reader.next_color4_u8(),
                                 offset = reader.next_v2(),
                                 matrix = reader.next_4x4matrix(),
                                 value = reader.next_u32()))
@@ -339,10 +356,12 @@ fun main() {
 
                     val model_command_count = reader.next_u32()
                     for (i in 0 until model_command_count) {
+                        val packed_int = reader.next_u32()
+                        val model_instance_index = packed_int.shl(1).shr(1)
+                        val is_transparent = packed_int.shr(31) == 1
                         renderer.model3d_render_commands.add(RenderCommand.Model3D(
-                                matrix = reader.next_4x4matrix(),
-                                alpha = reader.next_f32(),
-                                model_index = reader.next_u32()
+                                is_transparent = is_transparent,
+                                model_instance_index = model_instance_index
                         ))
                     }
                 }
@@ -488,7 +507,8 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): WebGLTextu
         console.log("Loading texture $server_texture_id")
         // put dummy value into it so it won't trigger loading again
         server_to_client_gl_indices[server_texture_id] = dummy_texture
-        jobs.add { val maybe = server_texture_index_to_path[server_texture_id]
+        jobs.add {
+            val maybe = server_texture_index_to_path[server_texture_id]
             if (maybe == null) {
                 console.error("No path data for $server_texture_id")
             } else {
@@ -500,7 +520,8 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): WebGLTextu
                     console.log("Texture was loaded: $path, $i")
                     server_to_client_gl_indices[server_texture_id] = new_texture_id
                 }
-            } }
+            }
+        }
         return dummy_texture
     } else {
         return texture_id
@@ -568,6 +589,17 @@ class BufferReader(val buffer: ArrayBuffer) {
     fun next_v4(): Float32Array {
         val ret = Float32Array(buffer, offset, 4)
         offset += 4 * 4
+        return ret
+    }
+
+    fun next_color4_u8(): Float32Array {
+        val bytes = Uint8Array(buffer, offset, 4)
+        val ret =
+                Float32Array(arrayOf(bytes[0].toFloat() / 255f,
+                                     bytes[1].toFloat() / 255f,
+                                     bytes[2].toFloat() / 255f,
+                                     bytes[3].toFloat() / 255f))
+        offset += 4
         return ret
     }
 

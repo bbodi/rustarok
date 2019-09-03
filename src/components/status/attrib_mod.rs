@@ -44,8 +44,8 @@ impl Status for ArmorModifierStatus {
         true
     }
 
-    fn get_render_color(&self, _now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
