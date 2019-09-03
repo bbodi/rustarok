@@ -3,9 +3,19 @@ package rustarok.render
 import org.khronos.webgl.*
 import rustarok.*
 
-class RenderCommands {
+class Renderer(gl: WebGL2RenderingContext) {
+    var models: Array<ModelData> = emptyArray()
+    val sprite_gl_program = load_sprite_shader(gl)
+    val ground_gl_program = load_ground_shader(gl)
+    val model_gl_program = load_model_shader(gl)
+    val sprite_vertex_buffer = create_sprite_buffer(gl)
+    var ground_vertex_buffer: WebGLBuffer = 0.asDynamic()
+    var ground_vertex_count: Int = 0
+
+
     val sprite_render_commands = arrayListOf<RenderCommand.Sprite3D>()
     val number_render_commands = arrayListOf<RenderCommand.Number3D>()
+    val model3d_render_commands = arrayListOf<RenderCommand.Model3D>()
 
     private val single_digit_width = 10.0f
     private val texture_width = single_digit_width * 10.0f
@@ -17,6 +27,7 @@ class RenderCommands {
     fun clear() {
         sprite_render_commands.clear()
         number_render_commands.clear()
+        model3d_render_commands.clear()
     }
 
     fun render(gl: WebGL2RenderingContext) {
@@ -24,7 +35,7 @@ class RenderCommands {
         /////////////////////////////////
         // Ground
         /////////////////////////////////
-        render_ground(gl, ground_render_command)
+        render_ground(gl, ground_render_command, ground_gl_program, ground_vertex_buffer, ground_vertex_count)
 
         gl.useProgram(sprite_gl_program.program)
         gl.activeTexture(WebGLRenderingContext.TEXTURE0)
@@ -41,13 +52,13 @@ class RenderCommands {
         // 3D Sprites
         /////////////////////////////////
         gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
-        for (render_command in render_commands.sprite_render_commands) {
+        for (render_command in sprite_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, render_command.color)
             gl.uniformMatrix4fv(sprite_gl_program.model, false, render_command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, render_command.offset)
             gl.uniform2fv(sprite_gl_program.size, arrayOf(render_command.w, render_command.h))
 
-            gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(render_command.server_texture_id))
+            gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(render_command.server_texture_id, WebGLRenderingContext.NEAREST))
             gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
 
@@ -56,8 +67,8 @@ class RenderCommands {
         /////////////////////////////////
         gl.disable(WebGLRenderingContext.DEPTH_TEST)
         gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,
-                       get_or_load_server_texture(path_to_server_gl_indices["assets\\damage.bmp"]!!.gl_textures[0].server_gl_index))
-        for (render_command in render_commands.number_render_commands) {
+                       get_or_load_server_texture(path_to_server_gl_indices["assets\\damage.bmp"]!!.gl_textures[0].server_gl_index, WebGLRenderingContext.NEAREST))
+        for (render_command in number_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, render_command.color)
             gl.uniformMatrix4fv(sprite_gl_program.model, false, render_command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, render_command.offset)
@@ -77,6 +88,13 @@ class RenderCommands {
             gl.deleteBuffer(buffer)
         }
         gl.enable(WebGLRenderingContext.DEPTH_TEST)
+
+        /////////////////////////////////
+        // 3D MODELS
+        /////////////////////////////////
+        for (render_command in model3d_render_commands) {
+            render_model(gl, render_command, ground_render_command, model_gl_program, models)
+        }
     }
 
     private fun create_number_vertex_array(gl: WebGL2RenderingContext, value: Int): Pair<WebGLBuffer, Int> {

@@ -52,17 +52,11 @@ object Input {
     fun packet_write_i16(value: Int) {
         network_packet.setInt16(buffer_offset, value.toShort())
         buffer_offset += 2
-        if (buffer_offset >= BUFFER_SIZE) {
-            js("debugger")
-        }
     }
 
     fun packet_write_i8(value: Int) {
         network_packet.setInt8(buffer_offset, value.toByte())
         buffer_offset++
-        if (buffer_offset >= BUFFER_SIZE) {
-            js("debugger")
-        }
     }
 
     fun handleMouseWheel(e: Event) {

@@ -1,3 +1,4 @@
+use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrLayer};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
@@ -416,6 +417,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
         specs::ReadStorage<'a, CameraComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, AssetDatabase>,
     );
 
     fn run(
@@ -426,6 +428,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             camera_storage,
             mut system_benchmark,
             system_vars,
+            asset_database,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem");
@@ -608,7 +611,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for render_command in &render_commands.model_commands {
                     shader.set_mat4("model", &render_command.matrix);
                     shader.set_f32("alpha", render_command.alpha);
-                    let model_render_data = &map_render_data.models[&render_command.name];
+                    let model_render_data =
+                        asset_database.get_model(render_command.asset_db_model_index);
                     for node_render_data in &model_render_data.model {
                         // TODO: optimize this
                         for face_render_data in node_render_data {

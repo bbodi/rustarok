@@ -1,8 +1,8 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, create_monster, CharOutlook, CharState, CharType,
-    CharacterStateComponent, ComponentRadius, NpcComponent, PhysicsComponent,
+    attach_char_components, CharOutlook, CharState, CharType, CharacterStateComponent,
+    ComponentRadius, NpcComponent, PhysicsComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
@@ -25,7 +25,7 @@ use crate::systems::console_system::{
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
-use crate::{CollisionGroup, ElapsedTime, PhysicEngine, PLAYABLE_OUTLOOKS};
+use crate::{CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine, PLAYABLE_OUTLOOKS};
 use nalgebra::{Isometry2, Point2};
 use nalgebra::{Point3, Vector2};
 use rand::Rng;
@@ -377,6 +377,56 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             Ok(())
         }),
     }
+}
+
+pub fn create_monster(
+    ecs_world: &mut specs::world::World,
+    pos2d: Point2<f32>,
+    monster_id: MonsterId,
+    radius: i32,
+    team: Team,
+    typ: CharType,
+    collision_group: CollisionGroup,
+    blacklist_coll_groups: &[CollisionGroup],
+) -> Entity {
+    let entity_id = {
+        let entity_id = ecs_world.create_entity().build();
+        ecs_world.write_storage().insert(
+            entity_id,
+            CharacterStateComponent::new(
+                "monster".to_owned(),
+                typ,
+                CharOutlook::Monster(monster_id),
+                team,
+                &ecs_world.read_resource::<SystemVariables>().dev_configs,
+            ),
+        );
+        ecs_world.write_storage().insert(
+            entity_id,
+            SpriteRenderDescriptorComponent {
+                action_index: CharActionIndex::Idle as usize,
+                animation_started: ElapsedTime(0.0),
+                animation_ends_at: ElapsedTime(0.0),
+                forced_duration: None,
+                direction: 0,
+                fps_multiplier: 1.0,
+            },
+        );
+        ecs_world.write_storage().insert(entity_id, NpcComponent);
+        entity_id
+    };
+    let mut storage = ecs_world.write_storage();
+    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+    let physics_component = PhysicsComponent::new(
+        physics_world,
+        pos2d.coords,
+        ComponentRadius(radius),
+        entity_id,
+        collision_group,
+        blacklist_coll_groups,
+    );
+    storage.insert(entity_id, physics_component).unwrap();
+    return entity_id;
 }
 
 fn create_random_char_minion(

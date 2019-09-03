@@ -137,7 +137,23 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             /////////////////////////////////
             // 3D MODELS
             /////////////////////////////////
-            {}
+            {
+                self.send_buffer
+                    .write_u32::<LittleEndian>(render_commands.model_commands.len() as u32)
+                    .unwrap();
+                for command in &render_commands.model_commands {
+                    for v in &command.matrix {
+                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+                    }
+                    self.send_buffer
+                        .write_f32::<LittleEndian>(command.alpha)
+                        .unwrap();
+
+                    self.send_buffer
+                        .write_u32::<LittleEndian>(command.asset_db_model_index as u32)
+                        .unwrap();
+                }
+            }
 
             browser.send_message(&self.send_buffer);
         }

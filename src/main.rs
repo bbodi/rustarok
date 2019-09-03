@@ -24,7 +24,7 @@ extern crate strum_macros;
 extern crate sublime_fuzzy;
 extern crate websocket;
 
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::WriteBytesExt;
 use encoding::types::Encoding;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
@@ -40,7 +40,6 @@ use nphysics2d::object::{
     RigidBodyDesc,
 };
 use nphysics2d::solver::SignoriniModel;
-use rand::prelude::ThreadRng;
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -355,8 +354,6 @@ fn main() {
     };
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
-
-    let rng = rand::thread_rng();
 
     let mut asset_database = AssetDatabase::new();
 
@@ -1111,13 +1108,32 @@ fn main() {
                                             .read_resource::<SystemVariables>()
                                             .map_render_data
                                             .ground_vertex_array;
-                                        response_buf
-                                            .write_u32::<LittleEndian>(ground_vao.raw_len() as u32)
-                                            .unwrap();
-                                        ground_vao.copy_into(&mut response_buf);
+                                        ground_vao.write_into(&mut response_buf);
                                         client.send_message(&response_buf);
                                         response_buf.clear();
                                     }
+                                }
+                                // send closing message
+                                {
+                                    response_buf.push(0xB1);
+                                    response_buf.push(0x6B);
+                                    response_buf.push(0x00);
+                                    response_buf.push(0xB5);
+                                    client.send_message(&response_buf);
+                                }
+                            }
+                            if let Some(missing_models) = deserialized["missing_models"].as_array()
+                            {
+                                log::trace!("missing_models: {:?}", missing_models);
+                                let mut response_buf =
+                                    Vec::with_capacity(missing_models.len() * 256 * 256);
+                                for missing_model in missing_models {
+                                    ecs_world.read_resource::<AssetDatabase>().copy_model_into(
+                                        missing_model.as_str().unwrap_or(""),
+                                        &mut response_buf,
+                                    );
+                                    client.send_message(&response_buf);
+                                    response_buf.clear();
                                 }
                                 // send closing message
                                 {
@@ -1154,7 +1170,7 @@ fn main() {
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis();
-                            let (int_bytes, rest) = buf.split_at(std::mem::size_of::<u128>());
+                            let (int_bytes, _rest) = buf.split_at(std::mem::size_of::<u128>());
                             let ping_sent = u128::from_le_bytes(int_bytes.try_into().unwrap());
                             client.set_ping(now_ms - ping_sent);
                         }
@@ -1210,7 +1226,6 @@ fn main() {
             desktop_client_controller,
             &mut video,
             &mut ecs_world,
-            rng.clone(),
             sent_bytes_per_second,
             &mut map_name_filter,
             &all_map_names,
@@ -1334,7 +1349,7 @@ fn main() {
 
         // runtime configs
         match runtime_conf_watcher_rx.try_recv() {
-            Ok(event) => {
+            Ok(_event) => {
                 if let Ok(new_config) = DevConfig::new() {
                     ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
                     for char_state in
@@ -1358,7 +1373,6 @@ fn imgui_frame(
     desktop_client_entity: Entity,
     video: &mut Video,
     ecs_world: &mut specs::world::World,
-    rng: ThreadRng,
     sent_bytes_per_second: usize,
     mut map_name_filter: &mut ImString,
     all_map_names: &Vec<String>,
@@ -1624,11 +1638,8 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
     entity_id
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ModelName(String);
-
 pub struct ModelInstance {
-    name: ModelName,
+    asset_db_model_index: usize,
     matrix: Matrix4<f32>,
     bottom_left_front: Vector3<f32>,
     top_right_back: Vector3<f32>,
@@ -1648,8 +1659,6 @@ pub struct MapRenderData {
     pub texture_atlas: GlTexture,
     pub tile_color_texture: GlTexture,
     pub lightmap_texture: GlTexture,
-    // TODO: put the models into a simple Vec indexed by a number
-    pub models: HashMap<ModelName, ModelRenderData>,
     pub model_instances: Vec<ModelInstance>,
     pub draw_models: bool,
     pub draw_ground: bool,
@@ -1675,6 +1684,7 @@ pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
 pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
     pub texture: GlTexture,
+    pub texture_name: String,
 }
 
 pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
@@ -1873,7 +1883,6 @@ fn load_map(
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
     log::info!("gat loaded: {}ms", elapsed.as_millis());
-    let w = gat.width;
 
     let mut physics_world = PhysicEngine {
         mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
@@ -1928,51 +1937,58 @@ fn load_map(
         asset_database,
     );
 
-    let (elapsed, models) = measure_time(|| {
-        if !quick_loading {
-            let model_names: HashSet<_> = world.models.iter().map(|m| m.filename.clone()).collect();
-            return model_names
-                .iter()
-                .map(|filename| {
-                    let rsm = asset_loader.load_model(filename).unwrap();
-                    (filename.clone(), rsm)
-                })
-                .collect::<Vec<(ModelName, Rsm)>>();
-        } else {
-            vec![]
-        }
-    });
-    log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
+    ////////////////////////////
+    //// MODELS
+    ////////////////////////////
+    {
+        let (elapsed, models) = measure_time(|| {
+            if !quick_loading {
+                let model_names: HashSet<_> =
+                    world.models.iter().map(|m| m.filename.clone()).collect();
+                return model_names
+                    .iter()
+                    .map(|filename| {
+                        let rsm = asset_loader.load_model(filename).unwrap();
+                        (filename.clone(), rsm)
+                    })
+                    .collect::<Vec<(String, Rsm)>>();
+            } else {
+                vec![]
+            }
+        });
+        log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
 
-    let (elapsed, model_render_datas) = measure_time(|| {
-        models
-            .iter()
-            .map(|(name, rsm)| {
-                let textures =
-                    Rsm::load_textures(&asset_loader, asset_database, &rsm.texture_names);
-                log::trace!("{} textures loaded for model {}", textures.len(), name.0);
-                let (data_for_rendering_full_model, bbox): (
-                    Vec<DataForRenderingSingleNode>,
-                    BoundingBox,
-                ) = Rsm::generate_meshes_by_texture_id(
-                    &rsm.bounding_box,
-                    rsm.shade_type,
-                    rsm.nodes.len() == 1,
-                    &rsm.nodes,
-                    &textures,
-                );
-                (
-                    name.clone(),
-                    ModelRenderData {
-                        bounding_box: bbox,
-                        alpha: rsm.alpha,
-                        model: data_for_rendering_full_model,
-                    },
-                )
-            })
-            .collect::<HashMap<ModelName, ModelRenderData>>()
-    });
-    log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
+        let (elapsed, model_render_datas) = measure_time(|| {
+            models
+                .iter()
+                .map(|(name, rsm)| {
+                    let textures =
+                        Rsm::load_textures(&asset_loader, asset_database, &rsm.texture_names);
+                    log::trace!("{} textures loaded for model {}", textures.len(), name);
+                    let (data_for_rendering_full_model, bbox): (
+                        Vec<DataForRenderingSingleNode>,
+                        BoundingBox,
+                    ) = Rsm::generate_meshes_by_texture_id(
+                        &rsm.bounding_box,
+                        rsm.shade_type,
+                        rsm.nodes.len() == 1,
+                        &rsm.nodes,
+                        &textures,
+                    );
+                    (
+                        name.clone(),
+                        ModelRenderData {
+                            bounding_box: bbox,
+                            alpha: rsm.alpha,
+                            model: data_for_rendering_full_model,
+                        },
+                    )
+                })
+                .collect::<HashMap<String, ModelRenderData>>()
+        });
+        log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
+        asset_database.register_models(model_render_datas);
+    };
 
     let model_instances_iter = if quick_loading {
         world.models.iter().take(0)
@@ -2024,7 +2040,8 @@ fn load_map(
             instance_matrix = rotation * instance_matrix;
             only_transition_matrix = rotation * only_transition_matrix;
 
-            let model_render_data = &model_render_datas[&model_instance.filename];
+            let model_db_index = asset_database.get_model_index(&model_instance.filename);
+            let model_render_data = asset_database.get_model(model_db_index);
             let tmin = only_transition_matrix
                 .transform_point(&model_render_data.bounding_box.min)
                 .coords;
@@ -2042,7 +2059,7 @@ fn load_map(
                 tmax[2].min(tmin[2]),
             );
             ModelInstance {
-                name: model_instance.filename.clone(),
+                asset_db_model_index: model_db_index,
                 matrix: instance_matrix,
                 bottom_left_front: min,
                 top_right_back: max,
@@ -2175,13 +2192,13 @@ fn load_map(
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());
+
     (
         MapRenderData {
             gat,
             gnd: ground_data.ground,
             rsw: world,
             ground_vertex_array: ground_data.ground_vertex_array,
-            models: model_render_datas,
             texture_atlas: ground_data.texture_atlas,
             tile_color_texture: ground_data.tile_color_texture,
             lightmap_texture: ground_data.lightmap_texture,

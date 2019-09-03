@@ -344,7 +344,7 @@ impl Rsm {
         shade_type: i32,
         is_only: bool,
         nodes: &Vec<RsmNode>,
-        textures: &Vec<GlTexture>,
+        textures: &Vec<(String, GlTexture)>,
     ) -> (Vec<DataForRenderingSingleNode>, BoundingBox) {
         let mut real_bounding_box = BoundingBox::new();
         let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
@@ -377,7 +377,7 @@ impl Rsm {
                         }
                     }
 
-                    let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
+                    let (name, gl_tex) = &textures[node.textures[texture_index as usize] as usize];
                     let renderable = SameTextureNodeFaces {
                         vao: VertexArray::new(
                             gl::TRIANGLES,
@@ -399,7 +399,8 @@ impl Rsm {
                                 },
                             ],
                         ),
-                        texture: gl_tex,
+                        texture: gl_tex.clone(),
+                        texture_name: name.to_owned(),
                     };
                     renderable
                 })
@@ -418,7 +419,7 @@ impl Rsm {
         asset_loader: &AssetLoader,
         asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
-    ) -> Vec<GlTexture> {
+    ) -> Vec<(String, GlTexture)> {
         texture_names
             .iter()
             .map(|texture_name| {
@@ -436,7 +437,7 @@ impl Rsm {
                     asset_database,
                 );
                 log::trace!("Texture was created loaded: {}", path);
-                return ret;
+                return (AssetDatabase::replace_non_ascii_chars(&path), ret);
             })
             .collect()
     }

@@ -237,13 +237,20 @@ pub struct InputConsumerSystem;
 
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
+        specs::Entities<'a>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, CameraComponent>,
+        specs::ReadStorage<'a, BrowserClient>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
-    fn run(&mut self, (mut input_storage, mut camera_storage, system_vars): Self::SystemData) {
-        for (input, camera) in (&mut input_storage, &mut camera_storage).join() {
+    fn run(
+        &mut self,
+        (entities, mut input_storage, mut camera_storage, browser_storage, system_vars): Self::SystemData,
+    ) {
+        for (controller_id, input, camera) in
+            (&entities, &mut input_storage, &mut camera_storage).join()
+        {
             // for autocompletion...
             let input: &mut HumanInputComponent = input;
 
@@ -318,7 +325,10 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
-            if input.is_key_just_pressed(Scancode::Grave) && input.is_key_down(Scancode::LAlt) {
+            if input.is_key_just_pressed(Scancode::Grave)
+                && input.is_key_down(Scancode::LAlt)
+                && browser_storage.get(controller_id).is_none()
+            {
                 input.is_console_open = !input.is_console_open;
             }
 

@@ -1,4 +1,5 @@
 use crate::video::{GlTexture, GlTextureIndex};
+use crate::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
@@ -17,9 +18,12 @@ struct TextureDatabase {
     entries: HashMap<String, TextureDatabaseEntry>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct AssetDatabase {
     texture_db: TextureDatabase,
+    model_name_to_index: HashMap<String, usize>,
+    #[serde(skip)]
+    models: Vec<ModelRenderData>,
 }
 
 impl AssetDatabase {
@@ -28,6 +32,28 @@ impl AssetDatabase {
             texture_db: TextureDatabase {
                 entries: HashMap::new(),
             },
+            model_name_to_index: Default::default(),
+            models: vec![],
+        }
+    }
+
+    pub fn get_model(&self, index: usize) -> &ModelRenderData {
+        &self.models[index]
+    }
+
+    pub fn get_model_index(&self, name: &str) -> usize {
+        self.model_name_to_index[&AssetDatabase::replace_non_ascii_chars(&name)]
+    }
+
+    pub fn register_models(&mut self, models: HashMap<String, ModelRenderData>) {
+        self.models = Vec::with_capacity(models.len());
+        self.model_name_to_index = HashMap::with_capacity(models.len());
+        for (name, data) in models.into_iter() {
+            self.model_name_to_index.insert(
+                AssetDatabase::replace_non_ascii_chars(&name),
+                self.models.len(),
+            );
+            self.models.push(data);
         }
     }
 
@@ -64,7 +90,7 @@ impl AssetDatabase {
         );
     }
 
-    fn replace_non_ascii_chars(name: &str) -> String {
+    pub fn replace_non_ascii_chars(name: &str) -> String {
         name.chars()
             .map(|it| {
                 if it.is_ascii() {
@@ -74,6 +100,35 @@ impl AssetDatabase {
                 }
             })
             .collect()
+    }
+
+    pub fn copy_model_into(&self, name: &str, dst_buf: &mut Vec<u8>) {
+        if let Some(index) = self.model_name_to_index.get(name) {
+            dst_buf
+                .write_u16::<LittleEndian>(name.len() as u16)
+                .unwrap();
+            dst_buf.write(name.as_bytes()).unwrap();
+
+            let model: &ModelRenderData = &self.models[*index];
+
+            dst_buf
+                .write_u16::<LittleEndian>(model.model.len() as u16)
+                .unwrap();
+            for node in &model.model {
+                dst_buf
+                    .write_u16::<LittleEndian>(node.len() as u16)
+                    .unwrap();
+                for same_texture_face in node {
+                    dst_buf
+                        .write_u16::<LittleEndian>(same_texture_face.texture_name.len() as u16)
+                        .unwrap();
+                    dst_buf
+                        .write(same_texture_face.texture_name.as_bytes())
+                        .unwrap();
+                    same_texture_face.vao.write_into(dst_buf);
+                }
+            }
+        }
     }
 
     pub fn copy_texture_into(&self, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
@@ -106,7 +161,7 @@ impl AssetDatabase {
                 offset += std::mem::size_of::<u16>();
 
                 let raw_size = std::mem::size_of::<u8>() * (*w as usize) * (*h as usize) * 4;
-                for i in 0..raw_size {
+                for _ in 0..raw_size {
                     dst_buf.push(0)
                 }
                 unsafe {

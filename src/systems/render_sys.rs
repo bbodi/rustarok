@@ -1,3 +1,4 @@
+use crate::asset::database::AssetDatabase;
 use crate::cam::Camera;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
@@ -86,6 +87,7 @@ impl RenderDesktopClientSystem {
         str_effect_storage: &specs::ReadStorage<'a, StrEffectComponent>,
         updater: &specs::Write<'a, LazyUpdate>,
         system_benchmark: &mut SystemFrameDurations,
+        asset_database: &AssetDatabase,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix);
         {
@@ -115,6 +117,7 @@ impl RenderDesktopClientSystem {
                     .as_ref(),
                 &camera.camera,
                 &system_vars.map_render_data,
+                asset_database,
                 render_commands,
             );
         }
@@ -570,6 +573,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, SoundEffectComponent>,
         specs::WriteStorage<'a, RenderCommandCollectorComponent>,
         specs::WriteStorage<'a, AudioCommandCollectorComponent>,
+        specs::ReadExpect<'a, AssetDatabase>,
     );
 
     fn run(
@@ -592,6 +596,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             sound_effects,
             mut render_commands_storage,
             mut audio_commands_storage,
+            asset_database,
         ): Self::SystemData,
     ) {
         let join = {
@@ -634,6 +639,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &str_effect_storage,
                     &updater,
                     &mut system_benchmark,
+                    &asset_database,
                 );
             }
 
@@ -871,6 +877,7 @@ fn render_client(
     char_pos: Option<&Vector2<f32>>,
     camera: &Camera,
     map_render_data: &MapRenderData,
+    asset_database: &AssetDatabase,
     render_commands: &mut RenderCommandCollectorComponent,
 ) {
     // cam area is [-20;20] width and [70;5] height
@@ -887,7 +894,7 @@ fn render_client(
             {
                 continue;
             }
-            let model_render_data = &map_render_data.models[&model_instance.name];
+            let model_render_data = asset_database.get_model(model_instance.asset_db_model_index);
             let alpha = if let Some(char_pos) = char_pos {
                 if (max.x > char_pos.x && min.x < char_pos.x)
                     && char_pos.y <= min.z // character is behind
@@ -904,7 +911,7 @@ fn render_client(
             render_commands
                 .prepare_for_3d()
                 .alpha(alpha)
-                .add_model_command(&model_instance.name, &model_instance.matrix);
+                .add_model_command(model_instance.asset_db_model_index, &model_instance.matrix);
         }
     }
 }

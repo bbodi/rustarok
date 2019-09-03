@@ -65,10 +65,10 @@ impl Status for DeathStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        _self_char_id: Entity,
         _char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
+        _system_vars: &mut SystemVariables,
+        _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
@@ -84,9 +84,9 @@ impl Status for DeathStatus {
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
-        system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        _char_pos: &WorldCoords,
+        _system_vars: &SystemVariables,
+        _render_commands: &mut RenderCommandCollectorComponent,
     ) {
     }
 

@@ -7,7 +7,6 @@ use crate::asset::rsw::Rsw;
 use crate::asset::spr::{SpriteFile, SpriteTexture};
 use crate::asset::str::StrFile;
 use crate::video::{GlTexture, GlTextureIndex};
-use crate::ModelName;
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use libflate::zlib::Decoder;
@@ -222,8 +221,8 @@ impl AssetLoader {
         return Ok(Gat::load(BinaryReader::from_vec(content), map_name));
     }
 
-    pub fn load_model(&self, model_name: &ModelName) -> Result<Rsm, String> {
-        let file_name = format!("data\\model\\{}", model_name.0);
+    pub fn load_model(&self, model_name: &str) -> Result<Rsm, String> {
+        let file_name = format!("data\\model\\{}", model_name);
         let content = self.get_content(&file_name)?;
         return Ok(Rsm::load(BinaryReader::from_vec(content)));
     }

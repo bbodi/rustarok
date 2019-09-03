@@ -3,7 +3,8 @@ package rustarok.render
 import org.khronos.webgl.*
 import rustarok.*
 
-fun render_ground(gl: WebGL2RenderingContext, command: RenderCommand.Ground3D) {
+fun render_ground(gl: WebGL2RenderingContext, command: RenderCommand.Ground3D, ground_gl_program: GroundShader,
+                  ground_vertex_buffer: WebGLBuffer, ground_vertex_count: Int) {
     gl.useProgram(ground_gl_program.program)
     gl.uniformMatrix4fv(ground_gl_program.projection_mat, false, PROJECTION_MATRIX)
     gl.uniformMatrix4fv(ground_gl_program.model, false, VIEW_MATRIX)
@@ -30,15 +31,15 @@ fun render_ground(gl: WebGL2RenderingContext, command: RenderCommand.Ground3D) {
 
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE0)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_texture_atlas_id))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_texture_atlas_id, WebGLRenderingContext.NEAREST))
     gl.uniform1i(ground_gl_program.gnd_texture_atlas, 0)
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE1)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_tile_color_texture_id))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_tile_color_texture_id, WebGLRenderingContext.LINEAR))
     gl.uniform1i(ground_gl_program.tile_color_texture, 1)
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE2)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_lightmap_texture_id))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_lightmap_texture_id, WebGLRenderingContext.LINEAR))
     gl.uniform1i(ground_gl_program.lightmap_texture, 2)
 
 
@@ -51,13 +52,17 @@ fun render_ground(gl: WebGL2RenderingContext, command: RenderCommand.Ground3D) {
     gl.disableVertexAttribArray(ground_gl_program.a_tile_color_coord)
 }
 
-fun create_ground_vertex_buffer(gl: WebGL2RenderingContext, raw: Uint8Array): Pair<WebGLBuffer, Int> {
+fun create_vertex_buffer(gl: WebGL2RenderingContext, raw: Uint8Array): WebGLBuffer {
     val buffer = gl.createBuffer()!!
     gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
-    gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
-                  Float32Array(raw.buffer.slice(raw.byteOffset)),
-                  WebGLRenderingContext.STATIC_DRAW)
-    return buffer to raw.byteLength / (12 * 4)
+    try {
+        gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
+                      Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)),
+                      WebGLRenderingContext.STATIC_DRAW)
+    } catch (e: Throwable) {
+        js("debugger")
+    }
+    return buffer
 }
 
 fun load_ground_shader(gl: WebGL2RenderingContext): GroundShader {

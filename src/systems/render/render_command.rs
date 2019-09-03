@@ -2,7 +2,6 @@ use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlTexture, GlTextureIndex, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::ModelName;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -482,9 +481,9 @@ impl<'a> Common3DPropBuilder<'a> {
             });
     }
 
-    pub fn add_model_command(&'a mut self, name: &ModelName, matrix: &Matrix4<f32>) {
+    pub fn add_model_command(&'a mut self, asset_db_model_index: usize, matrix: &Matrix4<f32>) {
         self.collector.model_commands.push(ModelRenderCommand {
-            name: name.to_owned(),
+            asset_db_model_index,
             matrix: *matrix,
             alpha: self.color[3],
         });
@@ -529,6 +528,6 @@ pub struct Number3dRenderCommand {
 #[derive(Debug)]
 pub struct ModelRenderCommand {
     pub(super) alpha: f32,
-    pub(super) name: ModelName,
+    pub(super) asset_db_model_index: usize,
     pub(super) matrix: Matrix4<f32>,
 }

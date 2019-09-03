@@ -49,7 +49,7 @@ impl Status for AbsorbStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
+    fn get_render_color(&self, _now: ElapsedTime) -> [f32; 4] {
         [1.0, 1.0, 1.0, 1.0]
     }
 

@@ -26,9 +26,6 @@ object IndexedDb {
         for (entry in entries) {
             val client_entry: TextureEntry? = make_await { store.get(entry.key) }
             if (client_entry != null) {
-                if (client_entry.path == "[100, 97, 116, 97, 92, 115, 112, 114, 105, 116, 101, 92, 195, 128, 195, 142, 194, 176, 194, 163, 195, 129, 194, 183, 92, 194, 184, 195, 182, 195, 133, 195, 171, 92, 194, 191, 194, 169, 92, 195, 133, 194, 169, 194, 183, 195, 167, 194, 188, 194, 188, 195, 128, 195, 140, 194, 180, 195, 181, 95, 194, 191, 194, 169]") {
-                    js("debugger")
-                }
                 if (client_entry.count != entry.value.gl_textures.size ||
                         client_entry.hash != entry.value.hash) {
                     mismatched_textures.add(entry.key)
@@ -47,11 +44,12 @@ object IndexedDb {
                 // Save the IDBDatabase interface
                 val db: dynamic = event.target.result;
 
-                // Create an objectStore for this database
                 val objectStore = db.createObjectStore("textures", object {
                     val keyPath = "path"
                 })
-                val objectStore2 = db.createObjectStore("texture_data")
+                db.createObjectStore("texture_data")
+                db.createObjectStore("models")
+                db.createObjectStore("vertex_arrays")
             }
             req.onerror = { event: dynamic ->
                 console.error("DB error: " + event.target.errorCode)
@@ -91,14 +89,69 @@ object IndexedDb {
         }
     }
 
-    suspend fun get_texture(path: String, i: Int): Uint8Array? {
+    suspend fun store_model(path: String, node_index: Int, vertex_count: Int, texture_name: String, rawData: Uint8Array) {
+        val db = open()
+        val tx = db.transaction("models", "readwrite")
+        val store = tx.objectStore("models")
+        val key = "${path}_$node_index"
+        val result = make_await<dynamic> {
+            store.put(object {
+                val vertex_count = vertex_count
+                val texture_name = texture_name
+                val raw = rawData
+            }, key)
+        }
+        if (result != key) {
+            js("debugger")
+        }
+    }
+
+    suspend fun store_vertex_array(key: String, vertex_count: Int, rawData: Uint8Array) {
+        val db = open()
+        val tx = db.transaction("vertex_arrays", "readwrite")
+        val store = tx.objectStore("vertex_arrays")
+        val result = make_await<dynamic> {
+            store.put(object {
+                val vertex_count = vertex_count
+                val raw = rawData
+            }, key)
+        }
+        if (result != key) {
+            js("debugger")
+        }
+    }
+
+    suspend fun get_vertex_array(path: String, i: Int): StoredVertexArray? {
+        val db = open()
+        val tx = db.transaction("vertex_arrays", "readwrite")
+        val store = tx.objectStore("vertex_arrays")
+        val result = make_await<dynamic> { store.get("${path}_$i") }
+        return if (result != null) {
+            StoredVertexArray(result)
+        } else {
+            null
+        }
+    }
+
+    suspend fun get_model(path: String, i: Int): StoredModel? {
+        val db = open()
+        val tx = db.transaction("models", "readwrite")
+        val store = tx.objectStore("models")
+        val result = make_await<dynamic> { store.get("${path}_$i") }
+        return if (result != null) {
+            StoredModel(result)
+        } else {
+            null
+        }
+    }
+
+    suspend fun get_texture(path: String, i: Int): StoredTexture? {
         val db = open()
         val tx = db.transaction("texture_data", "readwrite")
         val store = tx.objectStore("texture_data")
         val sh = make_await<dynamic> { store.get("${path}_$i") }
         return if (sh != null) {
-//            js("debugger")
-            sh.raw
+            StoredTexture(sh)
         } else {
             null
         }

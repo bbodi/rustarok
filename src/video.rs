@@ -1,5 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::AssetLoader;
+use byteorder::{LittleEndian, WriteBytesExt};
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
@@ -226,7 +227,6 @@ impl GlTexture {
             .unwrap();
         surface.blit(None, &mut optimized_surf, None).unwrap();
         log::trace!("Texture from file --> {}", &path);
-        let (w, h) = (surface.width(), surface.height());
         return AssetLoader::create_texture_from_surface(
             &path.to_string(),
             optimized_surf,
@@ -328,11 +328,13 @@ impl VertexArray {
         }
     }
 
-    pub fn raw_len(&self) -> usize {
-        self.raw.len()
-    }
-
-    pub fn copy_into(&self, dst_buf: &mut Vec<u8>) {
+    pub fn write_into(&self, dst_buf: &mut Vec<u8>) {
+        dst_buf
+            .write_u32::<LittleEndian>(self.vertex_count as u32)
+            .unwrap();
+        dst_buf
+            .write_u32::<LittleEndian>(self.raw.len() as u32)
+            .unwrap();
         dst_buf.extend_from_slice(self.raw.as_slice());
     }
 
