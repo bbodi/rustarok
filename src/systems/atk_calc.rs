@@ -394,8 +394,8 @@ impl AttackCalculation {
         sounds: &Sounds,
     ) {
         match outcome {
-            AttackOutcome::Heal(val) => {}
-            AttackOutcome::Damage(val) => match attack_type {
+            AttackOutcome::Heal(_val) => {}
+            AttackOutcome::Damage(_val) => match attack_type {
                 AttackType::Basic(_) => {
                     let damage_entity = entities.create();
                     updater.insert(
@@ -415,10 +415,10 @@ impl AttackCalculation {
             AttackOutcome::Combo {
                 single_attack_damage: _,
                 attack_count: _,
-                sum_damage,
+                sum_damage: _,
             } => {}
-            AttackOutcome::Poison(val) => {}
-            AttackOutcome::Crit(val) => {}
+            AttackOutcome::Poison(_val) => {}
+            AttackOutcome::Crit(_val) => {}
             AttackOutcome::Block => {}
             AttackOutcome::Absorb => {}
         }

@@ -338,32 +338,30 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 from_frame.angle,
             )
         } else {
-            let frame_count = (to_frame.frame - from_frame.frame).max(1);
-            let frame_nth = key_index - from_frame.frame;
-            let delta = (frame_nth as f32 / frame_count as f32).min(1.0);
-            let from_coef = 1.0 - dbg!(delta);
-            let to_coef = delta;
+            let delta = key_index - from_frame.frame;
+
             // morphing
             let color = [
-                (from_frame.color[0] as f32 * from_coef + to_frame.color[0] as f32 * to_coef) as u8,
-                (from_frame.color[1] as f32 * from_coef + to_frame.color[1] as f32 * to_coef) as u8,
-                (from_frame.color[2] as f32 * from_coef + to_frame.color[2] as f32 * to_coef) as u8,
-                (from_frame.color[3] as f32 * from_coef + to_frame.color[3] as f32 * to_coef) as u8,
+                (from_frame.color[0] as i32 + to_frame.color[0] as i32 * delta) as u8,
+                (from_frame.color[1] as i32 + to_frame.color[1] as i32 * delta) as u8,
+                (from_frame.color[2] as i32 + to_frame.color[2] as i32 * delta) as u8,
+                (from_frame.color[3] as i32 + to_frame.color[3] as i32 * delta) as u8,
             ];
+            let delta = delta as f32;
             let xy = [
-                from_frame.xy[0] * from_coef + to_frame.xy[0] * to_coef,
-                from_frame.xy[1] * from_coef + to_frame.xy[1] * to_coef,
-                from_frame.xy[2] * from_coef + to_frame.xy[2] * to_coef,
-                from_frame.xy[3] * from_coef + to_frame.xy[3] * to_coef,
-                from_frame.xy[4] * from_coef + to_frame.xy[4] * to_coef,
-                from_frame.xy[5] * from_coef + to_frame.xy[5] * to_coef,
-                from_frame.xy[6] * from_coef + to_frame.xy[6] * to_coef,
-                from_frame.xy[7] * from_coef + to_frame.xy[7] * to_coef,
+                from_frame.xy[0] + to_frame.xy[0] * delta,
+                from_frame.xy[1] + to_frame.xy[1] * delta,
+                from_frame.xy[2] + to_frame.xy[2] * delta,
+                from_frame.xy[3] + to_frame.xy[3] * delta,
+                from_frame.xy[4] + to_frame.xy[4] * delta,
+                from_frame.xy[5] + to_frame.xy[5] * delta,
+                from_frame.xy[6] + to_frame.xy[6] * delta,
+                from_frame.xy[7] + to_frame.xy[7] * delta,
             ];
-            let angle = from_frame.angle * from_coef + to_frame.angle * to_coef;
+            let angle = from_frame.angle + to_frame.angle * delta;
             let pos = [
-                from_frame.pos[0] * from_coef + to_frame.pos[0] * to_coef,
-                from_frame.pos[1] * from_coef + to_frame.pos[1] * to_coef,
+                from_frame.pos[0] + to_frame.pos[0] * delta,
+                from_frame.pos[1] + to_frame.pos[1] * delta,
             ];
             (color, pos, xy, angle)
         };
@@ -403,15 +401,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             dst_alpha: from_frame.dst_alpha,
             texture_index: from_frame.texture_index,
         });
-        //        unsafe {
-        //            gl::BlendFunc(from_frame.src_alpha, from_frame.dst_alpha);
-        //        }
-        //        //        str_file.textures[from_frame.texture_index].bind(TEXTURE_0);
-        //        //        system_vars.str_effect_vao.bind().draw();
-        //        unsafe {
-        //            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-        //            gl::Enable(gl::DEPTH_TEST);
-        //        }
     }
 }
 

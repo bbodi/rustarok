@@ -367,7 +367,7 @@ impl Statuses {
     }
 
     unsafe fn trait_to_struct<T>(boxx: &Box<dyn Status>) -> &T {
-        return unsafe { std::mem::transmute::<_, &Box<T>>(boxx) };
+        return std::mem::transmute::<_, &Box<T>>(boxx);
     }
 
     pub fn get_status<F, T: 'static, R>(&self, func: F) -> Option<R>
