@@ -1,4 +1,5 @@
 use crate::components::char::CharacterStateComponent;
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
@@ -18,7 +19,7 @@ where
     pub pos: Vector2<f32>,
     pub name: String,
     pub status_creator: F,
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub next_action_at: ElapsedTime,
 }
 
@@ -31,7 +32,7 @@ where
         status_creator: F,
         skill_center: &Vector2<f32>,
         size: Vector2<f32>,
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
         let collider_handle = physics_world.add_cuboid_skill(*skill_center, 0.0, size);

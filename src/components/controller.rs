@@ -5,7 +5,6 @@ use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
-use specs::Entity;
 use std::collections::HashMap;
 use strum_macros::EnumIter;
 
@@ -69,7 +68,7 @@ pub enum PlayerIntention {
     MoveTowardsMouse(WorldCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.
     MoveTo(WorldCoords),
-    Attack(Entity),
+    Attack(CharEntityId),
     /// Move to the coordination, attack any enemy on the way.
     AttackTowards(WorldCoords),
     /// bool = is self cast
@@ -92,19 +91,19 @@ pub enum CastMode {
 #[derive(Component)]
 pub struct ControllerComponent {
     pub select_skill_target: Option<(SkillKey, Skills)>,
-    pub controlled_entity: Entity,
+    pub controlled_entity: CharEntityId,
     pub next_action: Option<PlayerIntention>,
     pub last_action: Option<PlayerIntention>,
     pub next_action_allowed: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
-    pub bounding_rect_2d: HashMap<Entity, (SpriteBoundingRect, Team)>,
+    pub bounding_rect_2d: HashMap<CharEntityId, (SpriteBoundingRect, Team)>,
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
     pub cursor_color: [u8; 3],
 }
 
 impl ControllerComponent {
-    pub fn new(controlled_entity: Entity) -> ControllerComponent {
+    pub fn new(controlled_entity: CharEntityId) -> ControllerComponent {
         ControllerComponent {
             select_skill_target: None,
             controlled_entity,
@@ -151,7 +150,7 @@ impl ControllerComponent {
 // Camera follows a controller, a Controller controls a Character
 #[derive(Component, Clone)]
 pub struct CameraComponent {
-    pub followed_controller: Option<Entity>,
+    pub followed_controller: Option<ControllerEntityId>,
     pub view_matrix: Matrix4<f32>,
     pub normal_matrix: Matrix3<f32>,
     pub camera: Camera,
@@ -162,7 +161,7 @@ pub struct CameraComponent {
 impl CameraComponent {
     const YAW: f32 = 270.0;
     const PITCH: f32 = -60.0;
-    pub fn new(followed_controller: Option<Entity>) -> CameraComponent {
+    pub fn new(followed_controller: Option<ControllerEntityId>) -> CameraComponent {
         let camera = Camera::new(Point3::new(0.0, 40.0, 0.0));
         return CameraComponent {
             followed_controller,
@@ -190,9 +189,15 @@ pub enum CameraMode {
 }
 
 pub struct EntitiesBelowCursor {
-    friendly: Vec<Entity>,
-    enemy: Vec<Entity>,
+    friendly: Vec<CharEntityId>,
+    enemy: Vec<CharEntityId>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CharEntityId(pub Entity);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ControllerEntityId(pub Entity);
 
 impl EntitiesBelowCursor {
     pub fn new() -> EntitiesBelowCursor {
@@ -207,19 +212,19 @@ impl EntitiesBelowCursor {
         self.enemy.clear();
     }
 
-    pub fn add_friend(&mut self, entity_id: Entity) {
+    pub fn add_friend(&mut self, entity_id: CharEntityId) {
         self.friendly.push(entity_id);
     }
 
-    pub fn add_enemy(&mut self, entity_id: Entity) {
+    pub fn add_enemy(&mut self, entity_id: CharEntityId) {
         self.enemy.push(entity_id);
     }
 
-    pub fn get_enemy_or_friend(&self) -> Option<Entity> {
+    pub fn get_enemy_or_friend(&self) -> Option<CharEntityId> {
         self.enemy.get(0).or(self.friendly.get(0)).map(|it| *it)
     }
 
-    pub fn get_friend_except(&self, except_id: Entity) -> Option<Entity> {
+    pub fn get_friend_except(&self, except_id: CharEntityId) -> Option<CharEntityId> {
         self.friendly
             .iter()
             .filter(|it| **it != except_id)
@@ -227,11 +232,11 @@ impl EntitiesBelowCursor {
             .map(|it| *it)
     }
 
-    pub fn get_friend(&self) -> Option<Entity> {
+    pub fn get_friend(&self) -> Option<CharEntityId> {
         self.friendly.get(0).map(|it| *it)
     }
 
-    pub fn get_enemy(&self) -> Option<Entity> {
+    pub fn get_enemy(&self) -> Option<CharEntityId> {
         self.enemy.get(0).map(|it| *it)
     }
 }

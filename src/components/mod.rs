@@ -1,6 +1,6 @@
 extern crate rand;
 
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
@@ -75,8 +75,8 @@ impl BrowserClient {
 #[derive(Component)]
 pub struct FlyingNumberComponent {
     pub value: u32,
-    pub target_entity_id: Entity,
-    pub src_entity_id: Entity,
+    pub target_entity_id: CharEntityId,
+    pub src_entity_id: CharEntityId,
     pub typ: FlyingNumberType,
     pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
@@ -86,7 +86,7 @@ pub struct FlyingNumberComponent {
 
 #[derive(Component)]
 pub struct SoundEffectComponent {
-    pub target_entity_id: Entity,
+    pub target_entity_id: CharEntityId,
     pub sound_id: SoundId,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
@@ -156,8 +156,8 @@ impl FlyingNumberComponent {
     pub fn new(
         typ: FlyingNumberType,
         value: u32,
-        src_entity_id: Entity,
-        target_entity_id: Entity,
+        src_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         duration: f32,
         start_pos: Vector2<f32>,
         sys_time: ElapsedTime,
@@ -185,22 +185,22 @@ pub enum AttackType {
 
 #[derive(Debug)]
 pub struct AttackComponent {
-    pub src_entity: Entity,
-    pub dst_entity: Entity,
+    pub src_entity: CharEntityId,
+    pub dst_entity: CharEntityId,
     pub typ: AttackType,
 }
 
 pub struct AreaAttackComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub source_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
     pub typ: AttackType,
 }
 
 #[derive(Debug)]
 pub struct ApplyForceComponent {
-    pub src_entity: Entity,
-    pub dst_entity: Entity,
+    pub src_entity: CharEntityId,
+    pub dst_entity: CharEntityId,
     pub force: Vector2<f32>,
     pub body_handle: DefaultBodyHandle,
     pub duration: f32,

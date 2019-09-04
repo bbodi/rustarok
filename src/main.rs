@@ -56,7 +56,8 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, CastMode, ControllerComponent, HumanInputComponent, SkillKey,
+    CameraComponent, CastMode, CharEntityId, ControllerComponent, ControllerEntityId,
+    HumanInputComponent, SkillKey,
 };
 use crate::components::{
     AttackType, BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent,
@@ -828,8 +829,8 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
-    let desktop_client_char = ecs_world.create_entity().build();
-    let desktop_client_controller = ecs_world.create_entity().build();
+    let desktop_client_char = CharEntityId(ecs_world.create_entity().build());
+    let desktop_client_controller = ControllerEntityId(ecs_world.create_entity().build());
     components::char::attach_human_player_components(
         "sharp",
         desktop_client_char,
@@ -850,7 +851,7 @@ fn main() {
     );
     ecs_world
         .read_resource::<LazyUpdate>()
-        .insert(desktop_client_controller, ConsoleComponent::new());
+        .insert(desktop_client_controller.0, ConsoleComponent::new());
     ecs_world.maintain();
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
@@ -1062,6 +1063,7 @@ fn main() {
             )
                 .join()
             {
+                let controller_id = ControllerEntityId(controller_id);
                 if let Ok(msg) = client.receive() {
                     match msg {
                         OwnedMessage::Binary(_buf) => {}
@@ -1163,7 +1165,7 @@ fn main() {
                                 }
                             }
                             if deserialized["ready"].as_bool().is_some() {
-                                let char_entity_id = entities.create();
+                                let char_entity_id = CharEntityId(entities.create());
                                 components::char::attach_human_player_components(
                                     "browser",
                                     char_entity_id,
@@ -1199,7 +1201,7 @@ fn main() {
 
         {
             let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-            let inputs = storage.get_mut(desktop_client_controller).unwrap();
+            let inputs = storage.get_mut(desktop_client_controller.0).unwrap();
 
             for event in video.event_pump.poll_iter() {
                 video.imgui_sdl2.handle_event(&mut video.imgui, &event);
@@ -1219,7 +1221,7 @@ fn main() {
             // Run console commands
             let console_args = {
                 let mut storage = ecs_world.write_storage::<ConsoleComponent>();
-                let console = storage.get_mut(desktop_client_controller).unwrap();
+                let console = storage.get_mut(desktop_client_controller.0).unwrap();
                 std::mem::replace(&mut console.command_to_execute, None)
             };
             if let Some(args) = console_args {
@@ -1232,7 +1234,7 @@ fn main() {
                 ) {
                     ecs_world
                         .write_storage::<ConsoleComponent>()
-                        .get_mut(desktop_client_controller)
+                        .get_mut(desktop_client_controller.0)
                         .unwrap()
                         .error(&e);
                 }
@@ -1360,7 +1362,7 @@ fn main() {
                 );
                 let mut storage = ecs_world.write_storage();
                 storage
-                    .insert(entity_id, MinionComponent { fountain_up: false })
+                    .insert(entity_id.0, MinionComponent { fountain_up: false })
                     .unwrap();
             }
         }
@@ -1388,7 +1390,7 @@ fn main() {
 }
 
 fn imgui_frame(
-    desktop_client_entity: Entity,
+    desktop_client_entity: ControllerEntityId,
     video: &mut Video,
     ecs_world: &mut specs::world::World,
     sent_bytes_per_second: usize,
@@ -1462,7 +1464,7 @@ fn imgui_frame(
                     .build()
                 {
                     let mut storage = ecs_world.write_storage::<CameraComponent>();
-                    let controller = storage.get_mut(desktop_client_entity).unwrap();
+                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
                     controller.camera.rotate(*cam_angle, 270.0);
                 }
 
@@ -1489,13 +1491,13 @@ fn imgui_frame(
 
                 let camera = ecs_world
                     .read_storage::<CameraComponent>()
-                    .get(desktop_client_entity)
+                    .get(desktop_client_entity.0)
                     .unwrap()
                     .clone();
                 let mut storage = ecs_world.write_storage::<HumanInputComponent>();
 
                 {
-                    let controller = storage.get_mut(desktop_client_entity).unwrap();
+                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
                     let mut cast_mode = match controller.cast_mode {
                         CastMode::Normal => 0,
                         CastMode::OnKeyPress => 1,
@@ -1610,7 +1612,11 @@ fn imgui_frame(
     return ret;
 }
 
-fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Team) -> Entity {
+fn create_random_char_minion(
+    ecs_world: &mut World,
+    pos2d: Point2<f32>,
+    team: Team,
+) -> CharEntityId {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male
@@ -1629,10 +1635,10 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Point2<f32>, team: Te
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let entity_id = ecs_world.create_entity().build();
+    let entity_id = CharEntityId(ecs_world.create_entity().build());
     ecs_world
         .read_resource::<LazyUpdate>()
-        .insert(entity_id, NpcComponent);
+        .insert(entity_id.0, NpcComponent);
     components::char::attach_char_components(
         "minion".to_owned(),
         entity_id,

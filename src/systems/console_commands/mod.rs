@@ -5,7 +5,9 @@ use crate::components::char::{
     ComponentRadius, NpcComponent, PhysicsComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
-use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
+use crate::components::controller::{
+    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+};
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::status::absorb_shield::AbsorbStatus;
@@ -87,7 +89,7 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
             if let Some(target_char_id) = target_char_id {
                 if let Some(target_char) = ecs_world
                     .write_storage::<CharacterStateComponent>()
-                    .get_mut(target_char_id)
+                    .get_mut(target_char_id.0)
                 {
                     let job_id = JobId::from_str(job_name);
                     if let Ok(job_id) = job_id {
@@ -184,7 +186,7 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
                 for (name, count) in &entities {
                     ecs_world
                         .write_storage::<ConsoleComponent>()
-                        .get_mut(self_controller_id)
+                        .get_mut(self_controller_id.0)
                         .unwrap()
                         .add_entry(
                             ConsoleEntry::new()
@@ -225,6 +227,7 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
             )
                 .join()
             {
+                let entity_id = CharEntityId(entity_id);
                 let need_delete = match type_name {
                     "all" => true,
                     "left_team" => char_state.team == Team::Left,
@@ -259,11 +262,11 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                     }
                     "npc" => ecs_world
                         .read_storage::<HumanInputComponent>()
-                        .get(entity_id)
+                        .get(entity_id.0)
                         .is_none(),
                     "player" => ecs_world
                         .read_storage::<HumanInputComponent>()
-                        .get(entity_id)
+                        .get(entity_id.0)
                         .is_some(),
                     _ => false,
                 };
@@ -274,7 +277,7 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
             for entity_id in entity_ids {
                 ecs_world
                     .write_storage::<CharacterStateComponent>()
-                    .get_mut(entity_id)
+                    .get_mut(entity_id.0)
                     .unwrap()
                     .hp = 0;
             }
@@ -315,7 +318,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                         &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let hero_pos = {
                         let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(self_char_id).unwrap();
+                        let char_state = storage.get(self_char_id.0).unwrap();
                         char_state.pos()
                     };
                     let mut rng = rand::thread_rng();
@@ -388,11 +391,11 @@ pub fn create_monster(
     typ: CharType,
     collision_group: CollisionGroup,
     blacklist_coll_groups: &[CollisionGroup],
-) -> Entity {
+) -> CharEntityId {
     let entity_id = {
-        let entity_id = ecs_world.create_entity().build();
+        let entity_id = CharEntityId(ecs_world.create_entity().build());
         ecs_world.write_storage().insert(
-            entity_id,
+            entity_id.0,
             CharacterStateComponent::new(
                 "monster".to_owned(),
                 typ,
@@ -402,7 +405,7 @@ pub fn create_monster(
             ),
         );
         ecs_world.write_storage().insert(
-            entity_id,
+            entity_id.0,
             SpriteRenderDescriptorComponent {
                 action_index: CharActionIndex::Idle as usize,
                 animation_started: ElapsedTime(0.0),
@@ -412,7 +415,7 @@ pub fn create_monster(
                 fps_multiplier: 1.0,
             },
         );
-        ecs_world.write_storage().insert(entity_id, NpcComponent);
+        ecs_world.write_storage().insert(entity_id.0, NpcComponent);
         entity_id
     };
     let mut storage = ecs_world.write_storage();
@@ -425,7 +428,7 @@ pub fn create_monster(
         collision_group,
         blacklist_coll_groups,
     );
-    storage.insert(entity_id, physics_component).unwrap();
+    storage.insert(entity_id.0, physics_component).unwrap();
     return entity_id;
 }
 
@@ -434,7 +437,7 @@ fn create_random_char_minion(
     pos2d: Point2<f32>,
     team: Team,
     job_id: JobId,
-) -> Entity {
+) -> CharEntityId {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male
@@ -448,10 +451,10 @@ fn create_random_char_minion(
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let entity_id = ecs_world.create_entity().build();
+    let entity_id = CharEntityId(ecs_world.create_entity().build());
     ecs_world
         .read_resource::<LazyUpdate>()
-        .insert(entity_id, NpcComponent);
+        .insert(entity_id.0, NpcComponent);
     attach_char_components(
         "minion".to_owned(),
         entity_id,
@@ -502,7 +505,7 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
             }
             let hero_pos = {
                 let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                let char_state = storage.get(self_char_id).unwrap();
+                let char_state = storage.get(self_char_id.0).unwrap();
                 char_state.pos()
             };
             ecs_world
@@ -596,11 +599,11 @@ fn humanize_byte(bytes: u64) -> String {
 
 fn print_console(
     console_storage: &mut WriteStorage<ConsoleComponent>,
-    self_controller_id: Entity,
+    self_controller_id: ControllerEntityId,
     entry: ConsoleEntry,
 ) {
     console_storage
-        .get_mut(self_controller_id)
+        .get_mut(self_controller_id.0)
         .unwrap()
         .add_entry(entry);
 }
@@ -625,7 +628,7 @@ pub(super) fn cmd_heal() -> CommandDefinition {
             let value = args.as_int(0).unwrap().max(0);
             let username = args.as_str(1);
             let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
             } else {
                 Some(self_char_id)
             };
@@ -678,7 +681,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
             let hero_pos = {
                 let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                let char_state = storage.get(self_char_id).unwrap();
+                let char_state = storage.get(self_char_id.0).unwrap();
                 char_state.pos()
             };
             let area_status_id = ecs_world.create_entity().build();
@@ -732,7 +735,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
 fn create_status_payload(
     name: &str,
-    self_controller_id: Entity,
+    self_controller_id: CharEntityId,
     now: ElapsedTime,
     time: i32,
     value: i32,
@@ -787,7 +790,7 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
 
             let username = args.as_str(3);
             let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
             } else {
                 Some(self_char_id)
             };
@@ -841,7 +844,7 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
 
             if let Some(target_char_id) = target_entity_id {
                 let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_storage.get_mut(target_char_id).unwrap();
+                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
                 char_state.team = team;
 
                 Ok(())
@@ -872,7 +875,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                 let pos2d = {
                     // remove death status (that is the only status a death character has)
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_storage.get_mut(target_char_id).unwrap();
+                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
                     char_state.statuses.remove_all();
                     char_state.set_state(CharState::Idle, char_state.dir());
 
@@ -892,7 +895,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                 );
                 ecs_world
                     .write_storage::<PhysicsComponent>()
-                    .insert(target_char_id, physics_component);
+                    .insert(target_char_id.0, physics_component);
 
                 Ok(())
             } else {
@@ -917,12 +920,12 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
                 // remove controller from self
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .remove(self_controller_id);
+                    .remove(self_controller_id.0);
 
                 // set camera to follow target
                 ecs_world
                     .write_storage::<CameraComponent>()
-                    .get_mut(self_controller_id)
+                    .get_mut(self_controller_id.0)
                     .unwrap()
                     .followed_controller = Some(target_entity_id);
                 Ok(())
@@ -949,16 +952,17 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
                 // TODO: skills should be reassigned as well
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .remove(self_controller_id);
+                    .remove(self_controller_id.0);
 
-                ecs_world
-                    .write_storage::<ControllerComponent>()
-                    .insert(self_controller_id, ControllerComponent::new(target_char_id));
+                ecs_world.write_storage::<ControllerComponent>().insert(
+                    self_controller_id.0,
+                    ControllerComponent::new(target_char_id),
+                );
 
                 // set camera to follow target
                 ecs_world
                     .write_storage::<CameraComponent>()
-                    .get_mut(self_controller_id)
+                    .get_mut(self_controller_id.0)
                     .unwrap()
                     .followed_controller = Some(self_controller_id);
                 Ok(())
@@ -983,12 +987,12 @@ pub(super) fn cmd_goto() -> CommandDefinition {
             if let Some(target_char_id) = target_char_id {
                 let target_pos = {
                     let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(target_char_id).unwrap();
+                    let char_state = storage.get(target_char_id.0).unwrap();
                     char_state.pos()
                 };
                 let self_body_handle = ecs_world
                     .read_storage::<PhysicsComponent>()
-                    .get(self_char_id)
+                    .get(self_char_id.0)
                     .map(|it| it.body_handle)
                     .unwrap();
                 let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -1017,7 +1021,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
             let username = args.as_str(0);
 
             let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
             } else {
                 Some(self_char_id)
             };
@@ -1025,7 +1029,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
             if let Some(entity_id) = entity_id {
                 let hero_pos = {
                     let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(entity_id).unwrap();
+                    let char_state = storage.get(entity_id.0).unwrap();
                     char_state.pos()
                 };
                 print_console(
@@ -1067,7 +1071,7 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
             let username = args.as_str(2);
 
             let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
             } else {
                 Some(self_char_id)
             };
@@ -1075,7 +1079,7 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
             let body_handle = entity_id.and_then(|it| {
                 ecs_world
                     .read_storage::<PhysicsComponent>()
-                    .get(it)
+                    .get(it.0)
                     .map(|it| it.body_handle)
             });
 

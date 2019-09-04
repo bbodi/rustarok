@@ -1,6 +1,6 @@
 use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::char::{CastingSkillData, CharacterStateComponent};
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::lightning::{LightningManifest, LightningSkill};
 use crate::components::status::absorb_shield::AbsorbStatus;
@@ -199,11 +199,11 @@ pub enum SkillTargetType {
 impl Skills {
     pub fn finish_cast(
         &self,
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         char_pos: &Vector2<f32>,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
-        target_entity: Option<Entity>,
+        target_entity: Option<CharEntityId>,
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -436,8 +436,8 @@ impl Skills {
 
     pub fn is_casting_allowed_based_on_target(
         &self,
-        caster_id: Entity,
-        target_entity: Option<Entity>,
+        caster_id: CharEntityId,
+        target_entity: Option<CharEntityId>,
         target_distance: f32,
     ) -> bool {
         match self.get_skill_target_type() {
@@ -504,7 +504,7 @@ impl Skills {
 }
 
 pub struct PushBackWallSkill {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub collider_handle: DefaultColliderHandle,
     pub effect_ids: Vec<Entity>,
     pub extents: Vector2<f32>,
@@ -512,7 +512,7 @@ pub struct PushBackWallSkill {
     pub rot_angle_in_rad: f32,
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
-    cannot_damage_until: HashMap<Entity, ElapsedTime>,
+    cannot_damage_until: HashMap<CharEntityId, ElapsedTime>,
     born_tick: u64,
 }
 
@@ -520,7 +520,7 @@ impl PushBackWallSkill {
     const DAMAGE_DURATION_SECONDS: f32 = 1.0;
 
     pub fn new(
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
@@ -607,7 +607,7 @@ impl SkillManifestation for PushBackWallSkill {
                     {
                         continue;
                     }
-                    if let Some(char_state) = char_storage.get(char_entity_id) {
+                    if let Some(char_state) = char_storage.get(char_entity_id.0) {
                         let push_dir = self.pos - char_state.pos();
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
                             v2!(1, 0) // "random"
@@ -658,7 +658,7 @@ impl SkillManifestation for PushBackWallSkill {
 }
 
 pub struct BrutalSkillManifest {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub effect_ids: Vec<Entity>,
     pub half_extents: Vector2<f32>,
     pub pos: Vector2<f32>,
@@ -670,7 +670,7 @@ pub struct BrutalSkillManifest {
 
 impl BrutalSkillManifest {
     pub fn new(
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,

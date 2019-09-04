@@ -1,5 +1,5 @@
 use crate::components::char::CharAttributeModifierCollector;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
     StatusType, StatusUpdateResult,
@@ -11,11 +11,11 @@ use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct FireBombStatus {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
 }
@@ -49,7 +49,7 @@ impl Status for FireBombStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,

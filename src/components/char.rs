@@ -1,6 +1,7 @@
 use crate::asset::SpriteResource;
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, HumanInputComponent, SkillKey, WorldCoords,
+    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
@@ -18,13 +19,12 @@ use nphysics2d::object::{
 };
 use serde::Deserialize;
 use specs::prelude::*;
-use specs::Entity;
 use std::collections::HashMap;
 
 pub fn attach_human_player_components(
     username: &str,
-    char_entity_id: Entity,
-    controller_id: Entity,
+    char_entity_id: CharEntityId,
+    controller_id: ControllerEntityId,
     updater: &LazyUpdate,
     physic_world: &mut PhysicEngine,
     projection_mat: Matrix4<f32>,
@@ -60,21 +60,21 @@ pub fn attach_human_player_components(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    updater.insert(controller_id, RenderCommandCollectorComponent::new());
-    updater.insert(controller_id, AudioCommandCollectorComponent::new());
-    updater.insert(controller_id, human_player);
-    updater.insert(controller_id, ControllerComponent::new(char_entity_id));
+    updater.insert(controller_id.0, RenderCommandCollectorComponent::new());
+    updater.insert(controller_id.0, AudioCommandCollectorComponent::new());
+    updater.insert(controller_id.0, human_player);
+    updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));
     // camera
     {
         let mut camera_component = CameraComponent::new(Some(controller_id));
         camera_component.reset_y_and_angle(&projection_mat);
-        updater.insert(controller_id, camera_component);
+        updater.insert(controller_id.0, camera_component);
     }
 }
 
 pub fn attach_char_components(
     name: String,
-    entity_id: Entity,
+    entity_id: CharEntityId,
     updater: &LazyUpdate,
     physics_world: &mut PhysicEngine,
     pos2d: Point2<f32>,
@@ -89,7 +89,7 @@ pub fn attach_char_components(
     dev_configs: &DevConfig,
 ) {
     updater.insert(
-        entity_id,
+        entity_id.0,
         CharacterStateComponent::new(
             name,
             typ,
@@ -102,7 +102,7 @@ pub fn attach_char_components(
             dev_configs,
         ),
     );
-    updater.insert(entity_id, SpriteRenderDescriptorComponent::new());
+    updater.insert(entity_id.0, SpriteRenderDescriptorComponent::new());
     let physics_component = PhysicsComponent::new(
         physics_world,
         pos2d.coords,
@@ -111,7 +111,7 @@ pub fn attach_char_components(
         collision_group,
         blacklist_coll_groups,
     );
-    updater.insert(entity_id, physics_component);
+    updater.insert(entity_id.0, physics_component);
 }
 
 // radius = ComponentRadius * 0.5f32
@@ -136,7 +136,7 @@ impl PhysicsComponent {
         world: &mut PhysicEngine,
         pos: Vector2<f32>,
         radius: ComponentRadius,
-        entity_id: Entity,
+        entity_id: CharEntityId,
         collision_group: CollisionGroup,
         blacklist_coll_groups: &[CollisionGroup],
     ) -> PhysicsComponent {
@@ -178,7 +178,7 @@ impl PhysicsComponent {
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vector2<f32>>,
     pub char_to_skill_dir_when_casted: Vector2<f32>,
-    pub target_entity: Option<Entity>,
+    pub target_entity: Option<CharEntityId>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
     pub can_move: bool,
@@ -193,7 +193,7 @@ pub enum CharState {
     PickingItem,
     StandBy,
     Attacking {
-        target: Entity,
+        target: CharEntityId,
         damage_occurs_at: ElapsedTime,
     },
     ReceivingDamage,
@@ -296,7 +296,7 @@ impl SpriteBoundingRect {
 
 #[derive(Debug, Clone)]
 pub enum EntityTarget {
-    OtherEntity(Entity),
+    OtherEntity(CharEntityId),
     Pos(WorldCoords),
 }
 
@@ -814,7 +814,7 @@ impl CharacterStateComponent {
 
     pub fn update_statuses(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,

@@ -4,7 +4,7 @@ use crate::common::v2_to_p2;
 use crate::components::char::{
     CharState, CharacterStateComponent, EntityTarget, NpcComponent, PhysicsComponent,
 };
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::status::death_status::DeathStatus;
 use crate::components::{AttackComponent, AttackType};
@@ -48,12 +48,14 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
-        let mut char_positions = HashMap::<Entity, WorldCoords>::new();
+        let mut char_positions = HashMap::<CharEntityId, WorldCoords>::new();
         for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
+            let char_entity_id = CharEntityId(char_entity_id);
             char_positions.insert(char_entity_id, char_comp.pos());
         }
 
         for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
+            let char_entity_id = CharEntityId(char_entity_id);
             // for autocompletion...
             let char_comp: &mut CharacterStateComponent = char_comp;
 
@@ -66,22 +68,22 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 char_comp.statuses.remove_all();
                 char_comp.statuses.add(DeathStatus::new(
                     system_vars.time,
-                    npc_storage.get(char_entity_id).is_some(),
+                    npc_storage.get(char_entity_id.0).is_some(),
                 ));
                 // remove rigid bodies from the physic simulation
-                if let Some(phys_comp) = physics_storage.get(char_entity_id) {
+                if let Some(phys_comp) = physics_storage.get(char_entity_id.0) {
                     collisions_resource.remove_collider_handle(phys_comp.collider_handle);
                     physics_world.bodies.remove(phys_comp.body_handle);
-                    physics_storage.remove(char_entity_id);
+                    physics_storage.remove(char_entity_id.0);
                 }
                 continue;
-            } else if is_dead && npc_storage.get(char_entity_id).is_some() {
+            } else if is_dead && npc_storage.get(char_entity_id.0).is_some() {
                 let remove_char_at = char_comp
                     .statuses
                     .get_status::<_, DeathStatus, _>(|status| status.remove_char_at)
                     .unwrap();
                 if remove_char_at.is_earlier_than(system_vars.time) {
-                    entities.delete(char_entity_id).unwrap();
+                    entities.delete(char_entity_id.0).unwrap();
                 }
                 continue;
             }

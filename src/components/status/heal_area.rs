@@ -1,4 +1,5 @@
 use crate::components::char::CharacterStateComponent;
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::{AttackComponent, AttackType};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
@@ -16,7 +17,7 @@ pub struct HealApplierArea {
     pub name: &'static str,
     pub attack_type: AttackType,
     pub interval: f32,
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub next_action_at: ElapsedTime,
 }
 
@@ -27,7 +28,7 @@ impl HealApplierArea {
         skill_center: &Vector2<f32>,
         size: Vector2<f32>,
         interval: f32,
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> HealApplierArea {
         let collider_handle = physics_world.add_cuboid_skill(*skill_center, 0.0, size);

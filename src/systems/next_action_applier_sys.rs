@@ -3,7 +3,8 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
+    CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor, PlayerIntention,
+    WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render_sys::DIRECTION_TABLE;
@@ -37,8 +38,8 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
-        for (entity_id, controller) in (&entities, &mut controller_storage).join() {
-            let char_state = char_state_storage.get_mut(controller.controlled_entity);
+        for (controller) in (&mut controller_storage).join() {
+            let char_state = char_state_storage.get_mut(controller.controlled_entity.0);
 
             // the controlled character might have been removed due to death etc
             if let Some(char_state) = char_state {
@@ -63,7 +64,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                             char_state,
                             &world_coords,
                             &controller.entities_below_cursor,
-                            entity_id,
+                            controller.controlled_entity,
                             is_self_cast,
                         )
                     }
@@ -146,7 +147,7 @@ impl NextActionApplierSystem {
         char_state: &mut CharacterStateComponent,
         world_coords: &WorldCoords,
         entities_below_cursor: &EntitiesBelowCursor,
-        self_id: Entity,
+        self_char_id: CharEntityId,
         is_self_cast: bool,
     ) -> bool {
         if char_state
@@ -158,14 +159,14 @@ impl NextActionApplierSystem {
             return false;
         }
         let (target_pos, target_entity) = if is_self_cast {
-            (char_state.pos(), Some(self_id))
+            (char_state.pos(), Some(self_char_id))
         } else {
             let target_entity = match skill.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor.get_enemy_or_friend(),
                 SkillTargetType::NoTarget => panic!(), /* NoTarget should have been casted already */
                 SkillTargetType::Area => None,
                 SkillTargetType::OnlyAllyButNoSelf => {
-                    entities_below_cursor.get_friend_except(self_id)
+                    entities_below_cursor.get_friend_except(self_char_id)
                 }
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor.get_friend(),
                 SkillTargetType::OnlyEnemy => entities_below_cursor.get_enemy(),
@@ -174,7 +175,8 @@ impl NextActionApplierSystem {
             (*world_coords, target_entity)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
-        let allowed = skill.is_casting_allowed_based_on_target(self_id, target_entity, distance);
+        let allowed =
+            skill.is_casting_allowed_based_on_target(self_char_id, target_entity, distance);
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
@@ -197,7 +199,7 @@ impl NextActionApplierSystem {
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if is_self_cast && target_entity.map(|it| it == self_id).is_some() {
+            let dir = if is_self_cast && target_entity.map(|it| it == self_char_id).is_some() {
                 // skill on self, don't change direction
                 char_state.dir()
             } else {

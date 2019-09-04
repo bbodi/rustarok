@@ -1,6 +1,8 @@
 use crate::common::v2_to_p2;
 use crate::components::char::{CharacterStateComponent, EntityTarget, Team};
-use crate::components::controller::{ControllerComponent, PlayerIntention, WorldCoords};
+use crate::components::controller::{
+    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoords,
+};
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
 use nalgebra::Vector2;
@@ -25,12 +27,13 @@ impl MinionAiSystem {
         center: &WorldCoords,
         radius: f32,
         team: Team,
-        except: Entity,
-    ) -> Option<Entity> {
+        except: CharEntityId,
+    ) -> Option<CharEntityId> {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
         for (entity_id, char_state) in (entities, char_state_storage).join() {
+            let entity_id = CharEntityId(entity_id);
             let pos = char_state.pos();
             if entity_id == except
                 || char_state.team != team
@@ -72,15 +75,17 @@ impl<'a> specs::System<'a> for MinionAiSystem {
         for (controller_id, controller, _minion) in
             (&entities, &mut controller_storage, &minion_storage).join()
         {
-            let char_state = char_state_storage.get(controller.controlled_entity);
+            let controller_id = ControllerEntityId(controller_id);
+            let char_state = char_state_storage.get(controller.controlled_entity.0);
 
             if let Some(char_state) = char_state {
                 // Hack
-                let mut current_target_id = controller_id;
+                let mut current_target_id = None;
+                // hack end
                 let current_target_entity = match char_state.target {
                     Some(EntityTarget::OtherEntity(target_id)) => {
-                        current_target_id = target_id;
-                        char_state_storage.get(target_id)
+                        current_target_id = Some(target_id);
+                        char_state_storage.get(target_id.0)
                     }
                     _ => None,
                 };
@@ -133,11 +138,11 @@ impl<'a> specs::System<'a> for MinionAiSystem {
                         }
                     }
                 } else {
-                    Some(PlayerIntention::Attack(current_target_id))
+                    Some(PlayerIntention::Attack(current_target_id.unwrap()))
                 }
             } else {
                 // the char might have died, remove the controller entity
-                entities.delete(controller_id);
+                entities.delete(controller_id.0);
             }
         }
     }

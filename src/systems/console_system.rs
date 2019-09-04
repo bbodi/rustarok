@@ -1,5 +1,5 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::HumanInputComponent;
+use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
 use crate::systems::console_commands::{
     cmd_add_status, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal,
     cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect, cmd_set_outlook, cmd_set_pos,
@@ -621,7 +621,10 @@ impl<'a> ConsoleSystem<'a> {
             .0
     }
 
-    pub fn get_user_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
+    pub fn get_user_id_by_name(
+        ecs_world: &specs::World,
+        username: &str,
+    ) -> Option<ControllerEntityId> {
         for (entity_id, human) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<HumanInputComponent>(),
@@ -629,13 +632,13 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if human.username == username {
-                return Some(entity_id);
+                return Some(ControllerEntityId(entity_id));
             }
         }
         return None;
     }
 
-    pub fn get_char_id_by_name(ecs_world: &specs::World, username: &str) -> Option<Entity> {
+    pub fn get_char_id_by_name(ecs_world: &specs::World, username: &str) -> Option<CharEntityId> {
         for (entity_id, char_state) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<CharacterStateComponent>(),
@@ -643,7 +646,7 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if char_state.name == username {
-                return Some(entity_id);
+                return Some(CharEntityId(entity_id));
             }
         }
         return None;
@@ -915,8 +918,14 @@ pub struct CommandDefinition {
     //    pub autocompletion: Box<dyn FnMut(usize) -> Option<Vec<String>>>,
 }
 
-pub type CommandCallback =
-    Box<dyn Fn(Entity, Entity, &CommandArguments, &mut specs::World) -> Result<(), String>>;
+pub type CommandCallback = Box<
+    dyn Fn(
+        ControllerEntityId,
+        CharEntityId,
+        &CommandArguments,
+        &mut specs::World,
+    ) -> Result<(), String>,
+>;
 
 pub enum ConsoleWordType {
     Normal,

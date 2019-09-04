@@ -1,6 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
+    CameraComponent, CameraMode, ControllerEntityId, HumanInputComponent, PlayerIntention,
+    SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
@@ -53,6 +54,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
         for (controller_id, client, input_producer) in
             (&entities, &mut browser_client_storage, &mut input_storage).join()
         {
+            let controller_id = ControllerEntityId(controller_id);
             match client.receive() {
                 Ok(msg) => match msg {
                     OwnedMessage::Pong(buf) => {
@@ -189,7 +191,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(controller_id).unwrap();
+                                    entities.delete(controller_id.0).unwrap();
                                 }
                             };
                         }
@@ -426,7 +428,7 @@ impl BrowserInputProducerSystem {
     fn remove_browser_client(
         entities: &Entities,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
-        controller_id: Entity,
+        controller_id: ControllerEntityId,
         username: &str,
     ) {
         for (char_id, char_state) in (entities, char_state_storage).join() {
@@ -435,6 +437,6 @@ impl BrowserInputProducerSystem {
                 break;
             }
         }
-        entities.delete(controller_id).unwrap();
+        entities.delete(controller_id.0).unwrap();
     }
 }

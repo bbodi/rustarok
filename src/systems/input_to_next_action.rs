@@ -39,7 +39,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             (&entities, &input_storage, &mut controller_storage).join()
         {
             let self_char_comp = char_state_storage
-                .get(controller.controlled_entity)
+                .get(controller.controlled_entity.0)
                 .unwrap();
 
             let just_pressed_skill_key = SkillKey::iter()
@@ -201,7 +201,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 // user released the mouse, so it is not a MoveTowardsMouse but a move/attack to command
                 if let Some(target_entity_id) = controller.entities_below_cursor.get_enemy() {
                     if char_state_storage
-                        .get(target_entity_id)
+                        .get(target_entity_id.0)
                         .map(|it| !it.state().is_dead())
                         .unwrap_or(false)
                     {
@@ -250,7 +250,7 @@ impl InputToNextActionSystem {
     ) -> (CursorFrame, [u8; 3]) {
         return if let Some((_skill_key, skill)) = controller.select_skill_target {
             let is_castable = char_state_storage
-                .get(controller.controlled_entity)
+                .get(controller.controlled_entity.0)
                 .unwrap()
                 .skill_cast_allowed_at
                 .get(&skill)
@@ -267,7 +267,7 @@ impl InputToNextActionSystem {
             controller.entities_below_cursor.get_enemy_or_friend()
         {
             let ent_is_dead_or_friend = char_state_storage
-                .get(entity_below_cursor)
+                .get(entity_below_cursor.0)
                 .map(|it| !it.state().is_alive() || it.team == self_team)
                 .unwrap_or(false);
             if entity_below_cursor == controller.controlled_entity || ent_is_dead_or_friend {

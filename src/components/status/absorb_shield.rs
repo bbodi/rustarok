@@ -1,5 +1,5 @@
 use crate::components::char::CharAttributeModifierCollector;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     Status, StatusStackingResult, StatusType, StatusUpdateResult,
 };
@@ -9,11 +9,11 @@ use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct AbsorbStatus {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub animation_started: ElapsedTime,
     pub until: ElapsedTime,
@@ -21,7 +21,7 @@ pub struct AbsorbStatus {
 }
 
 impl AbsorbStatus {
-    pub fn new(caster_entity_id: Entity, now: ElapsedTime, duration: f32) -> AbsorbStatus {
+    pub fn new(caster_entity_id: CharEntityId, now: ElapsedTime, duration: f32) -> AbsorbStatus {
         AbsorbStatus {
             caster_entity_id,
             started: now,
@@ -61,7 +61,7 @@ impl Status for AbsorbStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

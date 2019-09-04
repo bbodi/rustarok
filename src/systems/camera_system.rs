@@ -47,7 +47,7 @@ impl<'a> specs::System<'a> for CameraSystem {
                 CameraMode::FollowChar => {
                     if let Some(followed_controller) = camera.followed_controller {
                         if let Some(followed_char) = controller_storage
-                            .get(followed_controller)
+                            .get(followed_controller.0)
                             .map(|it| it.controlled_entity)
                         {
                             if input.mouse_wheel != 0 {
@@ -56,7 +56,7 @@ impl<'a> specs::System<'a> for CameraSystem {
                                     .camera
                                     .update_visible_z_range(&system_vars.matrices.projection);
                             };
-                            if let Some(char_state) = char_state_storage.get(followed_char) {
+                            if let Some(char_state) = char_state_storage.get(followed_char.0) {
                                 let pos = char_state.pos();
                                 camera.camera.set_x(pos.x);
                                 let z_range = camera.camera.visible_z_range;

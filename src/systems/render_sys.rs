@@ -5,8 +5,8 @@ use crate::components::char::{
     PhysicsComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, EntitiesBelowCursor, HumanInputComponent,
-    PlayerIntention, SkillKey, WorldCoords,
+    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
+    HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
@@ -244,9 +244,9 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        followed_char_id: Entity,
+        followed_char_id: CharEntityId,
         select_skill_target: Option<(SkillKey, Skills)>,
-        rendering_entity_id: Entity,
+        rendering_entity_id: CharEntityId,
         entities_below_cursor: &EntitiesBelowCursor,
         desktop_target: &Option<EntityTarget>,
     ) -> bool {
@@ -303,6 +303,7 @@ impl RenderDesktopClientSystem {
         for (rendering_entity_id, animated_sprite, char_state) in
             (entities, sprite_storage, char_state_storage).join()
         {
+            let rendering_entity_id = CharEntityId(rendering_entity_id);
             // for autocompletion
             let char_state: &CharacterStateComponent = char_state;
 
@@ -611,14 +612,15 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 .join()
         };
         for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
+            let entity_id = ControllerEntityId(entity_id);
             let mut controller_and_controlled: Option<ControllerAndControlled> = camera
                 .followed_controller
-                .map(|controller_id| controller_storage.get_mut(controller_id).unwrap())
+                .map(|controller_id| controller_storage.get_mut(controller_id.0).unwrap())
                 .map(|controller| {
                     let entity = controller.controlled_entity;
                     ControllerAndControlled {
                         controller,
-                        controlled_char: char_state_storage.get(entity).unwrap(),
+                        controlled_char: char_state_storage.get(entity.0).unwrap(),
                     }
                 });
 
@@ -659,7 +661,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     .as_ref()
                     .map(|it| it.controller.controlled_entity)
                     .unwrap_or(
-                        entity_id, // entity_id is the controller id, so no character will match with it, ~dummy value
+                        CharEntityId(entity_id.0), // entity_id is the controller id, so no character will match with it, ~dummy value
                     ),
                 controller_and_controlled
                     .as_ref()
@@ -945,7 +947,7 @@ impl DamageRenderSystem {
         entities: &specs::Entities,
         numbers: &specs::ReadStorage<FlyingNumberComponent>,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
-        followed_char_id: Entity,
+        followed_char_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
@@ -972,7 +974,7 @@ impl DamageRenderSystem {
     fn add_render_command(
         number: &FlyingNumberComponent,
         char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
-        desktop_entity_id: Entity,
+        desktop_entity_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
@@ -1076,7 +1078,7 @@ impl DamageRenderSystem {
             }
             FlyingNumberType::Block | FlyingNumberType::Absorb => {
                 let real_pos = char_state_storage
-                    .get(number.target_entity_id)
+                    .get(number.target_entity_id.0)
                     .map(|it| it.pos())
                     .unwrap_or(number.start_pos);
                 let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
@@ -1102,7 +1104,7 @@ impl DamageRenderSystem {
             _ => 1.3 - (perc + 0.3 * perc),
         };
         let is_friend = char_state_storage
-            .get(number.target_entity_id)
+            .get(number.target_entity_id.0)
             .and_then(|target| {
                 desktop_entity_team.map(|controller_team| controller_team == target.team)
             })
@@ -1179,7 +1181,7 @@ impl DamageRenderSystem {
         perc: f32,
     ) -> (f32, Vector3<f32>) {
         let real_pos = char_state_storage
-            .get(number.target_entity_id)
+            .get(number.target_entity_id.0)
             .map(|it| it.pos())
             .unwrap_or(number.start_pos);
         let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
@@ -1199,7 +1201,7 @@ impl DamageRenderSystem {
     ) -> (f32, Vector3<f32>) {
         // follow the target
         let real_pos = char_state_storage
-            .get(number.target_entity_id)
+            .get(number.target_entity_id.0)
             .map(|it| it.pos())
             .unwrap_or(number.start_pos);
         // the bigger the heal, the bigger the number and stays big longer

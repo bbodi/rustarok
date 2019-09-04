@@ -1,5 +1,5 @@
 use crate::components::char::CharAttributeModifierCollector;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     Status, StatusStackingResult, StatusType, StatusUpdateResult,
 };
@@ -8,7 +8,7 @@ use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone, Debug)]
 pub struct DeathStatus {
@@ -65,7 +65,7 @@ impl Status for DeathStatus {
 
     fn update(
         &mut self,
-        _self_char_id: Entity,
+        _self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

@@ -1,4 +1,5 @@
 use crate::components::char::CharacterStateComponent;
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{
     SkillManifestation, SkillManifestationComponent, WorldCollisions,
 };
@@ -32,7 +33,7 @@ impl LightningSkill {
 }
 
 pub struct LightningManifest {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub effect_id: Entity,
     pub pos: Vector2<f32>,
     pub dir_vector: Vector2<f32>,
@@ -45,7 +46,7 @@ pub struct LightningManifest {
 
 impl LightningManifest {
     pub fn new(
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         skill_center: &Vector2<f32>,
         dir_vector: &Vector2<f32>,
         now: ElapsedTime,

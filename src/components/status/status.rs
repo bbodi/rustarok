@@ -2,7 +2,7 @@ use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, CharType,
     Percentage,
 };
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::configs::DevConfig;
 use crate::consts::JobId;
@@ -12,7 +12,7 @@ use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 use std::any::{Any, TypeId};
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -34,7 +34,7 @@ pub trait Status: Any {
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -119,7 +119,7 @@ impl Statuses {
 
     pub fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -389,7 +389,7 @@ impl Statuses {
 
     pub fn add_poison(
         &mut self,
-        poison_caster_entity_id: Entity,
+        poison_caster_entity_id: CharEntityId,
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
@@ -458,7 +458,7 @@ impl Status for MountedStatus {
 
     fn update(
         &mut self,
-        _self_char_id: Entity,
+        _self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -494,7 +494,7 @@ impl Status for MountedStatus {
 
 #[derive(Clone)]
 pub struct PoisonStatus {
-    pub poison_caster_entity_id: Entity,
+    pub poison_caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
     pub next_damage_at: ElapsedTime,
@@ -529,7 +529,7 @@ impl Status for PoisonStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -614,17 +614,17 @@ impl Clone for ApplyStatusComponentPayload {
 }
 
 pub struct ApplyStatusComponent {
-    pub source_entity_id: Entity,
-    pub target_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
+    pub target_entity_id: CharEntityId,
     pub status: ApplyStatusComponentPayload,
 }
 
 pub struct ApplyStatusInAreaComponent {
-    pub source_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
     pub status: ApplyStatusComponentPayload,
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub except: Option<Entity>,
+    pub except: Option<CharEntityId>,
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -639,8 +639,8 @@ pub enum RemoveStatusComponentPayload {
 }
 
 pub struct RemoveStatusComponent {
-    pub source_entity_id: Entity,
-    pub target_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
+    pub target_entity_id: CharEntityId,
     pub status: RemoveStatusComponentPayload,
 }
 
@@ -654,8 +654,8 @@ unsafe impl Send for ApplyStatusInAreaComponent {}
 
 impl ApplyStatusComponent {
     pub fn from_main_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         m: MainStatuses,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
@@ -666,8 +666,8 @@ impl ApplyStatusComponent {
     }
 
     pub fn from_secondary_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         status: Box<dyn Status>,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
@@ -680,8 +680,8 @@ impl ApplyStatusComponent {
 
 impl RemoveStatusComponent {
     pub fn from_main_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         m: MainStatuses,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {
@@ -692,8 +692,8 @@ impl RemoveStatusComponent {
     }
 
     pub fn from_secondary_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         status_type: StatusType,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {
