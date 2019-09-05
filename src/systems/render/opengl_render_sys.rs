@@ -464,7 +464,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for command in &render_commands.rectangle_3d_commands {
                     shader.set_vec4u8("color", &command.common.color);
                     shader.set_mat4("model", &command.common.matrix);
-                    shader.set_vec2("size", &command.size);
+                    shader.set_vec2("size", &[command.common.size, command.height]);
                     centered_rectangle_vao_bind.draw();
                 }
             }
@@ -505,7 +505,19 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         .centered_sprite_vertex_array
                         .bind();
                     for command in &render_commands.billboard_commands {
-                        shader.set_vec2("size", &[command.texture_width, command.texture_height]);
+                        let flipped_width = (1 - command.is_vertically_flipped as i16 * 2)
+                            * command.texture_width as i16;
+                        shader.set_vec2(
+                            "size",
+                            &[
+                                flipped_width as f32
+                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                    * command.common.size,
+                                command.texture_height as f32
+                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                    * command.common.size,
+                            ],
+                        );
                         shader.set_mat4("model", &command.common.matrix);
                         shader.set_vec4u8("color", &command.common.color);
                         shader.set_vec2(
@@ -674,7 +686,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     }
                     shader.set_mat4("model", &command.matrix);
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
-                    shader.set_vec2("offset", &command.offset);
+                    shader.set_vec2i("offset", &command.offset);
                     shader.set_vec2("size", &[width * command.size, height * command.size]);
                     shader.set_vec4u8("color", &command.color);
                     vertex_array_bind.draw();
@@ -724,7 +736,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     }
                     shader.set_mat4("model", &command.matrix);
                     shader.set_f32("z", 0.01 * command.layer as usize as f32);
-                    shader.set_vec2("offset", &[0.0, 0.0]);
+                    shader.set_vec2i("offset", &[0, 0]);
                     shader.set_vec2("size", &[width * command.size, height * command.size]);
                     shader.set_vec4u8("color", &command.color);
                     vertex_array_bind.draw();

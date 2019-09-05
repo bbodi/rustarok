@@ -204,12 +204,10 @@ fn render_action_2d(
 
         // todo: don't we need layer.scale[0]?
 
-        let offset = [0, 0];
-        let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
-        let offset = [offset[0] as f32, offset[1] as f32];
+        let offset = [layer.pos[0], layer.pos[1]];
         let offset = [
-            offset[0] - (texture.width / 2) as f32,
-            offset[1] - (texture.height / 2) as f32,
+            (offset[0] - (texture.width / 2)) as i16,
+            (offset[1] - (texture.height / 2)) as i16,
         ];
 
         render_commands

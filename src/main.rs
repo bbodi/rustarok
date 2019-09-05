@@ -1037,7 +1037,10 @@ fn main() {
                         }),
                         "projection_mat": system_vars
                                             .matrices
-                                            .projection.as_slice()
+                                            .projection.as_slice(),
+                        "ortho_mat": system_vars
+                                            .matrices
+                                            .ortho.as_slice()
                     });
                     let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
                     browser_client.send_message(&welcome_msg);

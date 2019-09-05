@@ -59,6 +59,12 @@ object Input {
         buffer_offset++
     }
 
+    fun packet_write_u8(value: Int) {
+        network_packet.setUint8(buffer_offset, value.toByte())
+        buffer_offset++
+    }
+
+
     fun handleMouseWheel(e: Event) {
         e.preventDefault()
         e.stopPropagation()
@@ -112,9 +118,13 @@ pub struct Mod: u16 {
         e.stopPropagation()
 
         packet_write_i8(InputPacket.KeyDown.ordinal + 1)
-        packet_write_i8(code_to_sdl_scancode(e.asDynamic().code))
+        packet_write_u8(code_to_sdl_scancode(e.asDynamic().code))
+        val modifiers = (if (e.asDynamic().altKey) 1 else 0).shl(1).or(
+                (if (e.asDynamic().ctrlKey) 1 else 0)
+        )
+        packet_write_u8(modifiers)
         // var modifiers = skip for now
-        packet_write_i16(code_to_sdl_scancode(e.asDynamic().key.charCodeAt(0)))
+        packet_write_i16(e.asDynamic().key.charCodeAt(0))
     }
 
     fun handleKeyUp(e: Event) {
@@ -123,6 +133,10 @@ pub struct Mod: u16 {
 
         packet_write_i8(InputPacket.KeyUp.ordinal + 1)
         packet_write_i8(code_to_sdl_scancode(e.asDynamic().code))
+        val modifiers = (if (e.asDynamic().altKey) 1 else 0).shl(1).or(
+                (if (e.asDynamic().ctrlKey) 1 else 0)
+        )
+        packet_write_u8(modifiers)
     }
 
     fun handleMouseMove(e: Event) {

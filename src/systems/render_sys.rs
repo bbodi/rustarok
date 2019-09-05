@@ -1299,7 +1299,7 @@ impl RenderDesktopClientSystem {
                 .screen_pos(x, y)
                 .add_sprite_command(
                     shield_icon_texture,
-                    [0.0, (-shield_icon_texture.height / 2) as f32],
+                    [0, (-shield_icon_texture.height / 2) as i16],
                     false,
                     UiLayer2d::StatusIndicators,
                 );
@@ -1335,7 +1335,7 @@ impl RenderDesktopClientSystem {
                 .prepare_for_2d()
                 .color(&color)
                 .screen_pos(x, y)
-                .add_sprite_command(text_texture, [0.0, 0.0], false, UiLayer2d::StatusIndicators);
+                .add_sprite_command(text_texture, [0, 0], false, UiLayer2d::StatusIndicators);
         }
     }
 

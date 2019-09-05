@@ -1,7 +1,12 @@
 use crate::components::BrowserClient;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::{
+    BillboardRenderCommand, Circle3dRenderCommand, Common2DProperties, ModelRenderCommand,
+    Number3dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollectorComponent,
+    Text2dRenderCommand, Texture2dRenderCommand, Trimesh2dRenderCommand,
+};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
+use nalgebra::{Matrix3, Matrix4};
 use specs::prelude::*;
 
 pub struct WebSocketBrowserRenderSystem {
@@ -46,117 +51,230 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             let render_commands: &RenderCommandCollectorComponent = render_commands;
             self.send_buffer.clear();
 
-            for v in render_commands.view_matrix.as_slice() {
-                self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
-            for v in render_commands.normal_matrix.as_slice() {
-                self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
-            /////////////////////////////////
-            // 2D Trimesh
-            /////////////////////////////////
+            WebSocketBrowserRenderSystem::write4x4(
+                &mut self.send_buffer,
+                &render_commands.view_matrix,
+            );
+            WebSocketBrowserRenderSystem::write3x3(
+                &mut self.send_buffer,
+                &render_commands.normal_matrix,
+            );
 
-            /////////////////////////////////
-            // 2D Texture
-            /////////////////////////////////
-            //            for command in &render_commands.texture_2d_commands {
-            //                let width = command.texture_width as f32;
-            //                let height = command.texture_height as f32;
-            //                unsafe {
-            //                    gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
-            //                }
-            //                shader.set_mat4("model", &command.matrix);
-            //                shader.set_f32("z", 0.01 * command.layer as usize as f32);
+            // TODO
+            WebSocketBrowserRenderSystem::send_2d_trimesh_commands(
+                &mut self.send_buffer,
+                &render_commands.trimesh_2d_commands,
+            );
 
-            //                shader.set_vec2("offset", &command.offset);
-            //                shader.set_vec2("size", &[width * command.size, height * command.size]);
-            //                shader.set_vec4u8("color", &command.color);
-            //                vertex_array_bind.draw();
+            WebSocketBrowserRenderSystem::send_2d_texture_commands(
+                &mut self.send_buffer,
+                &render_commands.texture_2d_commands,
+            );
 
-            /////////////////////////////////
-            // 2D Rectangle
-            /////////////////////////////////
+            // TODO
+            WebSocketBrowserRenderSystem::send_2d_rectangle_commands(
+                &mut self.send_buffer,
+                &render_commands.rectangle_2d_commands,
+            );
 
-            /////////////////////////////////
-            // 3D Rectangle
-            /////////////////////////////////
+            WebSocketBrowserRenderSystem::send_3d_rectangle_commands(
+                &mut self.send_buffer,
+                &render_commands.rectangle_3d_commands,
+            );
 
-            /////////////////////////////////
-            // 3D Circles
-            /////////////////////////////////
+            WebSocketBrowserRenderSystem::send_3d_circle_commands(
+                &mut self.send_buffer,
+                &render_commands.circle_3d_commands,
+            );
 
-            /////////////////////////////////
-            // 3D Sprites
-            /////////////////////////////////
-            {
-                self.send_buffer
-                    .write_u32::<LittleEndian>(render_commands.billboard_commands.len() as u32)
-                    .unwrap();
-                for command in &render_commands.billboard_commands {
-                    for v in &command.common.color {
-                        self.send_buffer.write_u8(*v).unwrap();
-                    }
-                    for v in &command.offset {
-                        self.send_buffer.write_i16::<LittleEndian>(*v).unwrap();
-                    }
-                    for v in &command.common.matrix {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-                    }
-                    let packed_int: u32 =
-                        ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
+            WebSocketBrowserRenderSystem::send_3d_sprite_commands(
+                &mut self.send_buffer,
+                &render_commands.billboard_commands,
+            );
 
-                    self.send_buffer
-                        .write_u32::<LittleEndian>(packed_int)
-                        .unwrap();
-                }
-            }
-
-            /////////////////////////////////
-            // 3D NUMBERS
-            /////////////////////////////////
-            {
-                self.send_buffer
-                    .write_u32::<LittleEndian>(render_commands.number_3d_commands.len() as u32)
-                    .unwrap();
-                for command in &render_commands.number_3d_commands {
-                    self.send_buffer
-                        .write_f32::<LittleEndian>(command.common.size)
-                        .unwrap();
-
-                    for v in &command.common.color {
-                        self.send_buffer.write_u8(*v).unwrap();
-                    }
-                    for v in &command.common.matrix {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-                    }
-                    self.send_buffer
-                        .write_u32::<LittleEndian>(command.value)
-                        .unwrap();
-                }
-            }
+            WebSocketBrowserRenderSystem::send_3d_number_commands(
+                &mut self.send_buffer,
+                &render_commands.number_3d_commands,
+            );
 
             /////////////////////////////////
             // 3D EFFECTS
             /////////////////////////////////
             {}
 
-            /////////////////////////////////
-            // 3D MODELS
-            /////////////////////////////////
-            {
-                self.send_buffer
-                    .write_u32::<LittleEndian>(render_commands.model_commands.len() as u32)
-                    .unwrap();
-                for command in &render_commands.model_commands {
-                    let packed_int: u32 = ((command.is_transparent as u32) << 31)
-                        | command.model_instance_index as u32;
-                    self.send_buffer
-                        .write_u32::<LittleEndian>(packed_int)
-                        .unwrap();
-                }
-            }
+            WebSocketBrowserRenderSystem::send_3d_model_commands(
+                &mut self.send_buffer,
+                &render_commands.model_commands,
+            );
 
             browser.send_message(&self.send_buffer);
+        }
+    }
+}
+
+impl WebSocketBrowserRenderSystem {
+    fn send_2d_text_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Text2dRenderCommand>,
+    ) {
+
+    }
+
+    fn send_2d_rectangle_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Common2DProperties>,
+    ) {
+
+    }
+
+    fn write3x3(send_buffer: &mut Vec<u8>, mat: &Matrix3<f32>) {
+        for v in mat.as_slice() {
+            send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+        }
+    }
+
+    fn write4x4(send_buffer: &mut Vec<u8>, mat: &Matrix4<f32>) {
+        for v in mat.as_slice() {
+            send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+        }
+    }
+
+    fn send_2d_trimesh_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Trimesh2dRenderCommand>,
+    ) {
+
+    }
+
+    fn send_3d_model_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<ModelRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            let packed_int: u32 =
+                ((command.is_transparent as u32) << 31) | command.model_instance_index as u32;
+            send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
+        }
+    }
+
+    fn send_3d_number_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Number3dRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            send_buffer
+                .write_f32::<LittleEndian>(command.common.size)
+                .unwrap();
+
+            for v in &command.common.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.common.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            send_buffer
+                .write_u32::<LittleEndian>(command.value)
+                .unwrap();
+        }
+    }
+
+    fn send_3d_sprite_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<BillboardRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.common.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.offset {
+                send_buffer.write_i16::<LittleEndian>(*v).unwrap();
+            }
+            for v in &command.common.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            send_buffer
+                .write_f32::<LittleEndian>(command.common.size)
+                .unwrap();
+            let packed_int: u32 =
+                ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
+
+            send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
+        }
+    }
+
+    fn send_3d_circle_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Circle3dRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.common.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.common.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            send_buffer
+                .write_f32::<LittleEndian>(command.common.size)
+                .unwrap();
+        }
+    }
+
+    fn send_3d_rectangle_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Rectangle3dRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.common.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.common.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            send_buffer
+                .write_f32::<LittleEndian>(command.common.size)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.height)
+                .unwrap();
+        }
+    }
+
+    fn send_2d_texture_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<Texture2dRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.offset {
+                send_buffer.write_i16::<LittleEndian>(*v).unwrap();
+            }
+            for v in &command.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            let packed_int: u32 = ((command.layer as u32) << 24) | command.texture.0 as u32;
+            send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
+
+            send_buffer.write_f32::<LittleEndian>(command.size).unwrap();
         }
     }
 }

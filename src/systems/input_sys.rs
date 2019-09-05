@@ -143,18 +143,29 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         continue;
                                     }
                                     let scancode = *iter.next().unwrap().1;
+                                    let modifiers: u8 = *iter.next().unwrap().1;
                                     let input_char: u16 = read_u16(&mut iter);
                                     log::trace!(
-                                        "Message arrived: KeyDown({}, {})",
+                                        "Message arrived: KeyDown({}, {}, mod: {})",
                                         scancode,
-                                        input_char
+                                        input_char,
+                                        modifiers
                                     );
+                                    let keymod = match modifiers {
+                                        0b11 => {
+                                            sdl2::keyboard::Mod::LALTMOD
+                                                | sdl2::keyboard::Mod::LCTRLMOD
+                                        }
+                                        0b10 => sdl2::keyboard::Mod::LALTMOD,
+                                        0b01 => sdl2::keyboard::Mod::LCTRLMOD,
+                                        _ => sdl2::keyboard::Mod::NOMOD,
+                                    };
                                     input_producer.inputs.push(sdl2::event::Event::KeyDown {
                                         timestamp: 0,
                                         window_id: 0,
                                         keycode: None,
                                         scancode: Scancode::from_i32(scancode as i32),
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        keymod,
                                         repeat: false,
                                     });
                                     if let Some(ch) = std::char::from_u32(input_char as u32) {
@@ -167,13 +178,23 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 PACKET_KEY_UP => {
                                     let scancode = *iter.next().unwrap().1;
+                                    let modifiers = *iter.next().unwrap().1;
                                     log::trace!("Message arrived: KeyUp({})", scancode);
+                                    let keymod = match modifiers {
+                                        0b11 => {
+                                            sdl2::keyboard::Mod::LALTMOD
+                                                | sdl2::keyboard::Mod::LCTRLMOD
+                                        }
+                                        0b10 => sdl2::keyboard::Mod::LALTMOD,
+                                        0b01 => sdl2::keyboard::Mod::LCTRLMOD,
+                                        _ => sdl2::keyboard::Mod::NOMOD,
+                                    };
                                     input_producer.inputs.push(sdl2::event::Event::KeyUp {
                                         timestamp: 0,
                                         window_id: 0,
                                         keycode: None,
                                         scancode: Scancode::from_i32(scancode as i32),
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        keymod,
                                         repeat: false,
                                     });
                                 }
@@ -310,14 +331,40 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     sdl2::event::Event::MouseWheel { y, .. } => {
                         input.mouse_wheel = y;
                     }
-                    sdl2::event::Event::KeyDown { scancode, .. } => {
+                    sdl2::event::Event::KeyDown {
+                        scancode, keymod, ..
+                    } => {
                         if let Some(scancode) = scancode {
+                            if scancode == Scancode::LCtrl || scancode == Scancode::LAlt {
+                                // It causes problems on the browser because alt-tabbing
+                                // does not releases the alt key
+                                // So alt and ctrl keys should be registered only together with other keys
+                                continue;
+                            }
                             input.key_pressed(scancode);
+                            if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
+                                input.key_pressed(Scancode::LAlt);
+                            }
+                            if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                                input.key_pressed(Scancode::LCtrl);
+                            }
                         }
                     }
-                    sdl2::event::Event::KeyUp { scancode, .. } => {
+                    sdl2::event::Event::KeyUp {
+                        scancode, keymod, ..
+                    } => {
                         if let Some(scancode) = scancode {
+                            if scancode == Scancode::LCtrl || scancode == Scancode::LAlt {
+                                // see above
+                                continue;
+                            }
                             input.key_released(scancode);
+                            if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
+                                input.key_pressed(Scancode::LAlt);
+                            }
+                            if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                                input.key_pressed(Scancode::LCtrl);
+                            }
                         }
                     }
                     sdl2::event::Event::TextInput { text, .. } => {

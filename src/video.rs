@@ -671,6 +671,15 @@ impl ActiveShaderProgram {
         }
     }
 
+    pub fn set_vec2i(&self, name: &str, vector: &[i16; 2]) {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let location =
+                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            gl::Uniform2i(location, vector[0] as i32, vector[1] as i32);
+        }
+    }
+
     pub fn set_vec4(&self, name: &str, vector: &[f32; 4]) {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {

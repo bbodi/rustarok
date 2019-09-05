@@ -46,7 +46,6 @@ pub struct RenderCommandCollectorComponent {
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
     pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Matrix4<f32>>>,
-    //    pub(super) effect_commands: Vec<(EffectFrameCacheKey, Matrix4<f32>)>,
     pub(super) view_matrix: Matrix4<f32>,
     pub(super) normal_matrix: Matrix3<f32>,
 }
@@ -183,13 +182,13 @@ impl<'a> Common2DPropBuilder<'a> {
     }
 
     pub fn add_texture_command(&'a mut self, texture: &GlTexture, layer: UiLayer2d) {
-        self.add_sprite_command(texture, [0.0, 0.0], false, layer);
+        self.add_sprite_command(texture, [0, 0], false, layer);
     }
 
     pub fn add_sprite_command(
         &'a mut self,
         texture: &GlTexture,
-        offset: [f32; 2],
+        offset: [i16; 2],
         flip_vertically: bool,
         layer: UiLayer2d,
     ) {
@@ -258,7 +257,7 @@ pub enum UiLayer2d {
 #[derive(Debug)]
 pub struct Texture2dRenderCommand {
     pub(super) color: [u8; 4],
-    pub(super) offset: [f32; 2],
+    pub(super) offset: [i16; 2],
     pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) texture: GlNativeTextureId,
@@ -291,7 +290,7 @@ pub enum Font {
 #[derive(Debug)]
 pub struct Rectangle3dRenderCommand {
     pub(super) common: Common3DProperties,
-    pub(super) size: [f32; 2],
+    pub(super) height: f32,
 }
 
 #[derive(Debug)]
@@ -303,9 +302,9 @@ pub struct Circle3dRenderCommand {
 pub struct BillboardRenderCommand {
     pub common: Common3DProperties,
     pub texture: GlNativeTextureId,
-    pub texture_width: f32,
-    pub texture_height: f32,
     pub offset: [i16; 2],
+    pub texture_width: u16,
+    pub texture_height: u16,
     pub is_vertically_flipped: bool,
 }
 
@@ -315,20 +314,23 @@ impl BillboardRenderCommand {
         view: &Matrix4<f32>,
         projection: &Matrix4<f32>,
     ) -> SpriteBoundingRect {
-        let width = self.texture_width.abs();
-        let height = self.texture_height;
+        let width = self.texture_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size;
+        let height = self.texture_height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size;
+        let offset_in_3d_space = [
+            self.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size,
+            self.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size,
+        ];
         let mut top_right = Vector4::new(0.5 * width, 0.5 * height, 0.0, 1.0);
-        top_right.x += self.offset[0] as f32;
-        top_right.y -= self.offset[1] as f32;
+        top_right.x += offset_in_3d_space[0] as f32;
+        top_right.y -= offset_in_3d_space[1] as f32;
 
         let mut bottom_left = Vector4::new(-0.5 * width, -0.5 * height, 0.0, 1.0);
-        bottom_left.x += self.offset[0] as f32;
-        bottom_left.y -= self.offset[1] as f32;
+        bottom_left.x += offset_in_3d_space[0] as f32;
+        bottom_left.y -= offset_in_3d_space[1] as f32;
 
         let mut model_view = view * self.common.matrix;
         BillboardRenderCommand::set_spherical_billboard(&mut model_view);
         fn sh(v: Vector4<f32>) -> [i32; 2] {
-            //        dbg!(&v);
             let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
             [
                 ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
@@ -453,6 +455,7 @@ impl<'a> Common3DPropBuilder<'a> {
         key_index: i32,
         layer_index: usize,
     ) {
+        // TODO: effect should not be string
         let frame_cache_key = EffectFrameCacheKey {
             effect_name: effect_name.to_owned(),
             layer_index,
@@ -461,7 +464,7 @@ impl<'a> Common3DPropBuilder<'a> {
         self.collector
             .effect_commands
             .entry(frame_cache_key.clone())
-            .or_insert(Vec::with_capacity(16))
+            .or_insert(Vec::with_capacity(2))
             .push({
                 let mut matrix = Matrix4::<f32>::identity();
                 matrix.prepend_translation_mut(&v2_to_v3(pos));
@@ -487,14 +490,13 @@ impl<'a> Common3DPropBuilder<'a> {
     }
 
     pub fn add_billboard_command(&'a mut self, texture: &GlTexture, flip_vertically: bool) {
-        let flipped_width = (1 - flip_vertically as i32 * 2) * texture.width;
         let command = BillboardRenderCommand {
             common: self.build(),
             offset: self.offset,
             texture: texture.id(),
             is_vertically_flipped: flip_vertically,
-            texture_width: flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.size,
-            texture_height: texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.size,
+            texture_width: texture.width as u16,
+            texture_height: texture.height as u16,
         };
         self.collector.billboard_commands.push(command);
     }
@@ -508,11 +510,12 @@ impl<'a> Common3DPropBuilder<'a> {
     }
 
     pub fn add_rectangle_command(&'a mut self, size: &Vector2<f32>) {
+        self.size = size.x;
         self.collector
             .rectangle_3d_commands
             .push(Rectangle3dRenderCommand {
                 common: self.build(),
-                size: [size.x, size.y],
+                height: size.y,
             });
     }
 }

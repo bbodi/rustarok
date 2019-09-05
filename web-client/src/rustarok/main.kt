@@ -82,6 +82,7 @@ private var gl: WebGL2RenderingContext = 0.asDynamic()
 var VIDEO_WIDTH = 0
 var VIDEO_HEIGHT = 0
 var PROJECTION_MATRIX: Float32Array = 0.asDynamic()
+var ORTHO_MATRIX: Float32Array = 0.asDynamic()
 var ground_render_command: RenderCommand.Ground3D = 0.asDynamic()
 var VIEW_MATRIX: Float32Array = Float32Array(4 * 4)
 var NORMAL_MATRIX: Float32Array = Float32Array(3 * 3)
@@ -102,13 +103,31 @@ sealed class RenderCommand {
     data class Sprite3D(val server_texture_id: Int,
                         val matrix: Float32Array,
                         val color: Float32Array,
+                        val size: Float,
                         val offset: Float32Array,
                         val is_vertically_flipped: Boolean) : RenderCommand()
+
+    data class Texture2D(val server_texture_id: Int,
+                         val matrix: Float32Array,
+                         val color: Float32Array,
+                         val offset: Array<Int>,
+                         val layer: Int,
+                         val size: Float) : RenderCommand()
+
 
     data class Number3D(val value: Int,
                         val matrix: Float32Array,
                         val color: Float32Array,
                         val size: Float) : RenderCommand()
+
+    data class Rectangle3D(val matrix: Float32Array,
+                           val color: Float32Array,
+                           val w: Float,
+                           val h: Float) : RenderCommand()
+
+    data class Circle3D(val matrix: Float32Array,
+                        val color: Float32Array,
+                        val radius: Float) : RenderCommand()
 
     data class Model3D(val model_instance_index: Int,
                        val is_transparent: Boolean) : RenderCommand()
@@ -193,8 +212,7 @@ fun main() {
                             console.info("${map_name}_ground is missing")
                             mismatched_vertex_buffers.add("3d_ground")
                         } else {
-                            renderer.ground_vertex_buffer = create_vertex_buffer(gl, ground_vertex_array_data.raw)
-                            renderer.ground_vertex_count = ground_vertex_array_data.vertex_count
+                            renderer.ground_renderer.set_vertex_buffer(gl, ground_vertex_array_data.raw, ground_vertex_array_data.vertex_count)
                         }
 
                         state = ApppState.ReceivingGroundVertexBuffer
@@ -248,8 +266,7 @@ fun main() {
                                     val buffer_len = reader.next_u32()
                                     val raw_data = reader.read(buffer_len)
                                     IndexedDb.store_vertex_array("${map_name}_ground", vertex_count, raw_data)
-                                    renderer.ground_vertex_buffer = create_vertex_buffer(gl, raw_data)
-                                    renderer.ground_vertex_count = vertex_count
+                                    renderer.ground_renderer.set_vertex_buffer(gl, raw_data, vertex_count)
                                 }
                             }
                         }
@@ -336,39 +353,114 @@ fun main() {
                 NORMAL_MATRIX = reader.next_3x3matrix()
 
                 while (reader.has_next()) {
-                    for (i in 0 until reader.next_u32()) {
-                        val color = reader.next_color4_u8()
-                        val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                                                      reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
-                        val matrix = reader.next_4x4matrix()
-                        val (is_vertically_flipped, server_texture_id) = reader.next_packed_int()
-                        renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
-                                color = color,
-                                offset = offset,
-                                matrix = matrix,
-                                server_texture_id = server_texture_id,
-                                is_vertically_flipped = is_vertically_flipped))
-                    }
-
-                    for (i in 0 until reader.next_u32()) {
-                        renderer.number_render_commands.add(RenderCommand.Number3D(
-                                size = reader.next_f32(),
-                                color = reader.next_color4_u8(),
-                                matrix = reader.next_4x4matrix(),
-                                value = reader.next_u32()))
-                    }
-
-                    val model_command_count = reader.next_u32()
-                    for (i in 0 until model_command_count) {
-                        val (is_transparent, model_instance_index) = reader.next_packed_int()
-                        renderer.model3d_render_commands.add(RenderCommand.Model3D(
-                                is_transparent = is_transparent,
-                                model_instance_index = model_instance_index
-                        ))
-                    }
+                    parse_texture2d_render_commands(reader, renderer)
+                    parse_rectangle3d_render_commands(reader, renderer)
+                    parse_circle3d_render_commands(reader, renderer)
+                    parse_sprite_render_commands(reader, renderer)
+                    parse_number_render_commands(reader, renderer)
+                    parse_model3d_render_commands(reader, renderer)
                 }
             }
         }
+    }
+}
+
+fun create_vertex_buffer(gl: WebGL2RenderingContext, raw: Uint8Array): WebGLBuffer {
+    val buffer = gl.createBuffer()!!
+    gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
+    try {
+        gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
+                      Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)),
+                      WebGLRenderingContext.STATIC_DRAW)
+    } catch (e: Throwable) {
+        js("debugger")
+    }
+    return buffer
+}
+
+
+private fun parse_model3d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val (is_transparent, model_instance_index) = reader.next_packed_bool1_int31()
+        renderer.model3d_render_commands.add(RenderCommand.Model3D(
+                is_transparent = is_transparent,
+                model_instance_index = model_instance_index
+        ))
+    }
+}
+
+private fun parse_number_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        renderer.number_render_commands.add(RenderCommand.Number3D(
+                size = reader.next_f32(),
+                color = reader.next_color4_u8(),
+                matrix = reader.next_4x4matrix(),
+                value = reader.next_u32()))
+    }
+}
+
+private fun parse_sprite_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                                          reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
+        val matrix = reader.next_4x4matrix()
+        val size = reader.next_f32()
+        val (is_vertically_flipped, server_texture_id) = reader.next_packed_bool1_int31()
+        renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
+                color = color,
+                offset = offset,
+                matrix = matrix,
+                size = size,
+                server_texture_id = server_texture_id,
+                is_vertically_flipped = is_vertically_flipped))
+    }
+}
+
+private fun parse_circle3d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val matrix = reader.next_4x4matrix()
+        val radius = reader.next_f32()
+        renderer.circle3d_render_commands.add(RenderCommand.Circle3D(
+                color = color,
+                matrix = matrix,
+                radius = radius
+        ))
+    }
+}
+
+private fun parse_rectangle3d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val matrix = reader.next_4x4matrix()
+        val w = reader.next_f32()
+        val h = reader.next_f32()
+        renderer.rectangle3d_render_commands.add(RenderCommand.Rectangle3D(
+                color = color,
+                matrix = matrix,
+                w = w,
+                h = h
+        ))
+    }
+}
+
+private fun parse_texture2d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val offset = arrayOf(reader.next_i16(),
+                             reader.next_i16())
+        val matrix = reader.next_4x4matrix()
+        val (layer, server_texture_id) = reader.next_packed_int8_int24()
+        val size = reader.next_f32()
+        renderer.texture2d_render_commands.add(RenderCommand.Texture2D(
+                color = color,
+                offset = offset,
+                matrix = matrix,
+                server_texture_id = server_texture_id,
+                size = size,
+                layer = layer
+        ))
     }
 }
 
@@ -380,6 +472,7 @@ private fun process_welcome_msg(result: dynamic): Job {
     map_name = result.map_name
     canvas.width = VIDEO_WIDTH
     canvas.height = VIDEO_HEIGHT
+    ORTHO_MATRIX = Float32Array(result.ortho_mat as Array<Float>)
     PROJECTION_MATRIX = Float32Array(result.projection_mat as Array<Float>)
 
     ground_render_command = RenderCommand.Ground3D(
@@ -556,11 +649,18 @@ class BufferReader(val buffer: ArrayBuffer) {
         return ret as Int
     }
 
-    fun next_packed_int(): Pair<Boolean, Int> {
+    fun next_packed_bool1_int31(): Pair<Boolean, Int> {
         val packed_int = next_u32()
         val int = packed_int.shl(1).ushr(1)
         val bool = packed_int.ushr(31) == 1
         return bool to int
+    }
+
+    fun next_packed_int8_int24(): Pair<Int, Int> {
+        val packed_int = next_u32()
+        val in24 = packed_int.shl(8).ushr(8)
+        val in8 = packed_int.ushr(24)
+        return in8 to in24
     }
 
 
