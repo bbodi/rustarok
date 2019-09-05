@@ -4,9 +4,9 @@ use crate::asset::gat::Gat;
 use crate::asset::gnd::Gnd;
 use crate::asset::rsm::Rsm;
 use crate::asset::rsw::Rsw;
-use crate::asset::spr::{SpriteFile, SpriteTexture};
+use crate::asset::spr::SpriteFile;
 use crate::asset::str::StrFile;
-use crate::video::{GlTexture, GlTextureIndex};
+use crate::video::{GlNativeTextureId, GlTexture};
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use libflate::zlib::Decoder;
@@ -288,7 +288,7 @@ impl AssetLoader {
         height: i32,
         asset_db: &mut AssetDatabase,
     ) -> GlTexture {
-        let mut texture_id = GlTextureIndex(0);
+        let mut texture_id = GlNativeTextureId(0);
         unsafe {
             gl::GenTextures(1, &mut texture_id.0);
             log::debug!("Texture from_data {}", texture_id.0);
@@ -345,7 +345,7 @@ impl AssetLoader {
         } else {
             surface
         };
-        let mut texture_id = GlTextureIndex(0);
+        let mut texture_id = GlNativeTextureId(0);
         unsafe {
             gl::GenTextures(1, &mut texture_id.0);
             gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
@@ -376,15 +376,15 @@ impl AssetLoader {
         asset_db: &mut AssetDatabase,
     ) -> Result<SpriteResource, String> {
         let content = self.get_content(&format!("{}.spr", path))?;
-        let frames: Vec<SpriteTexture> = SpriteFile::load(BinaryReader::from_vec(content))
+        let frames: Vec<GlTexture> = SpriteFile::load(BinaryReader::from_vec(content))
             .frames
             .into_iter()
-            .map(|frame| SpriteTexture::from(frame))
+            .map(|frame| AssetLoader::texture_from_frame(frame))
             .collect();
         let content = self.get_content(&format!("{}.act", path))?;
         let action = ActionFile::load(BinaryReader::from_vec(content));
 
-        let s = frames.iter().map(|it| &it.texture).collect::<Vec<_>>();
+        let s = frames.iter().map(|it| it).collect::<Vec<_>>();
         asset_db.register_texture(&path.to_string(), s.as_slice());
 
         return Ok(SpriteResource {
@@ -392,12 +392,37 @@ impl AssetLoader {
             textures: frames,
         });
     }
+
+    pub fn texture_from_frame(mut frame: crate::asset::spr::Frame) -> GlTexture {
+        let frame_surface = sdl2::surface::Surface::from_data(
+            &mut frame.data,
+            frame.width as u32,
+            frame.height as u32,
+            (4 * frame.width) as u32,
+            PixelFormatEnum::RGBA32,
+        )
+        .unwrap();
+
+        let mut opengl_surface = sdl2::surface::Surface::new(
+            frame.width as u32,
+            frame.height as u32,
+            PixelFormatEnum::RGBA32,
+        )
+        .unwrap();
+
+        let dst_rect = sdl2::rect::Rect::new(0, 0, frame.width as u32, frame.height as u32);
+        frame_surface
+            .blit(None, &mut opengl_surface, dst_rect)
+            .unwrap();
+
+        return AssetLoader::create_texture_from_surface_inner(opengl_surface, gl::NEAREST);
+    }
 }
 
 #[derive(Clone)]
 pub struct SpriteResource {
     pub action: ActionFile,
-    pub textures: Vec<SpriteTexture>,
+    pub textures: Vec<GlTexture>,
 }
 
 struct BinaryReader {

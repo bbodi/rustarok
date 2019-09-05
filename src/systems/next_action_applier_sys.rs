@@ -3,8 +3,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor, PlayerIntention,
-    WorldCoords,
+    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render_sys::DIRECTION_TABLE;
@@ -38,25 +37,25 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
-        for (controller) in (&mut controller_storage).join() {
+        for controller in (&mut controller_storage).join() {
             let char_state = char_state_storage.get_mut(controller.controlled_entity.0);
 
             // the controlled character might have been removed due to death etc
             if let Some(char_state) = char_state {
-                controller.next_action_allowed = match controller.next_action {
+                controller.repeat_next_action = match controller.next_action {
                     Some(PlayerIntention::MoveTo(pos)) => {
                         char_state.target = Some(EntityTarget::Pos(pos));
-                        true
+                        false
                     }
                     Some(PlayerIntention::Attack(target_entity_id)) => {
                         char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
-                        true
+                        false
                     }
                     Some(PlayerIntention::MoveTowardsMouse(pos)) => {
                         char_state.target = Some(EntityTarget::Pos(pos));
-                        true
+                        false
                     }
-                    Some(PlayerIntention::AttackTowards(_)) => true,
+                    Some(PlayerIntention::AttackTowards(_)) => false,
                     Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
                         NextActionApplierSystem::try_cast_skill(
                             skill,
@@ -68,7 +67,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                             is_self_cast,
                         )
                     }
-                    None => true,
+                    None => false,
                 }
             }
         }
@@ -78,8 +77,8 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
             (&entities, &mut char_state_storage, &mut sprite_storage).join()
         {
             let sprite: &mut SpriteRenderDescriptorComponent = sprite;
-            // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage let
-            //   ReceivingDamage animation play till to the end
+            // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
+            // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();
             let prev_state: CharState = char_comp.prev_state().clone();
             let prev_animation_has_ended = sprite.animation_ends_at.is_earlier_than(now);
@@ -156,7 +155,7 @@ impl NextActionApplierSystem {
             .or_insert(ElapsedTime(0.0))
             .is_later_than(now)
         {
-            return false;
+            return true;
         }
         let (target_pos, target_entity) = if is_self_cast {
             (char_state.pos(), Some(self_char_id))
@@ -209,7 +208,7 @@ impl NextActionApplierSystem {
             char_state.set_state(new_state, dir);
             *char_state.skill_cast_allowed_at.get_mut(&skill).unwrap() =
                 now.add(skill.get_cast_delay(&char_state));
-            return true;
+            return false;
         } else {
             log::debug!(
                 "Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
@@ -217,7 +216,7 @@ impl NextActionApplierSystem {
                 allowed,
                 can_move
             );
-            return false;
+            return !can_move; // try to repeat casting only when it was interrupted, but not when the target was invalid
         }
     }
 

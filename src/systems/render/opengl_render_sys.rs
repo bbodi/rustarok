@@ -5,7 +5,7 @@ use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
     EffectFrameCacheKey, RenderCommandCollectorComponent,
 };
-use crate::systems::render_sys::DamageRenderSystem;
+use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{
     GlTexture, VertexArray, VertexAttribDefinition, Video, TEXTURE_0, TEXTURE_1, TEXTURE_2,
@@ -508,7 +508,17 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader.set_vec2("size", &[command.texture_width, command.texture_height]);
                         shader.set_mat4("model", &command.common.matrix);
                         shader.set_vec4u8("color", &command.common.color);
-                        shader.set_vec2("offset", &command.common.offset);
+                        shader.set_vec2(
+                            "offset",
+                            &[
+                                command.offset[0] as f32
+                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                    * command.common.size,
+                                command.offset[1] as f32
+                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                    * command.common.size,
+                            ],
+                        );
 
                         unsafe {
                             gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
@@ -529,7 +539,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader.set_vec2("size", &[command.common.size, command.common.size]);
                         shader.set_mat4("model", &command.common.matrix);
                         shader.set_vec4u8("color", &command.common.color);
-                        shader.set_vec2("offset", &command.common.offset);
+                        shader.set_vec2("offset", &[0.0, 0.0]);
 
                         self.create_number_vertex_array(command.value).bind().draw();
                     }

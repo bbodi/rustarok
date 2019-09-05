@@ -94,7 +94,7 @@ pub struct ControllerComponent {
     pub controlled_entity: CharEntityId,
     pub next_action: Option<PlayerIntention>,
     pub last_action: Option<PlayerIntention>,
-    pub next_action_allowed: bool,
+    pub repeat_next_action: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
     pub bounding_rect_2d: HashMap<CharEntityId, (SpriteBoundingRect, Team)>,
     pub cell_below_cursor_walkable: bool,
@@ -107,7 +107,7 @@ impl ControllerComponent {
         ControllerComponent {
             select_skill_target: None,
             controlled_entity,
-            next_action_allowed: true,
+            repeat_next_action: false,
             next_action: None,
             last_action: None,
             entities_below_cursor: EntitiesBelowCursor::new(),
@@ -140,7 +140,6 @@ impl ControllerComponent {
                 } else {
                     self.entities_below_cursor.add_enemy(*entity_id);
                 }
-                break;
             }
         }
         self.bounding_rect_2d.clear();

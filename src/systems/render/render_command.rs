@@ -1,7 +1,7 @@
 use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::video::{GlTexture, GlTextureIndex, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{GlNativeTextureId, GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -261,7 +261,7 @@ pub struct Texture2dRenderCommand {
     pub(super) offset: [f32; 2],
     pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
-    pub(super) texture: GlTextureIndex,
+    pub(super) texture: GlNativeTextureId,
     pub(super) texture_width: i32,
     pub(super) texture_height: i32,
     pub(super) layer: UiLayer2d,
@@ -302,9 +302,11 @@ pub struct Circle3dRenderCommand {
 #[derive(Debug)]
 pub struct BillboardRenderCommand {
     pub common: Common3DProperties,
-    pub texture: GlTextureIndex,
+    pub texture: GlNativeTextureId,
     pub texture_width: f32,
     pub texture_height: f32,
+    pub offset: [i16; 2],
+    pub is_vertically_flipped: bool,
 }
 
 impl BillboardRenderCommand {
@@ -316,12 +318,12 @@ impl BillboardRenderCommand {
         let width = self.texture_width.abs();
         let height = self.texture_height;
         let mut top_right = Vector4::new(0.5 * width, 0.5 * height, 0.0, 1.0);
-        top_right.x += self.common.offset[0];
-        top_right.y -= self.common.offset[1];
+        top_right.x += self.offset[0] as f32;
+        top_right.y -= self.offset[1] as f32;
 
         let mut bottom_left = Vector4::new(-0.5 * width, -0.5 * height, 0.0, 1.0);
-        bottom_left.x += self.common.offset[0];
-        bottom_left.y -= self.common.offset[1];
+        bottom_left.x += self.offset[0] as f32;
+        bottom_left.y -= self.offset[1] as f32;
 
         let mut model_view = view * self.common.matrix;
         BillboardRenderCommand::set_spherical_billboard(&mut model_view);
@@ -357,7 +359,6 @@ impl BillboardRenderCommand {
 #[derive(Debug)]
 pub struct Common3DProperties {
     pub color: [u8; 4],
-    pub offset: [f32; 2],
     pub size: f32,
     pub matrix: Matrix4<f32>,
 }
@@ -366,7 +367,7 @@ pub struct Common3DPropBuilder<'a> {
     collector: &'a mut RenderCommandCollectorComponent,
     color: [u8; 4],
     pos: Vector3<f32>,
-    offset: [f32; 2],
+    offset: [i16; 2],
     size: f32,
     rotation_rad: (Vector3<f32>, f32),
 }
@@ -377,7 +378,7 @@ impl<'a> Common3DPropBuilder<'a> {
             collector,
             color: [255, 255, 255, 255],
             pos: Vector3::zeros(),
-            offset: [0.0, 0.0],
+            offset: [0, 0],
             size: 1.0,
             rotation_rad: (Vector3::zeros(), 0.0),
         }
@@ -400,7 +401,7 @@ impl<'a> Common3DPropBuilder<'a> {
         self
     }
 
-    pub fn offset(&mut self, offset: [f32; 2]) -> &'a mut Common3DPropBuilder {
+    pub fn offset(&mut self, offset: [i16; 2]) -> &'a mut Common3DPropBuilder {
         self.offset = offset;
         self
     }
@@ -440,10 +441,7 @@ impl<'a> Common3DPropBuilder<'a> {
         Common3DProperties {
             color: self.color,
             size: self.size,
-            offset: [
-                self.offset[0] * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                self.offset[1] * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            ],
+            // TODO: would be cheaper to store pos and rotation, and create matrix later
             matrix: create_3d_matrix(&self.pos, &self.rotation_rad),
         }
     }
@@ -492,7 +490,9 @@ impl<'a> Common3DPropBuilder<'a> {
         let flipped_width = (1 - flip_vertically as i32 * 2) * texture.width;
         let command = BillboardRenderCommand {
             common: self.build(),
+            offset: self.offset,
             texture: texture.id(),
+            is_vertically_flipped: flip_vertically,
             texture_width: flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.size,
             texture_height: texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.size,
         };

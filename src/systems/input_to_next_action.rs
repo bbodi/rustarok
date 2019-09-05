@@ -213,9 +213,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                     Some(PlayerIntention::MoveTo((*pos).clone()))
                 }
             } else if let Some(PlayerIntention::Casting(..)) = &controller.last_action {
-                // Casting might have been rejected because for example the char was attacking at the time, but
+                // Casting might have been rejected because for example the char was attacked at the time, but
                 // we want to cast it as soon as the rejection reason ceases AND there is no other intention
-                if !controller.next_action_allowed {
+                if controller.repeat_next_action {
                     controller.last_action.clone()
                 } else {
                     None

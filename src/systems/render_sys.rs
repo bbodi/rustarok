@@ -742,15 +742,15 @@ pub fn render_single_layer_action<'a>(
 
     let offset = if !frame.positions.is_empty() && !is_main {
         [
-            (pos_offset[0] - frame.positions[0][0]) as f32,
-            (pos_offset[1] - frame.positions[0][1]) as f32,
+            pos_offset[0] - frame.positions[0][0],
+            pos_offset[1] - frame.positions[0][1],
         ]
     } else {
-        [0.0, 0.0]
+        [0, 0]
     };
     let offset = [
-        layer.pos[0] as f32 + offset[0] * size_multiplier,
-        layer.pos[1] as f32 + offset[1] * size_multiplier,
+        (layer.pos[0] + offset[0]) as i16,
+        (layer.pos[1] + offset[1]) as i16,
     ];
 
     let mut color = color.clone();
@@ -765,7 +765,7 @@ pub fn render_single_layer_action<'a>(
         .scale(layer.scale[0] * size_multiplier)
         .offset(offset)
         .color(&color)
-        .add_billboard_command(&sprite_texture.texture, layer.is_mirror);
+        .add_billboard_command(&sprite_texture, layer.is_mirror);
 
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
@@ -837,15 +837,15 @@ pub fn render_action(
 
         let offset = if !frame.positions.is_empty() && !is_main {
             [
-                (pos_offset[0] - frame.positions[0][0]) as f32,
-                (pos_offset[1] - frame.positions[0][1]) as f32,
+                pos_offset[0] - frame.positions[0][0],
+                pos_offset[1] - frame.positions[0][1],
             ]
         } else {
-            [0.0, 0.0]
+            [0, 0]
         };
         let offset = [
-            layer.pos[0] as f32 + offset[0],
-            layer.pos[1] as f32 + offset[1],
+            (layer.pos[0] + offset[0]) as i16,
+            (layer.pos[1] + offset[1]) as i16,
         ];
 
         let mut color = color.clone();
@@ -860,7 +860,7 @@ pub fn render_action(
             .scale(layer.scale[0] * size_multiplier)
             .offset(offset)
             .color(&color)
-            .add_billboard_command(&sprite_texture.texture, layer.is_mirror);
+            .add_billboard_command(&sprite_texture, layer.is_mirror);
     }
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame

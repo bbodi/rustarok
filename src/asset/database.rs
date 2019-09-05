@@ -1,4 +1,4 @@
-use crate::video::{GlTexture, GlTextureIndex};
+use crate::video::{GlNativeTextureId, GlTexture};
 use crate::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
@@ -10,7 +10,7 @@ use std::io::Write;
 #[derive(Debug, Serialize)]
 struct TextureDatabaseEntry {
     hash: String,
-    gl_textures: Vec<(GlTextureIndex, u32, u32)>,
+    gl_textures: Vec<(GlNativeTextureId, u32, u32)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -30,10 +30,10 @@ impl AssetDatabase {
     pub fn new() -> AssetDatabase {
         AssetDatabase {
             texture_db: TextureDatabase {
-                entries: HashMap::new(),
+                entries: HashMap::with_capacity(512),
             },
-            model_name_to_index: Default::default(),
-            models: vec![],
+            model_name_to_index: HashMap::with_capacity(512),
+            models: Vec::with_capacity(512),
         }
     }
 

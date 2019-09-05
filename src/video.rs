@@ -171,7 +171,7 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
 }
 
 #[derive(Hash, Eq, PartialEq, Debug)]
-struct GlTextureContext(GlTextureIndex);
+struct GlTextureContext(GlNativeTextureId);
 
 impl Drop for GlTextureContext {
     fn drop(&mut self) {
@@ -187,14 +187,14 @@ pub struct GlTexture {
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize)]
-pub struct GlTextureIndex(pub gl::types::GLuint);
+pub struct GlNativeTextureId(pub gl::types::GLuint);
 
-pub const TEXTURE_0: GlTextureIndex = GlTextureIndex(gl::TEXTURE0);
-pub const TEXTURE_1: GlTextureIndex = GlTextureIndex(gl::TEXTURE1);
-pub const TEXTURE_2: GlTextureIndex = GlTextureIndex(gl::TEXTURE2);
+pub const TEXTURE_0: GlNativeTextureId = GlNativeTextureId(gl::TEXTURE0);
+pub const TEXTURE_1: GlNativeTextureId = GlNativeTextureId(gl::TEXTURE1);
+pub const TEXTURE_2: GlNativeTextureId = GlNativeTextureId(gl::TEXTURE2);
 
 impl GlTexture {
-    pub fn new(texture_id: GlTextureIndex, width: i32, height: i32) -> GlTexture {
+    pub fn new(texture_id: GlNativeTextureId, width: i32, height: i32) -> GlTexture {
         GlTexture {
             context: Arc::new(GlTextureContext(texture_id)),
             width,
@@ -202,11 +202,11 @@ impl GlTexture {
         }
     }
 
-    pub fn id(&self) -> GlTextureIndex {
+    pub fn id(&self) -> GlNativeTextureId {
         (self.context.0).clone()
     }
 
-    pub fn bind(&self, texture_index: GlTextureIndex) {
+    pub fn bind(&self, texture_index: GlNativeTextureId) {
         unsafe {
             gl::ActiveTexture(texture_index.0);
             gl::BindTexture(gl::TEXTURE_2D, (self.context.0).0);

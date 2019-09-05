@@ -34,7 +34,7 @@ fun render_model(gl: WebGL2RenderingContext, command: RenderCommand.Model3D,
         gl.vertexAttribPointer(model_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 8 * 4, 6 * 4)
 
         gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,
-                       get_or_load_server_texture(node.server_texture_id, WebGLRenderingContext.NEAREST))
+                       get_or_load_server_texture(node.server_texture_id, WebGLRenderingContext.NEAREST).texture)
         gl.drawArrays(WebGLRenderingContext.TRIANGLES, 0, node.vertex_count)
     }
 }

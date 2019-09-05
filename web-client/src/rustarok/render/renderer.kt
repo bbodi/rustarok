@@ -3,7 +3,10 @@ package rustarok.render
 import org.khronos.webgl.*
 import rustarok.*
 
+const val ONE_SPRITE_PIXEL_SIZE_IN_3D: Float = 1.0f / 35.0f;
+
 class Renderer(gl: WebGL2RenderingContext) {
+
     var models: Array<ModelData> = emptyArray()
     var model_instances: ArrayList<ModelInstance> = arrayListOf()
     val sprite_gl_program = load_sprite_shader(gl)
@@ -57,9 +60,12 @@ class Renderer(gl: WebGL2RenderingContext) {
             gl.uniform4fv(sprite_gl_program.color, render_command.color)
             gl.uniformMatrix4fv(sprite_gl_program.model, false, render_command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, render_command.offset)
-            gl.uniform2fv(sprite_gl_program.size, arrayOf(render_command.w, render_command.h))
+            val texture = get_or_load_server_texture(render_command.server_texture_id, WebGLRenderingContext.NEAREST)
+            gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
+            val w = if (render_command.is_vertically_flipped) -texture.w else texture.w
+            gl.uniform2fv(sprite_gl_program.size,
+                          arrayOf(w * ONE_SPRITE_PIXEL_SIZE_IN_3D, texture.h * ONE_SPRITE_PIXEL_SIZE_IN_3D))
 
-            gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(render_command.server_texture_id, WebGLRenderingContext.NEAREST))
             gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
 
@@ -68,13 +74,13 @@ class Renderer(gl: WebGL2RenderingContext) {
         /////////////////////////////////
         gl.disable(WebGLRenderingContext.DEPTH_TEST)
         gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,
-                       get_or_load_server_texture(path_to_server_gl_indices["assets\\damage.bmp"]!!.gl_textures[0].server_gl_index, WebGLRenderingContext.NEAREST))
+                       get_or_load_server_texture(path_to_server_gl_indices["assets\\damage.bmp"]!!.gl_textures[0].server_gl_index,
+                                                  WebGLRenderingContext.NEAREST).texture)
         for (render_command in number_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, render_command.color)
             gl.uniformMatrix4fv(sprite_gl_program.model, false, render_command.matrix)
-            gl.uniform2fv(sprite_gl_program.offset, render_command.offset)
+            gl.uniform2fv(sprite_gl_program.offset, Float32Array(2));
             gl.uniform2fv(sprite_gl_program.size, arrayOf(render_command.size, render_command.size))
-
 
             val (buffer, vertex_count) = this.create_number_vertex_array(gl, render_command.value)
 
@@ -112,7 +118,7 @@ class Renderer(gl: WebGL2RenderingContext) {
                     width + 0.5f, 0.5f, this.texture_u_coords[digit] + this.single_digit_u_coord, 0.0f,
                     width - 0.5f, -0.5f, this.texture_u_coords[digit], 1.0f,
                     width + 0.5f, -0.5f, this.texture_u_coords[digit] + this.single_digit_u_coord, 1.0f
-                                ), offset)
+            ), offset)
 
             offset += 6 * 4
             width += 1.0f

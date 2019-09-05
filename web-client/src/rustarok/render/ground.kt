@@ -31,15 +31,15 @@ fun render_ground(gl: WebGL2RenderingContext, command: RenderCommand.Ground3D, g
 
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE0)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_texture_atlas_id, WebGLRenderingContext.NEAREST))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_texture_atlas_id, WebGLRenderingContext.NEAREST).texture)
     gl.uniform1i(ground_gl_program.gnd_texture_atlas, 0)
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE1)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_tile_color_texture_id, WebGLRenderingContext.LINEAR))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_tile_color_texture_id, WebGLRenderingContext.LINEAR).texture)
     gl.uniform1i(ground_gl_program.tile_color_texture, 1)
 
     gl.activeTexture(WebGLRenderingContext.TEXTURE2)
-    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_lightmap_texture_id, WebGLRenderingContext.LINEAR))
+    gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, get_or_load_server_texture(command.server_lightmap_texture_id, WebGLRenderingContext.LINEAR).texture)
     gl.uniform1i(ground_gl_program.lightmap_texture, 2)
 
 

@@ -21,7 +21,10 @@ class ModelData {
 
 data class ModelInstance(val index: Int, val matrix: Float32Array)
 
-class TextureData(private val native: dynamic) {
+class BrowserTextureData(val texture: WebGLTexture, val w: Float, val h: Float)
+
+
+class ServerTextureData(private val native: dynamic) {
     val server_gl_index: Int
         get() = native[0]
 
@@ -64,15 +67,15 @@ class StoredModel(private val native: dynamic) {
 
 
 interface DatabaseTextureEntry {
-    val gl_textures: Array<TextureData>
+    val gl_textures: Array<ServerTextureData>
     val hash: String
 }
 
 abstract external class WebGL2RenderingContext : WebGLRenderingContext
 
-val server_to_client_gl_indices = hashMapOf<Int, WebGLTexture>()
+val server_to_client_gl_indices = hashMapOf<Int, BrowserTextureData>()
 val path_to_server_gl_indices = hashMapOf<String, DatabaseTextureEntry>()
-val server_texture_index_to_path = hashMapOf<Int, Triple<TextureData, String, Int>>() // path, i
+val server_texture_index_to_path = hashMapOf<Int, Triple<ServerTextureData, String, Int>>() // path, i
 var canvas = document.getElementById("main_canvas") as HTMLCanvasElement
 private var gl: WebGL2RenderingContext = 0.asDynamic()
 
@@ -100,13 +103,11 @@ sealed class RenderCommand {
                         val matrix: Float32Array,
                         val color: Float32Array,
                         val offset: Float32Array,
-                        val w: Float,
-                        val h: Float) : RenderCommand()
+                        val is_vertically_flipped: Boolean) : RenderCommand()
 
     data class Number3D(val value: Int,
                         val matrix: Float32Array,
                         val color: Float32Array,
-                        val offset: Float32Array,
                         val size: Float) : RenderCommand()
 
     data class Model3D(val model_instance_index: Int,
@@ -122,7 +123,7 @@ sealed class RenderCommand {
 }
 
 var socket: WebSocket = 0.asDynamic()
-var dummy_texture: WebGLTexture = 0.asDynamic()
+var dummy_texture: BrowserTextureData = 0.asDynamic()
 val jobs = arrayListOf<suspend () -> Unit>()
 
 fun main() {
@@ -131,7 +132,7 @@ fun main() {
         return
     }
     gl = canvas.getContext("webgl2") as WebGL2RenderingContext
-    dummy_texture = gl.createTexture()!!
+    dummy_texture = BrowserTextureData(gl.createTexture()!!, 28f, 28f)
 
     val loc = window.location
     var new_uri = when {
@@ -336,29 +337,30 @@ fun main() {
 
                 while (reader.has_next()) {
                     for (i in 0 until reader.next_u32()) {
+                        val color = reader.next_color4_u8()
+                        val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                                                      reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
+                        val matrix = reader.next_4x4matrix()
+                        val (is_vertically_flipped, server_texture_id) = reader.next_packed_int()
                         renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
-                                w = reader.next_f32(),
-                                h = reader.next_f32(),
-                                color = reader.next_color4_u8(),
-                                offset = reader.next_v2(),
-                                matrix = reader.next_4x4matrix(),
-                                server_texture_id = reader.next_u32()))
+                                color = color,
+                                offset = offset,
+                                matrix = matrix,
+                                server_texture_id = server_texture_id,
+                                is_vertically_flipped = is_vertically_flipped))
                     }
 
                     for (i in 0 until reader.next_u32()) {
                         renderer.number_render_commands.add(RenderCommand.Number3D(
                                 size = reader.next_f32(),
                                 color = reader.next_color4_u8(),
-                                offset = reader.next_v2(),
                                 matrix = reader.next_4x4matrix(),
                                 value = reader.next_u32()))
                     }
 
                     val model_command_count = reader.next_u32()
                     for (i in 0 until model_command_count) {
-                        val packed_int = reader.next_u32()
-                        val model_instance_index = packed_int.shl(1).shr(1)
-                        val is_transparent = packed_int.shr(31) == 1
+                        val (is_transparent, model_instance_index) = reader.next_packed_int()
                         renderer.model3d_render_commands.add(RenderCommand.Model3D(
                                 is_transparent = is_transparent,
                                 model_instance_index = model_instance_index
@@ -397,7 +399,7 @@ private fun process_welcome_msg(result: dynamic): Job {
     for (key in keys) {
         val databaseTextureEntry: DatabaseTextureEntry = texture_db[key]
         for (i in databaseTextureEntry.gl_textures.indices) {
-            databaseTextureEntry.gl_textures[i] = TextureData(databaseTextureEntry.gl_textures[i])
+            databaseTextureEntry.gl_textures[i] = ServerTextureData(databaseTextureEntry.gl_textures[i])
         }
         map[key] = databaseTextureEntry
         path_to_server_gl_indices[key] = databaseTextureEntry
@@ -459,7 +461,10 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
 }
 
 
-private suspend fun load_texture(glTexture: TextureData, path: String, i: Int, min_mag: Int): WebGLTexture? {
+private suspend fun load_texture(glServerTexture: ServerTextureData,
+                                 path: String,
+                                 i: Int,
+                                 min_mag: Int): WebGLTexture? {
     val raw_data = IndexedDb.get_texture(path, i) ?: return null
     val texture_obj = gl.createTexture()!!
     gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture_obj)
@@ -477,13 +482,13 @@ private suspend fun load_texture(glTexture: TextureData, path: String, i: Int, m
                      WebGLRenderingContext.CLAMP_TO_EDGE)
 
     val canvas = document.createElement("canvas") as HTMLCanvasElement
-    canvas.width = glTexture.width
-    canvas.height = glTexture.height
+    canvas.width = glServerTexture.width
+    canvas.height = glServerTexture.height
     val ctx = canvas.getContext("2d") as CanvasRenderingContext2D
     val imageData =
             ImageData(Uint8ClampedArray(raw_data.raw.buffer, raw_data.raw.byteOffset, raw_data.raw.byteLength),
-                      glTexture.width,
-                      glTexture.height)
+                      glServerTexture.width,
+                      glServerTexture.height)
     ctx.putImageData(imageData,
                      0.0, 0.0, 0.0, 0.0, canvas.width.toDouble(), canvas.height.toDouble());
 
@@ -492,8 +497,8 @@ private suspend fun load_texture(glTexture: TextureData, path: String, i: Int, m
     gl.texImage2D(WebGLRenderingContext.TEXTURE_2D,
                   level = 0,
                   internalformat = WebGLRenderingContext.RGBA,
-                  width = glTexture.width,
-                  height = glTexture.height,
+                  width = glServerTexture.width,
+                  height = glServerTexture.height,
                   border = 0,
                   format = WebGLRenderingContext.RGBA,
                   type = WebGLRenderingContext.UNSIGNED_BYTE,
@@ -501,7 +506,7 @@ private suspend fun load_texture(glTexture: TextureData, path: String, i: Int, m
     return texture_obj
 }
 
-fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): WebGLTexture {
+fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTextureData {
     val texture_id = server_to_client_gl_indices[server_texture_id]
     if (texture_id == null) {
         console.log("Loading texture $server_texture_id")
@@ -518,7 +523,8 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): WebGLTextu
                     console.error("Texture was not found: $path")
                 } else {
                     console.log("Texture was loaded: $path, $i")
-                    server_to_client_gl_indices[server_texture_id] = new_texture_id
+                    server_to_client_gl_indices[server_texture_id] =
+                            BrowserTextureData(new_texture_id, glTexture.width.toFloat(), glTexture.height.toFloat())
                 }
             }
         }
@@ -538,12 +544,25 @@ class BufferReader(val buffer: ArrayBuffer) {
         return ret.toInt()
     }
 
+    fun next_i16(): Int {
+        val ret = view.getInt16(offset, true)
+        offset += 2
+        return ret as Int
+    }
 
     fun next_u16(): Int {
         val ret = view.getUint16(offset, true)
         offset += 2
         return ret as Int
     }
+
+    fun next_packed_int(): Pair<Boolean, Int> {
+        val packed_int = next_u32()
+        val int = packed_int.shl(1).ushr(1)
+        val bool = packed_int.ushr(31) == 1
+        return bool to int
+    }
+
 
     fun next_u32(): Int {
         val ret = view.getUint32(offset, true)

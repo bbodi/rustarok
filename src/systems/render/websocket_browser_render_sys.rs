@@ -59,6 +59,19 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             /////////////////////////////////
             // 2D Texture
             /////////////////////////////////
+            //            for command in &render_commands.texture_2d_commands {
+            //                let width = command.texture_width as f32;
+            //                let height = command.texture_height as f32;
+            //                unsafe {
+            //                    gl::BindTexture(gl::TEXTURE_2D, command.texture.0);
+            //                }
+            //                shader.set_mat4("model", &command.matrix);
+            //                shader.set_f32("z", 0.01 * command.layer as usize as f32);
+
+            //                shader.set_vec2("offset", &command.offset);
+            //                shader.set_vec2("size", &[width * command.size, height * command.size]);
+            //                shader.set_vec4u8("color", &command.color);
+            //                vertex_array_bind.draw();
 
             /////////////////////////////////
             // 2D Rectangle
@@ -80,24 +93,20 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                     .write_u32::<LittleEndian>(render_commands.billboard_commands.len() as u32)
                     .unwrap();
                 for command in &render_commands.billboard_commands {
-                    self.send_buffer
-                        .write_f32::<LittleEndian>(command.texture_width)
-                        .unwrap();
-                    self.send_buffer
-                        .write_f32::<LittleEndian>(command.texture_height)
-                        .unwrap();
-
                     for v in &command.common.color {
                         self.send_buffer.write_u8(*v).unwrap();
                     }
-                    for v in &command.common.offset {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+                    for v in &command.offset {
+                        self.send_buffer.write_i16::<LittleEndian>(*v).unwrap();
                     }
                     for v in &command.common.matrix {
                         self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
                     }
+                    let packed_int: u32 =
+                        ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
+
                     self.send_buffer
-                        .write_u32::<LittleEndian>(command.texture.0 as u32)
+                        .write_u32::<LittleEndian>(packed_int)
                         .unwrap();
                 }
             }
@@ -116,9 +125,6 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
 
                     for v in &command.common.color {
                         self.send_buffer.write_u8(*v).unwrap();
-                    }
-                    for v in &command.common.offset {
-                        self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();
                     }
                     for v in &command.common.matrix {
                         self.send_buffer.write_f32::<LittleEndian>(*v).unwrap();

@@ -208,14 +208,14 @@ fn render_action_2d(
         let offset = [layer.pos[0] + offset[0], layer.pos[1] + offset[1]];
         let offset = [offset[0] as f32, offset[1] as f32];
         let offset = [
-            offset[0] - (texture.texture.width / 2) as f32,
-            offset[1] - (texture.texture.height / 2) as f32,
+            offset[0] - (texture.width / 2) as f32,
+            offset[1] - (texture.height / 2) as f32,
         ];
 
         render_commands
             .prepare_for_2d()
             .screen_pos(pos.x as i32, pos.y as i32)
             .color_rgb(color)
-            .add_sprite_command(&texture.texture, offset, layer.is_mirror, UiLayer2d::Cursor);
+            .add_sprite_command(texture, offset, layer.is_mirror, UiLayer2d::Cursor);
     }
 }
