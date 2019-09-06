@@ -14,7 +14,7 @@ use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{ElapsedTime, PhysicEngine, StrEffectType};
 use nalgebra::{Isometry2, Vector2, Vector3};
 use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;
@@ -270,11 +270,10 @@ impl Skills {
                 updater.insert(
                     entities.create(),
                     StrEffectComponent {
-                        effect: "StrEffect::Concentration".to_owned(),
+                        effect_type: StrEffectType::Concentration,
                         pos: *char_pos,
                         start_time: system_vars.time,
                         die_at: system_vars.time.add_seconds(0.7),
-                        duration: ElapsedTime(0.7),
                     },
                 );
                 None
@@ -283,11 +282,10 @@ impl Skills {
                 updater.insert(
                     entities.create(),
                     StrEffectComponent {
-                        effect: "hunter_poison".to_owned(),
+                        effect_type: StrEffectType::Poison,
                         pos: skill_pos.unwrap(),
                         start_time: system_vars.time,
                         die_at: system_vars.time.add_seconds(0.7),
-                        duration: ElapsedTime(0.7),
                     },
                 );
                 system_vars
@@ -416,7 +414,7 @@ impl Skills {
         match self {
             _ => {
                 RenderDesktopClientSystem::render_str(
-                    "StrEffect::Moonstar",
+                    StrEffectType::Moonstar,
                     casting_state.cast_started,
                     char_pos,
                     system_vars,
@@ -537,11 +535,10 @@ impl PushBackWallSkill {
         .iter()
         .map(|effect_coords| {
             let effect_comp = StrEffectComponent {
-                effect: "firewall".to_owned(),
+                effect_type: StrEffectType::FireWall,
                 pos: *effect_coords,
                 start_time: system_time,
                 die_at: system_time.add_seconds(3.0),
-                duration: ElapsedTime(3.0),
             };
             let effect_entity = entities.create();
             updater.insert(effect_entity, effect_comp);
@@ -687,11 +684,10 @@ impl BrutalSkillManifest {
             })
             .map(|effect_coords| {
                 let effect_comp = StrEffectComponent {
-                    effect: "firewall".to_owned(),
+                    effect_type: StrEffectType::FireWall,
                     pos: effect_coords,
                     start_time: system_time,
-                    die_at: system_time.add_seconds(3.0),
-                    duration: ElapsedTime(3.0),
+                    die_at: system_time.add_seconds(30.0),
                 };
                 let effect_entity = entities.create();
                 updater.insert(effect_entity, effect_comp);
@@ -715,7 +711,7 @@ impl BrutalSkillManifest {
             pos: *skill_center,
             half_extents,
             created_at: system_time.clone(),
-            die_at: system_time.add_seconds(2.0),
+            die_at: system_time.add_seconds(30.0),
             next_damage_at: system_time,
         }
     }

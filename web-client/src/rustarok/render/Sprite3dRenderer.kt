@@ -18,7 +18,7 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
                        centered_sprite_vertex_buffer: WebGLBuffer) {
         gl.useProgram(sprite_gl_program.program)
         gl.activeTexture(WebGLRenderingContext.TEXTURE0)
-        gl.uniform1i(sprite_gl_program.model_texture, 0)
+        gl.uniform1i(sprite_gl_program.texture, 0)
         gl.uniformMatrix4fv(sprite_gl_program.projection_mat, false, PROJECTION_MATRIX)
 
         gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, centered_sprite_vertex_buffer)
@@ -30,7 +30,7 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
         for (command in sprite_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            gl.uniformMatrix4fv(sprite_gl_program.model, false, command.matrix)
+            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, command.offset)
             val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
@@ -51,7 +51,7 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         )
         for (command in commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            gl.uniformMatrix4fv(sprite_gl_program.model, false, command.matrix)
+            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, Float32Array(2));
             gl.uniform2fv(sprite_gl_program.size, arrayOf(command.size, command.size))
 
@@ -199,9 +199,9 @@ void main() {
         return SpriteShader(program = program!!,
                             projection_mat = gl.getUniformLocation(program, "projection")!!,
                             view_mat = gl.getUniformLocation(program, "view")!!,
-                            model_texture = gl.getUniformLocation(program, "model_texture")!!,
+                            texture = gl.getUniformLocation(program, "model_texture")!!,
                             size = gl.getUniformLocation(program, "size")!!,
-                            model = gl.getUniformLocation(program, "model")!!,
+                            model_mat = gl.getUniformLocation(program, "model")!!,
                             color = gl.getUniformLocation(program, "color")!!,
                             a_pos = gl.getAttribLocation(program, "Position"),
                             a_uv = gl.getAttribLocation(program, "aTexCoord"),
@@ -211,9 +211,9 @@ void main() {
     private data class SpriteShader(val program: WebGLProgram,
                                     val projection_mat: WebGLUniformLocation,
                                     val view_mat: WebGLUniformLocation,
-                                    val model_texture: WebGLUniformLocation,
+                                    val texture: WebGLUniformLocation,
                                     val size: WebGLUniformLocation,
-                                    val model: WebGLUniformLocation,
+                                    val model_mat: WebGLUniformLocation,
                                     val color: WebGLUniformLocation,
                                     val offset: WebGLUniformLocation,
                                     val a_pos: Int,

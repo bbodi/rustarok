@@ -76,7 +76,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
             }
-            let alt_down = input.is_key_down(Scancode::LAlt);
+            let alt_down = input.alt_down;
             controller.next_action = if let Some((casting_skill_key, skill)) =
                 controller.select_skill_target
             {

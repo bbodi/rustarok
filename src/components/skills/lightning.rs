@@ -7,7 +7,7 @@ use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{ElapsedTime, PhysicEngine, StrEffectType};
 use nalgebra::{Isometry2, Vector2};
 use specs::{Entity, LazyUpdate};
 
@@ -89,58 +89,52 @@ impl SkillManifestation for LightningManifest {
                 updater.remove::<StrEffectComponent>(self.effect_id);
                 let effect_comp = match self.action_count {
                     0 => StrEffectComponent {
-                        effect: "StrEffect::Lightning".to_owned(),
+                        effect_type: StrEffectType::Lightning,
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
                         die_at: system_vars.time.add_seconds(1.0),
-                        duration: ElapsedTime(1.0),
                     },
                     1 => {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
+                            effect_type: StrEffectType::Lightning,
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
                         }
                     }
                     2 => {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
+                            effect_type: StrEffectType::Lightning,
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
                         }
                     }
                     3 => {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
+                            effect_type: StrEffectType::Lightning,
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
                         }
                     }
                     4 => {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
-                            effect: "StrEffect::Lightning".to_owned(),
+                            effect_type: StrEffectType::Lightning,
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
-                            duration: ElapsedTime(1.0),
                         }
                     }
                     5 => StrEffectComponent {
-                        effect: "StrEffect::Lightning".to_owned(),
+                        effect_type: StrEffectType::Lightning,
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
                         die_at: system_vars.time.add_seconds(1.0),
-                        duration: ElapsedTime(1.0),
                     },
                     _ => {
                         return;

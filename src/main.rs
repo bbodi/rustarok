@@ -88,6 +88,7 @@ mod cam;
 mod configs;
 mod consts;
 mod cursor;
+mod shaders;
 mod video;
 mod web_server;
 
@@ -104,6 +105,11 @@ use crate::components::status::heal_area::HealApplierArea;
 use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuses};
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::configs::{AppConfig, DevConfig};
+use crate::shaders::{
+    GroundShaderParameters, ModelShaderParameters, Sprite3dShaderParameters,
+    StrEffect3dShaderParameters, Texture2dShaderParameters, Trimesh2dShaderParameters,
+    Trimesh3dShaderParameters,
+};
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
@@ -177,13 +183,13 @@ pub enum CollisionGroup {
 }
 
 pub struct Shaders {
-    pub ground_shader: ShaderProgram,
-    pub model_shader: ShaderProgram,
-    pub sprite_shader: ShaderProgram,
-    pub str_effect_shader: ShaderProgram,
-    pub sprite2d_shader: ShaderProgram,
-    pub trimesh_shader: ShaderProgram,
-    pub trimesh2d_shader: ShaderProgram,
+    pub ground_shader: ShaderProgram<GroundShaderParameters>,
+    pub model_shader: ShaderProgram<ModelShaderParameters>,
+    pub sprite_shader: ShaderProgram<Sprite3dShaderParameters>,
+    pub str_effect_shader: ShaderProgram<StrEffect3dShaderParameters>,
+    pub sprite2d_shader: ShaderProgram<Texture2dShaderParameters>,
+    pub trimesh_shader: ShaderProgram<Trimesh3dShaderParameters>,
+    pub trimesh2d_shader: ShaderProgram<Trimesh2dShaderParameters>,
 }
 
 //áttetsző modellek
@@ -313,44 +319,74 @@ fn main() {
     };
 
     let shaders = Shaders {
-        ground_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/ground.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/ground.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
+        ground_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/ground.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/ground.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| GroundShaderParameters::new(program_id),
+        )
         .unwrap(),
-        model_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/model.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/model.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
+        model_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/model.vert"), gl::VERTEX_SHADER).unwrap(),
+                Shader::from_source(include_str!("shaders/model.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| ModelShaderParameters::new(program_id),
+        )
         .unwrap(),
-        sprite_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/sprite.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/sprite.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
+        sprite_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/sprite.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/sprite.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| Sprite3dShaderParameters::new(program_id),
+        )
         .unwrap(),
-        str_effect_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/str_effect.vert"), gl::VERTEX_SHADER)
-                .unwrap(),
-            Shader::from_source(include_str!("shaders/str_effect.frag"), gl::FRAGMENT_SHADER)
-                .unwrap(),
-        ])
+        str_effect_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/str_effect.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/str_effect.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| StrEffect3dShaderParameters::new(program_id),
+        )
         .unwrap(),
-        sprite2d_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/sprite2d.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/sprite2d.frag"), gl::FRAGMENT_SHADER)
-                .unwrap(),
-        ])
+        sprite2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/sprite2d.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/sprite2d.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| Texture2dShaderParameters::new(program_id),
+        )
         .unwrap(),
-        trimesh_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/trimesh.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/trimesh.frag"), gl::FRAGMENT_SHADER).unwrap(),
-        ])
+        trimesh_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/trimesh.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/trimesh.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| Trimesh3dShaderParameters::new(program_id),
+        )
         .unwrap(),
-        trimesh2d_shader: ShaderProgram::from_shaders(&[
-            Shader::from_source(include_str!("shaders/trimesh2d.vert"), gl::VERTEX_SHADER).unwrap(),
-            Shader::from_source(include_str!("shaders/trimesh2d.frag"), gl::FRAGMENT_SHADER)
-                .unwrap(),
-        ])
+        trimesh2d_shader: ShaderProgram::from_shaders(
+            &[
+                Shader::from_source(include_str!("shaders/trimesh2d.vert"), gl::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(include_str!("shaders/trimesh2d.frag"), gl::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| Trimesh2dShaderParameters::new(program_id),
+        )
         .unwrap(),
     };
 
@@ -1692,7 +1728,7 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub str_effects: HashMap<String, StrFile>,
+    pub str_effects: HashMap<StrEffectType, StrFile>,
 }
 
 pub struct ModelRenderData {
@@ -2147,68 +2183,68 @@ fn load_map(
         .set_contact_model(Box::new(SignoriniModel::new()));
 
     let (elapsed, str_effects) = measure_time(|| {
-        let mut str_effects: HashMap<String, StrFile> = HashMap::new();
+        let mut str_effects: HashMap<StrEffectType, StrFile> = HashMap::new();
 
         str_effects.insert(
-            "firewall".to_owned(),
+            StrEffectType::FireWall,
             asset_loader
                 .load_effect("firewall", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "StrEffect::StormGust".to_owned(),
+            StrEffectType::StormGust,
             asset_loader
                 .load_effect("stormgust", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "StrEffect::LordOfVermilion".to_owned(),
+            StrEffectType::LordOfVermilion,
             asset_loader.load_effect("lord", asset_database).unwrap(),
         );
         str_effects.insert(
-            "StrEffect::Lightning".to_owned(),
+            StrEffectType::Lightning,
             asset_loader
                 .load_effect("lightning", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "StrEffect::Concentration".to_owned(),
+            StrEffectType::Concentration,
             asset_loader
                 .load_effect("concentration", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "StrEffect::Moonstar".to_owned(),
+            StrEffectType::Moonstar,
             asset_loader
                 .load_effect("moonstar", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "hunter_poison".to_owned(),
+            StrEffectType::Poison,
             asset_loader
                 .load_effect("hunter_poison", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "quagmire".to_owned(),
+            StrEffectType::Quagmire,
             asset_loader
                 .load_effect("quagmire", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "firewall_blue".to_owned(),
+            StrEffectType::FireWallBlue,
             asset_loader
                 .load_effect("firewall_blue", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "firepillarbomb".to_owned(),
+            StrEffectType::FirePillarBomb,
             asset_loader
                 .load_effect("firepillarbomb", asset_database)
                 .unwrap(),
         );
         str_effects.insert(
-            "ramadan".to_owned(),
+            StrEffectType::Ramadan,
             asset_loader.load_effect("ramadan", asset_database).unwrap(),
         );
         str_effects
@@ -2292,8 +2328,17 @@ impl PhysicEngine {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Debug)]
-pub enum StrEffect {
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
+pub enum StrEffectType {
     FireWall,
     StormGust,
+    LordOfVermilion,
+    Lightning,
+    Concentration,
+    Moonstar,
+    Poison,
+    Quagmire,
+    FireWallBlue,
+    FirePillarBomb,
+    Ramadan,
 }

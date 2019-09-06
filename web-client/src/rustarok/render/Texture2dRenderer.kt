@@ -13,7 +13,7 @@ class Texture2dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(tex2d_gl_program.projection_mat, false, ORTHO_MATRIX)
 
         gl.activeTexture(WebGLRenderingContext.TEXTURE0)
-        gl.uniform1i(tex2d_gl_program.model_texture, 0)
+        gl.uniform1i(tex2d_gl_program.texture, 0)
 
         gl.uniformMatrix4fv(tex2d_gl_program.model, false, command.matrix)
         gl.uniform1f(tex2d_gl_program.z, 0.01f * command.layer)
@@ -127,17 +127,17 @@ void main() {
                                color = gl.getUniformLocation(program, "color")!!,
                                a_pos = gl.getAttribLocation(program, "Position"),
                                a_uv = gl.getAttribLocation(program, "aTexCoord"),
-                               model_texture = gl.getUniformLocation(program, "model_texture")!!)
+                               texture = gl.getUniformLocation(program, "model_texture")!!)
     }
 
     private data class Texture2dShader(val program: WebGLProgram,
-                               val projection_mat: WebGLUniformLocation,
-                               val model_texture: WebGLUniformLocation,
-                               val model: WebGLUniformLocation,
-                               val z: WebGLUniformLocation,
-                               val offset: WebGLUniformLocation,
-                               val size: WebGLUniformLocation,
-                               val color: WebGLUniformLocation,
-                               val a_pos: Int,
-                               val a_uv: Int)
+                                       val projection_mat: WebGLUniformLocation,
+                                       val texture: WebGLUniformLocation,
+                                       val model: WebGLUniformLocation,
+                                       val z: WebGLUniformLocation,
+                                       val offset: WebGLUniformLocation,
+                                       val size: WebGLUniformLocation,
+                                       val color: WebGLUniformLocation,
+                                       val a_pos: Int,
+                                       val a_uv: Int)
 }

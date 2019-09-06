@@ -285,6 +285,8 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             input.mouse_wheel = 0;
             input.delta_mouse_x = 0;
             input.delta_mouse_y = 0;
+            input.alt_down = false;
+            input.ctrl_down = false;
             input.text = String::new();
             input.cleanup_released_keys();
             for event in events {
@@ -343,10 +345,10 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             }
                             input.key_pressed(scancode);
                             if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
-                                input.key_pressed(Scancode::LAlt);
+                                input.alt_down = true;
                             }
                             if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
-                                input.key_pressed(Scancode::LCtrl);
+                                input.ctrl_down = true;
                             }
                         }
                     }
@@ -360,10 +362,10 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             }
                             input.key_released(scancode);
                             if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
-                                input.key_pressed(Scancode::LAlt);
+                                input.alt_down = true;
                             }
                             if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
-                                input.key_pressed(Scancode::LCtrl);
+                                input.ctrl_down = true;
                             }
                         }
                     }
@@ -375,7 +377,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             }
 
             if input.is_key_just_pressed(Scancode::Grave)
-                && input.is_key_down(Scancode::LAlt)
+                && input.alt_down
                 && browser_storage.get(controller_id).is_none()
             {
                 input.is_console_open = !input.is_console_open;

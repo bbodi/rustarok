@@ -8,7 +8,7 @@ use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
-use crate::ElapsedTime;
+use crate::{ElapsedTime, StrEffectType};
 use specs::LazyUpdate;
 
 #[derive(Clone)]
@@ -114,7 +114,7 @@ impl Status for AbsorbStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "ramadan",
+            StrEffectType::Ramadan,
             self.animation_started,
             char_pos,
             system_vars,

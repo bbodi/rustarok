@@ -9,7 +9,7 @@ use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
-use crate::ElapsedTime;
+use crate::{ElapsedTime, StrEffectType};
 use nalgebra::Isometry2;
 use specs::LazyUpdate;
 
@@ -78,11 +78,10 @@ impl Status for FireBombStatus {
                     except: Some(self_char_id),
                 });
             let effect_comp = StrEffectComponent {
-                effect: "firepillarbomb".to_owned(),
+                effect_type: StrEffectType::FirePillarBomb,
                 pos: *char_pos,
                 start_time: system_vars.time.add_seconds(-0.5),
                 die_at: system_vars.time.add_seconds(1.0),
-                duration: ElapsedTime(1.0),
             };
             updater.insert(entities.create(), effect_comp);
 
@@ -107,7 +106,7 @@ impl Status for FireBombStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "firewall",
+            StrEffectType::FireWall,
             self.started,
             char_pos,
             system_vars,

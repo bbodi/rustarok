@@ -2,7 +2,7 @@ extern crate rand;
 
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::systems::sound_sys::SoundId;
-use crate::ElapsedTime;
+use crate::{ElapsedTime, StrEffectType};
 use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::DefaultBodyHandle;
 use specs::prelude::*;
@@ -94,11 +94,10 @@ pub struct SoundEffectComponent {
 
 #[derive(Component)]
 pub struct StrEffectComponent {
-    pub effect: String, /*StrEffect*/
+    pub effect_type: StrEffectType,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
-    pub duration: ElapsedTime,
 }
 
 #[derive(Component)]

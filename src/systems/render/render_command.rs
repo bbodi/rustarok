@@ -2,6 +2,7 @@ use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlNativeTextureId, GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::StrEffectType;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -29,7 +30,7 @@ fn create_3d_matrix(pos: &Vector3<f32>, rotation_rad: &(Vector3<f32>, f32)) -> M
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub struct EffectFrameCacheKey {
-    pub effect_name: String,
+    pub effect_type: StrEffectType,
     pub layer_index: usize,
     pub key_index: i32,
 }
@@ -82,7 +83,9 @@ impl<'a> RenderCommandCollectorComponent {
         self.circle_3d_commands.clear();
         self.billboard_commands.clear();
         self.number_3d_commands.clear();
-        self.effect_commands.clear();
+        self.effect_commands
+            .iter_mut()
+            .for_each(|(_key, vec)| vec.clear());
         self.model_commands.clear();
     }
 
@@ -451,20 +454,19 @@ impl<'a> Common3DPropBuilder<'a> {
     pub fn add_effect_command(
         &'a mut self,
         pos: &Vector2<f32>,
-        effect_name: &str,
+        effect_type: StrEffectType,
         key_index: i32,
         layer_index: usize,
     ) {
-        // TODO: effect should not be string
         let frame_cache_key = EffectFrameCacheKey {
-            effect_name: effect_name.to_owned(),
+            effect_type,
             layer_index,
             key_index,
         };
         self.collector
             .effect_commands
             .entry(frame_cache_key.clone())
-            .or_insert(Vec::with_capacity(2))
+            .or_insert(Vec::with_capacity(128))
             .push({
                 let mut matrix = Matrix4::<f32>::identity();
                 matrix.prepend_translation_mut(&v2_to_v3(pos));

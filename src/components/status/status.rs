@@ -10,7 +10,7 @@ use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
-use crate::ElapsedTime;
+use crate::{ElapsedTime, StrEffectType};
 use nalgebra::Isometry2;
 use specs::LazyUpdate;
 use std::any::{Any, TypeId};
@@ -565,7 +565,7 @@ impl Status for PoisonStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "quagmire",
+            StrEffectType::Quagmire,
             self.started,
             char_pos,
             system_vars,

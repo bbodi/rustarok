@@ -206,6 +206,7 @@ impl GlTexture {
         (self.context.0).clone()
     }
 
+    // TODO ASD
     pub fn bind(&self, texture_index: GlNativeTextureId) {
         unsafe {
             gl::ActiveTexture(texture_index.0);
@@ -571,6 +572,33 @@ impl Drop for Shader {
 }
 
 impl Shader {
+    fn get_program_err(program_id: gl::types::GLuint) -> String {
+        let mut len: gl::types::GLint = 0;
+        unsafe {
+            gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut len);
+        }
+        let error = create_whitespace_cstring_with_len(len as usize);
+        unsafe {
+            gl::GetProgramInfoLog(
+                program_id,
+                len,
+                std::ptr::null_mut(),
+                error.as_ptr() as *mut gl::types::GLchar,
+            );
+        }
+        return error.to_string_lossy().into_owned();
+    }
+
+    pub fn get_location(program_id: gl::types::GLuint, name: &str) -> gl::types::GLint {
+        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+        unsafe {
+            let ret =
+                gl::GetUniformLocation(program_id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            assert_ne!(ret, -1, "{}", name);
+            return ret;
+        }
+    }
+
     pub fn from_source(source: &str, kind: gl::types::GLenum) -> Result<Shader, String> {
         let c_str: &CStr = &CString::new(source).unwrap();
         let id = unsafe { gl::CreateShader(kind) };
@@ -608,139 +636,134 @@ impl Shader {
     }
 }
 
-pub struct ShaderProgram {
+pub struct ActiveShaderProgram<'a, P> {
     id: gl::types::GLuint,
+    pub params: &'a P,
 }
 
-pub struct ActiveShaderProgram {
-    id: gl::types::GLuint,
-}
-
-impl ActiveShaderProgram {
-    pub fn set_mat4(&self, name: &str, matrix: &Matrix4<f32>) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+pub struct ShaderParam3x3fv(pub gl::types::GLint);
+impl ShaderParam3x3fv {
+    pub fn set(&self, matrix: &Matrix3<f32>) {
         unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::UniformMatrix4fv(
-                location,
-                1,         // count
-                gl::FALSE, // transpose
-                matrix.as_slice().as_ptr() as *const f32,
-            );
-        }
-    }
-
-    pub fn set_mat3(&self, name: &str, matrix: &Matrix3<f32>) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::UniformMatrix3fv(
-                location,
+                self.0,
                 1,         // count
                 gl::FALSE, // transpose
                 matrix.as_slice().as_ptr() as *const f32,
             );
         }
     }
+}
 
-    pub fn set_vec3(&self, name: &str, vector: &[f32; 3]) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
+pub struct ShaderParam3fv(pub gl::types::GLint);
+impl ShaderParam3fv {
+    pub fn set(&self, vector: &[f32; 3]) {
         unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             gl::Uniform3fv(
-                location,
+                self.0,
                 1, // count
                 vector.as_ptr() as *const f32,
             );
-        }
-    }
-
-    pub fn set_vec2(&self, name: &str, vector: &[f32; 2]) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform2fv(
-                location,
-                1, // count
-                vector.as_ptr() as *const f32,
-            );
-        }
-    }
-
-    pub fn set_vec2i(&self, name: &str, vector: &[i16; 2]) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform2i(location, vector[0] as i32, vector[1] as i32);
-        }
-    }
-
-    pub fn set_vec4(&self, name: &str, vector: &[f32; 4]) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform4fv(
-                location,
-                1, // count
-                vector.as_ptr() as *const f32,
-            );
-        }
-    }
-
-    pub fn set_vec4u8(&self, name: &str, vector: &[u8; 4]) {
-        // TODO: save uniformlocations and reuse them
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        let f32_vec = vec![
-            vector[0] as f32 / 255.0,
-            vector[1] as f32 / 255.0,
-            vector[2] as f32 / 255.0,
-            vector[3] as f32 / 255.0,
-        ];
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform4fv(
-                location,
-                1, // count
-                f32_vec.as_ptr() as *const f32,
-            );
-        }
-    }
-
-    pub fn set_int(&self, name: &str, value: i32) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform1i(location, value);
-        }
-    }
-
-    pub fn set_f32(&self, name: &str, value: f32) {
-        let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
-        unsafe {
-            let location =
-                gl::GetUniformLocation(self.id, cname.as_bytes_with_nul().as_ptr() as *const i8);
-            gl::Uniform1f(location, value);
         }
     }
 }
 
-impl ShaderProgram {
-    pub fn gl_use(&self) -> ActiveShaderProgram {
+pub struct ShaderParam4fv(pub gl::types::GLint);
+impl ShaderParam4fv {
+    pub fn set(&self, vector: &[f32; 4]) {
         unsafe {
-            gl::UseProgram(self.id);
+            gl::Uniform4fv(
+                self.0,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
         }
-        ActiveShaderProgram { id: self.id }
     }
+}
 
-    pub fn from_shaders(shaders: &[Shader]) -> Result<ShaderProgram, String> {
+pub struct ShaderParam4ubv(pub gl::types::GLint);
+impl ShaderParam4ubv {
+    pub fn set(&self, vector: &[u8; 4]) {
+        unsafe {
+            gl::Uniform4fv(
+                self.0,
+                1, // count
+                vec![
+                    vector[0] as f32 / 255.0,
+                    vector[1] as f32 / 255.0,
+                    vector[2] as f32 / 255.0,
+                    vector[3] as f32 / 255.0,
+                ]
+                .as_ptr() as *const f32,
+            );
+        }
+    }
+}
+
+pub struct ShaderParam2fv(pub gl::types::GLint);
+impl ShaderParam2fv {
+    pub fn set(&self, vector: &[f32; 2]) {
+        unsafe {
+            gl::Uniform2fv(
+                self.0,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
+        }
+    }
+}
+
+pub struct ShaderParam2i(pub gl::types::GLint);
+impl ShaderParam2i {
+    pub fn set(&self, a: gl::types::GLint, b: gl::types::GLint) {
+        unsafe {
+            gl::Uniform2i(self.0, a, b);
+        }
+    }
+}
+
+pub struct ShaderParam1f(pub gl::types::GLint);
+impl ShaderParam1f {
+    pub fn set(&self, value: f32) {
+        unsafe {
+            gl::Uniform1f(self.0, value);
+        }
+    }
+}
+
+pub struct ShaderParam1i(pub gl::types::GLint);
+impl ShaderParam1i {
+    pub fn set(&self, value: gl::types::GLint) {
+        unsafe {
+            gl::Uniform1i(self.0, value);
+        }
+    }
+}
+
+pub struct ShaderParam4x4fv(pub gl::types::GLint);
+impl ShaderParam4x4fv {
+    pub fn set(&self, matrix: &Matrix4<f32>) {
+        unsafe {
+            gl::UniformMatrix4fv(
+                self.0,
+                1,         // count
+                gl::FALSE, // transpose
+                matrix.as_slice().as_ptr() as *const f32,
+            );
+        }
+    }
+}
+
+pub struct ShaderProgram<P> {
+    id: gl::types::GLuint,
+    params: P,
+}
+
+impl<P> ShaderProgram<P> {
+    pub fn from_shaders<F>(shaders: &[Shader], func: F) -> Result<ShaderProgram<P>, String>
+    where
+        F: Fn(gl::types::GLuint) -> P,
+    {
         let program_id = unsafe { gl::CreateProgram() };
 
         for shader in shaders {
@@ -759,7 +782,7 @@ impl ShaderProgram {
         }
 
         if success == 0 {
-            return ShaderProgram::get_program_err(program_id);
+            return Err(Shader::get_program_err(program_id));
         }
 
         for shader in shaders {
@@ -768,24 +791,20 @@ impl ShaderProgram {
             }
         }
 
-        Ok(ShaderProgram { id: program_id })
+        Ok(ShaderProgram {
+            id: program_id,
+            params: func(program_id),
+        })
     }
 
-    fn get_program_err(program_id: gl::types::GLuint) -> Result<ShaderProgram, String> {
-        let mut len: gl::types::GLint = 0;
+    pub fn gl_use(&self) -> ActiveShaderProgram<P> {
         unsafe {
-            gl::GetProgramiv(program_id, gl::INFO_LOG_LENGTH, &mut len);
+            gl::UseProgram(self.id);
         }
-        let error = create_whitespace_cstring_with_len(len as usize);
-        unsafe {
-            gl::GetProgramInfoLog(
-                program_id,
-                len,
-                std::ptr::null_mut(),
-                error.as_ptr() as *mut gl::types::GLchar,
-            );
+        ActiveShaderProgram {
+            id: self.id,
+            params: &self.params,
         }
-        return Err(error.to_string_lossy().into_owned());
     }
 
     pub fn id(&self) -> gl::types::GLuint {
@@ -793,7 +812,7 @@ impl ShaderProgram {
     }
 }
 
-impl Drop for ShaderProgram {
+impl<P> Drop for ShaderProgram<P> {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteProgram(self.id);

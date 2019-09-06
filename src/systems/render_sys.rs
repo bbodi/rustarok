@@ -19,7 +19,7 @@ use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::VertexArray;
 use crate::video::VertexAttribDefinition;
-use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource};
+use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource, StrEffectType};
 use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -232,7 +232,7 @@ impl RenderDesktopClientSystem {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
                     RenderDesktopClientSystem::render_str(
-                        &str_effect.effect,
+                        str_effect.effect_type,
                         str_effect.start_time,
                         &str_effect.pos,
                         system_vars,
@@ -1340,13 +1340,13 @@ impl RenderDesktopClientSystem {
     }
 
     pub fn render_str(
-        effect_name: &str,
+        effect: StrEffectType,
         start_time: ElapsedTime,
         world_pos: &WorldCoords,
         system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
-        let str_file = &system_vars.map_render_data.str_effects[effect_name];
+        let str_file = &system_vars.map_render_data.str_effects[&effect];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
         let key_index = system_vars
@@ -1358,7 +1358,7 @@ impl RenderDesktopClientSystem {
         for layer_index in 0..str_file.layers.len() {
             render_commands.prepare_for_3d().add_effect_command(
                 world_pos,
-                effect_name,
+                effect,
                 key_index,
                 layer_index,
             );
