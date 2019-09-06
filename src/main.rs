@@ -1728,7 +1728,7 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub str_effects: HashMap<StrEffectType, StrFile>,
+    pub str_effects: Vec<StrFile>,
 }
 
 pub struct ModelRenderData {
@@ -2183,70 +2183,55 @@ fn load_map(
         .set_contact_model(Box::new(SignoriniModel::new()));
 
     let (elapsed, str_effects) = measure_time(|| {
-        let mut str_effects: HashMap<StrEffectType, StrFile> = HashMap::new();
+        let mut str_effects: Vec<StrFile> = Vec::new();
 
-        str_effects.insert(
-            StrEffectType::FireWall,
+        str_effects.push(
             asset_loader
                 .load_effect("firewall", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::StormGust,
+        str_effects.push(
             asset_loader
                 .load_effect("stormgust", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::LordOfVermilion,
-            asset_loader.load_effect("lord", asset_database).unwrap(),
-        );
-        str_effects.insert(
-            StrEffectType::Lightning,
+        str_effects.push(asset_loader.load_effect("lord", asset_database).unwrap());
+        str_effects.push(
             asset_loader
                 .load_effect("lightning", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::Concentration,
+        str_effects.push(
             asset_loader
                 .load_effect("concentration", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::Moonstar,
+        str_effects.push(
             asset_loader
                 .load_effect("moonstar", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::Poison,
+        str_effects.push(
             asset_loader
                 .load_effect("hunter_poison", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::Quagmire,
+        str_effects.push(
             asset_loader
                 .load_effect("quagmire", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::FireWallBlue,
+        str_effects.push(
             asset_loader
                 .load_effect("firewall_blue", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::FirePillarBomb,
+        str_effects.push(
             asset_loader
                 .load_effect("firepillarbomb", asset_database)
                 .unwrap(),
         );
-        str_effects.insert(
-            StrEffectType::Ramadan,
-            asset_loader.load_effect("ramadan", asset_database).unwrap(),
-        );
+        str_effects.push(asset_loader.load_effect("ramadan", asset_database).unwrap());
         str_effects
     });
     log::info!("str loaded: {}ms", elapsed.as_millis());
@@ -2328,6 +2313,10 @@ impl PhysicEngine {
     }
 }
 
+// so we can load effects dynamically
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+pub struct StrEffectId(pub usize);
+
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 pub enum StrEffectType {
     FireWall,
@@ -2341,4 +2330,10 @@ pub enum StrEffectType {
     FireWallBlue,
     FirePillarBomb,
     Ramadan,
+}
+
+impl From<StrEffectType> for StrEffectId {
+    fn from(typ: StrEffectType) -> Self {
+        StrEffectId(typ as usize)
+    }
 }

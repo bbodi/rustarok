@@ -78,7 +78,7 @@ impl Status for FireBombStatus {
                     except: Some(self_char_id),
                 });
             let effect_comp = StrEffectComponent {
-                effect_type: StrEffectType::FirePillarBomb,
+                effect_id: StrEffectType::FirePillarBomb.into(),
                 pos: *char_pos,
                 start_time: system_vars.time.add_seconds(-0.5),
                 die_at: system_vars.time.add_seconds(1.0),

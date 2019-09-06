@@ -89,7 +89,7 @@ impl SkillManifestation for LightningManifest {
                 updater.remove::<StrEffectComponent>(self.effect_id);
                 let effect_comp = match self.action_count {
                     0 => StrEffectComponent {
-                        effect_type: StrEffectType::Lightning,
+                        effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
                         die_at: system_vars.time.add_seconds(1.0),
@@ -97,7 +97,7 @@ impl SkillManifestation for LightningManifest {
                     1 => {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
-                            effect_type: StrEffectType::Lightning,
+                            effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
@@ -106,7 +106,7 @@ impl SkillManifestation for LightningManifest {
                     2 => {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
-                            effect_type: StrEffectType::Lightning,
+                            effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
@@ -115,7 +115,7 @@ impl SkillManifestation for LightningManifest {
                     3 => {
                         let pos = self.pos + self.dir_vector * 2.0 * 2.2;
                         StrEffectComponent {
-                            effect_type: StrEffectType::Lightning,
+                            effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
@@ -124,14 +124,14 @@ impl SkillManifestation for LightningManifest {
                     4 => {
                         let pos = self.pos + self.dir_vector * 2.2;
                         StrEffectComponent {
-                            effect_type: StrEffectType::Lightning,
+                            effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
                             die_at: system_vars.time.add_seconds(1.0),
                         }
                     }
                     5 => StrEffectComponent {
-                        effect_type: StrEffectType::Lightning,
+                        effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
                         die_at: system_vars.time.add_seconds(1.0),

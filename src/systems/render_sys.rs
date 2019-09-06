@@ -19,7 +19,7 @@ use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::video::VertexArray;
 use crate::video::VertexAttribDefinition;
-use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource, StrEffectType};
+use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource, StrEffectId};
 use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -232,7 +232,7 @@ impl RenderDesktopClientSystem {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
                     RenderDesktopClientSystem::render_str(
-                        str_effect.effect_type,
+                        str_effect.effect_id,
                         str_effect.start_time,
                         &str_effect.pos,
                         system_vars,
@@ -240,6 +240,23 @@ impl RenderDesktopClientSystem {
                     );
                 }
             }
+        }
+        // TODO: into a separate system
+        {
+            //            let _stopwatch = system_benchmark.start_measurement("render.dyn_str_effect");
+            //            for (entity_id, str_effect) in (entities, dynamic_str_effect_storage).join() {
+            //                if str_effect.die_at.is_earlier_than(system_vars.time) {
+            //                    updater.remove::<StrEffectComponent>(entity_id);
+            //                } else {
+            //                    RenderDesktopClientSystem::render_str(
+            //                        str_effect.effect_type,
+            //                        str_effect.start_time,
+            //                        &str_effect.pos,
+            //                        system_vars,
+            //                        render_commands,
+            //                    );
+            //                }
+            //            }
         }
     }
 
@@ -1339,14 +1356,17 @@ impl RenderDesktopClientSystem {
         }
     }
 
-    pub fn render_str(
-        effect: StrEffectType,
+    pub fn render_str<E>(
+        effect: E,
         start_time: ElapsedTime,
         world_pos: &WorldCoords,
         system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollectorComponent,
-    ) {
-        let str_file = &system_vars.map_render_data.str_effects[&effect];
+    ) where
+        E: Into<StrEffectId>,
+    {
+        let effect_id = effect.into();
+        let str_file = &system_vars.map_render_data.str_effects[effect_id.0];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
         let key_index = system_vars
@@ -1358,7 +1378,7 @@ impl RenderDesktopClientSystem {
         for layer_index in 0..str_file.layers.len() {
             render_commands.prepare_for_3d().add_effect_command(
                 world_pos,
-                effect,
+                effect_id,
                 key_index,
                 layer_index,
             );

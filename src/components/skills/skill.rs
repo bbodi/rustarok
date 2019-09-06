@@ -270,7 +270,7 @@ impl Skills {
                 updater.insert(
                     entities.create(),
                     StrEffectComponent {
-                        effect_type: StrEffectType::Concentration,
+                        effect_id: StrEffectType::Concentration.into(),
                         pos: *char_pos,
                         start_time: system_vars.time,
                         die_at: system_vars.time.add_seconds(0.7),
@@ -282,7 +282,7 @@ impl Skills {
                 updater.insert(
                     entities.create(),
                     StrEffectComponent {
-                        effect_type: StrEffectType::Poison,
+                        effect_id: StrEffectType::Poison.into(),
                         pos: skill_pos.unwrap(),
                         start_time: system_vars.time,
                         die_at: system_vars.time.add_seconds(0.7),
@@ -535,7 +535,7 @@ impl PushBackWallSkill {
         .iter()
         .map(|effect_coords| {
             let effect_comp = StrEffectComponent {
-                effect_type: StrEffectType::FireWall,
+                effect_id: StrEffectType::FireWall.into(),
                 pos: *effect_coords,
                 start_time: system_time,
                 die_at: system_time.add_seconds(3.0),
@@ -684,7 +684,7 @@ impl BrutalSkillManifest {
             })
             .map(|effect_coords| {
                 let effect_comp = StrEffectComponent {
-                    effect_type: StrEffectType::FireWall,
+                    effect_id: StrEffectType::FireWall.into(),
                     pos: effect_coords,
                     start_time: system_time,
                     die_at: system_time.add_seconds(30.0),

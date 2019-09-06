@@ -608,7 +608,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for (frame_cache_key, commands) in &render_commands.effect_commands {
                     let cached_frame = self.str_effect_cache.get(&frame_cache_key);
                     let str_file =
-                        &system_vars.map_render_data.str_effects[&frame_cache_key.effect_type];
+                        &system_vars.map_render_data.str_effects[frame_cache_key.effect_id.0];
                     if let None = cached_frame {
                         let layer = &str_file.layers[frame_cache_key.layer_index];
                         let cached_effect_frame =

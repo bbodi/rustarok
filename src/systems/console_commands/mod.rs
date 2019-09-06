@@ -17,7 +17,9 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, MainStatuses,
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
-use crate::components::{AttackComponent, AttackType, BrowserClient, MinionComponent};
+use crate::components::{
+    AttackComponent, AttackType, BrowserClient, MinionComponent, StrEffectComponent,
+};
 use crate::consts::{JobId, MonsterId};
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
@@ -25,7 +27,9 @@ use crate::systems::console_system::{
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
-use crate::{CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine, PLAYABLE_OUTLOOKS};
+use crate::{
+    CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine, StrEffectId, PLAYABLE_OUTLOOKS,
+};
 use nalgebra::{Isometry2, Point2};
 use nalgebra::{Point3, Vector2};
 use rand::Rng;
@@ -476,50 +480,44 @@ fn create_random_char_minion(
     entity_id
 }
 
-// TODO:
-//pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
-//    CommandDefinition {
-//        name: "spawn_effect".to_string(),
-//        arguments: vec![("effect_name", CommandParamType::String, true)],
-//        autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
-//        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-//            let new_str_name = args.as_str(0).unwrap();
-//            {
-//                let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
-//                if !system_vars
-//                    .map_render_data
-//                    .str_effects
-//                    .contains_key(new_str_name)
-//                {
-//                    system_vars
-//                        .asset_loader
-//                        .load_effect(new_str_name, &mut ecs_world.write_resource())
-//                        .and_then(|str_file| {
-//                            Ok(system_vars
-//                                .map_render_data
-//                                .str_effects
-//                                .insert(new_str_name.to_owned(), str_file))
-//                        });
-//                }
-//            }
-//            let hero_pos = {
-//                let storage = ecs_world.read_storage::<CharacterStateComponent>();
-//                let char_state = storage.get(self_char_id.0).unwrap();
-//                char_state.pos()
-//            };
-//            ecs_world
-//                .create_entity()
-//                .with(StrEffectComponent {
-//                    effect: new_str_name.to_owned(),
-//                    pos: hero_pos,
-//                    start_time: ElapsedTime(0.0),
-//                    die_at: ElapsedTime(20000.0),
-//                })
-//                .build();
-//            Ok(())
-//        }),
-//    }
-//}
+pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
+    CommandDefinition {
+        name: "spawn_effect".to_string(),
+        arguments: vec![("effect_name", CommandParamType::String, true)],
+        autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let new_str_name = args.as_str(0).unwrap();
+            let effect_id = {
+                let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
+                system_vars
+                    .asset_loader
+                    .load_effect(new_str_name, &mut ecs_world.write_resource())
+                    .and_then(|str_file| {
+                        let new_id = StrEffectId(system_vars.map_render_data.str_effects.len());
+                        system_vars.map_render_data.str_effects.push(str_file);
+                        Ok(new_id)
+                    })
+            };
+            effect_id.and_then(|effect_id| {
+                let hero_pos = {
+                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    let char_state = storage.get(self_char_id.0).unwrap();
+                    char_state.pos()
+                };
+                ecs_world
+                    .create_entity()
+                    .with(StrEffectComponent {
+                        effect_id,
+                        pos: hero_pos,
+                        start_time: ElapsedTime(0.0),
+                        die_at: ElapsedTime(20000.0),
+                    })
+                    .build();
+                Ok(())
+            })
+        }),
+    }
+}
 
 pub(super) fn cmd_list_players() -> CommandDefinition {
     CommandDefinition {

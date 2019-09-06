@@ -2,7 +2,7 @@ use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlNativeTextureId, GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::StrEffectType;
+use crate::StrEffectId;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ fn create_3d_matrix(pos: &Vector3<f32>, rotation_rad: &(Vector3<f32>, f32)) -> M
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub struct EffectFrameCacheKey {
-    pub effect_type: StrEffectType,
+    pub effect_id: StrEffectId,
     pub layer_index: usize,
     pub key_index: i32,
 }
@@ -454,12 +454,12 @@ impl<'a> Common3DPropBuilder<'a> {
     pub fn add_effect_command(
         &'a mut self,
         pos: &Vector2<f32>,
-        effect_type: StrEffectType,
+        effect_id: StrEffectId,
         key_index: i32,
         layer_index: usize,
     ) {
         let frame_cache_key = EffectFrameCacheKey {
-            effect_type,
+            effect_id,
             layer_index,
             key_index,
         };

@@ -7,7 +7,6 @@ use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSO
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
-use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
 
