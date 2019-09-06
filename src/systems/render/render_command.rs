@@ -1,7 +1,7 @@
 use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::video::{GlNativeTextureId, GlTexture, VertexArray, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{GlNativeTextureId, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::StrEffectId;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
@@ -37,7 +37,7 @@ pub struct EffectFrameCacheKey {
 
 #[derive(Component)]
 pub struct RenderCommandCollectorComponent {
-    pub(super) trimesh_2d_commands: Vec<Trimesh2dRenderCommand>,
+    pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
     pub(super) rectangle_2d_commands: Vec<Common2DProperties>,
@@ -54,7 +54,7 @@ pub struct RenderCommandCollectorComponent {
 impl<'a> RenderCommandCollectorComponent {
     pub fn new() -> RenderCommandCollectorComponent {
         RenderCommandCollectorComponent {
-            trimesh_2d_commands: Vec::with_capacity(128),
+            partial_circle_2d_commands: Vec::with_capacity(128),
             texture_2d_commands: Vec::with_capacity(128),
             text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
@@ -75,7 +75,7 @@ impl<'a> RenderCommandCollectorComponent {
     }
 
     pub fn clear(&mut self) {
-        self.trimesh_2d_commands.clear();
+        self.partial_circle_2d_commands.clear();
         self.texture_2d_commands.clear();
         self.text_2d_commands.clear();
         self.rectangle_3d_commands.clear();
@@ -103,10 +103,10 @@ impl<'a> RenderCommandCollectorComponent {
 }
 
 #[derive(Debug)]
-pub struct Trimesh2dRenderCommand {
-    pub(super) vao: VertexArray,
+pub struct PartialCircle2dRenderCommand {
+    pub(super) i: usize,
     pub(super) color: [u8; 4],
-    pub(super) size: [f32; 2],
+    pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
@@ -137,13 +137,13 @@ impl<'a> Common2DPropBuilder<'a> {
         }
     }
 
-    pub fn add_trimesh_command(&'a mut self, vao: &'a VertexArray, layer: UiLayer2d) {
+    pub fn add_trimesh_command(&'a mut self, i: usize, layer: UiLayer2d) {
         self.collector
-            .trimesh_2d_commands
-            .push(Trimesh2dRenderCommand {
-                vao: vao.clone(),
+            .partial_circle_2d_commands
+            .push(PartialCircle2dRenderCommand {
+                i,
                 color: self.color,
-                size: self.size,
+                size: self.size[0],
                 matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
                 layer,
             });

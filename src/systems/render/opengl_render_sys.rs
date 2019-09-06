@@ -25,6 +25,7 @@ pub struct OpenGlRenderSystem<'a, 'b> {
 
     str_effect_cache: HashMap<EffectFrameCacheKey, Option<EffectFrameCache>>,
     text_cache: HashMap<String, GlTexture>,
+    circle_vertex_arrays: Vec<VertexArray>,
     fonts: Fonts<'a, 'b>,
 }
 
@@ -159,7 +160,28 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         let texture_width = single_digit_width * 10.0;
         let single_digit_u_coord = single_digit_width / texture_width;
 
+        let circle_vertex_arrays = (1..=100)
+            .map(|i| {
+                let nsubdivs = 100;
+                let two_pi = std::f32::consts::PI * 2.0;
+                let dtheta = two_pi / nsubdivs as f32;
+
+                let mut pts = Vec::with_capacity(i);
+                let r = 12.0;
+                ncollide2d::procedural::utils::push_xy_arc(r, i as u32, dtheta, &mut pts);
+                VertexArray::new(
+                    gl::LINE_STRIP,
+                    pts,
+                    vec![VertexAttribDefinition {
+                        number_of_components: 2,
+                        offset_of_first_element: 0,
+                    }],
+                )
+            })
+            .collect();
+
         OpenGlRenderSystem {
+            circle_vertex_arrays,
             fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
             texture_u_coords: [
@@ -709,14 +731,13 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .projection_mat
                     .set(&system_vars.matrices.ortho);
 
-                for trimesh_2d in &render_commands.trimesh_2d_commands {
-                    // TODO: move bind out of the loop by grouping same vaos
-                    shader.params.model_mat.set(&trimesh_2d.matrix);
-                    shader.params.color.set(&trimesh_2d.color);
-                    shader.params.size.set(&trimesh_2d.size);
-                    shader.params.z.set(0.01 * trimesh_2d.layer as usize as f32);
+                for command in &render_commands.partial_circle_2d_commands {
+                    shader.params.model_mat.set(&command.matrix);
+                    shader.params.color.set(&command.color);
+                    shader.params.size.set(&[command.size, command.size]);
+                    shader.params.z.set(0.01 * command.layer as usize as f32);
 
-                    trimesh_2d.vao.bind().draw();
+                    self.circle_vertex_arrays[command.i].bind().draw();
                 }
             }
 

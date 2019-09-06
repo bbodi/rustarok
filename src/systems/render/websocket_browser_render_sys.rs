@@ -1,8 +1,8 @@
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
     BillboardRenderCommand, Circle3dRenderCommand, Common2DProperties, ModelRenderCommand,
-    Number3dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollectorComponent,
-    Text2dRenderCommand, Texture2dRenderCommand, Trimesh2dRenderCommand,
+    Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle3dRenderCommand,
+    RenderCommandCollectorComponent, Text2dRenderCommand, Texture2dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -60,10 +60,9 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                 &render_commands.normal_matrix,
             );
 
-            // TODO
-            WebSocketBrowserRenderSystem::send_2d_trimesh_commands(
+            WebSocketBrowserRenderSystem::send_2d_partial_circle_commands(
                 &mut self.send_buffer,
-                &render_commands.trimesh_2d_commands,
+                &render_commands.partial_circle_2d_commands,
             );
 
             WebSocketBrowserRenderSystem::send_2d_texture_commands(
@@ -139,11 +138,28 @@ impl WebSocketBrowserRenderSystem {
         }
     }
 
-    fn send_2d_trimesh_commands(
+    fn send_2d_partial_circle_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<Trimesh2dRenderCommand>,
+        render_commands: &Vec<PartialCircle2dRenderCommand>,
     ) {
-
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            send_buffer.write_f32::<LittleEndian>(command.size).unwrap();
+            send_buffer
+                .write_u16::<LittleEndian>(command.layer as u16)
+                .unwrap();
+            send_buffer
+                .write_u16::<LittleEndian>(command.i as u16)
+                .unwrap();
+        }
     }
 
     fn send_3d_model_commands(

@@ -129,6 +129,12 @@ sealed class RenderCommand {
                         val color: Float32Array,
                         val radius: Float) : RenderCommand()
 
+    data class PartialCircle2D(val matrix: Float32Array,
+                               val color: Float32Array,
+                               val layer: Int,
+                               val size: Float,
+                               val index: Int) : RenderCommand()
+
     data class Model3D(val model_instance_index: Int,
                        val is_transparent: Boolean) : RenderCommand()
 
@@ -212,7 +218,9 @@ fun main() {
                             console.info("${map_name}_ground is missing")
                             mismatched_vertex_buffers.add("3d_ground")
                         } else {
-                            renderer.ground_renderer.set_vertex_buffer(gl, ground_vertex_array_data.raw, ground_vertex_array_data.vertex_count)
+                            renderer.ground_renderer.set_vertex_buffer(gl,
+                                                                       ground_vertex_array_data.raw,
+                                                                       ground_vertex_array_data.vertex_count)
                         }
 
                         state = ApppState.ReceivingGroundVertexBuffer
@@ -353,6 +361,7 @@ fun main() {
                 NORMAL_MATRIX = reader.next_3x3matrix()
 
                 while (reader.has_next()) {
+                    parse_partial_circle_2d_render_commands(reader, renderer)
                     parse_texture2d_render_commands(reader, renderer)
                     parse_rectangle3d_render_commands(reader, renderer)
                     parse_circle3d_render_commands(reader, renderer)
@@ -414,6 +423,23 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
                 size = size,
                 server_texture_id = server_texture_id,
                 is_vertically_flipped = is_vertically_flipped))
+    }
+}
+
+private fun parse_partial_circle_2d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val matrix = reader.next_4x4matrix()
+        val size = reader.next_f32()
+        val layer = reader.next_u16()
+        val index = reader.next_u16()
+        renderer.partial_circle2d_render_commands.add(RenderCommand.PartialCircle2D(
+                color = color,
+                matrix = matrix,
+                size = size,
+                layer = layer,
+                index = index
+        ))
     }
 }
 

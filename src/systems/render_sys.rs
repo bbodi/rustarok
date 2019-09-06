@@ -17,12 +17,9 @@ use crate::systems::render::render_command::{RenderCommandCollectorComponent, Ui
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
-use crate::video::VertexArray;
-use crate::video::VertexAttribDefinition;
 use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource, StrEffectId};
 use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
-use std::collections::HashMap;
 
 pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
 /// The values that should be added to the sprite direction based on the camera
@@ -33,39 +30,15 @@ pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0;
 
 pub struct RenderDesktopClientSystem {
-    circle_vertex_arrays: HashMap<i32, VertexArray>,
     damage_render_sys: DamageRenderSystem,
     render_ui_sys: RenderUI,
 }
 
 impl RenderDesktopClientSystem {
     pub fn new() -> RenderDesktopClientSystem {
-        let circle_vertex_arrays = (1..=100)
-            .map(|i| {
-                let nsubdivs = 100;
-                let two_pi = std::f32::consts::PI * 2.0;
-                let dtheta = two_pi / nsubdivs as f32;
-
-                let mut pts = Vec::with_capacity((nsubdivs - i) as usize);
-                let r = 12.0;
-                ncollide2d::procedural::utils::push_xy_arc(r, nsubdivs - i, dtheta, &mut pts);
-                (
-                    i as i32,
-                    VertexArray::new(
-                        gl::LINE_STRIP,
-                        pts,
-                        vec![VertexAttribDefinition {
-                            number_of_components: 2,
-                            offset_of_first_element: 0,
-                        }],
-                    ),
-                )
-            })
-            .collect();
         RenderDesktopClientSystem {
             damage_render_sys: DamageRenderSystem::new(),
             render_ui_sys: RenderUI::new(),
-            circle_vertex_arrays,
         }
     }
 
@@ -1332,7 +1305,7 @@ impl RenderDesktopClientSystem {
                 char_state.attrib_bonuses().durations.armor_bonus_started_at,
                 char_state.attrib_bonuses().durations.armor_bonus_ends_at,
             ) * 100.0) as i32;
-            let perc = perc.max(1);
+            let index = ((100 - perc) - 1).max(0) as usize;
             let x = bar_x + bar_w + shield_icon_texture.width / 2 + 1;
             let y = bounding_rect_2d.top_right[1] - 30;
 
@@ -1341,10 +1314,7 @@ impl RenderDesktopClientSystem {
                 .color(&color)
                 .screen_pos(x, y)
                 .rotation_rad(-std::f32::consts::FRAC_PI_2)
-                .add_trimesh_command(
-                    &self.circle_vertex_arrays[&perc],
-                    UiLayer2d::StatusIndicators,
-                );
+                .add_trimesh_command(index, UiLayer2d::StatusIndicators);
 
             let text_texture = &assets.texts.custom_texts[&armor_bonus.to_string()];
 
