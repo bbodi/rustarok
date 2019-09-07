@@ -1,5 +1,5 @@
 use crate::asset::database::AssetDatabase;
-use crate::asset::str::{KeyFrameType, StrLayer};
+use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
@@ -10,7 +10,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{
     GlTexture, VertexArray, VertexAttribDefinition, Video, TEXTURE_0, TEXTURE_1, TEXTURE_2,
 };
-use crate::{MapRenderData, Shaders};
+use crate::{MapRenderData, Shaders, StrEffectId};
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
@@ -231,6 +231,24 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         }
     }
 
+    pub fn precache_effect(&mut self, effect_id: StrEffectId, str_file: &StrFile) {
+        for key_index in 0..str_file.max_key {
+            for layer_index in 0..str_file.layers.len() {
+                let layer = &str_file.layers[layer_index];
+                let cached_effect_frame =
+                    OpenGlRenderSystem::prepare_effect(layer, key_index as i32);
+                let frame_cache_key = EffectFrameCacheKey {
+                    effect_id,
+                    layer_index,
+                    key_index: key_index as i32,
+                };
+
+                self.str_effect_cache
+                    .insert(frame_cache_key, cached_effect_frame);
+            }
+        }
+    }
+
     fn render_ground(
         shaders: &Shaders,
         projection_matrix: &Matrix4<f32>,
@@ -332,7 +350,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         );
     }
 
-    // TODO: refactor
     fn prepare_effect(layer: &StrLayer, key_index: i32) -> Option<EffectFrameCache> {
         let mut from_id = None;
         let mut to_id = None;
@@ -629,8 +646,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 for (frame_cache_key, commands) in &render_commands.effect_commands {
                     let cached_frame = self.str_effect_cache.get(&frame_cache_key);
-                    let str_file =
-                        &system_vars.map_render_data.str_effects[frame_cache_key.effect_id.0];
+                    let str_file = &system_vars.str_effects[frame_cache_key.effect_id.0];
                     if let None = cached_frame {
                         let layer = &str_file.layers[frame_cache_key.layer_index];
                         let cached_effect_frame =
@@ -734,7 +750,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for command in &render_commands.partial_circle_2d_commands {
                     shader.params.model_mat.set(&command.matrix);
                     shader.params.color.set(&command.color);
-                    shader.params.size.set(&[command.size, command.size]);
+                    shader.params.size.set(&[1.0, 1.0]);
                     shader.params.z.set(0.01 * command.layer as usize as f32);
 
                     self.circle_vertex_arrays[command.i].bind().draw();
@@ -791,7 +807,10 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for command in &render_commands.rectangle_2d_commands {
                     shader.params.color.set(&command.color);
                     shader.params.model_mat.set(&command.matrix);
-                    shader.params.size.set(&command.size);
+                    shader
+                        .params
+                        .size
+                        .set(&[command.size[0] as f32, command.size[1] as f32]);
                     shader.params.z.set(0.01 * command.layer as usize as f32);
 
                     vertex_array_bind.draw();

@@ -750,6 +750,108 @@ fn main() {
         .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
         .unwrap();
 
+    /////////////////////////
+    ///// STR Effects
+    /////////////////////////
+    let mut gl_render_sys = OpenGlRenderSystem::new(&ttf_context);
+    let (elapsed, str_effects) = measure_time(|| {
+        let mut str_effects: Vec<StrFile> = Vec::new();
+
+        load_and_prepare_effect(
+            "firewall",
+            StrEffectType::FireWall,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "stormgust",
+            StrEffectType::StormGust,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "lord",
+            StrEffectType::LordOfVermilion,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+
+        load_and_prepare_effect(
+            "lightning",
+            StrEffectType::Lightning,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "concentration",
+            StrEffectType::Concentration,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "moonstar",
+            StrEffectType::Moonstar,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "hunter_poison",
+            StrEffectType::Poison,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "quagmire",
+            StrEffectType::Quagmire,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "firewall_blue",
+            StrEffectType::FireWallBlue,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+
+        load_and_prepare_effect(
+            "firepillarbomb",
+            StrEffectType::FirePillarBomb,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+        load_and_prepare_effect(
+            "ramadan",
+            StrEffectType::Ramadan,
+            &mut str_effects,
+            &asset_loader,
+            &mut asset_database,
+            &mut gl_render_sys,
+        );
+
+        str_effects
+    });
+    log::info!("str loaded: {}ms", elapsed.as_millis());
+
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<NpcComponent>();
@@ -808,7 +910,7 @@ fn main() {
         .with(AttackSystem, "attack_sys", &["collision_collector"])
         .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
         .with_thread_local(RenderDesktopClientSystem::new())
-        .with_thread_local(OpenGlRenderSystem::new(&ttf_context))
+        .with_thread_local(gl_render_sys)
         .with_thread_local(WebSocketBrowserRenderSystem::new())
         .with_thread_local(sound_system)
         .with_thread_local(FrameEndSystem)
@@ -857,6 +959,7 @@ fn main() {
                 },
             ],
         ),
+        str_effects,
     });
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
@@ -1728,7 +1831,6 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub str_effects: Vec<StrFile>,
 }
 
 pub struct ModelRenderData {
@@ -2182,60 +2284,6 @@ fn load_map(
         .solver
         .set_contact_model(Box::new(SignoriniModel::new()));
 
-    let (elapsed, str_effects) = measure_time(|| {
-        let mut str_effects: Vec<StrFile> = Vec::new();
-
-        str_effects.push(
-            asset_loader
-                .load_effect("firewall", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("stormgust", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(asset_loader.load_effect("lord", asset_database).unwrap());
-        str_effects.push(
-            asset_loader
-                .load_effect("lightning", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("concentration", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("moonstar", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("hunter_poison", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("quagmire", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("firewall_blue", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(
-            asset_loader
-                .load_effect("firepillarbomb", asset_database)
-                .unwrap(),
-        );
-        str_effects.push(asset_loader.load_effect("ramadan", asset_database).unwrap());
-        str_effects
-    });
-    log::info!("str loaded: {}ms", elapsed.as_millis());
-
     (
         MapRenderData {
             gat,
@@ -2257,10 +2305,22 @@ fn load_map(
             ground_walkability_mesh: ground_data.ground_walkability_mesh,
             ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
             ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
-            str_effects,
         },
         physics_world,
     )
+}
+
+pub fn load_and_prepare_effect(
+    name: &str,
+    effect_id: StrEffectType,
+    str_effects: &mut Vec<StrFile>,
+    asset_loader: &AssetLoader,
+    asset_database: &mut AssetDatabase,
+    gl_render_sys: &mut OpenGlRenderSystem,
+) {
+    let str_file = asset_loader.load_effect(name, asset_database).unwrap();
+    gl_render_sys.precache_effect(effect_id.into(), &str_file);
+    str_effects.push(str_file);
 }
 
 pub struct PhysicEngine {

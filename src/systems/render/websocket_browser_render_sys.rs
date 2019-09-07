@@ -1,7 +1,7 @@
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
-    BillboardRenderCommand, Circle3dRenderCommand, Common2DProperties, ModelRenderCommand,
-    Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle3dRenderCommand,
+    BillboardRenderCommand, Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand,
+    PartialCircle2dRenderCommand, Rectangle2dRenderCommand, Rectangle3dRenderCommand,
     RenderCommandCollectorComponent, Text2dRenderCommand, Texture2dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -70,7 +70,6 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                 &render_commands.texture_2d_commands,
             );
 
-            // TODO
             WebSocketBrowserRenderSystem::send_2d_rectangle_commands(
                 &mut self.send_buffer,
                 &render_commands.rectangle_2d_commands,
@@ -121,9 +120,23 @@ impl WebSocketBrowserRenderSystem {
 
     fn send_2d_rectangle_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<Common2DProperties>,
+        render_commands: &Vec<Rectangle2dRenderCommand>,
     ) {
-
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            for v in &command.matrix {
+                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
+            }
+            let packed_int: u32 = ((command.layer as u32) << 24)
+                | ((command.size[0] as u32) << 12)
+                | ((command.size[1] as u32) & 0b1111_11111111);
+            send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
+        }
     }
 
     fn write3x3(send_buffer: &mut Vec<u8>, mat: &Matrix3<f32>) {
@@ -152,7 +165,6 @@ impl WebSocketBrowserRenderSystem {
             for v in &command.matrix {
                 send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
-            send_buffer.write_f32::<LittleEndian>(command.size).unwrap();
             send_buffer
                 .write_u16::<LittleEndian>(command.layer as u16)
                 .unwrap();

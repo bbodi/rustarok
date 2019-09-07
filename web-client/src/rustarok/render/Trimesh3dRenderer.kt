@@ -14,38 +14,40 @@ class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
     private val centered_rectangle_vao = create_centered_rectangle_buffer(gl)
 
 
-    fun render_circle(gl: WebGL2RenderingContext, command: RenderCommand.Circle3D) {
+    fun render_circles(gl: WebGL2RenderingContext, commands: ArrayList<RenderCommand.Circle3D>) {
         gl.useProgram(trimesh_3d_shader.program)
         gl.uniformMatrix4fv(trimesh_3d_shader.projection_mat, false, PROJECTION_MATRIX)
         gl.uniformMatrix4fv(trimesh_3d_shader.view_mat, false, VIEW_MATRIX)
-
-
-        gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
-
-        gl.uniform2f(trimesh_3d_shader.size, command.radius * 2f, command.radius * 2f)
-        gl.uniform4fv(trimesh_3d_shader.color, command.color)
 
         gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, circle_buffer)
         gl.enableVertexAttribArray(trimesh_3d_shader.a_pos)
         gl.vertexAttribPointer(trimesh_3d_shader.a_pos, 3, WebGLRenderingContext.FLOAT, false, 3 * 4, 0)
-        gl.drawArrays(WebGLRenderingContext.LINE_LOOP, 0, CIRCLE_VERTEX_COUNT)
+
+        for (command in commands) {
+            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
+
+            gl.uniform2f(trimesh_3d_shader.size, command.radius * 2f, command.radius * 2f)
+            gl.uniform4fv(trimesh_3d_shader.color, command.color)
+
+            gl.drawArrays(WebGLRenderingContext.LINE_LOOP, 0, CIRCLE_VERTEX_COUNT)
+        }
     }
 
-    fun render_rectangle(gl: WebGL2RenderingContext, command: RenderCommand.Rectangle3D) {
+    fun render_rectangles(gl: WebGL2RenderingContext, commands: ArrayList<RenderCommand.Rectangle3D>) {
         gl.useProgram(trimesh_3d_shader.program)
         gl.uniformMatrix4fv(trimesh_3d_shader.projection_mat, false, PROJECTION_MATRIX)
         gl.uniformMatrix4fv(trimesh_3d_shader.view_mat, false, VIEW_MATRIX)
+        for (command in commands) {
+            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
 
+            gl.uniform2f(trimesh_3d_shader.size, command.w, command.h)
+            gl.uniform4fv(trimesh_3d_shader.color, command.color)
 
-        gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
-
-        gl.uniform2f(trimesh_3d_shader.size, command.w, command.h)
-        gl.uniform4fv(trimesh_3d_shader.color, command.color)
-
-        gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, centered_rectangle_vao)
-        gl.enableVertexAttribArray(trimesh_3d_shader.a_pos)
-        gl.vertexAttribPointer(trimesh_3d_shader.a_pos, 3, WebGLRenderingContext.FLOAT, false, 3 * 4, 0)
-        gl.drawArrays(WebGLRenderingContext.LINE_LOOP, 0, 4)
+            gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, centered_rectangle_vao)
+            gl.enableVertexAttribArray(trimesh_3d_shader.a_pos)
+            gl.vertexAttribPointer(trimesh_3d_shader.a_pos, 3, WebGLRenderingContext.FLOAT, false, 3 * 4, 0)
+            gl.drawArrays(WebGLRenderingContext.LINE_LOOP, 0, 4)
+        }
     }
 
     private fun create_centered_rectangle_buffer(gl: WebGL2RenderingContext): WebGLBuffer {

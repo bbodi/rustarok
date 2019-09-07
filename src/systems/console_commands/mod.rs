@@ -493,8 +493,8 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
                     .asset_loader
                     .load_effect(new_str_name, &mut ecs_world.write_resource())
                     .and_then(|str_file| {
-                        let new_id = StrEffectId(system_vars.map_render_data.str_effects.len());
-                        system_vars.map_render_data.str_effects.push(str_file);
+                        let new_id = StrEffectId(system_vars.str_effects.len());
+                        system_vars.str_effects.push(str_file);
                         Ok(new_id)
                     })
             };

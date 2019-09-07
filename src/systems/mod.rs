@@ -1,3 +1,4 @@
+use crate::asset::str::StrFile;
 use crate::asset::AssetLoader;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skill::Skills;
@@ -97,6 +98,7 @@ pub struct SystemVariables {
     // Todo: put it into the new Graphic module if it is ready
     pub str_effect_vao: DynamicVertexArray,
     pub dev_configs: DevConfig,
+    pub str_effects: Vec<StrFile>,
 }
 
 #[derive(Debug)]

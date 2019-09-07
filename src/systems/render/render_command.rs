@@ -40,7 +40,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
-    pub(super) rectangle_2d_commands: Vec<Common2DProperties>,
+    pub(super) rectangle_2d_commands: Vec<Rectangle2dRenderCommand>,
     pub(super) text_2d_commands: Vec<Text2dRenderCommand>,
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
     pub(super) billboard_commands: Vec<BillboardRenderCommand>,
@@ -106,7 +106,6 @@ impl<'a> RenderCommandCollectorComponent {
 pub struct PartialCircle2dRenderCommand {
     pub(super) i: usize,
     pub(super) color: [u8; 4],
-    pub(super) size: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
@@ -114,6 +113,13 @@ pub struct PartialCircle2dRenderCommand {
 pub struct Common2DProperties {
     pub(super) color: [u8; 4],
     pub(super) size: [f32; 2],
+    pub(super) matrix: Matrix4<f32>,
+    pub(super) layer: UiLayer2d,
+}
+
+pub struct Rectangle2dRenderCommand {
+    pub(super) color: [u8; 4],
+    pub(super) size: [u16; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
@@ -137,13 +143,12 @@ impl<'a> Common2DPropBuilder<'a> {
         }
     }
 
-    pub fn add_trimesh_command(&'a mut self, i: usize, layer: UiLayer2d) {
+    pub fn add_partial_circle_command(&'a mut self, i: usize, layer: UiLayer2d) {
         self.collector
             .partial_circle_2d_commands
             .push(PartialCircle2dRenderCommand {
                 i,
                 color: self.color,
-                size: self.size[0],
                 matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
                 layer,
             });
@@ -152,9 +157,9 @@ impl<'a> Common2DPropBuilder<'a> {
     pub fn add_rectangle_command(&'a mut self, layer: UiLayer2d) {
         self.collector
             .rectangle_2d_commands
-            .push(Common2DProperties {
+            .push(Rectangle2dRenderCommand {
                 color: self.color,
-                size: self.size,
+                size: [self.size[0] as u16, self.size[1] as u16],
                 matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
                 layer,
             });

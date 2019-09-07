@@ -27,6 +27,7 @@ class Renderer(gl: WebGL2RenderingContext) {
     val number_render_commands = arrayListOf<RenderCommand.Number3D>()
     val circle3d_render_commands = arrayListOf<RenderCommand.Circle3D>()
     val partial_circle2d_render_commands = arrayListOf<RenderCommand.PartialCircle2D>()
+    val rectangle2d_render_commands = arrayListOf<RenderCommand.Rectangle2D>()
     val rectangle3d_render_commands = arrayListOf<RenderCommand.Rectangle3D>()
     val texture2d_render_commands = arrayListOf<RenderCommand.Texture2D>()
     val model3d_render_commands = arrayListOf<RenderCommand.Model3D>()
@@ -39,6 +40,7 @@ class Renderer(gl: WebGL2RenderingContext) {
         circle3d_render_commands.clear()
         rectangle3d_render_commands.clear()
         partial_circle2d_render_commands.clear()
+        rectangle2d_render_commands.clear()
     }
 
     fun render(gl: WebGL2RenderingContext) {
@@ -49,24 +51,15 @@ class Renderer(gl: WebGL2RenderingContext) {
 
         sprite_3d_renderer.render_numbers(gl, number_render_commands)
 
-        for (command in model3d_render_commands) {
-            model_renderer.render_model(gl, command, ground_render_command, models, model_instances)
-        }
+        model_renderer.render_models(gl, model3d_render_commands, ground_render_command, models, model_instances)
 
-        for (command in circle3d_render_commands) {
-            trimesh_3d_renderer.render_circle(gl, command)
-        }
-        for (command in rectangle3d_render_commands) {
-            trimesh_3d_renderer.render_rectangle(gl, command)
-        }
+        trimesh_3d_renderer.render_circles(gl, circle3d_render_commands)
+        trimesh_3d_renderer.render_rectangles(gl, rectangle3d_render_commands)
 
-        for (command in partial_circle2d_render_commands) {
-            trimesh_2d_renderer.render_partial_circles(gl, command)
-        }
+        trimesh_2d_renderer.render_partial_circles(gl, partial_circle2d_render_commands)
+        trimesh_2d_renderer.render_rectangles(gl, rectangle2d_render_commands, sprite_vertex_buffer)
 
-        for (command in texture2d_render_commands) {
-            texture_2d_renderer.render_texture_2d(gl, command, sprite_vertex_buffer)
-        }
+        texture_2d_renderer.render_texture_2d(gl, texture2d_render_commands, sprite_vertex_buffer)
     }
 }
 

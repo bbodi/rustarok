@@ -1314,7 +1314,7 @@ impl RenderDesktopClientSystem {
                 .color(&color)
                 .screen_pos(x, y)
                 .rotation_rad(-std::f32::consts::FRAC_PI_2)
-                .add_trimesh_command(index, UiLayer2d::StatusIndicators);
+                .add_partial_circle_command(index, UiLayer2d::StatusIndicators);
 
             let text_texture = &assets.texts.custom_texts[&armor_bonus.to_string()];
 
@@ -1336,7 +1336,7 @@ impl RenderDesktopClientSystem {
         E: Into<StrEffectId>,
     {
         let effect_id = effect.into();
-        let str_file = &system_vars.map_render_data.str_effects[effect_id.0];
+        let str_file = &system_vars.str_effects[effect_id.0];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key;
         let key_index = system_vars

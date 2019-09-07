@@ -7,7 +7,7 @@ class Texture2dRenderer(gl: WebGL2RenderingContext) {
 
     private val tex2d_gl_program = load_texture2d_shader(gl)
 
-    fun render_texture_2d(gl: WebGL2RenderingContext, command: RenderCommand.Texture2D,
+    fun render_texture_2d(gl: WebGL2RenderingContext, commands: ArrayList<RenderCommand.Texture2D>,
                           sprite_vertex_buffer: WebGLBuffer) {
         gl.useProgram(tex2d_gl_program.program)
         gl.uniformMatrix4fv(tex2d_gl_program.projection_mat, false, ORTHO_MATRIX)
@@ -15,22 +15,25 @@ class Texture2dRenderer(gl: WebGL2RenderingContext) {
         gl.activeTexture(WebGLRenderingContext.TEXTURE0)
         gl.uniform1i(tex2d_gl_program.texture, 0)
 
-        gl.uniformMatrix4fv(tex2d_gl_program.model, false, command.matrix)
-        gl.uniform1f(tex2d_gl_program.z, 0.01f * command.layer)
-        gl.uniform2i(tex2d_gl_program.offset, command.offset[0], command.offset[1])
-
-        val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
-        gl.uniform2f(tex2d_gl_program.size, texture.w * command.size, texture.h * command.size)
-        gl.uniform4fv(tex2d_gl_program.color, command.color)
-
-        gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,texture.texture)
-
         gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, sprite_vertex_buffer)
         gl.enableVertexAttribArray(tex2d_gl_program.a_pos)
         gl.enableVertexAttribArray(tex2d_gl_program.a_uv)
         gl.vertexAttribPointer(tex2d_gl_program.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
         gl.vertexAttribPointer(tex2d_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 2 * 4)
-        gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
+
+        for (command in commands) {
+            gl.uniformMatrix4fv(tex2d_gl_program.model, false, command.matrix)
+            gl.uniform1f(tex2d_gl_program.z, 0.01f * command.layer)
+            gl.uniform2i(tex2d_gl_program.offset, command.offset[0], command.offset[1])
+
+            val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
+            gl.uniform2f(tex2d_gl_program.size, texture.w * command.size, texture.h * command.size)
+            gl.uniform4fv(tex2d_gl_program.color, command.color)
+
+            gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
+
+            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
+        }
     }
 
 

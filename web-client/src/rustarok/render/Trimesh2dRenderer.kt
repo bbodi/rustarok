@@ -8,26 +8,48 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
     private val trimesh_2d_shader = load_shader(gl)
     private val circle_buffers = create_partial_circle_vertex_buffers(gl)
 
-
-    fun render_partial_circles(gl: WebGL2RenderingContext, command: RenderCommand.PartialCircle2D) {
+    fun render_rectangles(gl: WebGL2RenderingContext,
+                          commands: List<RenderCommand.Rectangle2D>,
+                          sprite_vertex_buffer: WebGLBuffer) {
         gl.useProgram(trimesh_2d_shader.program)
         gl.uniformMatrix4fv(trimesh_2d_shader.projection_mat, false, ORTHO_MATRIX)
 
-        gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
-
-        gl.uniform2f(trimesh_2d_shader.size, command.size, command.size)
-        gl.uniform4fv(trimesh_2d_shader.color, command.color)
-        gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
-
-        gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, circle_buffers[command.index])
+        gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, sprite_vertex_buffer)
         gl.enableVertexAttribArray(trimesh_2d_shader.a_pos)
-        gl.vertexAttribPointer(trimesh_2d_shader.a_pos, 2, WebGLRenderingContext.FLOAT, false, 2 * 4, 0)
-        gl.drawArrays(WebGLRenderingContext.LINE_STRIP, 0, command.index + 1)
+        gl.vertexAttribPointer(trimesh_2d_shader.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
+
+        for (command in commands) {
+            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
+
+            gl.uniform2f(trimesh_2d_shader.size, command.w.toFloat(), command.h.toFloat())
+            gl.uniform4fv(trimesh_2d_shader.color, command.color)
+            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
+
+            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
+        }
+    }
+
+
+    fun render_partial_circles(gl: WebGL2RenderingContext, commands: List<RenderCommand.PartialCircle2D>) {
+        gl.useProgram(trimesh_2d_shader.program)
+        gl.uniformMatrix4fv(trimesh_2d_shader.projection_mat, false, ORTHO_MATRIX)
+        for (command in commands) {
+            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
+
+            gl.uniform2f(trimesh_2d_shader.size, 1f, 1f)
+            gl.uniform4fv(trimesh_2d_shader.color, command.color)
+            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
+
+            gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, circle_buffers[command.index])
+            gl.enableVertexAttribArray(trimesh_2d_shader.a_pos)
+            gl.vertexAttribPointer(trimesh_2d_shader.a_pos, 2, WebGLRenderingContext.FLOAT, false, 2 * 4, 0)
+            gl.drawArrays(WebGLRenderingContext.LINE_STRIP, 0, command.index + 1)
+        }
     }
 
 
     private fun create_partial_circle_vertex_buffers(gl: WebGL2RenderingContext): Array<WebGLBuffer> {
-        return (1 .. 100).map {
+        return (1..100).map {
             create_partial_circle_vertex_buffer(gl, it)
         }.toTypedArray()
     }
