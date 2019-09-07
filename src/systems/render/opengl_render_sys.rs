@@ -50,7 +50,7 @@ impl StrEffectCache {
     }
 }
 
-pub struct OpenGlRenderSystem {
+pub struct OpenGlRenderSystem<'a, 'b> {
     centered_rectangle_vao: VertexArray,
     circle_vao: VertexArray,
     // damage rendering
@@ -60,7 +60,7 @@ pub struct OpenGlRenderSystem {
     str_effect_cache: StrEffectCache,
     text_cache: HashMap<String, GlTexture>,
     circle_vertex_arrays: Vec<VertexArray>,
-    //    fonts: Fonts<'a, 'b>,
+    fonts: Fonts<'a, 'b>,
 }
 
 pub struct Fonts<'a, 'b> {
@@ -188,10 +188,10 @@ struct EffectFrameCache {
     pub texture_index: usize,
 }
 
-impl OpenGlRenderSystem {
+impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
     pub fn new(
-        gl: &Gl,
-        //        ttf_context: &'a Sdl2TtfContext,
+        gl: Gl,
+        ttf_context: &'a Sdl2TtfContext,
         str_effect_cache: StrEffectCache,
     ) -> OpenGlRenderSystem {
         let single_digit_width = 10.0;
@@ -208,7 +208,7 @@ impl OpenGlRenderSystem {
                 let r = 12.0;
                 ncollide2d::procedural::utils::push_xy_arc(r, i as u32, dtheta, &mut pts);
                 VertexArray::new(
-                    gl,
+                    &gl,
                     gl::LINE_STRIP,
                     pts,
                     vec![VertexAttribDefinition {
@@ -221,7 +221,7 @@ impl OpenGlRenderSystem {
 
         OpenGlRenderSystem {
             circle_vertex_arrays,
-            //            fonts: Fonts::new(ttf_context),
+            fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
             texture_u_coords: [
                 single_digit_u_coord * 0.0,
@@ -483,7 +483,7 @@ impl OpenGlRenderSystem {
     }
 }
 
-impl<'a> specs::System<'a> for OpenGlRenderSystem {
+impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
         specs::ReadStorage<'a, RenderCommandCollectorComponent>,
         specs::ReadStorage<'a, BrowserClient>,
@@ -504,8 +504,6 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             asset_database,
         ): Self::SystemData,
     ) {
-        let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem");
-
         unsafe {
             system_vars
                 .gl
@@ -522,24 +520,26 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             let render_commands: &RenderCommandCollectorComponent = render_commands;
 
             let gl = &system_vars.gl;
-            /////////////////////////////////
-            // GROUND
-            /////////////////////////////////
-            if system_vars.map_render_data.draw_ground {
-                OpenGlRenderSystem::render_ground(
-                    gl,
-                    &system_vars.assets.shaders.ground_shader,
-                    &system_vars.matrices.projection,
-                    &system_vars.map_render_data,
-                    &camera.view_matrix,
-                    &camera.normal_matrix,
-                );
+            {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.ground");
+                if system_vars.map_render_data.draw_ground {
+                    OpenGlRenderSystem::render_ground(
+                        gl,
+                        &system_vars.assets.shaders.ground_shader,
+                        &system_vars.matrices.projection,
+                        &system_vars.map_render_data,
+                        &camera.view_matrix,
+                        &camera.normal_matrix,
+                    );
+                }
             }
 
             /////////////////////////////////
             // 3D Rectangle
             /////////////////////////////////
             {
+                let _stopwatch =
+                    system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
                 let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind(&system_vars.gl);
                 let shader = system_vars.assets.shaders.trimesh_shader.gl_use(gl);
                 shader
@@ -562,6 +562,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 3D Circles
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
                 let vao_bind = self.circle_vao.bind(&system_vars.gl);
                 let shader = system_vars.assets.shaders.trimesh_shader.gl_use(gl);
                 shader
@@ -596,6 +597,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 // 3D Sprites
                 /////////////////////////////////
                 {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.sprite3d");
                     let vao_bind = system_vars
                         .map_render_data
                         .centered_sprite_vertex_array
@@ -643,6 +646,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                 // 3D NUMBERS
                 /////////////////////////////////
                 {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.number3d");
                     unsafe {
                         gl.Disable(gl::DEPTH_TEST);
                     }
@@ -674,6 +679,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 3D EFFECTS
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.effect3d");
                 unsafe {
                     gl.Disable(gl::DEPTH_TEST);
                 }
@@ -688,39 +694,51 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     system_vars.gl.ActiveTexture(gl::TEXTURE0);
                 }
 
-                for (frame_cache_key, commands) in &render_commands.effect_commands {
-                    let cached_frame = self.str_effect_cache.cache.get(&frame_cache_key);
-                    let str_file = &system_vars.str_effects[frame_cache_key.effect_id.0];
-                    if let None = cached_frame {
-                        let layer = &str_file.layers[frame_cache_key.layer_index];
-                        let cached_effect_frame = OpenGlRenderSystem::prepare_effect(
-                            &system_vars.gl,
-                            layer,
-                            frame_cache_key.key_index,
-                        );
-                        self.str_effect_cache
-                            .cache
-                            .insert(frame_cache_key.clone(), cached_effect_frame);
-                    } else if let Some(None) = cached_frame {
-                        continue;
-                    } else if let Some(Some(cached_frame)) = cached_frame {
-                        shader.params.offset.set(gl, &cached_frame.offset);
-                        shader.params.color.set(gl, &cached_frame.color);
-                        unsafe {
-                            gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
+                &render_commands
+                    .effect_commands
+                    .iter()
+                    .filter(|(frame_cache_key, commands)| !commands.is_empty())
+                    .for_each(|(frame_cache_key, commands)| {
+                        let cached_frame = self.str_effect_cache.cache.get(&frame_cache_key);
+                        let str_file = &system_vars.str_effects[frame_cache_key.effect_id.0];
+                        match cached_frame {
+                            None => {
+                                let layer = &str_file.layers[frame_cache_key.layer_index];
+                                let cached_effect_frame = OpenGlRenderSystem::prepare_effect(
+                                    &system_vars.gl,
+                                    layer,
+                                    frame_cache_key.key_index,
+                                );
+                                self.str_effect_cache
+                                    .cache
+                                    .insert(frame_cache_key.clone(), cached_effect_frame);
+                            }
+                            Some(None) => {
+                                // nothing
+                            }
+                            Some(Some(cached_frame)) => {
+                                shader.params.offset.set(gl, &cached_frame.offset);
+                                shader.params.color.set(gl, &cached_frame.color);
+                                unsafe {
+                                    gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
+                                }
+                                str_file.textures[cached_frame.texture_index]
+                                    .bind(&system_vars.gl, TEXTURE_0);
+                                let bind = cached_frame.pos_vao.bind(&system_vars.gl);
+                                for pos in commands {
+                                    let mut matrix = cached_frame.rotation_matrix.clone();
+                                    let m = matrix.as_mut_slice();
+                                    // ignore rotation for now
+                                    m[12] = pos.x;
+                                    m[13] = 0.0;
+                                    m[14] = pos.y;
+                                    m[15] = 1.0;
+                                    shader.params.model_mat.set(gl, &matrix);
+                                    bind.draw(&system_vars.gl);
+                                }
+                            }
                         }
-                        str_file.textures[cached_frame.texture_index]
-                            .bind(&system_vars.gl, TEXTURE_0);
-                        let bind = cached_frame.pos_vao.bind(&system_vars.gl);
-                        for matrix in commands {
-                            shader
-                                .params
-                                .model_mat
-                                .set(gl, &(matrix * cached_frame.rotation_matrix));
-                            bind.draw(&system_vars.gl);
-                        }
-                    }
-                }
+                    });
 
                 unsafe {
                     gl.BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
@@ -732,6 +750,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 3D MODELS
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.models3d");
                 let map_render_data = &system_vars.map_render_data;
                 let shader = system_vars.assets.shaders.model_shader.gl_use(gl);
                 shader
@@ -799,6 +818,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 2D Trimesh
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh2d");
                 let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use(gl);
                 shader
                     .params
@@ -824,6 +844,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 2D Texture
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.texture2d");
                 let shader = system_vars.assets.shaders.sprite2d_shader.gl_use(gl);
                 shader
                     .params
@@ -869,6 +890,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 2D Rectangle
             /////////////////////////////////
             {
+                let _stopwatch =
+                    system_benchmark.start_measurement("OpenGlRenderSystem.rectangle2d");
                 let vertex_array_bind = system_vars
                     .map_render_data
                     .sprite_vertex_array
@@ -899,6 +922,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
             // 2D Text
             /////////////////////////////////
             {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.text2d");
                 let shader = system_vars.assets.shaders.sprite2d_shader.gl_use(gl);
                 shader
                     .params
@@ -914,28 +938,31 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem {
                     system_vars.gl.ActiveTexture(gl::TEXTURE0);
                 }
                 for command in &render_commands.text_2d_commands {
-                    //                    let texture = self.text_cache.entry(command.text.clone()).or_insert(
-                    //                        Video::create_text_texture_inner(
-                    //                            &system_vars.gl,
-                    //                            &self.fonts.normal_font,
-                    //                            &command.text,
-                    //                        ),
-                    //                    );
-                    //
-                    //                    let width = texture.width as f32;
-                    //                    let height = texture.height as f32;
-                    //                    unsafe {
-                    //                        system_vars.gl.BindTexture(gl::TEXTURE_2D, texture.id().0);
-                    //                    }
-                    //                    shader.params.model_mat.set(gl, &command.matrix);
-                    //                    shader.params.z.set(gl, 0.01 * command.layer as usize as f32);
-                    //                    shader.params.offset.set(gl, 0, 0);
-                    //                    shader
-                    //                        .params
-                    //                        .size
-                    //                        .set(gl, &[width * command.size, height * command.size]);
-                    //                    shader.params.color.set(gl, &command.color);
-                    //                    vertex_array_bind.draw(&system_vars.gl);
+                    let texture = self.text_cache.entry(command.text.clone()).or_insert(
+                        Video::create_text_texture_inner(
+                            &system_vars.gl,
+                            &self.fonts.normal_font,
+                            &command.text,
+                        ),
+                    );
+
+                    let width = texture.width as f32;
+                    let height = texture.height as f32;
+                    unsafe {
+                        system_vars.gl.BindTexture(gl::TEXTURE_2D, texture.id().0);
+                    }
+                    shader.params.model_mat.set(gl, &command.matrix);
+                    shader
+                        .params
+                        .z
+                        .set(gl, 0.01 * command.layer as usize as f32);
+                    shader.params.offset.set(gl, 0, 0);
+                    shader
+                        .params
+                        .size
+                        .set(gl, &[width * command.size, height * command.size]);
+                    shader.params.color.set(gl, &command.color);
+                    vertex_array_bind.draw(&system_vars.gl);
                 }
             }
         }

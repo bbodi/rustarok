@@ -24,40 +24,31 @@ extern crate sublime_fuzzy;
 extern crate websocket;
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
-use byteorder::{LittleEndian, WriteBytesExt};
 use imgui::{ImString, ImVec2};
 use log::LevelFilter;
-use nalgebra::{Matrix4, Point2, Vector2};
+use nalgebra::{Matrix4, Point2};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
 use specs::Join;
-use websocket::OwnedMessage;
 
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
 use crate::components::char::{
-    CharActionIndex, CharType, CharacterStateComponent, NpcComponent, Percentage, Team,
+    CharActionIndex, CharType, CharacterStateComponent, NpcComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CastMode, CharEntityId, ControllerComponent, ControllerEntityId,
     HumanInputComponent,
 };
-use crate::components::skills::fire_bomb::FireBombStatus;
-use crate::components::skills::skill::SkillManifestationComponent;
-use crate::components::status::absorb_shield::AbsorbStatus;
-use crate::components::status::attrib_mod::ArmorModifierStatus;
-use crate::components::status::heal_area::HealApplierArea;
-use crate::components::status::status::{ApplyStatusComponentPayload, MainStatuses};
-use crate::components::status::status_applier_area::StatusApplierArea;
-use crate::components::{AttackType, BrowserClient, MinionComponent};
+use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::JobId;
+use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
 use crate::runtime_assets::ecs::create_ecs_world;
@@ -70,7 +61,9 @@ use crate::shaders::load_shaders;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
-use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
+use crate::systems::console_system::{
+    CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
+};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -97,6 +90,7 @@ mod consts;
 mod cursor;
 mod effect;
 mod my_gl;
+mod network;
 mod runtime_assets;
 mod shaders;
 mod video;
@@ -165,9 +159,6 @@ fn main() {
     // !!! gl_context: sdl2::video::GLContext THIS MUST BE KEPT IN SCOPE, DON'T REMOVE IT!
     let (mut video, gl, _gl_context) = Video::init(&sdl_context);
 
-    let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_database);
-    let opengl_render_sys = OpenGlRenderSystem::new(&gl, /*&ttf_context,*/ str_effect_cache);
-
     let map_name = "prontera";
     let (map_render_data, physics_world) = load_map(
         &gl,
@@ -183,6 +174,8 @@ fn main() {
     let mut ecs_world = create_ecs_world();
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+    let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_database);
+    let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
     let (maybe_sound_system, sounds) = init_audio_and_load_sounds(&sdl_context, &asset_loader);
     let system_vars = SystemVariables::new(
         load_sprites(&gl, &asset_loader, &mut asset_database, &PLAYABLE_OUTLOOKS),
@@ -285,367 +278,47 @@ fn main() {
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
         .unwrap();
-    let mut last_tick_time: u64 = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let mut last_tick_time: u64 = get_current_ms(SystemTime::now());
     let mut next_minion_spawn = ElapsedTime(2.0);
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
-    let mut sent_bytes_per_second: usize = 0;
-    let mut sent_bytes_per_second_counter: usize = 0;
     let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
     // Add static skill manifestations
     {
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(StatusApplierArea::new(
-                        "Poison".to_owned(),
-                        move |_now| {
-                            ApplyStatusComponentPayload::from_main_status(MainStatuses::Poison)
-                        },
-                        &v2!(251, -213),
-                        v2!(2, 3),
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
-
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(StatusApplierArea::new(
-                        "AbsorbShield".to_owned(),
-                        move |now| {
-                            ApplyStatusComponentPayload::from_secondary(Box::new(
-                                AbsorbStatus::new(desktop_client_char, now, 3.0),
-                            ))
-                        },
-                        &v2!(255, -213),
-                        v2!(2, 3),
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
-
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(StatusApplierArea::new(
-                        "FireBomb".to_owned(),
-                        move |now| {
-                            ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
-                                caster_entity_id: desktop_client_char,
-                                started: now,
-                                until: now.add_seconds(2.0),
-                            }))
-                        },
-                        &v2!(260, -213),
-                        v2!(2, 3),
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
-
-        // armor up
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(StatusApplierArea::new(
-                        "ArmorUp".to_owned(),
-                        move |now| {
-                            ApplyStatusComponentPayload::from_secondary(Box::new(
-                                ArmorModifierStatus::new(now, Percentage(70)),
-                            ))
-                        },
-                        &v2!(265, -213),
-                        v2!(2, 3),
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
-
-        // armor down
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(StatusApplierArea::new(
-                        "ArmorDown".to_owned(),
-                        move |now| {
-                            ApplyStatusComponentPayload::from_secondary(Box::new(
-                                ArmorModifierStatus::new(now, Percentage(-30)),
-                            ))
-                        },
-                        &v2!(270, -213),
-                        v2!(2, 3),
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
-
-        // HEAL
-        let area_status_id = ecs_world.create_entity().build();
-        ecs_world
-            .write_storage()
-            .insert(
-                area_status_id,
-                SkillManifestationComponent::new(
-                    area_status_id,
-                    Box::new(HealApplierArea::new(
-                        "Heal",
-                        AttackType::Heal(50),
-                        &v2!(273, -213),
-                        v2!(2, 3),
-                        0.5,
-                        desktop_client_char,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                    )),
-                ),
-            )
-            .unwrap();
+        for command in &[
+            "spawn_area poison 50 2 3 2000 500 251 -213",
+            "spawn_area absorb 50 2 3 2000 3000 255 -213",
+            "spawn_area firebomb 50 2 3 2000 2000 260 -213",
+            "spawn_area armor 70 2 3 2000 10000 265 -213",
+            "spawn_area armor -30 2 3 2000 10000 270 -213",
+            "spawn_area heal 50 2 3 500 0 273 -213",
+        ] {
+            execute_console_command(
+                command,
+                &command_defs,
+                &mut ecs_world,
+                desktop_client_char,
+                desktop_client_controller,
+            );
+            ecs_world.maintain();
+        }
     }
+
     start_web_server();
 
     'running: loop {
-        match websocket_server.accept() {
-            Ok(wsupgrade) => {
-                let browser_socket = wsupgrade.accept().unwrap();
-                browser_socket.set_nonblocking(true).unwrap();
+        handle_new_connections(map_name, &mut ecs_world, &mut websocket_server);
 
-                let mut browser_client = BrowserClient::new(browser_socket);
-                {
-                    let asset_db: &AssetDatabase = &ecs_world.read_resource();
-                    let system_vars = &ecs_world.read_resource::<SystemVariables>();
-                    let welcome_data = json!({
-                        "screen_width": VIDEO_WIDTH,
-                        "screen_height": VIDEO_HEIGHT,
-                        "map_name": map_name,
-                        "asset_database": serde_json::to_value(asset_db).unwrap(),
-                        "ground": json!({
-                            "light_dir" : system_vars.map_render_data.rsw.light.direction,
-                            "light_ambient" : system_vars.map_render_data.rsw.light.ambient,
-                            "light_diffuse" : system_vars.map_render_data.rsw.light.diffuse,
-                            "light_opacity" : system_vars.map_render_data.rsw.light.opacity,
-                        }),
-                        "projection_mat": system_vars
-                                            .matrices
-                                            .projection.as_slice(),
-                        "ortho_mat": system_vars
-                                            .matrices
-                                            .ortho.as_slice()
-                    });
-                    let welcome_msg = serde_json::to_vec(&welcome_data).unwrap();
-                    browser_client.send_message(&welcome_msg);
-                };
+        handle_client_handshakes(&mut ecs_world);
 
-                let browser_client_entity = ecs_world.create_entity().with(browser_client).build();
-                log::info!("Client connected: {:?}", browser_client_entity);
-            }
-            _ => { /* Nobody tried to connect, move on.*/ }
-        };
-
-        {
-            let projection_mat = ecs_world
-                .read_resource::<SystemVariables>()
-                .matrices
-                .projection;
-            let entities = &ecs_world.entities();
-            let updater = ecs_world.read_resource::<LazyUpdate>();
-            for (controller_id, client, _not_camera) in (
-                &ecs_world.entities(),
-                &mut ecs_world.write_storage::<BrowserClient>(),
-                !&ecs_world.read_storage::<CameraComponent>(),
-            )
-                .join()
-            {
-                let controller_id = ControllerEntityId(controller_id);
-                if let Ok(msg) = client.receive() {
-                    match msg {
-                        OwnedMessage::Binary(_buf) => {}
-                        OwnedMessage::Text(text) => {
-                            let deserialized: serde_json::Value =
-                                serde_json::from_str(&text).unwrap();
-                            if let Some(mismatched_textures) =
-                                deserialized["mismatched_textures"].as_array()
-                            {
-                                log::trace!("mismatched_textures: {:?}", mismatched_textures);
-                                let mut response_buf =
-                                    Vec::with_capacity(mismatched_textures.len() * 256 * 256);
-                                for mismatched_texture in mismatched_textures {
-                                    ecs_world
-                                        .read_resource::<AssetDatabase>()
-                                        .copy_texture_into(
-                                            &ecs_world.read_resource::<SystemVariables>().gl,
-                                            mismatched_texture.as_str().unwrap_or(""),
-                                            &mut response_buf,
-                                        );
-                                    client.send_message(&response_buf);
-                                    response_buf.clear();
-                                }
-                                // send closing message
-                                {
-                                    response_buf.push(0xB1);
-                                    response_buf.push(0x6B);
-                                    response_buf.push(0x00);
-                                    response_buf.push(0xB5);
-                                    client.send_message(&response_buf);
-                                }
-                            }
-                            if let Some(mismatched_vertex_buffers) =
-                                deserialized["mismatched_vertex_buffers"].as_array()
-                            {
-                                log::trace!(
-                                    "mismatched_vertex_buffers: {:?}",
-                                    mismatched_vertex_buffers
-                                );
-                                let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                                for mismatched_vertex_buffer in mismatched_vertex_buffers {
-                                    if let Some("3d_ground") = mismatched_vertex_buffer.as_str() {
-                                        response_buf.write_u8(1).unwrap();
-                                        let ground_vao = &ecs_world
-                                            .read_resource::<SystemVariables>()
-                                            .map_render_data
-                                            .ground_vertex_array;
-                                        ground_vao.write_into(&mut response_buf);
-                                        client.send_message(&response_buf);
-                                        response_buf.clear();
-                                    }
-                                }
-                                // send closing message
-                                {
-                                    response_buf.push(0xB1);
-                                    response_buf.push(0x6B);
-                                    response_buf.push(0x00);
-                                    response_buf.push(0xB5);
-                                    client.send_message(&response_buf);
-                                }
-                            }
-                            if deserialized["send_me_model_instances"].as_bool().is_some() {
-                                let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                                for model_instance in &ecs_world
-                                    .read_resource::<SystemVariables>()
-                                    .map_render_data
-                                    .model_instances
-                                {
-                                    response_buf
-                                        .write_u32::<LittleEndian>(
-                                            model_instance.asset_db_model_index as u32,
-                                        )
-                                        .unwrap();
-                                    for v in &model_instance.matrix {
-                                        response_buf.write_f32::<LittleEndian>(*v).unwrap();
-                                    }
-                                }
-                                client.send_message(&response_buf);
-                            }
-                            if let Some(missing_models) = deserialized["missing_models"].as_array()
-                            {
-                                log::trace!("missing_models: {:?}", missing_models);
-                                let mut response_buf =
-                                    Vec::with_capacity(missing_models.len() * 256 * 256);
-                                for missing_model in missing_models {
-                                    ecs_world.read_resource::<AssetDatabase>().copy_model_into(
-                                        missing_model.as_str().unwrap_or(""),
-                                        &mut response_buf,
-                                    );
-                                    client.send_message(&response_buf);
-                                    response_buf.clear();
-                                }
-                                // send closing message
-                                {
-                                    response_buf.push(0xB1);
-                                    response_buf.push(0x6B);
-                                    response_buf.push(0x00);
-                                    response_buf.push(0xB5);
-                                    client.send_message(&response_buf);
-                                }
-                            }
-                            if deserialized["ready"].as_bool().is_some() {
-                                let char_entity_id = CharEntityId(entities.create());
-                                components::char::attach_human_player_components(
-                                    "browser",
-                                    char_entity_id,
-                                    controller_id,
-                                    &updater,
-                                    &mut ecs_world.write_resource::<PhysicEngine>(),
-                                    projection_mat,
-                                    Point2::new(250.0, -200.0),
-                                    Sex::Male,
-                                    JobId::CRUSADER,
-                                    2,
-                                    1,
-                                    Team::Right,
-                                    &ecs_world.read_resource::<SystemVariables>().dev_configs,
-                                );
-                            }
-                        }
-                        OwnedMessage::Close(_) => {}
-                        OwnedMessage::Ping(_) => {}
-                        OwnedMessage::Pong(buf) => {
-                            let now_ms = SystemTime::now()
-                                .duration_since(SystemTime::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis();
-                            let (int_bytes, _rest) = buf.split_at(std::mem::size_of::<u128>());
-                            let ping_sent = u128::from_le_bytes(int_bytes.try_into().unwrap());
-                            client.set_ping(now_ms - ping_sent);
-                        }
-                    }
-                }
-            }
-        }
-
-        {
-            let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-            let inputs = storage.get_mut(desktop_client_controller.0).unwrap();
-
-            for event in video.event_pump.poll_iter() {
-                video.imgui_sdl2.handle_event(&mut video.imgui, &event);
-                match event {
-                    sdl2::event::Event::Quit { .. } => {
-                        break 'running;
-                    }
-                    _ => {
-                        inputs.inputs.push(event);
-                    }
-                }
-            }
+        let quit = !update_desktop_inputs(&mut video, &mut ecs_world, desktop_client_controller);
+        if quit {
+            break 'running;
         }
 
         ecs_dispatcher.dispatch(&mut ecs_world.res);
@@ -661,7 +334,6 @@ fn main() {
             desktop_client_controller,
             &mut video,
             &mut ecs_world,
-            sent_bytes_per_second,
             &mut map_name_filter,
             &all_map_names,
             &mut filtered_map_names,
@@ -691,6 +363,7 @@ fn main() {
         }
 
         video.gl_swap_window();
+
         std::thread::sleep(Duration::from_millis(
             ecs_world
                 .read_resource::<SystemVariables>()
@@ -698,10 +371,7 @@ fn main() {
                 .sleep_ms,
         ));
         let now = std::time::SystemTime::now();
-        let now_ms = now
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = get_current_ms(now);
         let dt = (now_ms - last_tick_time) as f32 / 1000.0;
         last_tick_time = now_ms;
         if now >= next_second {
@@ -710,38 +380,26 @@ fn main() {
             if fps_history.len() > 30 {
                 fps_history.remove(0);
             }
-            //
-            let sh = &mut ecs_world.write_resource::<SystemFrameDurations>().0;
-            system_frame_durations.0 = sh.clone();
-            sh.clear();
+
+            {
+                let benchmarks = &mut ecs_world.write_resource::<SystemFrameDurations>().0;
+                system_frame_durations.0 = benchmarks.clone();
+                benchmarks.clear();
+            }
 
             fps_counter = 0;
-            sent_bytes_per_second = sent_bytes_per_second_counter;
-            sent_bytes_per_second_counter = 0;
             next_second = std::time::SystemTime::now()
                 .checked_add(Duration::from_secs(1))
                 .unwrap();
 
             video.set_title(&format!("Rustarok {} FPS", fps));
 
-            // send a ping packet every second
-            let now_ms = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis();
-            let data = now_ms.to_le_bytes();
-            let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
-            for browser_client in (&mut browser_storage).join() {
-                browser_client.send_ping(&data);
-                browser_client.reset_byte_per_second();
-            }
+            send_ping_packets(&mut ecs_world)
         }
         fps_counter += 1;
-        ecs_world.write_resource::<SystemVariables>().tick += 1;
-        ecs_world.write_resource::<SystemVariables>().dt.0 =
-            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
-        ecs_world.write_resource::<SystemVariables>().time.0 +=
-            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        ecs_world
+            .write_resource::<SystemVariables>()
+            .update_timers(dt);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
         if next_minion_spawn.is_earlier_than(now)
@@ -751,57 +409,122 @@ fn main() {
                 .minions_enabled
         {
             next_minion_spawn = now.add_seconds(2.0);
-
-            {
-                let char_entity_id = create_random_char_minion(
-                    &mut ecs_world,
-                    p2!(
-                        MinionAiSystem::CHECKPOINTS[0][0],
-                        MinionAiSystem::CHECKPOINTS[0][1]
-                    ),
-                    Team::Right,
-                );
-                ecs_world
-                    .create_entity()
-                    .with(ControllerComponent::new(char_entity_id))
-                    .with(MinionComponent { fountain_up: false });
-            }
-
-            {
-                let entity_id = create_random_char_minion(
-                    &mut ecs_world,
-                    p2!(
-                        MinionAiSystem::CHECKPOINTS[5][0],
-                        MinionAiSystem::CHECKPOINTS[5][1]
-                    ),
-                    Team::Left,
-                );
-                let mut storage = ecs_world.write_storage();
-                storage
-                    .insert(entity_id.0, MinionComponent { fountain_up: false })
-                    .unwrap();
-            }
+            spawn_minions(&mut ecs_world)
         }
 
         // runtime configs
-        match runtime_conf_watcher_rx.try_recv() {
-            Ok(_event) => {
-                if let Ok(new_config) = DevConfig::new() {
-                    ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
-                    for char_state in
-                        (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
-                    {
-                        char_state.update_base_attributes(
-                            &ecs_world.write_resource::<SystemVariables>().dev_configs,
-                        );
-                    }
-                    log::info!("Configs has been reloaded");
-                } else {
-                    log::warn!("Config error");
-                }
+        reload_configs_if_changed(&runtime_conf_watcher_rx, &mut ecs_world);
+    }
+}
+
+fn update_desktop_inputs(
+    video: &mut Video,
+    ecs_world: &mut World,
+    desktop_client_controller: ControllerEntityId,
+) -> bool {
+    let mut storage = ecs_world.write_storage::<HumanInputComponent>();
+    let inputs = storage.get_mut(desktop_client_controller.0).unwrap();
+
+    for event in video.event_pump.poll_iter() {
+        video.imgui_sdl2.handle_event(&mut video.imgui, &event);
+        match event {
+            sdl2::event::Event::Quit { .. } => {
+                return false;
             }
-            _ => {}
-        };
+            _ => {
+                inputs.inputs.push(event);
+            }
+        }
+    }
+    return true;
+}
+
+pub fn get_current_ms(now: SystemTime) -> u64 {
+    now.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+fn send_ping_packets(ecs_world: &mut World) -> () {
+    let now_ms = get_current_ms(SystemTime::now());
+    let data = now_ms.to_le_bytes();
+    let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
+    for browser_client in (&mut browser_storage).join() {
+        browser_client.send_ping(&data);
+        browser_client.reset_byte_per_second();
+    }
+}
+
+fn spawn_minions(ecs_world: &mut World) -> () {
+    {
+        let char_entity_id = create_random_char_minion(
+            ecs_world,
+            p2!(
+                MinionAiSystem::CHECKPOINTS[0][0],
+                MinionAiSystem::CHECKPOINTS[0][1]
+            ),
+            Team::Right,
+        );
+        ecs_world
+            .create_entity()
+            .with(ControllerComponent::new(char_entity_id))
+            .with(MinionComponent { fountain_up: false });
+    }
+    {
+        let entity_id = create_random_char_minion(
+            ecs_world,
+            p2!(
+                MinionAiSystem::CHECKPOINTS[5][0],
+                MinionAiSystem::CHECKPOINTS[5][1]
+            ),
+            Team::Left,
+        );
+        let mut storage = ecs_world.write_storage();
+        storage
+            .insert(entity_id.0, MinionComponent { fountain_up: false })
+            .unwrap();
+    }
+}
+
+fn reload_configs_if_changed(
+    runtime_conf_watcher_rx: &crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
+    ecs_world: &mut World,
+) {
+    match runtime_conf_watcher_rx.try_recv() {
+        Ok(_event) => {
+            if let Ok(new_config) = DevConfig::new() {
+                ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
+                for char_state in (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
+                {
+                    char_state.update_base_attributes(
+                        &ecs_world.write_resource::<SystemVariables>().dev_configs,
+                    );
+                }
+                log::info!("Configs has been reloaded");
+            } else {
+                log::warn!("Config error");
+            }
+        }
+        _ => {}
+    };
+}
+
+fn execute_console_command(
+    command: &str,
+    command_defs: &HashMap<String, CommandDefinition>,
+    ecs_world: &mut World,
+    desktop_client_char: CharEntityId,
+    desktop_client_controller: ControllerEntityId,
+) {
+    {
+        let args = CommandArguments::new(command);
+        let command_def = &command_defs[args.get_command_name().unwrap()];
+        let result = (command_def.action)(
+            desktop_client_controller,
+            desktop_client_char,
+            &args,
+            ecs_world,
+        );
     }
 }
 
@@ -869,7 +592,6 @@ fn imgui_frame(
     desktop_client_entity: ControllerEntityId,
     video: &mut Video,
     ecs_world: &mut specs::world::World,
-    sent_bytes_per_second: usize,
     mut map_name_filter: &mut ImString,
     all_map_names: &Vec<String>,
     filtered_map_names: &mut Vec<String>,
@@ -1037,13 +759,6 @@ fn imgui_frame(
                 ));
                 ui.text(im_str!("yaw: {}, pitch: {}", camera.yaw, camera.pitch));
                 ui.text(im_str!("FPS: {}", fps));
-                let (traffic, unit) = if sent_bytes_per_second > 1024 * 1024 {
-                    (sent_bytes_per_second / 1024 / 1024, "Mb")
-                } else if sent_bytes_per_second > 1024 {
-                    (sent_bytes_per_second / 1024, "Kb")
-                } else {
-                    (sent_bytes_per_second, "bytes")
-                };
 
                 ui.plot_histogram(im_str!("FPS"), fps_history)
                     .scale_min(100.0)
@@ -1076,8 +791,6 @@ fn imgui_frame(
                         ),
                     );
                 }
-                ui.text(im_str!("Traffic: {} {}", traffic, unit));
-
                 let browser_storage = ecs_world.read_storage::<BrowserClient>();
                 for browser_client in browser_storage.join() {
                     ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));

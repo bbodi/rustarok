@@ -13,7 +13,7 @@ use crate::runtime_assets::graphic::Texts;
 use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::Shaders;
 use crate::video::{ortho, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::{DeltaTime, ElapsedTime, SpriteResource};
+use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
 use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
@@ -146,6 +146,12 @@ impl SystemVariables {
             str_effects,
             gl,
         }
+    }
+
+    pub fn update_timers(&mut self, dt: f32) {
+        self.tick += 1;
+        self.dt.0 = dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        self.time.0 += dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
     }
 }
 

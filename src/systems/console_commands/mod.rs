@@ -492,7 +492,7 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
                 system_vars
                     .asset_loader
                     .load_effect(
-                        &ecs_world.read_resource::<SystemVariables>().gl,
+                        &system_vars.gl,
                         new_str_name,
                         &mut ecs_world.write_resource(),
                     )
@@ -678,11 +678,16 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
             let height = args.as_int(3).unwrap_or(3);
             let interval = args.as_int(4).unwrap_or(500) as f32 / 1000.0;
             let time = args.as_int(5).unwrap_or(500);
+            let x = args.as_int(6).map(|it| it as f32);
+            let y = args.as_int(7).map(|it| it as f32);
 
-            let hero_pos = {
-                let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                let char_state = storage.get(self_char_id.0).unwrap();
-                char_state.pos()
+            let pos = {
+                let hero_pos = {
+                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    let char_state = storage.get(self_char_id.0).unwrap();
+                    char_state.pos()
+                };
+                v2!(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y))
             };
             let area_status_id = ecs_world.create_entity().build();
             ecs_world
@@ -695,7 +700,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                             "heal" => Box::new(HealApplierArea::new(
                                 "Heal",
                                 AttackType::Heal(value.max(0) as u32),
-                                &hero_pos,
+                                &pos,
                                 v2!(width, height),
                                 interval,
                                 self_char_id,
@@ -704,7 +709,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                             "damage" => Box::new(HealApplierArea::new(
                                 "Damage",
                                 AttackType::Basic(value.max(0) as u32),
-                                &hero_pos,
+                                &pos,
                                 v2!(width, height),
                                 interval,
                                 self_char_id,
@@ -718,7 +723,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                         create_status_payload(&name, self_char_id, now, time, value)
                                             .unwrap()
                                     },
-                                    &hero_pos,
+                                    &pos,
                                     v2!(width, height),
                                     self_char_id,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -740,6 +745,9 @@ fn create_status_payload(
     time: i32,
     value: i32,
 ) -> Result<ApplyStatusComponentPayload, String> {
+    dbg!(name);
+    dbg!(time);
+    dbg!(value);
     match name {
         "absorb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             AbsorbStatus::new(self_controller_id, now, time as f32 / 1000.0),
@@ -761,7 +769,7 @@ fn create_status_payload(
     }
 }
 
-pub const STATUS_NAMES: &'static [&'static str] = &["absorb", "posion", "firebomb", "armor"];
+pub const STATUS_NAMES: &'static [&'static str] = &["absorb", "poison", "firebomb", "armor"];
 
 pub(super) fn cmd_add_status() -> CommandDefinition {
     CommandDefinition {

@@ -692,6 +692,7 @@ pub enum CommandParamType {
     Float,
 }
 
+#[derive(Debug)]
 pub struct CommandArguments {
     args: Vec<CommandElement>,
 }
@@ -705,7 +706,7 @@ struct CommandElement {
 }
 
 impl CommandArguments {
-    fn new(text: &str) -> CommandArguments {
+    pub fn new(text: &str) -> CommandArguments {
         let mut args = Vec::with_capacity(3);
         let mut qoute_started = false;
         let mut current_str = String::with_capacity(12);

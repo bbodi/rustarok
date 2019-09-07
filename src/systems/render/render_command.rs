@@ -1,4 +1,3 @@
-use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
@@ -46,7 +45,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) billboard_commands: Vec<BillboardRenderCommand>,
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
     pub(super) model_commands: Vec<ModelRenderCommand>,
-    pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Matrix4<f32>>>,
+    pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Vector2<f32>>>,
     pub(super) view_matrix: Matrix4<f32>,
     pub(super) normal_matrix: Matrix3<f32>,
 }
@@ -472,11 +471,7 @@ impl<'a> Common3DPropBuilder<'a> {
             .effect_commands
             .entry(frame_cache_key.clone())
             .or_insert(Vec::with_capacity(128))
-            .push({
-                let mut matrix = Matrix4::<f32>::identity();
-                matrix.prepend_translation_mut(&v2_to_v3(pos));
-                matrix
-            });
+            .push(*pos);
     }
 
     pub fn add_number_command(&'a mut self, value: u32, digit_count: u8) {
