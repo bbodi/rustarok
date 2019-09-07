@@ -1,8 +1,9 @@
 extern crate rand;
 
 use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
-use crate::{ElapsedTime, StrEffectId};
+use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::DefaultBodyHandle;
 use specs::prelude::*;

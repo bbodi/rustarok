@@ -1,7 +1,33 @@
 use crate::asset::AssetLoader;
 use crate::systems::SystemFrameDurations;
 use specs::prelude::*;
-use std::collections::HashMap;
+
+#[derive(Eq, Hash, PartialEq, Copy, Clone)]
+pub struct SoundId(usize);
+pub const DUMMY_SOUND_ID: SoundId = SoundId(0);
+pub struct SoundChunkStore {
+    sounds: Vec<sdl2::mixer::Chunk>,
+}
+
+impl SoundChunkStore {
+    pub fn new() -> SoundChunkStore {
+        SoundChunkStore { sounds: Vec::new() }
+    }
+
+    pub fn load_wav(&mut self, path: &str, asset_loader: &AssetLoader) -> Result<SoundId, String> {
+        let wav = asset_loader.load_wav(path)?;
+        return Ok(self.store_wav(wav));
+    }
+
+    pub fn store_wav(&mut self, chunk: sdl2::mixer::Chunk) -> SoundId {
+        let id = SoundId(self.sounds.len());
+        self.sounds.push(chunk);
+        return id;
+    }
+    pub fn get(&self, sound_id: SoundId) -> &sdl2::mixer::Chunk {
+        &self.sounds[sound_id.0]
+    }
+}
 
 #[derive(Component)]
 pub struct AudioCommandCollectorComponent {
@@ -28,43 +54,14 @@ impl AudioCommandCollectorComponent {
     }
 }
 
-struct Sounds {
-    sounds: HashMap<SoundId, sdl2::mixer::Chunk>,
-}
-
-impl Sounds {
-    pub fn new() -> Sounds {
-        Sounds {
-            sounds: HashMap::new(),
-        }
-    }
-    pub fn store_wav(&mut self, chunk: sdl2::mixer::Chunk) -> SoundId {
-        let id = SoundId(self.sounds.len());
-        self.sounds.insert(id, chunk);
-        return id;
-    }
-    pub fn get(&self, sound_id: SoundId) -> &sdl2::mixer::Chunk {
-        &self.sounds[&sound_id]
-    }
-}
-
 pub struct SoundSystem {
-    sounds: Sounds,
+    sdl_audio: sdl2::AudioSubsystem,
+    sounds: SoundChunkStore,
 }
-
-#[derive(Eq, Hash, PartialEq, Copy, Clone)]
-pub struct SoundId(usize);
 
 impl SoundSystem {
-    pub fn new() -> SoundSystem {
-        SoundSystem {
-            sounds: Sounds::new(),
-        }
-    }
-
-    pub fn load_wav(&mut self, path: &str, asset_loader: &AssetLoader) -> Result<SoundId, String> {
-        let chunk = asset_loader.load_wav(path)?;
-        return Ok(self.sounds.store_wav(chunk));
+    pub fn new(sdl_audio: sdl2::AudioSubsystem, sounds: SoundChunkStore) -> SoundSystem {
+        return SoundSystem { sdl_audio, sounds };
     }
 }
 

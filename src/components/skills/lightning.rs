@@ -4,10 +4,11 @@ use crate::components::skills::skill::{
     SkillManifestation, SkillManifestationComponent, WorldCollisions,
 };
 use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
+use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine, StrEffectType};
+use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use specs::{Entity, LazyUpdate};
 

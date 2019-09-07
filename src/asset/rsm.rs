@@ -1,7 +1,9 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::my_gl as gl;
+use crate::my_gl::Gl;
+use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
-use crate::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use nalgebra::{
     Matrix3, Matrix4, Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3, Vector4,
 };
@@ -336,6 +338,7 @@ impl Rsm {
     }
 
     pub fn generate_meshes_by_texture_id(
+        gl: &Gl,
         model_bbox: &BoundingBox,
         shade_type: i32,
         is_only: bool,
@@ -376,6 +379,7 @@ impl Rsm {
                     let (name, gl_tex) = &textures[node.textures[texture_index as usize] as usize];
                     let renderable = SameTextureNodeFaces {
                         vao: VertexArray::new(
+                            gl,
                             gl::TRIANGLES,
                             mesh,
                             vec![
@@ -412,6 +416,7 @@ impl Rsm {
     }
 
     pub fn load_textures(
+        gl: &Gl,
         asset_loader: &AssetLoader,
         asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
@@ -427,6 +432,7 @@ impl Rsm {
                     asset_loader.backup_surface()
                 });
                 let ret = AssetLoader::create_texture_from_surface(
+                    gl,
                     &path,
                     surface,
                     gl::NEAREST,

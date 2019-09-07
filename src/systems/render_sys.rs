@@ -13,11 +13,13 @@ use crate::components::{
     FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
 use crate::cursor::CURSOR_TARGET;
+use crate::effect::StrEffectId;
+use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::render::render_command::{RenderCommandCollectorComponent, UiLayer2d};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
-use crate::{ElapsedTime, MapRenderData, PhysicEngine, SpriteResource, StrEffectId};
+use crate::{ElapsedTime, SpriteResource};
 use nalgebra::{Vector2, Vector3};
 use specs::prelude::*;
 

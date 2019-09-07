@@ -21,15 +21,14 @@ use crate::components::{
     AttackComponent, AttackType, BrowserClient, MinionComponent, StrEffectComponent,
 };
 use crate::consts::{JobId, MonsterId};
+use crate::effect::StrEffectId;
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
     BasicAutocompletionProvider, CommandDefinition, CommandParamType, ConsoleComponent,
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
-use crate::{
-    CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine, StrEffectId, PLAYABLE_OUTLOOKS,
-};
+use crate::{CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Point2};
 use nalgebra::{Point3, Vector2};
 use rand::Rng;
@@ -52,7 +51,11 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
     }
 }
 
-pub(super) fn cmd_set_outlook() -> CommandDefinition {
+pub(super) fn cmd_set_outlook(playable_outlooks: &[JobId]) -> CommandDefinition {
+    let outlook_names = playable_outlooks
+        .iter()
+        .map(|it| format!("{:?}", it))
+        .collect::<Vec<_>>();
     CommandDefinition {
         name: "set_outlook".to_string(),
         arguments: vec![
@@ -60,14 +63,11 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
             ("[username]", CommandParamType::String, false),
         ],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |index, username_completor, input_storage| {
+            move |index, username_completor, input_storage| {
                 if index == 0 {
                     Some(
                         [
-                            PLAYABLE_OUTLOOKS
-                                .iter()
-                                .map(|it| format!("{:?}", it))
-                                .collect::<Vec<_>>(),
+                            outlook_names.clone(),
                             MonsterId::iter()
                                 .map(|it| it.to_string())
                                 .collect::<Vec<_>>(),
@@ -491,7 +491,11 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
                 let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
                 system_vars
                     .asset_loader
-                    .load_effect(new_str_name, &mut ecs_world.write_resource())
+                    .load_effect(
+                        &ecs_world.read_resource::<SystemVariables>().gl,
+                        new_str_name,
+                        &mut ecs_world.write_resource(),
+                    )
                     .and_then(|str_file| {
                         let new_id = StrEffectId(system_vars.str_effects.len());
                         system_vars.str_effects.push(str_file);

@@ -1,5 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
+use crate::consts::JobId;
 use crate::systems::console_commands::{
     cmd_add_status, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal,
     cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect, cmd_set_outlook, cmd_set_pos,
@@ -650,7 +651,10 @@ impl<'a> ConsoleSystem<'a> {
         return None;
     }
 
-    pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
+    pub fn init_commands(
+        effect_names: Vec<String>,
+        playable_outlooks: &[JobId],
+    ) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
         ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_pos());
@@ -665,7 +669,7 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_goto());
         ConsoleSystem::add_command(&mut command_defs, cmd_follow_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_control_char());
-        ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook(playable_outlooks));
         ConsoleSystem::add_command(&mut command_defs, cmd_resurrect());
         ConsoleSystem::add_command(&mut command_defs, cmd_set_team());
 

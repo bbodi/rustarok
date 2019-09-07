@@ -7,10 +7,11 @@ use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
+use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
-use crate::{CharActionIndex, CollisionGroup, ElapsedTime, MonsterActionIndex, PhysicEngine};
+use crate::ElapsedTime;
 use nalgebra::{Matrix4, Point2, Vector2};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
@@ -20,6 +21,32 @@ use nphysics2d::object::{
 use serde::Deserialize;
 use specs::prelude::*;
 use std::collections::HashMap;
+
+#[derive(Clone, Copy)]
+pub enum CharActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Sitting = 16,
+    PickingItem = 24,
+    StandBy = 32,
+    Attacking1 = 40,
+    ReceivingDamage = 48,
+    Freeze1 = 56,
+    Dead = 65,
+    Freeze2 = 72,
+    Attacking2 = 80,
+    Attacking3 = 88,
+    CastingSpell = 96,
+}
+
+#[derive(Clone, Copy)]
+pub enum MonsterActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Attack = 16,
+    ReceivingDamage = 24,
+    Die = 32,
+}
 
 pub fn attach_human_player_components(
     username: &str,

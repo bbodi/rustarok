@@ -4,6 +4,8 @@ use sdl2::rect::Rect;
 
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::my_gl as gl;
+use crate::my_gl::Gl;
 use crate::video::GlTexture;
 
 pub struct Gnd {
@@ -360,6 +362,7 @@ impl Gnd {
     }
 
     pub fn create_lightmap_texture(
+        gl: &Gl,
         lightmap: &Vec<u8>,
         count: u32,
         asset_db: &mut AssetDatabase,
@@ -368,6 +371,7 @@ impl Gnd {
         let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
 
         AssetLoader::create_texture_from_data(
+            gl,
             "ground_lightmap_texture",
             lightmap,
             width as i32,
@@ -377,6 +381,7 @@ impl Gnd {
     }
 
     pub fn create_tile_color_texture(
+        gl: &Gl,
         tiles_color_buffer: &mut Vec<u8>,
         width: u32,
         height: u32,
@@ -408,6 +413,7 @@ impl Gnd {
             .unwrap();
 
         return AssetLoader::create_texture_from_surface(
+            gl,
             "ground_tile_color_texture",
             scaled_tiles_color_surface,
             gl::LINEAR,
@@ -715,6 +721,7 @@ impl Gnd {
     }
 
     pub fn create_gl_texture_atlas(
+        gl: &Gl,
         asset_loader: &AssetLoader,
         asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
@@ -732,6 +739,7 @@ impl Gnd {
             .collect();
         let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
         return AssetLoader::create_texture_from_surface(
+            gl,
             "ground_texture_atlas",
             surface_atlas,
             gl::NEAREST,

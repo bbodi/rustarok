@@ -1,8 +1,8 @@
 use crate::common::v2_to_v3;
 use crate::components::char::SpriteBoundingRect;
+use crate::effect::StrEffectId;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlNativeTextureId, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::StrEffectId;
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;

@@ -4,11 +4,12 @@ use crate::components::status::status::{
     Status, StatusStackingResult, StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
-use crate::{ElapsedTime, StrEffectType};
+use crate::ElapsedTime;
 use specs::LazyUpdate;
 
 #[derive(Clone)]

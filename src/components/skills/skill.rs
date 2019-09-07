@@ -10,11 +10,12 @@ use crate::components::status::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
 };
+use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine, StrEffectType};
+use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2, Vector3};
 use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;

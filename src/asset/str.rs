@@ -1,5 +1,7 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::my_gl as gl;
+use crate::my_gl::Gl;
 use crate::video::GlTexture;
 use std::collections::HashMap;
 
@@ -38,6 +40,7 @@ pub struct StrKeyFrame {
 
 impl StrFile {
     pub(super) fn load(
+        gl: &Gl,
         asset_loader: &AssetLoader,
         asset_database: &mut AssetDatabase,
         mut buf: BinaryReader,
@@ -94,6 +97,7 @@ impl StrFile {
                                 asset_loader.backup_surface()
                             });
                             let texture = AssetLoader::create_texture_from_surface(
+                                gl,
                                 &texture_name,
                                 surface,
                                 gl::NEAREST,

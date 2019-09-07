@@ -1,11 +1,14 @@
+use crate::my_gl as gl;
+use crate::my_gl::Gl;
+use crate::runtime_assets::map::ModelRenderData;
 use crate::video::{GlNativeTextureId, GlTexture};
-use crate::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::Hasher;
 use std::io::Write;
+use std::os::raw::c_void;
 
 #[derive(Debug, Serialize)]
 struct TextureDatabaseEntry {
@@ -57,21 +60,21 @@ impl AssetDatabase {
         }
     }
 
-    pub fn register_texture(&mut self, path: &str, textures: &[&GlTexture]) {
+    pub fn register_texture(&mut self, gl: &Gl, path: &str, textures: &[&GlTexture]) {
         let mut hasher = DefaultHasher::new();
 
         for texture in textures {
             let mut buffer =
                 Vec::<u8>::with_capacity((texture.width * texture.height * 4) as usize);
             unsafe {
-                gl::ActiveTexture(gl::TEXTURE0);
-                gl::BindTexture(gl::TEXTURE_2D, texture.id().0);
-                gl::GetTexImage(
+                gl.ActiveTexture(gl::TEXTURE0);
+                gl.BindTexture(gl::TEXTURE_2D, texture.id().0);
+                gl.GetTexImage(
                     gl::TEXTURE_2D,
                     0,
                     gl::RGBA,
                     gl::UNSIGNED_BYTE,
-                    buffer.as_mut_ptr() as *mut gl::types::GLvoid,
+                    buffer.as_mut_ptr() as *mut c_void,
                 );
             }
             hasher.write(buffer.as_slice());
@@ -131,7 +134,7 @@ impl AssetDatabase {
         }
     }
 
-    pub fn copy_texture_into(&self, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
+    pub fn copy_texture_into(&self, gl: &Gl, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
         if let Some(texture_entry) = self.texture_db.entries.get(path_in_byte_form) {
             let mut offset = 0;
             dst_buf
@@ -165,14 +168,14 @@ impl AssetDatabase {
                     dst_buf.push(0)
                 }
                 unsafe {
-                    gl::ActiveTexture(gl::TEXTURE0);
-                    gl::BindTexture(gl::TEXTURE_2D, texture_id.0);
-                    gl::GetTexImage(
+                    gl.ActiveTexture(gl::TEXTURE0);
+                    gl.BindTexture(gl::TEXTURE_2D, texture_id.0);
+                    gl.GetTexImage(
                         gl::TEXTURE_2D,
                         0,
                         gl::RGBA,
                         gl::UNSIGNED_BYTE,
-                        dst_buf.as_mut_ptr().offset(offset as isize) as *mut gl::types::GLvoid,
+                        dst_buf.as_mut_ptr().offset(offset as isize) as *mut c_void,
                     );
                 }
                 offset += raw_size;

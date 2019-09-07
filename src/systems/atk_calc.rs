@@ -7,7 +7,8 @@ use crate::components::status::status::{
 use crate::components::{
     AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
 };
-use crate::systems::{AssetResources, Sounds, SystemFrameDurations, SystemVariables};
+use crate::runtime_assets::audio::Sounds;
+use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
@@ -401,12 +402,23 @@ impl AttackCalculation {
         sounds: &Sounds,
     ) {
         match outcome {
-            AttackOutcome::Heal(_val) => {}
+            AttackOutcome::Heal(_val) => {
+                let entity = entities.create();
+                updater.insert(
+                    entity,
+                    SoundEffectComponent {
+                        target_entity_id,
+                        sound_id: sounds.heal,
+                        pos,
+                        start_time: now,
+                    },
+                )
+            }
             AttackOutcome::Damage(_val) => match attack_type {
                 AttackType::Basic(_) => {
-                    let damage_entity = entities.create();
+                    let entity = entities.create();
                     updater.insert(
-                        damage_entity,
+                        entity,
                         SoundEffectComponent {
                             target_entity_id,
                             sound_id: sounds.attack,
