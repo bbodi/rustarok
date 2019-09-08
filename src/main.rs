@@ -449,7 +449,9 @@ fn send_ping_packets(ecs_world: &mut World) -> () {
     let now_ms = get_current_ms(SystemTime::now());
     let data = now_ms.to_le_bytes();
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
-    for browser_client in (&mut browser_storage).join() {
+    let mut camera_storage = ecs_world.read_storage::<CameraComponent>();
+
+    for (browser_client, no_camera) in (&mut browser_storage, !&camera_storage).join() {
         browser_client.send_ping(&data);
         browser_client.reset_byte_per_second();
     }

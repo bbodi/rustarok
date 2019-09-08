@@ -133,8 +133,8 @@ impl WebSocketBrowserRenderSystem {
                 send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
             let packed_int: u32 = ((command.layer as u32) << 24)
-                | ((command.size[0] as u32) << 12)
-                | ((command.size[1] as u32) & 0b1111_11111111);
+                | ((command.scale[0] as u32) << 12)
+                | ((command.scale[1] as u32) & 0b1111_11111111);
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
         }
     }
@@ -197,7 +197,7 @@ impl WebSocketBrowserRenderSystem {
             .unwrap();
         for command in render_commands {
             send_buffer
-                .write_f32::<LittleEndian>(command.common.size)
+                .write_f32::<LittleEndian>(command.common.scale)
                 .unwrap();
 
             for v in &command.common.color {
@@ -230,7 +230,7 @@ impl WebSocketBrowserRenderSystem {
                 send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.size)
+                .write_f32::<LittleEndian>(command.common.scale)
                 .unwrap();
             let packed_int: u32 =
                 ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
@@ -254,7 +254,7 @@ impl WebSocketBrowserRenderSystem {
                 send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.size)
+                .write_f32::<LittleEndian>(command.common.scale)
                 .unwrap();
         }
     }
@@ -274,7 +274,7 @@ impl WebSocketBrowserRenderSystem {
                 send_buffer.write_f32::<LittleEndian>(*v).unwrap();
             }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.size)
+                .write_f32::<LittleEndian>(command.common.scale)
                 .unwrap();
             send_buffer
                 .write_f32::<LittleEndian>(command.height)
@@ -302,7 +302,9 @@ impl WebSocketBrowserRenderSystem {
             let packed_int: u32 = ((command.layer as u32) << 24) | command.texture.0 as u32;
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
 
-            send_buffer.write_f32::<LittleEndian>(command.size).unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.scale)
+                .unwrap();
         }
     }
 }

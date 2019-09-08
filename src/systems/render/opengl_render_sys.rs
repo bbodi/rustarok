@@ -552,8 +552,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.params.model_mat.set(gl, &command.common.matrix);
                     shader
                         .params
-                        .size
-                        .set(gl, &[command.common.size, command.height]);
+                        .scale
+                        .set(gl, &[command.common.scale, command.height]);
                     centered_rectangle_vao_bind.draw(&system_vars.gl);
                 }
             }
@@ -573,22 +573,21 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for command in &render_commands.circle_3d_commands {
                     shader.params.color.set(gl, &command.common.color);
                     shader.params.model_mat.set(gl, &command.common.matrix);
-                    shader
-                        .params
-                        .size
-                        .set(gl, &[command.common.size * 2.0, command.common.size * 2.0]);
+                    shader.params.scale.set(
+                        gl,
+                        &[command.common.scale * 2.0, command.common.scale * 2.0],
+                    );
                     vao_bind.draw(&system_vars.gl);
                 }
             }
 
             {
-                let shader = system_vars.assets.shaders.sprite_shader.gl_use(gl);
-                shader
-                    .params
+                let size = system_vars.assets.shaders.sprite_shader.gl_use(gl);
+                size.params
                     .projection_mat
                     .set(gl, &system_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader.params.texture.set(gl, 0);
+                size.params.view_mat.set(gl, &render_commands.view_matrix);
+                size.params.texture.set(gl, 0);
 
                 unsafe {
                     system_vars.gl.ActiveTexture(gl::TEXTURE0);
@@ -607,32 +606,31 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         let flipped_width = (1 - command.is_vertically_flipped as i16 * 2)
                             * command.texture_width as i16;
 
-                        shader.params.size.set(
+                        size.params.scale.set(
                             gl,
                             &[
                                 flipped_width as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.size,
+                                    * command.common.scale,
                                 command.texture_height as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.size,
+                                    * command.common.scale,
                             ],
                         );
-                        shader.params.model_mat.set(gl, &command.common.matrix);
-                        shader.params.color.set(gl, &command.common.color);
-                        shader.params.offset.set(
+                        size.params.model_mat.set(gl, &command.common.matrix);
+                        size.params.color.set(gl, &command.common.color);
+                        size.params.offset.set(
                             gl,
                             &[
                                 command.offset[0] as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.size,
+                                    * command.common.scale,
                                 command.offset[1] as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.size,
+                                    * command.common.scale,
                             ],
                         );
 
-                        // TODO: why is it called like this?
                         unsafe {
                             system_vars
                                 .gl
@@ -657,13 +655,12 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         .numbers
                         .bind(&system_vars.gl, TEXTURE_0);
                     for command in &render_commands.number_3d_commands {
-                        shader
-                            .params
-                            .size
-                            .set(gl, &[command.common.size, command.common.size]);
-                        shader.params.model_mat.set(gl, &command.common.matrix);
-                        shader.params.color.set(gl, &command.common.color);
-                        shader.params.offset.set(gl, &[0.0, 0.0]);
+                        size.params
+                            .scale
+                            .set(gl, &[command.common.scale, command.common.scale]);
+                        size.params.model_mat.set(gl, &command.common.matrix);
+                        size.params.color.set(gl, &command.common.color);
+                        size.params.offset.set(gl, &[0.0, 0.0]);
 
                         self.create_number_vertex_array(&system_vars.gl, command.value)
                             .bind(&system_vars.gl)
@@ -880,7 +877,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader
                         .params
                         .size
-                        .set(gl, &[width * command.size, height * command.size]);
+                        .set(gl, &[width * command.scale, height * command.scale]);
                     shader.params.color.set(gl, &command.color);
                     vertex_array_bind.draw(&system_vars.gl);
                 }
@@ -908,7 +905,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader
                         .params
                         .size
-                        .set(gl, &[command.size[0] as f32, command.size[1] as f32]);
+                        .set(gl, &[command.scale[0] as f32, command.scale[1] as f32]);
                     shader
                         .params
                         .z
@@ -960,7 +957,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader
                         .params
                         .size
-                        .set(gl, &[width * command.size, height * command.size]);
+                        .set(gl, &[width * command.scale, height * command.scale]);
                     shader.params.color.set(gl, &command.color);
                     vertex_array_bind.draw(&system_vars.gl);
                 }

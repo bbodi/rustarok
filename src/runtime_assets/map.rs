@@ -56,6 +56,7 @@ pub struct MapRenderData {
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
+    pub minimap_texture: GlTexture,
 }
 
 pub struct ModelRenderData {
@@ -342,6 +343,18 @@ pub fn load_map(
         .solver
         .set_contact_model(Box::new(SignoriniModel::new()));
 
+    let minimap_texture = asset_loader
+        .load_texture(
+            gl,
+            &format!(
+                "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\map\\{}.bmp",
+                map_name
+            ),
+            gl::NEAREST,
+            asset_database,
+        )
+        .unwrap();
+
     (
         MapRenderData {
             gat,
@@ -363,6 +376,7 @@ pub fn load_map(
             ground_walkability_mesh: ground_data.ground_walkability_mesh,
             ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
             ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
+            minimap_texture,
         },
         physics_world,
     )

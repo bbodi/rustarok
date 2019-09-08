@@ -195,9 +195,12 @@ pub fn handle_client_handshakes(mut ecs_world: &mut World) {
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap()
                         .as_millis();
-                    let (int_bytes, _rest) = buf.split_at(std::mem::size_of::<u128>());
-                    let ping_sent = u128::from_le_bytes(int_bytes.try_into().unwrap());
-                    client.set_ping(now_ms - ping_sent);
+                    // TODO
+                    if buf.len() >= 16 {
+                        let (int_bytes, _rest) = buf.split_at(std::mem::size_of::<u128>());
+                        let ping_sent = u128::from_le_bytes(int_bytes.try_into().unwrap());
+                        client.set_ping(now_ms - ping_sent);
+                    }
                 }
             }
         }

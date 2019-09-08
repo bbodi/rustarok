@@ -111,14 +111,14 @@ pub struct PartialCircle2dRenderCommand {
 
 pub struct Common2DProperties {
     pub(super) color: [u8; 4],
-    pub(super) size: [f32; 2],
+    pub(super) scale: [f32; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
 
 pub struct Rectangle2dRenderCommand {
     pub(super) color: [u8; 4],
-    pub(super) size: [u16; 2],
+    pub(super) scale: [u16; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
@@ -127,7 +127,7 @@ pub struct Common2DPropBuilder<'a> {
     collector: &'a mut RenderCommandCollectorComponent,
     color: [u8; 4],
     screen_pos: [i16; 2],
-    size: [f32; 2],
+    scale: [f32; 2],
     rotation_rad: f32,
 }
 
@@ -137,7 +137,7 @@ impl<'a> Common2DPropBuilder<'a> {
             collector,
             color: [255, 255, 255, 255],
             screen_pos: [0, 0],
-            size: [1.0, 1.0],
+            scale: [1.0, 1.0],
             rotation_rad: 0.0,
         }
     }
@@ -158,7 +158,7 @@ impl<'a> Common2DPropBuilder<'a> {
             .rectangle_2d_commands
             .push(Rectangle2dRenderCommand {
                 color: self.color,
-                size: [self.size[0] as u16, self.size[1] as u16],
+                scale: [self.scale[0] as u16, self.scale[1] as u16],
                 matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
                 layer,
             });
@@ -168,7 +168,7 @@ impl<'a> Common2DPropBuilder<'a> {
         self.collector.text_2d_commands.push(Text2dRenderCommand {
             text: text.to_owned(),
             color: self.color,
-            size: self.size[0],
+            scale: self.scale[0],
             matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
             font,
             outline: false,
@@ -180,7 +180,7 @@ impl<'a> Common2DPropBuilder<'a> {
         self.collector.text_2d_commands.push(Text2dRenderCommand {
             text: text.to_owned(),
             color: self.color,
-            size: self.size[0],
+            scale: self.scale[0],
             matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
             font,
             outline: true,
@@ -203,7 +203,7 @@ impl<'a> Common2DPropBuilder<'a> {
             .texture_2d_commands
             .push(Texture2dRenderCommand {
                 color: self.color,
-                size: self.size[0],
+                scale: self.scale[0],
                 texture: texture.id(),
                 offset,
                 texture_width: (1 - flip_vertically as i32 * 2) * texture.width,
@@ -230,13 +230,13 @@ impl<'a> Common2DPropBuilder<'a> {
         self
     }
 
-    pub fn size2(&'a mut self, x: i32, y: i32) -> &'a mut Common2DPropBuilder {
-        self.size = [x as f32, y as f32];
+    pub fn scale2(&'a mut self, x: i32, y: i32) -> &'a mut Common2DPropBuilder {
+        self.scale = [x as f32, y as f32];
         self
     }
 
-    pub fn size(&'a mut self, size: f32) -> &'a mut Common2DPropBuilder {
-        self.size = [size, size];
+    pub fn scale(&'a mut self, scale: f32) -> &'a mut Common2DPropBuilder {
+        self.scale = [scale, scale];
         self
     }
 
@@ -265,7 +265,7 @@ pub enum UiLayer2d {
 pub struct Texture2dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) offset: [i16; 2],
-    pub(super) size: f32,
+    pub(super) scale: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) texture: GlNativeTextureId,
     pub(super) texture_width: i32,
@@ -277,7 +277,7 @@ pub struct Texture2dRenderCommand {
 pub struct Text2dRenderCommand {
     pub(super) text: String,
     pub(super) color: [u8; 4],
-    pub(super) size: f32,
+    pub(super) scale: f32,
     pub(super) matrix: Matrix4<f32>,
     pub(super) font: Font,
     pub(super) outline: bool,
@@ -321,11 +321,11 @@ impl BillboardRenderCommand {
         view: &Matrix4<f32>,
         projection: &Matrix4<f32>,
     ) -> SpriteBoundingRect {
-        let width = self.texture_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size;
-        let height = self.texture_height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size;
+        let width = self.texture_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.scale;
+        let height = self.texture_height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.scale;
         let offset_in_3d_space = [
-            self.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size,
-            self.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.size,
+            self.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.scale,
+            self.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.common.scale,
         ];
         let mut top_right = Vector4::new(0.5 * width, 0.5 * height, 0.0, 1.0);
         top_right.x += offset_in_3d_space[0] as f32;
@@ -368,7 +368,7 @@ impl BillboardRenderCommand {
 #[derive(Debug)]
 pub struct Common3DProperties {
     pub color: [u8; 4],
-    pub size: f32,
+    pub scale: f32,
     pub matrix: Matrix4<f32>,
 }
 
@@ -377,7 +377,7 @@ pub struct Common3DPropBuilder<'a> {
     color: [u8; 4],
     pos: Vector3<f32>,
     offset: [i16; 2],
-    size: f32,
+    scale: f32,
     rotation_rad: (Vector3<f32>, f32),
 }
 
@@ -388,7 +388,7 @@ impl<'a> Common3DPropBuilder<'a> {
             color: [255, 255, 255, 255],
             pos: Vector3::zeros(),
             offset: [0, 0],
-            size: 1.0,
+            scale: 1.0,
             rotation_rad: (Vector3::zeros(), 0.0),
         }
     }
@@ -431,13 +431,13 @@ impl<'a> Common3DPropBuilder<'a> {
         self
     }
 
-    pub fn scale(&'a mut self, size: f32) -> &'a mut Common3DPropBuilder {
-        self.size = size;
+    pub fn scale(&'a mut self, scale: f32) -> &'a mut Common3DPropBuilder {
+        self.scale = scale;
         self
     }
 
-    pub fn radius(&'a mut self, size: f32) -> &'a mut Common3DPropBuilder {
-        self.size = size;
+    pub fn radius(&'a mut self, scale: f32) -> &'a mut Common3DPropBuilder {
+        self.scale = scale;
         self
     }
 
@@ -449,7 +449,7 @@ impl<'a> Common3DPropBuilder<'a> {
     fn build(&self) -> Common3DProperties {
         Common3DProperties {
             color: self.color,
-            size: self.size,
+            scale: self.scale,
             // TODO: would be cheaper to store pos and rotation, and create matrix later
             matrix: create_3d_matrix(&self.pos, &self.rotation_rad),
         }
@@ -512,7 +512,7 @@ impl<'a> Common3DPropBuilder<'a> {
     }
 
     pub fn add_rectangle_command(&'a mut self, size: &Vector2<f32>) {
-        self.size = size.x;
+        self.scale = size.x;
         self.collector
             .rectangle_3d_commands
             .push(Rectangle3dRenderCommand {

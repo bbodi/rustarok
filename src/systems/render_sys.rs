@@ -670,7 +670,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &input,
                     &controller_and_controlled.controller,
                     &mut render_commands,
-                    &system_vars,
+                    &mut system_vars,
+                    &char_state_storage,
                 );
             }
         }
@@ -1236,7 +1237,7 @@ impl RenderDesktopClientSystem {
             render_commands
                 .prepare_for_2d()
                 .color(&color)
-                .size2(w, h)
+                .scale2(w, h)
                 .screen_pos(bar_x + x, bounding_rect_2d.top_right[1] - 30 + y)
                 .add_rectangle_command(UiLayer2d::HealthBars);
         };

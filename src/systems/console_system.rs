@@ -1151,7 +1151,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 render_commands
                     .prepare_for_2d()
                     .screen_pos(0, 0)
-                    .size2(VIDEO_WIDTH as i32, console.y_pos)
+                    .scale2(VIDEO_WIDTH as i32, console.y_pos)
                     .color(&console_color)
                     .add_rectangle_command(UiLayer2d::Console);
                 // cursor
@@ -1218,7 +1218,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         render_commands
                             .prepare_for_2d()
                             .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
-                            .size2(
+                            .scale2(
                                 help_text_len as i32 * NORMAL_FONT_W + border_size * 2,
                                 NORMAL_FONT_H + border_size * 2,
                             )
@@ -1270,7 +1270,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     render_commands
                         .prepare_for_2d()
                         .screen_pos(start_x, console.y_pos)
-                        .size2(
+                        .scale2(
                             longest_text_len as i32 * NORMAL_FONT_W,
                             NORMAL_FONT_H
                                 * console.filtered_autocompletion_list.iter().take(20).count()
