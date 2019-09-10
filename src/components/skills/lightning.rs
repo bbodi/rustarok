@@ -23,12 +23,12 @@ impl LightningSkill {
         for i in 0..3 {
             let pos = skill_pos + char_to_skill_dir * i as f32 * 2.2;
             render_commands
-                .prepare_for_3d()
+                .circle_3d()
                 .pos_2d(&pos)
                 .y(0.0)
                 .radius(1.0)
                 .color(&[0, 255, 0, 255])
-                .add_circle_command()
+                .add()
         }
     }
 }
@@ -170,24 +170,24 @@ impl SkillManifestation for LightningManifest {
         for i in self.action_count..3 {
             let pos = self.pos + self.dir_vector * i as f32 * 2.2;
             render_commands
-                .prepare_for_3d()
+                .circle_3d()
                 .pos_2d(&pos)
                 .y(0.0)
                 .radius(1.0)
                 .color(&[0, 255, 0, 255])
-                .add_circle_command();
+                .add();
         }
         // backwards
         if self.action_count >= 4 {
             for i in self.action_count..6 {
                 let pos = self.pos + self.dir_vector * (5 - i) as f32 * 2.2;
                 render_commands
-                    .prepare_for_3d()
+                    .circle_3d()
                     .pos_2d(&pos)
                     .y(0.0)
                     .radius(1.0)
                     .color(&[0, 255, 0, 255])
-                    .add_circle_command();
+                    .add();
             }
         }
     }

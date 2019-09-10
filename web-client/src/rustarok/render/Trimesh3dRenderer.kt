@@ -24,7 +24,8 @@ class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
         gl.vertexAttribPointer(trimesh_3d_shader.a_pos, 3, WebGLRenderingContext.FLOAT, false, 3 * 4, 0)
 
         for (command in commands) {
-            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
+            // TODO
+//            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
 
             gl.uniform2f(trimesh_3d_shader.size, command.radius * 2f, command.radius * 2f)
             gl.uniform4fv(trimesh_3d_shader.color, command.color)
@@ -38,7 +39,8 @@ class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(trimesh_3d_shader.projection_mat, false, PROJECTION_MATRIX)
         gl.uniformMatrix4fv(trimesh_3d_shader.view_mat, false, VIEW_MATRIX)
         for (command in commands) {
-            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
+            // TODO
+//            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
 
             gl.uniform2f(trimesh_3d_shader.size, command.w, command.h)
             gl.uniform4fv(trimesh_3d_shader.color, command.color)

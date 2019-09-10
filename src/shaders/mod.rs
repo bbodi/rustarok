@@ -166,7 +166,7 @@ pub struct Sprite3dShaderParameters {
     pub model_mat: ShaderParam4x4fv,
     pub view_mat: ShaderParam4x4fv,
     pub color: ShaderParam4ubv,
-    pub scale: ShaderParam2fv,
+    pub size: ShaderParam2fv,
     pub offset: ShaderParam2fv,
     pub texture: ShaderParam1i,
 }
@@ -178,7 +178,7 @@ impl Sprite3dShaderParameters {
             model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
             view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
-            scale: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
+            size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
             offset: ShaderParam2fv(Shader::get_location(gl, program_id, "offset")),
             texture: ShaderParam1i(Shader::get_location(gl, program_id, "model_texture")),
         }

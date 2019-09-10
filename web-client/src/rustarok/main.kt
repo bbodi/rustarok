@@ -101,7 +101,9 @@ var state = ApppState.WaitingForWelcomeMsg
 
 sealed class RenderCommand {
     data class Sprite3D(val server_texture_id: Int,
-                        val matrix: Float32Array,
+                        val x: Float,
+                        val y: Float,
+                        val z: Float,
                         val color: Float32Array,
                         val size: Float,
                         val offset: Float32Array,
@@ -116,16 +118,23 @@ sealed class RenderCommand {
 
 
     data class Number3D(val value: Int,
-                        val matrix: Float32Array,
+                        val x: Float,
+                        val y: Float,
+                        val z: Float,
                         val color: Float32Array,
                         val size: Float) : RenderCommand()
 
-    data class Rectangle3D(val matrix: Float32Array,
+    data class Rectangle3D(val x: Float,
+                           val y: Float,
+                           val z: Float,
+                           val rotation_rad: Float,
                            val color: Float32Array,
                            val w: Float,
                            val h: Float) : RenderCommand()
 
-    data class Circle3D(val matrix: Float32Array,
+    data class Circle3D(val x: Float,
+                        val y: Float,
+                        val z: Float,
                         val color: Float32Array,
                         val radius: Float) : RenderCommand()
 
@@ -139,7 +148,7 @@ sealed class RenderCommand {
                            val layer: Int,
                            val screen_pos_x: Short,
                            val screen_pos_y: Short,
-                           val rotation_rad: Short,
+                           val rotation_rad: Float,
                            val w: Int,
                            val h: Int) : RenderCommand()
 
@@ -413,7 +422,9 @@ private fun parse_number_render_commands(reader: BufferReader, renderer: Rendere
         renderer.number_render_commands.add(RenderCommand.Number3D(
                 size = reader.next_f32(),
                 color = reader.next_color4_u8(),
-                matrix = reader.next_4x4matrix(),
+                x = reader.next_f32(),
+                y = reader.next_f32(),
+                z = reader.next_f32(),
                 value = reader.next_u32()))
     }
 }
@@ -423,13 +434,17 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
         val color = reader.next_color4_u8()
         val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
                                           reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
-        val matrix = reader.next_4x4matrix()
+        val x = reader.next_f32()
+        val y = reader.next_f32()
+        val z = reader.next_f32()
         val size = reader.next_f32()
         val (is_vertically_flipped, server_texture_id) = reader.next_packed_bool1_int31()
         renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
                 color = color,
                 offset = offset,
-                matrix = matrix,
+                x = x,
+                y = y,
+                z = z,
                 size = size,
                 server_texture_id = server_texture_id,
                 is_vertically_flipped = is_vertically_flipped))
@@ -457,7 +472,7 @@ private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: R
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
         // i32 only because padding
-        val rotation_rad = reader.next_i32()
+        val rotation_rad = reader.next_f32()
         val x = reader.next_i16()
         val y = reader.next_i16()
         val packed_int2 = reader.next_u32()
@@ -473,7 +488,7 @@ private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: R
                 h = h.toInt(),
                 screen_pos_x = x.toShort(),
                 screen_pos_y = y.toShort(),
-                rotation_rad = rotation_rad.toShort()
+                rotation_rad = rotation_rad
         ))
     }
 }
@@ -482,11 +497,15 @@ private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: R
 private fun parse_circle3d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
-        val matrix = reader.next_4x4matrix()
+        val x = reader.next_f32()
+        val y = reader.next_f32()
+        val z = reader.next_f32()
         val radius = reader.next_f32()
         renderer.circle3d_render_commands.add(RenderCommand.Circle3D(
                 color = color,
-                matrix = matrix,
+                x = x,
+                y = y,
+                z = z,
                 radius = radius
         ))
     }
@@ -495,12 +514,18 @@ private fun parse_circle3d_render_commands(reader: BufferReader, renderer: Rende
 private fun parse_rectangle3d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
-        val matrix = reader.next_4x4matrix()
+        val x = reader.next_f32()
+        val y = reader.next_f32()
+        val z = reader.next_f32()
+        val rotation_rad = reader.next_f32()
         val w = reader.next_f32()
         val h = reader.next_f32()
         renderer.rectangle3d_render_commands.add(RenderCommand.Rectangle3D(
                 color = color,
-                matrix = matrix,
+                x = x,
+                y = y,
+                z = z,
+                rotation_rad = rotation_rad,
                 w = w,
                 h = h
         ))

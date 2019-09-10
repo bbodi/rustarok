@@ -73,12 +73,12 @@ impl RenderDesktopClientSystem {
                     let pos = body.position().translation.vector;
 
                     render_commands
-                        .prepare_for_3d()
+                        .circle_3d()
                         .radius(physics.radius.get())
                         .color(&[255, 0, 255, 255])
                         .pos_2d(&pos)
                         .y(0.05)
-                        .add_circle_command();
+                        .add();
                 }
             }
         }
@@ -104,12 +104,12 @@ impl RenderDesktopClientSystem {
                     let char_pos = controller.controlled_char.pos();
                     if let Some((_skill_key, skill)) = controller.controller.select_skill_target {
                         render_commands
-                            .prepare_for_3d()
+                            .circle_3d()
                             .pos_2d(&char_pos)
                             .y(0.0)
                             .radius(skill.get_casting_range())
                             .color(&[0, 255, 0, 255])
-                            .add_circle_command();
+                            .add();
 
                         if skill.get_skill_target_type() == SkillTargetType::Area {
                             let is_castable = controller
@@ -757,12 +757,13 @@ pub fn render_single_layer_action<'a>(
 
     let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
     render_commands
-        .prepare_for_3d()
+        .sprite_3d()
         .pos_2d(&pos)
         .scale(layer.scale[0] * size_multiplier)
         .offset(offset)
         .color(&color)
-        .add_billboard_command(&sprite_texture, layer.is_mirror);
+        .flip_vertically(layer.is_mirror)
+        .add(&sprite_texture);
 
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
@@ -852,12 +853,13 @@ pub fn render_action(
 
         let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
         render_commands
-            .prepare_for_3d()
+            .sprite_3d()
             .pos_2d(&pos)
             .scale(layer.scale[0] * size_multiplier)
             .offset(offset)
             .color(&color)
-            .add_billboard_command(&sprite_texture, layer.is_mirror);
+            .flip_vertically(layer.is_mirror)
+            .add(&sprite_texture);
     }
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
@@ -909,9 +911,7 @@ fn render_client(
                 model_render_data.alpha
             };
 
-            render_commands
-                .prepare_for_3d()
-                .add_model_command(model_instance_index, alpha != 255);
+            render_commands.add_model_command_3d(model_instance_index, alpha != 255);
         }
     }
 }
@@ -1127,30 +1127,30 @@ impl DamageRenderSystem {
             | FlyingNumberType::Mana
             | FlyingNumberType::Crit => {
                 render_commands
-                    .prepare_for_3d()
+                    .number_3d()
                     .scale(size * size_mult)
                     .pos(&pos)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add_number_command(number_value, digit_count as u8);
+                    .add(number_value, digit_count as u8);
             }
             FlyingNumberType::Block => {
                 render_commands
-                    .prepare_for_3d()
+                    .sprite_3d()
                     .pos(&pos)
                     .scale(size_mult)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add_billboard_command(&assets.texts.attack_blocked, false);
+                    .add(&assets.texts.attack_blocked);
             }
             FlyingNumberType::Absorb => {
                 render_commands
-                    .prepare_for_3d()
+                    .sprite_3d()
                     .pos(&pos)
                     .scale(size_mult)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add_billboard_command(&assets.texts.attack_absorbed, false);
+                    .add(&assets.texts.attack_absorbed);
             }
         };
     }
@@ -1353,12 +1353,7 @@ impl RenderDesktopClientSystem {
             % max_key as i32;
 
         for layer_index in 0..str_file.layers.len() {
-            render_commands.prepare_for_3d().add_effect_command(
-                world_pos,
-                effect_id,
-                key_index,
-                layer_index,
-            );
+            render_commands.add_effect_command(world_pos, effect_id, key_index, layer_index);
         }
     }
 }

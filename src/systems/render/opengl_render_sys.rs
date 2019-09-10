@@ -8,7 +8,8 @@ use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
-    create_2d_matrix, EffectFrameCacheKey, RenderCommandCollectorComponent, UiLayer2d,
+    create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, EffectFrameCacheKey,
+    RenderCommandCollectorComponent, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -296,17 +297,14 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         }
     }
 
-    fn get_translation_matrix_for_2d(
-        &mut self,
-        screen_pos: &[i16; 2],
-        layer: UiLayer2d,
-    ) -> &Matrix4<f32> {
-        let m = self.identity_mat.as_mut_slice();
-        m[12] = screen_pos[0] as f32;
-        m[13] = screen_pos[1] as f32;
-        m[14] = (layer as usize as f32) * 0.01;
-        m[15] = 1.0;
-        return &self.identity_mat;
+    #[inline]
+    fn create_translation_matrix_for_2d(screen_pos: &[i16; 2], layer: UiLayer2d) -> Matrix4<f32> {
+        let t = Vector3::new(
+            screen_pos[0] as f32,
+            screen_pos[1] as f32,
+            (layer as usize as f32) * 0.01,
+        );
+        return Matrix4::new_translation(&t);
     }
 
     fn render_ground(
@@ -575,60 +573,66 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 }
             }
 
-            /////////////////////////////////
-            // 3D Rectangle
-            /////////////////////////////////
             {
-                let _stopwatch =
-                    system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
-                let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind(&system_vars.gl);
                 let shader = system_vars.assets.shaders.trimesh_shader.gl_use(gl);
                 shader
                     .params
                     .projection_mat
                     .set(gl, &system_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                for command in &render_commands.rectangle_3d_commands {
-                    shader.params.color.set(gl, &command.common.color);
-                    shader.params.model_mat.set(gl, &command.common.matrix);
-                    shader
-                        .params
-                        .scale
-                        .set(gl, &[command.common.scale, command.height]);
-                    centered_rectangle_vao_bind.draw(&system_vars.gl);
+                /////////////////////////////////
+                // 3D Rectangle
+                /////////////////////////////////
+                {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
+                    let centered_rectangle_vao_bind =
+                        self.centered_rectangle_vao.bind(&system_vars.gl);
+                    for command in &render_commands.rectangle_3d_commands {
+                        shader.params.color.set(gl, &command.color);
+                        let mat = create_3d_pos_rot_matrix(
+                            &command.pos,
+                            &(Vector3::y(), command.rotation_rad),
+                        );
+                        shader.params.model_mat.set(gl, &mat);
+                        shader
+                            .params
+                            .scale
+                            .set(gl, &[command.width as f32, command.height as f32]);
+                        centered_rectangle_vao_bind.draw(&system_vars.gl);
+                    }
+                }
+
+                /////////////////////////////////
+                // 3D Circles
+                /////////////////////////////////
+                {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
+                    let vao_bind = self.circle_vao.bind(&system_vars.gl);
+                    for command in &render_commands.circle_3d_commands {
+                        shader.params.color.set(gl, &command.color);
+                        shader
+                            .params
+                            .model_mat
+                            .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader
+                            .params
+                            .scale
+                            .set(gl, &[command.radius * 2.0, command.radius * 2.0]);
+                        vao_bind.draw(&system_vars.gl);
+                    }
                 }
             }
 
-            /////////////////////////////////
-            // 3D Circles
-            /////////////////////////////////
             {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
-                let vao_bind = self.circle_vao.bind(&system_vars.gl);
-                let shader = system_vars.assets.shaders.trimesh_shader.gl_use(gl);
+                let shader = system_vars.assets.shaders.sprite_shader.gl_use(gl);
                 shader
                     .params
                     .projection_mat
                     .set(gl, &system_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                for command in &render_commands.circle_3d_commands {
-                    shader.params.color.set(gl, &command.common.color);
-                    shader.params.model_mat.set(gl, &command.common.matrix);
-                    shader.params.scale.set(
-                        gl,
-                        &[command.common.scale * 2.0, command.common.scale * 2.0],
-                    );
-                    vao_bind.draw(&system_vars.gl);
-                }
-            }
-
-            {
-                let size = system_vars.assets.shaders.sprite_shader.gl_use(gl);
-                size.params
-                    .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
-                size.params.view_mat.set(gl, &render_commands.view_matrix);
-                size.params.texture.set(gl, 0);
+                shader.params.texture.set(gl, 0);
 
                 unsafe {
                     system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
@@ -643,32 +647,33 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         .map_render_data
                         .centered_sprite_vertex_array
                         .bind(&system_vars.gl);
-                    for command in &render_commands.billboard_commands {
+                    for command in &render_commands.sprite_3d_commands {
                         let flipped_width = (1 - command.is_vertically_flipped as i16 * 2)
                             * command.texture_width as i16;
 
-                        size.params.scale.set(
+                        shader.params.size.set(
                             gl,
                             &[
-                                flipped_width as f32
-                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.scale,
+                                flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
                                 command.texture_height as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.scale,
+                                    * command.scale,
                             ],
                         );
-                        size.params.model_mat.set(gl, &command.common.matrix);
-                        size.params.color.set(gl, &command.common.color);
-                        size.params.offset.set(
+                        shader
+                            .params
+                            .model_mat
+                            .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader.params.color.set(gl, &command.color);
+                        shader.params.offset.set(
                             gl,
                             &[
                                 command.offset[0] as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.scale,
+                                    * command.scale,
                                 command.offset[1] as f32
                                     * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.common.scale,
+                                    * command.scale,
                             ],
                         );
 
@@ -695,13 +700,14 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         .sprites
                         .numbers
                         .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
+                    shader.params.offset.set(gl, &[0.0, 0.0]);
                     for command in &render_commands.number_3d_commands {
-                        size.params
-                            .scale
-                            .set(gl, &[command.common.scale, command.common.scale]);
-                        size.params.model_mat.set(gl, &command.common.matrix);
-                        size.params.color.set(gl, &command.common.color);
-                        size.params.offset.set(gl, &[0.0, 0.0]);
+                        shader.params.size.set(gl, &[command.scale, command.scale]);
+                        shader
+                            .params
+                            .model_mat
+                            .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader.params.color.set(gl, &command.color);
 
                         self.create_number_vertex_array(&system_vars.gl, command.value)
                             .bind(&system_vars.gl)
@@ -713,6 +719,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 }
             }
 
+            // TODO: experiment the validity of effect caching
             /////////////////////////////////
             // 3D EFFECTS
             /////////////////////////////////
@@ -866,9 +873,11 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .set(gl, &system_vars.matrices.ortho);
 
                 for command in &render_commands.partial_circle_2d_commands {
-                    let matrix =
-                        self.get_translation_matrix_for_2d(&command.screen_pos, command.layer);
-                    shader.params.model_mat.set(gl, matrix);
+                    let matrix = OpenGlRenderSystem::create_translation_matrix_for_2d(
+                        &command.screen_pos,
+                        command.layer,
+                    );
+                    shader.params.model_mat.set(gl, &matrix);
                     shader.params.color.set(gl, &command.color);
                     shader.params.size.set(gl, &[1.0, 1.0]);
 
@@ -933,7 +942,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .gl
                             .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
                     }
-                    let matrix = create_2d_matrix(&command.screen_pos, command.rotation_rad as f32);
+                    let matrix =
+                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
                     shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
@@ -971,7 +981,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 for command in &render_commands.rectangle_2d_commands {
                     shader.params.color.set(gl, &command.color);
-                    let matrix = create_2d_matrix(&command.screen_pos, command.rotation_rad as f32);
+                    let matrix =
+                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
                     shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
@@ -1017,16 +1028,16 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .gl
                             .BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
                     }
-                    shader.params.model_mat.set(gl, &command.matrix);
+                    shader
+                        .params
+                        .model_mat
+                        .set(gl, &create_2d_pos_rot_matrix(&command.screen_pos, 0.0));
                     shader
                         .params
                         .z
                         .set(gl, 0.01 * command.layer as usize as f32);
                     shader.params.offset.set(gl, 0, 0);
-                    shader
-                        .params
-                        .size
-                        .set(gl, &[width * command.scale, height * command.scale]);
+                    shader.params.size.set(gl, &[width, height]);
                     shader.params.color.set(gl, &command.color);
                     vertex_array_bind.draw(&system_vars.gl);
                 }

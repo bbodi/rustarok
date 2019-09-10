@@ -674,8 +674,8 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let name = args.as_str(0).unwrap();
             let value = args.as_int(1).unwrap_or(0);
-            let width = args.as_int(2).unwrap_or(2);
-            let height = args.as_int(3).unwrap_or(3);
+            let width = args.as_int(2).unwrap_or(2).max(0) as u16;
+            let height = args.as_int(3).unwrap_or(3).max(0) as u16;
             let interval = args.as_int(4).unwrap_or(500) as f32 / 1000.0;
             let time = args.as_int(5).unwrap_or(500);
             let x = args.as_int(6).map(|it| it as f32);
@@ -701,7 +701,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                 "Heal",
                                 AttackType::Heal(value.max(0) as u32),
                                 &pos,
-                                v2!(width, height),
+                                Vector2::new(width, height),
                                 interval,
                                 self_char_id,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -710,7 +710,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                 "Damage",
                                 AttackType::Basic(value.max(0) as u32),
                                 &pos,
-                                v2!(width, height),
+                                Vector2::new(width, height),
                                 interval,
                                 self_char_id,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -724,7 +724,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                             .unwrap()
                                     },
                                     &pos,
-                                    v2!(width, height),
+                                    Vector2::new(width, height),
                                     self_char_id,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
                                 ))

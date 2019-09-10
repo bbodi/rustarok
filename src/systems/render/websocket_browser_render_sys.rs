@@ -1,8 +1,8 @@
 use crate::components::BrowserClient;
 use crate::systems::render::render_command::{
-    BillboardRenderCommand, Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand,
-    PartialCircle2dRenderCommand, Rectangle2dRenderCommand, Rectangle3dRenderCommand,
-    RenderCommandCollectorComponent, Text2dRenderCommand, Texture2dRenderCommand,
+    Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand, PartialCircle2dRenderCommand,
+    Rectangle2dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollectorComponent,
+    Sprite3dRenderCommand, Text2dRenderCommand, Texture2dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -87,7 +87,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
 
             WebSocketBrowserRenderSystem::send_3d_sprite_commands(
                 &mut self.send_buffer,
-                &render_commands.billboard_commands,
+                &render_commands.sprite_3d_commands,
             );
 
             WebSocketBrowserRenderSystem::send_3d_number_commands(
@@ -207,15 +207,22 @@ impl WebSocketBrowserRenderSystem {
             .unwrap();
         for command in render_commands {
             send_buffer
-                .write_f32::<LittleEndian>(command.common.scale)
+                .write_f32::<LittleEndian>(command.scale)
                 .unwrap();
 
-            for v in &command.common.color {
+            for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.common.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.x)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.z)
+                .unwrap();
+
             send_buffer
                 .write_u32::<LittleEndian>(command.value)
                 .unwrap();
@@ -224,23 +231,29 @@ impl WebSocketBrowserRenderSystem {
 
     fn send_3d_sprite_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<BillboardRenderCommand>,
+        render_commands: &Vec<Sprite3dRenderCommand>,
     ) {
         send_buffer
             .write_u32::<LittleEndian>(render_commands.len() as u32)
             .unwrap();
         for command in render_commands {
-            for v in &command.common.color {
+            for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
             for v in &command.offset {
                 send_buffer.write_i16::<LittleEndian>(*v).unwrap();
             }
-            for v in &command.common.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.scale)
+                .write_f32::<LittleEndian>(command.pos.x)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.z)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.scale)
                 .unwrap();
             let packed_int: u32 =
                 ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
@@ -257,14 +270,20 @@ impl WebSocketBrowserRenderSystem {
             .write_u32::<LittleEndian>(render_commands.len() as u32)
             .unwrap();
         for command in render_commands {
-            for v in &command.common.color {
+            for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.common.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.scale)
+                .write_f32::<LittleEndian>(command.pos.x)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.z)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.radius)
                 .unwrap();
         }
     }
@@ -277,17 +296,26 @@ impl WebSocketBrowserRenderSystem {
             .write_u32::<LittleEndian>(render_commands.len() as u32)
             .unwrap();
         for command in render_commands {
-            for v in &command.common.color {
+            for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.common.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
             send_buffer
-                .write_f32::<LittleEndian>(command.common.scale)
+                .write_f32::<LittleEndian>(command.pos.x)
                 .unwrap();
             send_buffer
-                .write_f32::<LittleEndian>(command.height)
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.z)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.rotation_rad)
+                .unwrap();
+            send_buffer
+                .write_u16::<LittleEndian>(command.width)
+                .unwrap();
+            send_buffer
+                .write_u16::<LittleEndian>(command.height)
                 .unwrap();
         }
     }
@@ -311,7 +339,7 @@ impl WebSocketBrowserRenderSystem {
                 .unwrap();
 
             send_buffer
-                .write_i16::<LittleEndian>(command.rotation_rad)
+                .write_f32::<LittleEndian>(command.rotation_rad)
                 .unwrap();
             send_buffer
                 .write_i16::<LittleEndian>(command.screen_pos[0])

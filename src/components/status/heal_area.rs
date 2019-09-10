@@ -12,7 +12,7 @@ use specs::{Entity, LazyUpdate};
 
 pub struct HealApplierArea {
     pub collider_handle: DefaultColliderHandle,
-    pub extents: Vector2<f32>,
+    pub extents: Vector2<u16>,
     pub pos: Vector2<f32>,
     pub name: &'static str,
     pub attack_type: AttackType,
@@ -26,12 +26,13 @@ impl HealApplierArea {
         name: &'static str,
         attack_type: AttackType,
         skill_center: &Vector2<f32>,
-        size: Vector2<f32>,
+        size: Vector2<u16>,
         interval: f32,
         caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> HealApplierArea {
-        let collider_handle = physics_world.add_cuboid_skill(*skill_center, 0.0, size);
+        let collider_handle =
+            physics_world.add_cuboid_skill(*skill_center, 0.0, v2!(size.x, size.y));
 
         HealApplierArea {
             collider_handle,
@@ -90,13 +91,14 @@ impl SkillManifestation for HealApplierArea {
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands
-            .prepare_for_3d()
+            .rectangle_3d()
             .pos_2d(&self.pos)
             .color(&[0, 255, 0, 255])
-            .add_rectangle_command(&(self.extents));
+            .size(self.extents.x, self.extents.y)
+            .add();
 
         render_commands
-            .prepare_for_3d()
+            .sprite_3d()
             .pos_2d(&self.pos)
             .y(3.0)
             .color(&if self.next_action_at.is_earlier_than(now) {
@@ -104,6 +106,6 @@ impl SkillManifestation for HealApplierArea {
             } else {
                 [77, 77, 77, 255]
             })
-            .add_billboard_command(&assets.texts.custom_texts[self.name], false);
+            .add(&assets.texts.custom_texts[self.name]);
     }
 }

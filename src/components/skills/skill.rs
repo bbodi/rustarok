@@ -8,7 +8,8 @@ use crate::components::status::status::{
     ApplyStatusComponent, MainStatuses, RemoveStatusComponent, StatusType,
 };
 use crate::components::{
-    ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, StrEffectComponent,
+    ApplyForceComponent, AreaAttackComponent, AttackComponent, AttackType, SoundEffectComponent,
+    StrEffectComponent,
 };
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
@@ -16,7 +17,7 @@ use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use nalgebra::{Isometry2, Vector2, Vector3};
+use nalgebra::{Isometry2, Vector2};
 use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -157,7 +158,7 @@ impl Skills {
 
     pub fn render_casting_box(
         is_castable: bool,
-        casting_area_size: &Vector2<f32>,
+        casting_area_size: &Vector2<u16>,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         render_commands: &mut RenderCommandCollectorComponent,
@@ -171,9 +172,9 @@ impl Skills {
         let skill_pos = v2_to_v3(skill_pos);
 
         render_commands
-            .prepare_for_3d()
+            .rectangle_3d()
             .pos(&skill_pos)
-            .rotation_rad(Vector3::y(), angle)
+            .rotation_rad(angle)
             .color(
                 &(if is_castable {
                     [0, 255, 0, 255]
@@ -181,7 +182,8 @@ impl Skills {
                     [179, 179, 179, 255]
                 }),
             )
-            .add_rectangle_command(casting_area_size)
+            .size(casting_area_size.x, casting_area_size.y)
+            .add()
     }
 }
 
@@ -253,9 +255,20 @@ impl Skills {
                 entities,
             ))),
             Skills::Heal => {
+                let target_entity_id = target_entity.unwrap();
+                let entity = entities.create();
+                updater.insert(
+                    entity,
+                    SoundEffectComponent {
+                        target_entity_id,
+                        sound_id: system_vars.assets.sounds.heal,
+                        pos: *char_pos,
+                        start_time: system_vars.time,
+                    },
+                );
                 system_vars.attacks.push(AttackComponent {
                     src_entity: caster_entity_id,
-                    dst_entity: target_entity.unwrap(),
+                    dst_entity: target_entity_id,
                     typ: AttackType::Heal(8000),
                 });
                 None
@@ -470,7 +483,7 @@ impl Skills {
             Skills::FireWall => {
                 Skills::render_casting_box(
                     is_castable,
-                    &v2!(3.0, 1.0),
+                    &Vector2::new(3, 1),
                     skill_pos,
                     char_to_skill_dir,
                     render_commands,
@@ -479,7 +492,7 @@ impl Skills {
             Skills::BrutalTestSkill => {
                 Skills::render_casting_box(
                     is_castable,
-                    &v2!(10.0, 10.0),
+                    &Vector2::new(10, 10),
                     skill_pos,
                     char_to_skill_dir,
                     render_commands,
@@ -506,7 +519,7 @@ pub struct PushBackWallSkill {
     pub caster_entity_id: CharEntityId,
     pub collider_handle: DefaultColliderHandle,
     pub effect_ids: Vec<Entity>,
-    pub extents: Vector2<f32>,
+    pub extents: Vector2<u16>,
     pub pos: Vector2<f32>,
     pub rot_angle_in_rad: f32,
     pub created_at: ElapsedTime,
@@ -547,9 +560,9 @@ impl PushBackWallSkill {
         })
         .collect();
 
-        let extents = v2!(3.0, 1.0);
+        let extents = Vector2::new(3, 1);
         let collider_handle =
-            physics_world.add_cuboid_skill(*skill_center, rot_angle_in_rad, extents);
+            physics_world.add_cuboid_skill(*skill_center, rot_angle_in_rad, v2!(3, 1));
 
         PushBackWallSkill {
             caster_entity_id,
@@ -647,17 +660,19 @@ impl SkillManifestation for PushBackWallSkill {
             audio_command_collector.add_sound_command(assets.sounds.firewall);
         }
         render_commands
-            .prepare_for_3d()
+            .rectangle_3d()
             .pos_2d(&self.pos)
-            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .rotation_rad(self.rot_angle_in_rad)
             .color(&[0, 255, 0, 25])
-            .add_rectangle_command(&(self.extents));
+            .size(self.extents.x, self.extents.y)
+            .add();
     }
 }
 
 pub struct BrutalSkillManifest {
     pub caster_entity_id: CharEntityId,
     pub effect_ids: Vec<Entity>,
+    pub extents: Vector2<u16>,
     pub half_extents: Vector2<f32>,
     pub pos: Vector2<f32>,
     pub rot_angle_in_rad: f32,
@@ -675,8 +690,6 @@ impl BrutalSkillManifest {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> BrutalSkillManifest {
-        let half_extents = v2!(5.0, 5.0);
-
         let effect_ids = (0..11 * 11)
             .map(|i| {
                 let x = -5.0 + (i % 10) as f32;
@@ -710,7 +723,8 @@ impl BrutalSkillManifest {
             effect_ids,
             rot_angle_in_rad,
             pos: *skill_center,
-            half_extents,
+            extents: Vector2::new(10, 10),
+            half_extents: v2!(5.0, 5.0),
             created_at: system_time.clone(),
             die_at: system_time.add_seconds(30.0),
             next_damage_at: system_time,
@@ -757,10 +771,11 @@ impl SkillManifestation for BrutalSkillManifest {
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands
-            .prepare_for_3d()
+            .rectangle_3d()
             .pos_2d(&self.pos)
-            .rotation_rad(Vector3::y(), self.rot_angle_in_rad)
+            .rotation_rad(self.rot_angle_in_rad)
             .color(&[0, 255, 0, 255])
-            .add_rectangle_command(&(self.half_extents * 2.0));
+            .size(self.extents.x, self.extents.y)
+            .add();
     }
 }

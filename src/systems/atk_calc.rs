@@ -402,18 +402,7 @@ impl AttackCalculation {
         sounds: &Sounds,
     ) {
         match outcome {
-            AttackOutcome::Heal(_val) => {
-                let entity = entities.create();
-                updater.insert(
-                    entity,
-                    SoundEffectComponent {
-                        target_entity_id,
-                        sound_id: sounds.heal,
-                        pos,
-                        start_time: now,
-                    },
-                )
-            }
+            AttackOutcome::Heal(_val) => {}
             AttackOutcome::Damage(_val) => match attack_type {
                 AttackType::Basic(_) => {
                     let entity = entities.create();

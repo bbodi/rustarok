@@ -30,7 +30,8 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
         for (command in sprite_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
+            // TODO
+            //gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, command.offset)
             val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
@@ -51,7 +52,8 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         )
         for (command in commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
+            // TODO
+//            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
             gl.uniform2fv(sprite_gl_program.offset, Float32Array(2));
             gl.uniform2fv(sprite_gl_program.size, arrayOf(command.size, command.size))
 

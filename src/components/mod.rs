@@ -190,6 +190,7 @@ pub struct AttackComponent {
     pub typ: AttackType,
 }
 
+// TODO: be static types for Cuboid area attack components, Circle, etc
 pub struct AreaAttackComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,

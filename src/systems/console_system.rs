@@ -416,7 +416,7 @@ impl<'a> ConsoleSystem<'a> {
         let mut x = 0;
         for words in &row.words {
             render_commands
-                .prepare_for_2d()
+                .text_2d()
                 .screen_pos(
                     3 + x * NORMAL_FONT_W,
                     input_row_y - row_index * NORMAL_FONT_H,
@@ -427,7 +427,9 @@ impl<'a> ConsoleSystem<'a> {
                     ConsoleWordType::CommandName => [128, 255, 128, console_color[3]],
                     ConsoleWordType::Param => [128, 128, 255, console_color[3]],
                 })
-                .add_text_command(&words.text, Font::Normal, UiLayer2d::ConsoleTexts);
+                .font(Font::Normal)
+                .layer(UiLayer2d::ConsoleTexts)
+                .add(&words.text);
             x += words.text.chars().count() as i32;
         }
     }
@@ -1158,14 +1160,16 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 // cursor
                 if console.cursor_shown {
                     render_commands
-                        .prepare_for_2d()
+                        .text_2d()
                         .screen_pos(
                             3 + 2 * NORMAL_FONT_W + console.cursor_x as i32 * NORMAL_FONT_W
                                 - NORMAL_FONT_W / 2,
                             console.y_pos - NORMAL_FONT_H - 3,
                         )
                         .color(&[255, 255, 255, console_color[3]])
-                        .add_text_command("|", Font::Normal, UiLayer2d::ConsoleTexts)
+                        .font(Font::Normal)
+                        .layer(UiLayer2d::ConsoleTexts)
+                        .add("|")
                 }
 
                 // draw history
@@ -1242,17 +1246,15 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                                     [0, 0, 0, console_color[3]]
                                 };
                                 render_commands
-                                    .prepare_for_2d()
+                                    .text_2d()
                                     .screen_pos(
                                         start_x + x as i32,
                                         console.y_pos - NORMAL_FONT_H * 2 - 3 + border_size,
                                     )
                                     .color(&color)
-                                    .add_text_command(
-                                        &param_name,
-                                        Font::Normal,
-                                        UiLayer2d::ConsoleAutocompletion,
-                                    );
+                                    .font(Font::Normal)
+                                    .layer(UiLayer2d::ConsoleAutocompletion)
+                                    .add(&param_name);
                                 x += (param_name.chars().count() + 1) * NORMAL_FONT_W as usize;
                             });
                     }
@@ -1295,10 +1297,12 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                             [0, 0, 0, console_color[3]]
                         };
                         render_commands
-                            .prepare_for_2d()
+                            .text_2d()
                             .screen_pos(start_x, console.y_pos + NORMAL_FONT_H * i as i32)
                             .color(&color)
-                            .add_text_command(line, Font::Normal, UiLayer2d::ConsoleAutocompletion);
+                            .font(Font::Normal)
+                            .layer(UiLayer2d::ConsoleAutocompletion)
+                            .add(line);
                     }
                 }
             }
