@@ -1,10 +1,7 @@
 package rustarok.render
 
 import org.khronos.webgl.*
-import rustarok.PROJECTION_MATRIX
-import rustarok.RenderCommand
-import rustarok.VIEW_MATRIX
-import rustarok.WebGL2RenderingContext
+import rustarok.*
 
 class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
 
@@ -24,8 +21,9 @@ class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
         gl.vertexAttribPointer(trimesh_3d_shader.a_pos, 3, WebGLRenderingContext.FLOAT, false, 3 * 4, 0)
 
         for (command in commands) {
-            // TODO
-//            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
+            val matrix = Matrix()
+            matrix.set_translation(command.x, command.y, command.z)
+            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, matrix.buffer)
 
             gl.uniform2f(trimesh_3d_shader.size, command.radius * 2f, command.radius * 2f)
             gl.uniform4fv(trimesh_3d_shader.color, command.color)
@@ -39,8 +37,10 @@ class Trimesh3dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(trimesh_3d_shader.projection_mat, false, PROJECTION_MATRIX)
         gl.uniformMatrix4fv(trimesh_3d_shader.view_mat, false, VIEW_MATRIX)
         for (command in commands) {
-            // TODO
-//            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, command.matrix)
+            val matrix = Matrix()
+            matrix.set_translation(command.x, command.y, command.z)
+            matrix.rotate_around_y_mut(command.rotation_rad)
+            gl.uniformMatrix4fv(trimesh_3d_shader.model_mat, false, matrix.buffer)
 
             gl.uniform2f(trimesh_3d_shader.size, command.w, command.h)
             gl.uniform4fv(trimesh_3d_shader.color, command.color)

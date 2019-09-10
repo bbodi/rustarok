@@ -30,15 +30,16 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
         for (command in sprite_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            // TODO
-            //gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
+            val matrix = Matrix()
+            matrix.set_translation(command.x, command.y, command.z)
+            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, matrix.buffer)
             gl.uniform2fv(sprite_gl_program.offset, command.offset)
             val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
             val w = if (command.is_vertically_flipped) -texture.w else texture.w
             gl.uniform2fv(sprite_gl_program.size,
-                          arrayOf(w * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.size,
-                                  texture.h * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.size))
+                          arrayOf(w * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
+                                  texture.h * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale))
 
             gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
@@ -52,10 +53,11 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         )
         for (command in commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            // TODO
-//            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, command.matrix)
+            val matrix = Matrix()
+            matrix.set_translation(command.x, command.y, command.z)
+            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, matrix.buffer)
             gl.uniform2fv(sprite_gl_program.offset, Float32Array(2));
-            gl.uniform2fv(sprite_gl_program.size, arrayOf(command.size, command.size))
+            gl.uniform2fv(sprite_gl_program.size, arrayOf(command.scale, command.scale))
 
             val (buffer, vertex_count) = this.create_number_vertex_array(gl, command.value)
 

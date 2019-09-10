@@ -20,6 +20,7 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
         this[15] = 1f
     };
 
+
     fun render_rectangles(gl: WebGL2RenderingContext,
                           commands: List<RenderCommand.Rectangle2D>,
                           sprite_vertex_buffer: WebGLBuffer) {
@@ -31,15 +32,15 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
         gl.vertexAttribPointer(trimesh_2d_shader.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
 
         for (command in commands) {
-            // TODO
-            continue
-//            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
-//
-//            gl.uniform2f(trimesh_2d_shader.size, command.w.toFloat(), command.h.toFloat())
-//            gl.uniform4fv(trimesh_2d_shader.color, command.color)
-//            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
-//
-//            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
+            val matrix = Matrix()
+            matrix.set_translation(command.screen_pos_x.toFloat(), command.screen_pos_y.toFloat(), command.layer * 0.01.toFloat())
+            matrix.rotate_around_z_mut(command.rotation_rad)
+            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, matrix.buffer)
+
+            gl.uniform2f(trimesh_2d_shader.size, command.w.toFloat(), command.h.toFloat())
+            gl.uniform4fv(trimesh_2d_shader.color, command.color)
+
+            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
     }
 
@@ -103,7 +104,6 @@ layout (location = 0) in vec2 Position;
 uniform mat4 model;
 uniform mat4 projection;
 uniform vec2 size;
-uniform float z;
 
 void main() {
     vec4 pos = vec4(Position.x * size.x, Position.y * size.y, 0.0, 1.0);

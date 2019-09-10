@@ -105,16 +105,18 @@ sealed class RenderCommand {
                         val y: Float,
                         val z: Float,
                         val color: Float32Array,
-                        val size: Float,
+                        val scale: Float,
                         val offset: Float32Array,
                         val is_vertically_flipped: Boolean) : RenderCommand()
 
     data class Texture2D(val server_texture_id: Int,
-                         val matrix: Float32Array,
+                         val rotation_rad: Float,
+                         val x: Float,
+                         val y: Float,
                          val color: Float32Array,
                          val offset: Array<Int>,
                          val layer: Int,
-                         val size: Float) : RenderCommand()
+                         val scale: Float) : RenderCommand()
 
 
     data class Number3D(val value: Int,
@@ -122,7 +124,7 @@ sealed class RenderCommand {
                         val y: Float,
                         val z: Float,
                         val color: Float32Array,
-                        val size: Float) : RenderCommand()
+                        val scale: Float) : RenderCommand()
 
     data class Rectangle3D(val x: Float,
                            val y: Float,
@@ -420,7 +422,7 @@ private fun parse_model3d_render_commands(reader: BufferReader, renderer: Render
 private fun parse_number_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         renderer.number_render_commands.add(RenderCommand.Number3D(
-                size = reader.next_f32(),
+                scale = reader.next_f32(),
                 color = reader.next_color4_u8(),
                 x = reader.next_f32(),
                 y = reader.next_f32(),
@@ -437,7 +439,7 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
         val x = reader.next_f32()
         val y = reader.next_f32()
         val z = reader.next_f32()
-        val size = reader.next_f32()
+        val scale = reader.next_f32()
         val (is_vertically_flipped, server_texture_id) = reader.next_packed_bool1_int31()
         renderer.sprite_render_commands.add(RenderCommand.Sprite3D(
                 color = color,
@@ -445,7 +447,7 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
                 x = x,
                 y = y,
                 z = z,
-                size = size,
+                scale = scale,
                 server_texture_id = server_texture_id,
                 is_vertically_flipped = is_vertically_flipped))
     }
@@ -471,7 +473,6 @@ private fun parse_partial_circle_2d_render_commands(reader: BufferReader, render
 private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
-        // i32 only because padding
         val rotation_rad = reader.next_f32()
         val x = reader.next_i16()
         val y = reader.next_i16()
@@ -518,16 +519,16 @@ private fun parse_rectangle3d_render_commands(reader: BufferReader, renderer: Re
         val y = reader.next_f32()
         val z = reader.next_f32()
         val rotation_rad = reader.next_f32()
-        val w = reader.next_f32()
-        val h = reader.next_f32()
+        val w = reader.next_u16()
+        val h = reader.next_u16()
         renderer.rectangle3d_render_commands.add(RenderCommand.Rectangle3D(
                 color = color,
                 x = x,
                 y = y,
                 z = z,
                 rotation_rad = rotation_rad,
-                w = w,
-                h = h
+                w = w.toFloat(),
+                h = h.toFloat()
         ))
     }
 }
@@ -537,15 +538,19 @@ private fun parse_texture2d_render_commands(reader: BufferReader, renderer: Rend
         val color = reader.next_color4_u8()
         val offset = arrayOf(reader.next_i16(),
                              reader.next_i16())
-        val matrix = reader.next_4x4matrix()
+        val rotation_rad = reader.next_f32()
+        val x = reader.next_i16()
+        val y = reader.next_i16()
         val (layer, server_texture_id) = reader.next_packed_int8_int24()
-        val size = reader.next_f32()
+        val scale = reader.next_f32()
         renderer.texture2d_render_commands.add(RenderCommand.Texture2D(
                 color = color,
                 offset = offset,
-                matrix = matrix,
+                rotation_rad = rotation_rad,
+                x = x.toFloat(),
+                y = y.toFloat(),
                 server_texture_id = server_texture_id,
-                size = size,
+                scale = scale,
                 layer = layer
         ))
     }

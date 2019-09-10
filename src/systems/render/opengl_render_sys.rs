@@ -981,6 +981,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 for command in &render_commands.rectangle_2d_commands {
                     shader.params.color.set(gl, &command.color);
+                    // TODO: is rotation necessary for 2d rect?
                     let matrix =
                         create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
                     shader.params.model_mat.set(gl, &matrix);

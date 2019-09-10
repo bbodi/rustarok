@@ -129,9 +129,8 @@ impl WebSocketBrowserRenderSystem {
             for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            // i32 only because padding
             send_buffer
-                .write_i32::<LittleEndian>(command.rotation_rad as i32)
+                .write_f32::<LittleEndian>(command.rotation_rad)
                 .unwrap();
             send_buffer
                 .write_i16::<LittleEndian>(command.screen_pos[0])

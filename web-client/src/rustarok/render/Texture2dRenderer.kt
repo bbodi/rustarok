@@ -22,12 +22,15 @@ class Texture2dRenderer(gl: WebGL2RenderingContext) {
         gl.vertexAttribPointer(tex2d_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 2 * 4)
 
         for (command in commands) {
-            gl.uniformMatrix4fv(tex2d_gl_program.model, false, command.matrix)
+            val matrix = Matrix()
+            matrix.set_translation(command.x, command.y, command.layer * 0.01f)
+            matrix.rotate_around_z_mut(command.rotation_rad)
+            gl.uniformMatrix4fv(tex2d_gl_program.model, false, matrix.buffer)
             gl.uniform1f(tex2d_gl_program.z, 0.01f * command.layer)
             gl.uniform2i(tex2d_gl_program.offset, command.offset[0], command.offset[1])
 
             val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
-            gl.uniform2f(tex2d_gl_program.size, texture.w * command.size, texture.h * command.size)
+            gl.uniform2f(tex2d_gl_program.size, texture.w * command.scale, texture.h * command.scale)
             gl.uniform4fv(tex2d_gl_program.color, command.color)
 
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
