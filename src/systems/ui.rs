@@ -1,9 +1,11 @@
 use nalgebra::Vector2;
 
 use crate::components::char::{
-    CharOutlook, CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
+    CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{ControllerComponent, HumanInputComponent, SkillKey};
+use crate::components::controller::{
+    CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
+};
 use crate::systems::render::render_command::{RenderCommandCollectorComponent, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -26,6 +28,8 @@ impl RenderUI {
         render_commands: &mut RenderCommandCollectorComponent,
         system_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
+        npc_storage: &ReadStorage<NpcComponent>,
+        entities: &specs::Entities,
     ) {
         // Draw casting bar
         match self_char_state.state() {
@@ -40,13 +44,13 @@ impl RenderUI {
                     let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
                         let bar_w = 540;
                         let bar_x = ((VIDEO_WIDTH / 2) - (bar_w / 2) - 2) as i32;
-                        // .trimesh_2d(&system_vars.map_render_data.rectangle_vertex_array)
                         render_commands
-                            .prepare_for_2d()
+                            .rectangle_2d()
                             .screen_pos(bar_x + x, VIDEO_HEIGHT as i32 - 200 + y)
-                            .scale2(w, h)
+                            .size(w as u16, h as u16)
                             .color(&color)
-                            .add_rectangle_command(UiLayer2d::SelfCastingBar)
+                            .layer(UiLayer2d::SelfCastingBar)
+                            .add()
                     };
                     draw_rect(0, 0, 540, 30, &[36, 92, 201, 77]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0, 0, 0, 255]); // black background
@@ -77,79 +81,14 @@ impl RenderUI {
             &system_vars,
         );
 
-        // prontera miimaps has empty spaces: left 52, right 45 pixels
-        // 6 pixel padding on left and bottom, 7 on top and right
-        let scale = (VIDEO_HEIGHT as i32 / 4)
-            .min(system_vars.map_render_data.minimap_texture.height) as f32
-            / system_vars.map_render_data.minimap_texture.height as f32;
-        let all_minimap_w =
-            (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32;
-        let minimap_render_x = VIDEO_WIDTH as i32 - all_minimap_w - 20;
-        let offset_x = ((52.0 + 6.0) * scale) as i32;
-        let minimap_x = minimap_render_x + offset_x;
-        let minimap_h = (system_vars.map_render_data.minimap_texture.height as f32 * scale) as i32;
-        let minimap_y = VIDEO_HEIGHT as i32 - minimap_h - 20;
-
-        render_commands
-            .prepare_for_2d()
-            .scale(scale)
-            .screen_pos(minimap_render_x, minimap_y)
-            .add_texture_command(
-                &system_vars.map_render_data.minimap_texture,
-                UiLayer2d::SkillBar,
-            );
-
-        let minimap_w = (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32
-            - ((52.0 + 45.0 + 6.0 + 7.0) * scale) as i32;
-        let real_to_map_scale_w =
-            minimap_w as f32 / (system_vars.map_render_data.gnd.width * 2) as f32;
-        let real_to_map_scale_h =
-            minimap_h as f32 / (system_vars.map_render_data.gnd.height * 2) as f32;
-        for char_state in char_state_storage.join() {
-            match char_state.outlook {
-                CharOutlook::Player {
-                    job_id,
-                    head_index,
-                    sex,
-                } => {
-                    let head_texture = {
-                        let sprites = &system_vars.assets.sprites.head_sprites;
-                        &sprites[sex as usize][head_index].textures[0]
-                    };
-                    let color = if self_char_state.team == char_state.team {
-                        &[0, 0, 255, 255]
-                    } else {
-                        &[255, 0, 0, 255]
-                    };
-                    let char_pos = char_state.pos();
-                    let char_y = (system_vars.map_render_data.gnd.height * 2) as f32 + char_pos.y;
-
-                    let center_offset_x = (head_texture.width as f32 * 0.7 / 2.0) as i32;
-                    let center_offset_y = (head_texture.height as f32 * 0.7 / 2.0) as i32;
-                    render_commands
-                        .prepare_for_2d()
-                        .screen_pos(
-                            minimap_x + (char_pos.x * real_to_map_scale_w) as i32 - center_offset_x,
-                            minimap_y + (char_y * real_to_map_scale_h) as i32 - center_offset_y,
-                        )
-                        .color(color)
-                        .scale(0.7)
-                        .add_texture_command(head_texture, UiLayer2d::SkillBarIcon);
-
-                    let center_offset_x = (head_texture.width as f32 * 0.5 / 2.0) as i32;
-                    let center_offset_y = (head_texture.height as f32 * 0.5 / 2.0) as i32;
-                    render_commands
-                        .prepare_for_2d()
-                        .screen_pos(
-                            minimap_x + (char_pos.x * real_to_map_scale_w) as i32 - center_offset_x,
-                            minimap_y + (char_y * real_to_map_scale_h) as i32 - center_offset_y,
-                        )
-                        .scale(0.5)
-                        .add_texture_command(head_texture, UiLayer2d::SkillBarIcon);
-                }
-                _ => {}
-            }
-        }
+        RenderUI::draw_minimap(
+            self_char_state,
+            render_commands,
+            system_vars,
+            char_state_storage,
+            npc_storage,
+            entities,
+        );
 
         render_action_2d(
             &system_vars,
@@ -161,6 +100,108 @@ impl RenderUI {
             UiLayer2d::Cursor,
             1.0,
         );
+    }
+
+    fn draw_minimap(
+        self_char_state: &CharacterStateComponent,
+        render_commands: &mut RenderCommandCollectorComponent,
+        system_vars: &mut SystemVariables,
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        npc_storage: &ReadStorage<NpcComponent>,
+        entities: &specs::Entities,
+    ) {
+        // prontera minimaps has empty spaces: left 52, right 45 pixels
+        // 6 pixel padding on left and bottom, 7 on top and right
+        let scale = (VIDEO_HEIGHT as i32 / 4)
+            .min(system_vars.map_render_data.minimap_texture.height) as f32
+            / system_vars.map_render_data.minimap_texture.height as f32;
+        let all_minimap_w =
+            (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32;
+        let minimap_render_x = VIDEO_WIDTH as i32 - all_minimap_w - 20;
+        let offset_x = ((52.0 + 6.0) * scale) as i32;
+        let minimap_x = minimap_render_x + offset_x;
+        let minimap_h = (system_vars.map_render_data.minimap_texture.height as f32 * scale) as i32;
+        let minimap_y = VIDEO_HEIGHT as i32 - minimap_h - 20;
+        render_commands
+            .sprite_2d()
+            .scale(scale)
+            .screen_pos(minimap_render_x, minimap_y)
+            .layer(UiLayer2d::Minimap)
+            .add(&system_vars.map_render_data.minimap_texture);
+        let minimap_w = (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32
+            - ((52.0 + 45.0 + 6.0 + 7.0) * scale) as i32;
+        let real_to_map_scale_w =
+            minimap_w as f32 / (system_vars.map_render_data.gnd.width * 2) as f32;
+        let real_to_map_scale_h =
+            minimap_h as f32 / (system_vars.map_render_data.gnd.height * 2) as f32;
+        for (entity_id, char_state) in (entities, char_state_storage).join() {
+            let entity_id = CharEntityId(entity_id);
+            let head_index = if npc_storage.get(entity_id.0).is_none() {
+                if let CharOutlook::Player {
+                    head_index, sex, ..
+                } = char_state.outlook
+                {
+                    Some((sex, head_index))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let color = if self_char_state.team == char_state.team {
+                &[0, 0, 255, 255]
+            } else {
+                &[255, 0, 0, 255]
+            };
+
+            let (char_x, char_y) = {
+                let char_pos = char_state.pos();
+                let char_y = (system_vars.map_render_data.gnd.height * 2) as f32 + char_pos.y;
+                (char_pos.x, char_y)
+            };
+
+            if let Some((sex, head_index)) = head_index {
+                let head_texture = {
+                    let sprites = &system_vars.assets.sprites.head_sprites;
+                    &sprites[sex as usize][head_index].textures[0]
+                };
+
+                let center_offset_x = (head_texture.width as f32 * 0.7 / 2.0) as i32;
+                let center_offset_y = (head_texture.height as f32 * 0.7 / 2.0) as i32;
+                render_commands
+                    .sprite_2d()
+                    .screen_pos(
+                        minimap_x + (char_x * real_to_map_scale_w) as i32 - center_offset_x,
+                        minimap_y + (char_y * real_to_map_scale_h) as i32 - center_offset_y,
+                    )
+                    .color(color)
+                    .scale(0.7)
+                    .layer(UiLayer2d::MinimapImportantEntities)
+                    .add(head_texture);
+
+                let center_offset_x = (head_texture.width as f32 * 0.5 / 2.0) as i32;
+                let center_offset_y = (head_texture.height as f32 * 0.5 / 2.0) as i32;
+                render_commands
+                    .sprite_2d()
+                    .screen_pos(
+                        minimap_x + (char_x * real_to_map_scale_w) as i32 - center_offset_x,
+                        minimap_y + (char_y * real_to_map_scale_h) as i32 - center_offset_y,
+                    )
+                    .scale(0.5)
+                    .layer(UiLayer2d::MinimapImportantEntities)
+                    .add(head_texture);
+            } else {
+                render_commands
+                    .point_2d()
+                    .screen_pos(
+                        minimap_x + (char_x * real_to_map_scale_w) as i32,
+                        minimap_y + (char_y * real_to_map_scale_h) as i32,
+                    )
+                    .color(color)
+                    .layer(UiLayer2d::MinimapSimpleEntities)
+                    .add();
+            }
+        }
     }
 
     fn draw_targeting_skill_name(
@@ -178,7 +219,7 @@ impl RenderUI {
                 .unwrap_or(&ElapsedTime(0.0))
                 .is_later_than(system_vars.time);
             render_commands
-                .prepare_for_2d()
+                .sprite_2d()
                 .color(
                     &(if not_castable {
                         [179, 179, 179, 255]
@@ -190,7 +231,8 @@ impl RenderUI {
                     input.last_mouse_x as i32 - texture.width / 2,
                     input.last_mouse_y as i32 + 32,
                 )
-                .add_texture_command(texture, UiLayer2d::SelectingTargetSkillName);
+                .layer(UiLayer2d::SelectingTargetSkillName)
+                .add(texture);
         }
     }
 
@@ -211,14 +253,15 @@ impl RenderUI {
         let y = VIDEO_HEIGHT as i32 - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
         // blueish background
         render_commands
-            .prepare_for_2d()
+            .rectangle_2d()
             .screen_pos(start_x, y)
-            .scale2(
-                skill_bar_width,
-                single_icon_size + (outer_border * 2 + inner_border * 2),
+            .size(
+                skill_bar_width as u16,
+                (single_icon_size + (outer_border * 2 + inner_border * 2)) as u16,
             )
             .color(&[28, 64, 122, 255])
-            .add_rectangle_command(UiLayer2d::SkillBar);
+            .layer(UiLayer2d::SkillBar)
+            .add();
         let mut x = start_x + outer_border;
         for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {
@@ -238,22 +281,23 @@ impl RenderUI {
                         .unwrap_or([0, 0, 0, 255])
                 };
                 render_commands
-                    .prepare_for_2d()
+                    .rectangle_2d()
                     .screen_pos(x, y + outer_border)
-                    .scale2(
-                        single_icon_size + inner_border * 2,
-                        single_icon_size + inner_border * 2,
+                    .size(
+                        (single_icon_size + inner_border * 2) as u16,
+                        (single_icon_size + inner_border * 2) as u16,
                     )
                     .color(&border_color)
-                    .add_rectangle_command(UiLayer2d::SkillBar);
+                    .layer(UiLayer2d::SkillBar)
+                    .add();
 
                 x += inner_border;
                 let icon_y = y + outer_border + inner_border;
                 // blueish background
                 render_commands
-                    .prepare_for_2d()
+                    .rectangle_2d()
                     .screen_pos(x, icon_y)
-                    .scale2(single_icon_size, single_icon_size)
+                    .size(single_icon_size as u16, single_icon_size as u16)
                     .color(
                         &(if not_castable {
                             [179, 179, 179, 255] // grey if not castable
@@ -261,24 +305,24 @@ impl RenderUI {
                             [28, 64, 122, 255]
                         }),
                     )
-                    .add_rectangle_command(UiLayer2d::SkillBar);
+                    .layer(UiLayer2d::SkillBar)
+                    .add();
 
                 render_commands
-                    .prepare_for_2d()
+                    .sprite_2d()
                     .screen_pos(x, icon_y)
                     .scale(2.0)
-                    .add_texture_command(
-                        &system_vars.assets.skill_icons[&skill],
-                        UiLayer2d::SkillBarIcon,
-                    );
+                    .layer(UiLayer2d::SkillBarIcon)
+                    .add(&system_vars.assets.skill_icons[&skill]);
 
                 let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
                 let center_x = -2 + x + single_icon_size - skill_key_texture.width;
                 let center_y = -2 + icon_y + single_icon_size - skill_key_texture.height;
                 render_commands
-                    .prepare_for_2d()
+                    .sprite_2d()
                     .screen_pos(center_x, center_y)
-                    .add_texture_command(skill_key_texture, UiLayer2d::SkillBarKey);
+                    .layer(UiLayer2d::SkillBarKey)
+                    .add(skill_key_texture);
                 x += single_icon_size + inner_border + space;
             }
         }
@@ -322,10 +366,13 @@ fn render_action_2d(
         ];
 
         render_commands
-            .prepare_for_2d()
+            .sprite_2d()
             .screen_pos(pos.x, pos.y)
             .scale(scale)
             .color_rgb(color)
-            .add_sprite_command(texture, offset, layer.is_mirror, UiLayer2d::Cursor);
+            .flip_vertically(layer.is_mirror)
+            .layer(UiLayer2d::Cursor)
+            .offset(offset[0], offset[1])
+            .add(texture);
     }
 }

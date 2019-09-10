@@ -451,7 +451,7 @@ fn send_ping_packets(ecs_world: &mut World) -> () {
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
     let mut camera_storage = ecs_world.read_storage::<CameraComponent>();
 
-    for (browser_client, no_camera) in (&mut browser_storage, !&camera_storage).join() {
+    for (browser_client, _no_camera) in (&mut browser_storage, !&camera_storage).join() {
         browser_client.send_ping(&data);
         browser_client.reset_byte_per_second();
     }

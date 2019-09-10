@@ -5,8 +5,7 @@ use crate::components::char::CharActionIndex;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skill::Skills;
 use crate::consts::{job_name_table, JobId, MonsterId};
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::{EffectSprites, Sprites};
 use crate::video::{GlTexture, Video};
@@ -220,7 +219,7 @@ pub fn load_status_icons(
             .load_texture(
                 gl,
                 "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\pa_shieldchain.bmp",
-                gl::NEAREST,
+                MyGlEnum::NEAREST,
                 asset_database,
             )
             .unwrap(),
@@ -236,7 +235,7 @@ pub fn load_skill_icons(
     let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
         let skill_icon = asset_loader
-            .load_texture(gl, skill.get_icon_path(), gl::NEAREST, asset_database)
+            .load_texture(gl, skill.get_icon_path(), MyGlEnum::NEAREST, asset_database)
             .unwrap();
         skill_icons.insert(skill, skill_icon);
     }

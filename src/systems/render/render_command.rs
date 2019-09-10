@@ -6,7 +6,7 @@ use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::HashMap;
 
-fn create_2d_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f32> {
+pub fn create_2d_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f32> {
     let mut matrix = Matrix4::<f32>::identity();
     matrix.prepend_translation_mut(&v3!(pos[0], pos[1], 0));
 
@@ -40,6 +40,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
     pub(super) rectangle_2d_commands: Vec<Rectangle2dRenderCommand>,
+    pub(super) point_2d_commands: Vec<Point2dRenderCommand>,
     pub(super) text_2d_commands: Vec<Text2dRenderCommand>,
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
     pub(super) billboard_commands: Vec<BillboardRenderCommand>,
@@ -58,6 +59,7 @@ impl<'a> RenderCommandCollectorComponent {
             text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
             rectangle_2d_commands: Vec::with_capacity(128),
+            point_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
             billboard_commands: Vec::with_capacity(128),
             number_3d_commands: Vec::with_capacity(128),
@@ -79,6 +81,7 @@ impl<'a> RenderCommandCollectorComponent {
         self.text_2d_commands.clear();
         self.rectangle_3d_commands.clear();
         self.rectangle_2d_commands.clear();
+        self.point_2d_commands.clear();
         self.circle_3d_commands.clear();
         self.billboard_commands.clear();
         self.number_3d_commands.clear();
@@ -96,29 +99,30 @@ impl<'a> RenderCommandCollectorComponent {
         Common2DPropBuilder::new(self)
     }
 
+    pub fn partial_circle_2d(&'a mut self) -> PartialCircl2dBuilder {
+        PartialCircl2dBuilder::new(self)
+    }
+
+    pub fn rectangle_2d(&'a mut self) -> Rectangle2dCommandBuilder {
+        Rectangle2dCommandBuilder::new(self)
+    }
+
+    pub fn point_2d(&'a mut self) -> Point2dCommandBuilder {
+        Point2dCommandBuilder::new(self)
+    }
+
+    pub fn sprite_2d(&'a mut self) -> Texture2dRenderCommandCommandBuilder {
+        Texture2dRenderCommandCommandBuilder::new(self)
+    }
+
     pub fn get_last_billboard_command(&'a self) -> &'a BillboardRenderCommand {
         return &self.billboard_commands[self.billboard_commands.len() - 1];
     }
 }
 
-#[derive(Debug)]
-pub struct PartialCircle2dRenderCommand {
-    pub(super) i: usize,
-    pub(super) color: [u8; 4],
-    pub(super) matrix: Matrix4<f32>,
-    pub(super) layer: UiLayer2d,
-}
-
 pub struct Common2DProperties {
     pub(super) color: [u8; 4],
     pub(super) scale: [f32; 2],
-    pub(super) matrix: Matrix4<f32>,
-    pub(super) layer: UiLayer2d,
-}
-
-pub struct Rectangle2dRenderCommand {
-    pub(super) color: [u8; 4],
-    pub(super) scale: [u16; 2],
     pub(super) matrix: Matrix4<f32>,
     pub(super) layer: UiLayer2d,
 }
@@ -131,6 +135,218 @@ pub struct Common2DPropBuilder<'a> {
     rotation_rad: f32,
 }
 
+pub struct Rectangle2dRenderCommand {
+    pub(super) color: [u8; 4],
+    pub(super) width: u16,
+    pub(super) height: u16,
+    pub(super) screen_pos: [i16; 2],
+    pub(super) rotation_rad: i16,
+    pub(super) layer: UiLayer2d,
+}
+
+pub struct Rectangle2dCommandBuilder<'a> {
+    collector: &'a mut RenderCommandCollectorComponent,
+    color: [u8; 4],
+    screen_pos: [i16; 2],
+    rotation_rad: i16,
+    width: u16,
+    height: u16,
+    layer: UiLayer2d,
+}
+
+impl<'a> Rectangle2dCommandBuilder<'a> {
+    pub fn new(collector: &mut RenderCommandCollectorComponent) -> Rectangle2dCommandBuilder {
+        Rectangle2dCommandBuilder {
+            collector,
+            color: [255, 255, 255, 255],
+            screen_pos: [0, 0],
+            width: 0,
+            height: 0,
+            rotation_rad: 0,
+            layer: UiLayer2d::HealthBars,
+        }
+    }
+
+    pub fn add(&mut self) {
+        self.collector
+            .rectangle_2d_commands
+            .push(Rectangle2dRenderCommand {
+                color: self.color,
+                width: self.width,
+                height: self.height,
+                screen_pos: self.screen_pos,
+                layer: self.layer,
+                rotation_rad: self.rotation_rad,
+            });
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Rectangle2dCommandBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn rotation_rad(&mut self, rotation_rad: i16) -> &'a mut Rectangle2dCommandBuilder {
+        self.rotation_rad = rotation_rad;
+        self
+    }
+
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Rectangle2dCommandBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn screen_pos(&mut self, x: i32, y: i32) -> &'a mut Rectangle2dCommandBuilder {
+        self.screen_pos = [x as i16, y as i16];
+        self
+    }
+
+    pub fn width(&mut self, w: u16) -> &'a mut Rectangle2dCommandBuilder {
+        self.width = w;
+        self
+    }
+
+    pub fn layer(&mut self, layer: UiLayer2d) -> &'a mut Rectangle2dCommandBuilder {
+        self.layer = layer;
+        self
+    }
+
+    pub fn size(&mut self, w: u16, h: u16) -> &'a mut Rectangle2dCommandBuilder {
+        self.width = w;
+        self.height = h;
+        self
+    }
+
+    pub fn height(&mut self, h: u16) -> &'a mut Rectangle2dCommandBuilder {
+        self.height = h;
+        self
+    }
+}
+
+pub struct Point2dRenderCommand {
+    pub(super) color: [u8; 4],
+    pub(super) screen_pos: [i16; 2],
+    pub(super) layer: UiLayer2d,
+}
+
+pub struct Point2dCommandBuilder<'a> {
+    collector: &'a mut RenderCommandCollectorComponent,
+    color: [u8; 4],
+    screen_pos: [i16; 2],
+    layer: UiLayer2d,
+}
+
+impl<'a> Point2dCommandBuilder<'a> {
+    pub fn new(collector: &mut RenderCommandCollectorComponent) -> Point2dCommandBuilder {
+        Point2dCommandBuilder {
+            collector,
+            color: [255, 255, 255, 255],
+            screen_pos: [0, 0],
+            layer: UiLayer2d::HealthBars,
+        }
+    }
+
+    pub fn add(&mut self) {
+        self.collector.point_2d_commands.push(Point2dRenderCommand {
+            color: self.color,
+            screen_pos: self.screen_pos,
+            layer: self.layer,
+        });
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Point2dCommandBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Point2dCommandBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn screen_pos(&mut self, x: i32, y: i32) -> &'a mut Point2dCommandBuilder {
+        self.screen_pos = [x as i16, y as i16];
+        self
+    }
+
+    pub fn layer(&mut self, layer: UiLayer2d) -> &'a mut Point2dCommandBuilder {
+        self.layer = layer;
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct PartialCircle2dRenderCommand {
+    pub(super) circumference_index: usize,
+    pub(super) color: [u8; 4],
+    pub(super) screen_pos: [i16; 2],
+    pub(super) layer: UiLayer2d,
+}
+
+pub struct PartialCircl2dBuilder<'a> {
+    collector: &'a mut RenderCommandCollectorComponent,
+    color: [u8; 4],
+    screen_pos: [i16; 2],
+    circumference_percentage: usize,
+    layer: UiLayer2d,
+}
+
+impl<'a> PartialCircl2dBuilder<'a> {
+    pub fn new(collector: &mut RenderCommandCollectorComponent) -> PartialCircl2dBuilder {
+        PartialCircl2dBuilder {
+            collector,
+            color: [255, 255, 255, 255],
+            screen_pos: [0, 0],
+            layer: UiLayer2d::HealthBars,
+            circumference_percentage: 100,
+        }
+    }
+
+    pub fn add(&mut self) {
+        self.collector
+            .partial_circle_2d_commands
+            .push(PartialCircle2dRenderCommand {
+                circumference_index: self.circumference_percentage - 1,
+                color: self.color,
+                screen_pos: self.screen_pos,
+                layer: self.layer,
+            });
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut PartialCircl2dBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn circumference_percentage(
+        &mut self,
+        circumference_percentage: usize,
+    ) -> &'a mut PartialCircl2dBuilder {
+        self.circumference_percentage = circumference_percentage;
+        self
+    }
+
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut PartialCircl2dBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn screen_pos(&mut self, x: i32, y: i32) -> &'a mut PartialCircl2dBuilder {
+        self.screen_pos = [x as i16, y as i16];
+        self
+    }
+
+    pub fn layer(&mut self, layer: UiLayer2d) -> &'a mut PartialCircl2dBuilder {
+        self.layer = layer;
+        self
+    }
+}
+
 impl<'a> Common2DPropBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollectorComponent) -> Common2DPropBuilder {
         Common2DPropBuilder {
@@ -140,28 +356,6 @@ impl<'a> Common2DPropBuilder<'a> {
             scale: [1.0, 1.0],
             rotation_rad: 0.0,
         }
-    }
-
-    pub fn add_partial_circle_command(&'a mut self, i: usize, layer: UiLayer2d) {
-        self.collector
-            .partial_circle_2d_commands
-            .push(PartialCircle2dRenderCommand {
-                i,
-                color: self.color,
-                matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
-                layer,
-            });
-    }
-
-    pub fn add_rectangle_command(&'a mut self, layer: UiLayer2d) {
-        self.collector
-            .rectangle_2d_commands
-            .push(Rectangle2dRenderCommand {
-                color: self.color,
-                scale: [self.scale[0] as u16, self.scale[1] as u16],
-                matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
-                layer,
-            });
     }
 
     pub fn add_text_command(&'a mut self, text: &str, font: Font, layer: UiLayer2d) {
@@ -186,31 +380,6 @@ impl<'a> Common2DPropBuilder<'a> {
             outline: true,
             layer,
         });
-    }
-
-    pub fn add_texture_command(&'a mut self, texture: &GlTexture, layer: UiLayer2d) {
-        self.add_sprite_command(texture, [0, 0], false, layer);
-    }
-
-    pub fn add_sprite_command(
-        &'a mut self,
-        texture: &GlTexture,
-        offset: [i16; 2],
-        flip_vertically: bool,
-        layer: UiLayer2d,
-    ) {
-        self.collector
-            .texture_2d_commands
-            .push(Texture2dRenderCommand {
-                color: self.color,
-                scale: self.scale[0],
-                texture: texture.id(),
-                offset,
-                texture_width: (1 - flip_vertically as i32 * 2) * texture.width,
-                texture_height: texture.height,
-                matrix: create_2d_matrix(&self.screen_pos, self.rotation_rad),
-                layer,
-            });
     }
 
     pub fn color(&'a mut self, color: &[u8; 4]) -> &'a mut Common2DPropBuilder {
@@ -254,6 +423,9 @@ pub enum UiLayer2d {
     SkillBar,
     SkillBarIcon,
     SkillBarKey,
+    Minimap,
+    MinimapSimpleEntities,
+    MinimapImportantEntities,
     SelectingTargetSkillName,
     Console,
     ConsoleTexts,
@@ -265,12 +437,102 @@ pub enum UiLayer2d {
 pub struct Texture2dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) offset: [i16; 2],
+    pub(super) screen_pos: [i16; 2],
+    pub(super) rotation_rad: i16,
     pub(super) scale: f32,
-    pub(super) matrix: Matrix4<f32>,
     pub(super) texture: GlNativeTextureId,
     pub(super) texture_width: i32,
     pub(super) texture_height: i32,
     pub(super) layer: UiLayer2d,
+}
+
+pub struct Texture2dRenderCommandCommandBuilder<'a> {
+    collector: &'a mut RenderCommandCollectorComponent,
+    color: [u8; 4],
+    screen_pos: [i16; 2],
+    offset: [i16; 2],
+    rotation_rad: i16,
+    layer: UiLayer2d,
+    scale: f32,
+    flip_vertically: bool,
+}
+
+impl<'a> Texture2dRenderCommandCommandBuilder<'a> {
+    pub fn new(
+        collector: &mut RenderCommandCollectorComponent,
+    ) -> Texture2dRenderCommandCommandBuilder {
+        Texture2dRenderCommandCommandBuilder {
+            collector,
+            color: [255, 255, 255, 255],
+            screen_pos: [0, 0],
+            offset: [0, 0],
+            rotation_rad: 0,
+            scale: 1.0,
+            layer: UiLayer2d::HealthBars,
+            flip_vertically: false,
+        }
+    }
+
+    pub fn add(&mut self, texture: &GlTexture) {
+        self.collector
+            .texture_2d_commands
+            .push(Texture2dRenderCommand {
+                color: self.color,
+                scale: self.scale,
+                texture: texture.id(),
+                offset: self.offset,
+                texture_width: (1 - self.flip_vertically as i32 * 2) * texture.width,
+                texture_height: texture.height,
+                screen_pos: self.screen_pos,
+                rotation_rad: self.rotation_rad,
+                layer: self.layer,
+            });
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn flip_vertically(&mut self, flip: bool) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.flip_vertically = flip;
+        self
+    }
+
+    pub fn rotation_rad(
+        &mut self,
+        rotation_rad: i16,
+    ) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.rotation_rad = rotation_rad;
+        self
+    }
+
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn screen_pos(&mut self, x: i32, y: i32) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.screen_pos = [x as i16, y as i16];
+        self
+    }
+
+    pub fn offset(&mut self, x: i16, y: i16) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.offset = [x, y];
+        self
+    }
+
+    pub fn layer(&mut self, layer: UiLayer2d) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.layer = layer;
+        self
+    }
+
+    pub fn scale(&mut self, scale: f32) -> &'a mut Texture2dRenderCommandCommandBuilder {
+        self.scale = scale;
+        self
+    }
 }
 
 #[derive(Debug)]

@@ -1,5 +1,4 @@
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::ModelRenderData;
 use crate::video::{GlNativeTextureId, GlTexture};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -67,13 +66,13 @@ impl AssetDatabase {
             let mut buffer =
                 Vec::<u8>::with_capacity((texture.width * texture.height * 4) as usize);
             unsafe {
-                gl.ActiveTexture(gl::TEXTURE0);
-                gl.BindTexture(gl::TEXTURE_2D, texture.id().0);
+                gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                gl.BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
                 gl.GetTexImage(
-                    gl::TEXTURE_2D,
+                    MyGlEnum::TEXTURE_2D,
                     0,
-                    gl::RGBA,
-                    gl::UNSIGNED_BYTE,
+                    MyGlEnum::RGBA,
+                    MyGlEnum::UNSIGNED_BYTE,
                     buffer.as_mut_ptr() as *mut c_void,
                 );
             }
@@ -168,13 +167,13 @@ impl AssetDatabase {
                     dst_buf.push(0)
                 }
                 unsafe {
-                    gl.ActiveTexture(gl::TEXTURE0);
-                    gl.BindTexture(gl::TEXTURE_2D, texture_id.0);
+                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
                     gl.GetTexImage(
-                        gl::TEXTURE_2D,
+                        MyGlEnum::TEXTURE_2D,
                         0,
-                        gl::RGBA,
-                        gl::UNSIGNED_BYTE,
+                        MyGlEnum::RGBA,
+                        MyGlEnum::UNSIGNED_BYTE,
                         dst_buf.as_mut_ptr().offset(offset as isize) as *mut c_void,
                     );
                 }

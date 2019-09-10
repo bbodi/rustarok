@@ -1,22 +1,19 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
+use crate::common::rotate_vec2;
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
 use crate::effect::StrEffectId;
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
-    EffectFrameCacheKey, RenderCommandCollectorComponent,
+    create_2d_matrix, EffectFrameCacheKey, RenderCommandCollectorComponent, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{
-    GlTexture, ShaderProgram, VertexArray, VertexAttribDefinition, Video, TEXTURE_0, TEXTURE_1,
-    TEXTURE_2,
-};
-use nalgebra::{Matrix3, Matrix4, Rotation3, Vector3};
+use crate::video::{GlTexture, ShaderProgram, VertexArray, VertexAttribDefinition, Video};
+use nalgebra::{Matrix3, Matrix4, Point2, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -53,6 +50,8 @@ impl StrEffectCache {
 pub struct OpenGlRenderSystem<'a, 'b> {
     centered_rectangle_vao: VertexArray,
     circle_vao: VertexArray,
+    points_vao: VertexArray,
+    points_buffer: Vec<[f32; 7]>,
     // damage rendering
     single_digit_u_coord: f32,
     texture_u_coords: [f32; 10],
@@ -61,6 +60,8 @@ pub struct OpenGlRenderSystem<'a, 'b> {
     text_cache: HashMap<String, GlTexture>,
     circle_vertex_arrays: Vec<VertexArray>,
     fonts: Fonts<'a, 'b>,
+
+    identity_mat: Matrix4<f32>,
 }
 
 pub struct Fonts<'a, 'b> {
@@ -183,8 +184,8 @@ struct EffectFrameCache {
     pub offset: [f32; 2],
     pub color: [u8; 4],
     pub rotation_matrix: Matrix4<f32>,
-    pub src_alpha: u32,
-    pub dst_alpha: u32,
+    pub src_alpha: MyGlBlendEnum,
+    pub dst_alpha: MyGlBlendEnum,
     pub texture_index: usize,
 }
 
@@ -204,12 +205,18 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 let two_pi = std::f32::consts::PI * 2.0;
                 let dtheta = two_pi / nsubdivs as f32;
 
-                let mut pts = Vec::with_capacity(i);
+                let mut pts: Vec<Point2<f32>> = Vec::with_capacity(i);
                 let r = 12.0;
                 ncollide2d::procedural::utils::push_xy_arc(r, i as u32, dtheta, &mut pts);
-                VertexArray::new(
+                let rotation_rad = std::f32::consts::FRAC_PI_2;
+
+                pts.iter_mut().for_each(|it| {
+                    let rotated = rotate_vec2(rotation_rad, &it.coords);
+                    *it = Point2::new(rotated.x, rotated.y);
+                });
+                VertexArray::new_static(
                     &gl,
-                    gl::LINE_STRIP,
+                    MyGlEnum::LINE_STRIP,
                     pts,
                     vec![VertexAttribDefinition {
                         number_of_components: 2,
@@ -220,6 +227,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             .collect();
 
         OpenGlRenderSystem {
+            identity_mat: Matrix4::identity(),
             circle_vertex_arrays,
             fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
@@ -240,9 +248,9 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 let top_left = v3!(-0.5, 0.0, 0.5);
                 let top_right = v3!(0.5, 0.0, 0.5);
                 let bottom_right = v3!(0.5, 0.0, -0.5);
-                VertexArray::new(
+                VertexArray::new_static(
                     &gl,
-                    gl::LINE_LOOP,
+                    MyGlEnum::LINE_LOOP,
                     vec![bottom_left, top_left, top_right, bottom_right],
                     vec![VertexAttribDefinition {
                         number_of_components: 3,
@@ -250,6 +258,22 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                     }],
                 )
             },
+            points_buffer: Vec::with_capacity(128),
+            points_vao: VertexArray::new_dynamic(
+                &gl,
+                MyGlEnum::POINTS,
+                Vec::<[f32; 7]>::new(),
+                vec![
+                    VertexAttribDefinition {
+                        number_of_components: 3,
+                        offset_of_first_element: 0,
+                    },
+                    VertexAttribDefinition {
+                        number_of_components: 4,
+                        offset_of_first_element: 3,
+                    },
+                ],
+            ),
             circle_vao: {
                 let capsule_mesh = ncollide2d::procedural::circle(&1.0, 32);
                 let coords: Vec<[f32; 3]> = capsule_mesh
@@ -257,9 +281,9 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                     .iter()
                     .map(|it| [it.x, 0.0, it.y])
                     .collect();
-                VertexArray::new(
+                VertexArray::new_static(
                     &gl,
-                    gl::LINE_LOOP,
+                    MyGlEnum::LINE_LOOP,
                     coords,
                     vec![VertexAttribDefinition {
                         number_of_components: 3,
@@ -270,6 +294,19 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             str_effect_cache,
             text_cache: HashMap::with_capacity(1024),
         }
+    }
+
+    fn get_translation_matrix_for_2d(
+        &mut self,
+        screen_pos: &[i16; 2],
+        layer: UiLayer2d,
+    ) -> &Matrix4<f32> {
+        let m = self.identity_mat.as_mut_slice();
+        m[12] = screen_pos[0] as f32;
+        m[13] = screen_pos[1] as f32;
+        m[14] = (layer as usize as f32) * 0.01;
+        m[15] = 1.0;
+        return &self.identity_mat;
     }
 
     fn render_ground(
@@ -321,9 +358,13 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             .use_lighting
             .set(gl, if map_render_data.use_lighting { 1 } else { 0 });
 
-        map_render_data.texture_atlas.bind(&gl, TEXTURE_0);
-        map_render_data.tile_color_texture.bind(&gl, TEXTURE_1);
-        map_render_data.lightmap_texture.bind(&gl, TEXTURE_2);
+        map_render_data.texture_atlas.bind(&gl, MyGlEnum::TEXTURE0);
+        map_render_data
+            .tile_color_texture
+            .bind(&gl, MyGlEnum::TEXTURE1);
+        map_render_data
+            .lightmap_texture
+            .bind(&gl, MyGlEnum::TEXTURE2);
         map_render_data.ground_vertex_array.bind(&gl).draw(&gl);
     }
 
@@ -357,9 +398,9 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             ]);
             width += 1.0;
         });
-        return VertexArray::new(
+        return VertexArray::new_static(
             &gl,
-            gl::TRIANGLES,
+            MyGlEnum::TRIANGLES,
             vertices,
             vec![
                 VertexAttribDefinition {
@@ -447,9 +488,9 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         let offset = [pos[0] - 320.0, pos[1] - 320.0];
 
         return Some(EffectFrameCache {
-            pos_vao: VertexArray::new(
+            pos_vao: VertexArray::new_static(
                 &gl,
-                gl::TRIANGLE_STRIP,
+                MyGlEnum::TRIANGLE_STRIP,
                 vec![
                     [xy[0], xy[4], 0.0, 0.0],
                     [xy[1], xy[5], 1.0, 0.0],
@@ -507,7 +548,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
         unsafe {
             system_vars
                 .gl
-                .Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+                .Clear(MyGlEnum::COLOR_BUFFER_BIT as u32 | MyGlEnum::DEPTH_BUFFER_BIT as u32);
         }
 
         for (render_commands, camera, _not_browser) in (
@@ -590,7 +631,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 size.params.texture.set(gl, 0);
 
                 unsafe {
-                    system_vars.gl.ActiveTexture(gl::TEXTURE0);
+                    system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
                 /////////////////////////////////
                 // 3D Sprites
@@ -634,7 +675,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         unsafe {
                             system_vars
                                 .gl
-                                .BindTexture(gl::TEXTURE_2D, command.texture.0);
+                                .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
                         }
                         vao_bind.draw(&system_vars.gl);
                     }
@@ -647,13 +688,13 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let _stopwatch =
                         system_benchmark.start_measurement("OpenGlRenderSystem.number3d");
                     unsafe {
-                        gl.Disable(gl::DEPTH_TEST);
+                        gl.Disable(MyGlEnum::DEPTH_TEST);
                     }
                     system_vars
                         .assets
                         .sprites
                         .numbers
-                        .bind(&system_vars.gl, TEXTURE_0);
+                        .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                     for command in &render_commands.number_3d_commands {
                         size.params
                             .scale
@@ -667,7 +708,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .draw(&system_vars.gl);
                     }
                     unsafe {
-                        gl.Enable(gl::DEPTH_TEST);
+                        gl.Enable(MyGlEnum::DEPTH_TEST);
                     }
                 }
             }
@@ -678,7 +719,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             {
                 let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.effect3d");
                 unsafe {
-                    gl.Disable(gl::DEPTH_TEST);
+                    gl.Disable(MyGlEnum::DEPTH_TEST);
                 }
                 let shader = system_vars.assets.shaders.str_effect_shader.gl_use(gl);
                 shader
@@ -688,7 +729,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader.params.texture.set(gl, 0);
                 unsafe {
-                    system_vars.gl.ActiveTexture(gl::TEXTURE0);
+                    system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
 
                 &render_commands
@@ -720,7 +761,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                     gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
                                 }
                                 str_file.textures[cached_frame.texture_index]
-                                    .bind(&system_vars.gl, TEXTURE_0);
+                                    .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                                 let bind = cached_frame.pos_vao.bind(&system_vars.gl);
                                 for pos in commands {
                                     let mut matrix = cached_frame.rotation_matrix.clone();
@@ -738,8 +779,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     });
 
                 unsafe {
-                    gl.BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-                    gl.Enable(gl::DEPTH_TEST);
+                    gl.BlendFunc(MyGlBlendEnum::SRC_ALPHA, MyGlBlendEnum::ONE_MINUS_SRC_ALPHA);
+                    gl.Enable(MyGlEnum::DEPTH_TEST);
                 }
             }
 
@@ -801,7 +842,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     for node_render_data in &model_render_data.model {
                         // TODO: optimize this
                         for face_render_data in node_render_data {
-                            face_render_data.texture.bind(&system_vars.gl, TEXTURE_0);
+                            face_render_data
+                                .texture
+                                .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                             face_render_data
                                 .vao
                                 .bind(&system_vars.gl)
@@ -823,18 +866,44 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .set(gl, &system_vars.matrices.ortho);
 
                 for command in &render_commands.partial_circle_2d_commands {
-                    shader.params.model_mat.set(gl, &command.matrix);
+                    let matrix =
+                        self.get_translation_matrix_for_2d(&command.screen_pos, command.layer);
+                    shader.params.model_mat.set(gl, matrix);
                     shader.params.color.set(gl, &command.color);
                     shader.params.size.set(gl, &[1.0, 1.0]);
-                    shader
-                        .params
-                        .z
-                        .set(gl, 0.01 * command.layer as usize as f32);
 
-                    self.circle_vertex_arrays[command.i]
+                    self.circle_vertex_arrays[command.circumference_index]
                         .bind(&system_vars.gl)
                         .draw(&system_vars.gl);
                 }
+            }
+
+            /////////////////////////////////
+            // 2D Points
+            /////////////////////////////////
+            {
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.points2d");
+                let shader = system_vars.assets.shaders.point2d_shader.gl_use(gl);
+                shader
+                    .params
+                    .projection_mat
+                    .set(gl, &system_vars.matrices.ortho);
+
+                self.points_buffer.clear();
+                for command in &render_commands.point_2d_commands {
+                    self.points_buffer.push([
+                        command.screen_pos[0] as f32,
+                        command.screen_pos[1] as f32,
+                        (command.layer as usize as f32) * 0.01,
+                        command.color[0] as f32 / 255.0,
+                        command.color[1] as f32 / 255.0,
+                        command.color[2] as f32 / 255.0,
+                        command.color[3] as f32 / 255.0,
+                    ]);
+                }
+                self.points_vao
+                    .bind_dynamic(&system_vars.gl, &self.points_buffer)
+                    .draw(&system_vars.gl)
             }
 
             /////////////////////////////////
@@ -854,7 +923,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .sprite_vertex_array
                     .bind(&system_vars.gl);
                 unsafe {
-                    system_vars.gl.ActiveTexture(gl::TEXTURE0);
+                    system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.texture_2d_commands {
                     let width = command.texture_width as f32;
@@ -862,9 +931,10 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     unsafe {
                         system_vars
                             .gl
-                            .BindTexture(gl::TEXTURE_2D, command.texture.0);
+                            .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
                     }
-                    shader.params.model_mat.set(gl, &command.matrix);
+                    let matrix = create_2d_matrix(&command.screen_pos, command.rotation_rad as f32);
+                    shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
                         .z
@@ -901,15 +971,12 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 for command in &render_commands.rectangle_2d_commands {
                     shader.params.color.set(gl, &command.color);
-                    shader.params.model_mat.set(gl, &command.matrix);
+                    let matrix = create_2d_matrix(&command.screen_pos, command.rotation_rad as f32);
+                    shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
                         .size
-                        .set(gl, &[command.scale[0] as f32, command.scale[1] as f32]);
-                    shader
-                        .params
-                        .z
-                        .set(gl, 0.01 * command.layer as usize as f32);
+                        .set(gl, &[command.width as f32, command.height as f32]);
 
                     vertex_array_bind.draw(&system_vars.gl);
                 }
@@ -932,7 +999,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .sprite_vertex_array
                     .bind(&system_vars.gl);
                 unsafe {
-                    system_vars.gl.ActiveTexture(gl::TEXTURE0);
+                    system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.text_2d_commands {
                     let texture = self.text_cache.entry(command.text.clone()).or_insert(
@@ -946,7 +1013,9 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let width = texture.width as f32;
                     let height = texture.height as f32;
                     unsafe {
-                        system_vars.gl.BindTexture(gl::TEXTURE_2D, texture.id().0);
+                        system_vars
+                            .gl
+                            .BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
                     }
                     shader.params.model_mat.set(gl, &command.matrix);
                     shader

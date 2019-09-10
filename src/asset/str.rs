@@ -1,7 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::video::GlTexture;
 use std::collections::HashMap;
 
@@ -30,8 +29,8 @@ pub struct StrKeyFrame {
     pub xy: [f32; 8],
     pub color: [u8; 4],
     pub angle: f32,
-    pub src_alpha: u32,
-    pub dst_alpha: u32,
+    pub src_alpha: MyGlBlendEnum,
+    pub dst_alpha: MyGlBlendEnum,
     pub texture_index: usize,
     pub anitype: u32,
     pub delay: f32,
@@ -60,20 +59,20 @@ impl StrFile {
         buf.skip(16);
 
         let d3d_to_gl_blend = [
-            gl::ZERO, // 0
-            gl::ZERO,
-            gl::ONE,
-            gl::SRC_COLOR,
-            gl::ONE_MINUS_SRC_COLOR,
-            gl::SRC_ALPHA, // 5
-            gl::ONE_MINUS_SRC_ALPHA,
-            gl::DST_ALPHA,
-            gl::ONE_MINUS_DST_ALPHA,
-            gl::DST_COLOR,
-            gl::ONE_MINUS_DST_COLOR, // 10
-            gl::SRC_ALPHA_SATURATE,
-            gl::CONSTANT_COLOR,
-            gl::ONE_MINUS_CONSTANT_ALPHA, // 13
+            MyGlBlendEnum::ZERO, // 0
+            MyGlBlendEnum::ZERO,
+            MyGlBlendEnum::ONE,
+            MyGlBlendEnum::SRC_COLOR,
+            MyGlBlendEnum::ONE_MINUS_SRC_COLOR,
+            MyGlBlendEnum::SRC_ALPHA, // 5
+            MyGlBlendEnum::ONE_MINUS_SRC_ALPHA,
+            MyGlBlendEnum::DST_ALPHA,
+            MyGlBlendEnum::ONE_MINUS_DST_ALPHA,
+            MyGlBlendEnum::DST_COLOR,
+            MyGlBlendEnum::ONE_MINUS_DST_COLOR, // 10
+            MyGlBlendEnum::SRC_ALPHA_SATURATE,
+            MyGlBlendEnum::CONSTANT_COLOR,
+            MyGlBlendEnum::ONE_MINUS_CONSTANT_ALPHA, // 13
         ];
 
         let mut texture_names_to_index: HashMap<String, usize> = HashMap::new();
@@ -100,7 +99,7 @@ impl StrFile {
                                 gl,
                                 &texture_name,
                                 surface,
-                                gl::NEAREST,
+                                MyGlEnum::NEAREST,
                                 asset_database,
                             );
                             textures.push(texture);

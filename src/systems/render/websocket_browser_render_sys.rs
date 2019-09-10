@@ -129,12 +129,19 @@ impl WebSocketBrowserRenderSystem {
             for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
+            // i32 only because padding
+            send_buffer
+                .write_i32::<LittleEndian>(command.rotation_rad as i32)
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[0])
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[1])
+                .unwrap();
             let packed_int: u32 = ((command.layer as u32) << 24)
-                | ((command.scale[0] as u32) << 12)
-                | ((command.scale[1] as u32) & 0b1111_11111111);
+                | ((command.width as u32) << 12)
+                | ((command.height as u32) & 0b1111_11111111);
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
         }
     }
@@ -162,14 +169,17 @@ impl WebSocketBrowserRenderSystem {
             for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[0])
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[1])
+                .unwrap();
             send_buffer
                 .write_u16::<LittleEndian>(command.layer as u16)
                 .unwrap();
             send_buffer
-                .write_u16::<LittleEndian>(command.i as u16)
+                .write_u16::<LittleEndian>(command.circumference_index as u16)
                 .unwrap();
         }
     }
@@ -293,12 +303,22 @@ impl WebSocketBrowserRenderSystem {
             for v in &command.color {
                 send_buffer.write_u8(*v).unwrap();
             }
-            for v in &command.offset {
-                send_buffer.write_i16::<LittleEndian>(*v).unwrap();
-            }
-            for v in &command.matrix {
-                send_buffer.write_f32::<LittleEndian>(*v).unwrap();
-            }
+            send_buffer
+                .write_i16::<LittleEndian>(command.offset[0])
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.offset[1])
+                .unwrap();
+
+            send_buffer
+                .write_i16::<LittleEndian>(command.rotation_rad)
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[0])
+                .unwrap();
+            send_buffer
+                .write_i16::<LittleEndian>(command.screen_pos[1])
+                .unwrap();
             let packed_int: u32 = ((command.layer as u32) << 24) | command.texture.0 as u32;
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
 

@@ -5,8 +5,7 @@ use crate::asset::rsm::{BoundingBox, Rsm};
 use crate::asset::rsw::{Rsw, WaterData};
 use crate::asset::AssetLoader;
 use crate::common::measure_time;
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 use ncollide2d::pipeline::CollisionGroups;
@@ -289,9 +288,9 @@ pub fn load_map(
         [-0.5, -0.5, 0.0, 1.0],
         [0.5, -0.5, 1.0, 1.0],
     ];
-    let centered_sprite_vertex_array = VertexArray::new(
+    let centered_sprite_vertex_array = VertexArray::new_static(
         gl,
-        gl::TRIANGLE_STRIP,
+        MyGlEnum::TRIANGLE_STRIP,
         s,
         vec![
             VertexAttribDefinition {
@@ -311,9 +310,9 @@ pub fn load_map(
         [0.0, 1.0, 0.0, 1.0],
         [1.0, 1.0, 1.0, 1.0],
     ];
-    let sprite_vertex_array = VertexArray::new(
+    let sprite_vertex_array = VertexArray::new_static(
         gl,
-        gl::TRIANGLE_STRIP,
+        MyGlEnum::TRIANGLE_STRIP,
         s,
         vec![
             VertexAttribDefinition {
@@ -328,9 +327,9 @@ pub fn load_map(
         ],
     );
     let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
-    let rectangle_vertex_array = VertexArray::new(
+    let rectangle_vertex_array = VertexArray::new_static(
         gl,
-        gl::TRIANGLE_STRIP,
+        MyGlEnum::TRIANGLE_STRIP,
         s,
         vec![VertexAttribDefinition {
             number_of_components: 2,
@@ -350,7 +349,7 @@ pub fn load_map(
                 "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\map\\{}.bmp",
                 map_name
             ),
-            gl::NEAREST,
+            MyGlEnum::NEAREST,
             asset_database,
         )
         .unwrap();
@@ -446,18 +445,18 @@ fn load_ground(
         })
         .flatten()
         .collect();
-    let ground_walkability_mesh = VertexArray::new(
+    let ground_walkability_mesh = VertexArray::new_static(
         gl,
-        gl::TRIANGLES,
+        MyGlEnum::TRIANGLES,
         vertices,
         vec![VertexAttribDefinition {
             number_of_components: 3,
             offset_of_first_element: 0,
         }],
     );
-    let ground_walkability_mesh2 = VertexArray::new(
+    let ground_walkability_mesh2 = VertexArray::new_static(
         gl,
-        gl::TRIANGLES,
+        MyGlEnum::TRIANGLES,
         vertices2,
         vec![VertexAttribDefinition {
             number_of_components: 3,
@@ -482,9 +481,9 @@ fn load_ground(
         })
         .flatten()
         .collect();
-    let ground_walkability_mesh3 = VertexArray::new(
+    let ground_walkability_mesh3 = VertexArray::new_static(
         gl,
-        gl::TRIANGLES,
+        MyGlEnum::TRIANGLES,
         vertices,
         vec![VertexAttribDefinition {
             number_of_components: 3,
@@ -515,9 +514,9 @@ fn load_ground(
         ground.lightmaps.count,
         asset_database,
     );
-    let ground_vertex_array = VertexArray::new(
+    let ground_vertex_array = VertexArray::new_static(
         gl,
-        gl::TRIANGLES,
+        MyGlEnum::TRIANGLES,
         std::mem::replace(&mut ground.mesh, vec![]),
         vec![
             VertexAttribDefinition {

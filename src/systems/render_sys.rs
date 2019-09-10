@@ -2,7 +2,7 @@ use crate::asset::database::AssetDatabase;
 use crate::cam::Camera;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
-    PhysicsComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
+    NpcComponent, PhysicsComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
@@ -567,6 +567,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::WriteStorage<'a, RenderCommandCollectorComponent>,
         specs::WriteStorage<'a, AudioCommandCollectorComponent>,
         specs::ReadExpect<'a, AssetDatabase>,
+        specs::ReadStorage<'a, NpcComponent>,
     );
 
     fn run(
@@ -590,6 +591,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut render_commands_storage,
             mut audio_commands_storage,
             asset_database,
+            npc_storage,
         ): Self::SystemData,
     ) {
         let join = {
@@ -672,6 +674,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &mut render_commands,
                     &mut system_vars,
                     &char_state_storage,
+                    &npc_storage,
+                    &entities,
                 );
             }
         }
@@ -1235,11 +1239,12 @@ impl RenderDesktopClientSystem {
         let bar_x = spr_x + (spr_w / 2) - (bar_w / 2);
         let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
             render_commands
-                .prepare_for_2d()
+                .rectangle_2d()
                 .color(&color)
-                .scale2(w, h)
+                .size(w as u16, h as u16)
                 .screen_pos(bar_x + x, bounding_rect_2d.top_right[1] - 30 + y)
-                .add_rectangle_command(UiLayer2d::HealthBars);
+                .layer(UiLayer2d::HealthBars)
+                .add();
         };
 
         let hp_percentage = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
@@ -1287,15 +1292,12 @@ impl RenderDesktopClientSystem {
             let x = bar_x + bar_w + 1;
             let y = bounding_rect_2d.top_right[1] - 30;
             render_commands
-                .prepare_for_2d()
+                .sprite_2d()
                 .color(&COLOR_WHITE)
                 .screen_pos(x, y)
-                .add_sprite_command(
-                    shield_icon_texture,
-                    [0, (-shield_icon_texture.height / 2) as i16],
-                    false,
-                    UiLayer2d::StatusIndicators,
-                );
+                .layer(UiLayer2d::StatusIndicators)
+                .offset(0, (-shield_icon_texture.height / 2) as i16)
+                .add(shield_icon_texture);
 
             // progress bar
             let color = if armor_bonus > 0 {
@@ -1308,24 +1310,26 @@ impl RenderDesktopClientSystem {
                 char_state.attrib_bonuses().durations.armor_bonus_started_at,
                 char_state.attrib_bonuses().durations.armor_bonus_ends_at,
             ) * 100.0) as i32;
-            let index = ((100 - perc) - 1).max(0) as usize;
+            let index = (100 - perc).max(1) as usize;
             let x = bar_x + bar_w + shield_icon_texture.width / 2 + 1;
             let y = bounding_rect_2d.top_right[1] - 30;
 
             render_commands
-                .prepare_for_2d()
+                .partial_circle_2d()
                 .color(&color)
                 .screen_pos(x, y)
-                .rotation_rad(-std::f32::consts::FRAC_PI_2)
-                .add_partial_circle_command(index, UiLayer2d::StatusIndicators);
+                .layer(UiLayer2d::StatusIndicators)
+                .circumference_percentage(index)
+                .add();
 
             let text_texture = &assets.texts.custom_texts[&armor_bonus.to_string()];
 
             render_commands
-                .prepare_for_2d()
+                .sprite_2d()
                 .color(&color)
                 .screen_pos(x, y)
-                .add_sprite_command(text_texture, [0, 0], false, UiLayer2d::StatusIndicators);
+                .layer(UiLayer2d::StatusIndicators)
+                .add(text_texture);
         }
     }
 

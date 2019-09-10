@@ -8,52 +8,60 @@ use std::os::raw::c_void;
 #[derive(Clone, Hash)]
 pub struct Gl;
 
-pub const TEXTURE0: GLenum = gl::TEXTURE0;
-pub const RGBA: GLenum = gl::RGBA;
-pub const UNSIGNED_BYTE: GLenum = gl::UNSIGNED_BYTE;
-pub const TEXTURE_2D: GLenum = gl::TEXTURE_2D;
-pub const LINEAR: GLenum = gl::LINEAR;
-pub const NEAREST: GLenum = gl::NEAREST;
-pub const TRIANGLES: GLenum = gl::TRIANGLES;
-pub const TRIANGLE_STRIP: GLenum = gl::TRIANGLE_STRIP;
-pub const LINE_STRIP: GLenum = gl::LINE_STRIP;
-pub const LINE_LOOP: GLenum = gl::LINE_LOOP;
-pub const ZERO: GLenum = gl::ZERO;
-pub const ONE: GLenum = gl::ONE;
-pub const VERTEX_SHADER: GLenum = gl::VERTEX_SHADER;
-pub const FRAGMENT_SHADER: GLenum = gl::FRAGMENT_SHADER;
+#[derive(Clone, Copy)]
+pub enum MyGlEnum {
+    TEXTURE0 = gl::TEXTURE0 as isize,
+    TEXTURE1 = gl::TEXTURE1 as isize,
+    TEXTURE2 = gl::TEXTURE2 as isize,
+    RGBA = gl::RGBA as isize,
+    UNSIGNED_BYTE = gl::UNSIGNED_BYTE as isize,
+    TEXTURE_2D = gl::TEXTURE_2D as isize,
+    LINEAR = gl::LINEAR as isize,
+    NEAREST = gl::NEAREST as isize,
+    TRIANGLES = gl::TRIANGLES as isize,
+    TRIANGLE_STRIP = gl::TRIANGLE_STRIP as isize,
+    LINE_STRIP = gl::LINE_STRIP as isize,
+    LINE_LOOP = gl::LINE_LOOP as isize,
+    POINTS = gl::POINTS as isize,
+    VERTEX_SHADER = gl::VERTEX_SHADER as isize,
+    FRAGMENT_SHADER = gl::FRAGMENT_SHADER as isize,
+    COLOR_BUFFER_BIT = gl::COLOR_BUFFER_BIT as isize,
+    DEPTH_BUFFER_BIT = gl::DEPTH_BUFFER_BIT as isize,
 
-pub const COLOR_BUFFER_BIT: GLenum = gl::COLOR_BUFFER_BIT;
-pub const DEPTH_BUFFER_BIT: GLenum = gl::DEPTH_BUFFER_BIT;
+    TEXTURE_MIN_FILTER = gl::TEXTURE_MIN_FILTER as isize,
+    TEXTURE_MAG_FILTER = gl::TEXTURE_MAG_FILTER as isize,
+    CLAMP_TO_EDGE = gl::CLAMP_TO_EDGE as isize,
+    TEXTURE_WRAP_S = gl::TEXTURE_WRAP_S as isize,
+    TEXTURE_WRAP_T = gl::TEXTURE_WRAP_T as isize,
 
-pub const TEXTURE_MIN_FILTER: GLenum = gl::TEXTURE_MIN_FILTER;
-pub const TEXTURE_MAG_FILTER: GLenum = gl::TEXTURE_MAG_FILTER;
-pub const CLAMP_TO_EDGE: GLenum = gl::CLAMP_TO_EDGE;
-pub const TEXTURE_WRAP_S: GLenum = gl::TEXTURE_WRAP_S;
-pub const TEXTURE_WRAP_T: GLenum = gl::TEXTURE_WRAP_T;
+    ARRAY_BUFFER = gl::ARRAY_BUFFER as isize,
+    FLOAT = gl::FLOAT as isize,
 
-pub const ARRAY_BUFFER: GLenum = gl::ARRAY_BUFFER;
-pub const FLOAT: GLenum = gl::FLOAT;
-pub const FALSE: GLboolean = gl::FALSE;
+    STATIC_DRAW = gl::STATIC_DRAW as isize,
+    DYNAMIC_DRAW = gl::DYNAMIC_DRAW as isize,
+    INFO_LOG_LENGTH = gl::INFO_LOG_LENGTH as isize,
+    COMPILE_STATUS = gl::COMPILE_STATUS as isize,
+    LINK_STATUS = gl::LINK_STATUS as isize,
 
-pub const STATIC_DRAW: GLenum = gl::STATIC_DRAW;
-pub const INFO_LOG_LENGTH: GLenum = gl::INFO_LOG_LENGTH;
-pub const COMPILE_STATUS: GLenum = gl::COMPILE_STATUS;
-pub const LINK_STATUS: GLenum = gl::LINK_STATUS;
+    DEPTH_TEST = gl::DEPTH_TEST as isize,
+}
 
-pub const SRC_COLOR: GLenum = gl::SRC_COLOR;
-pub const ONE_MINUS_SRC_COLOR: GLenum = gl::ONE_MINUS_SRC_COLOR;
-pub const SRC_ALPHA: GLenum = gl::SRC_ALPHA;
-pub const ONE_MINUS_SRC_ALPHA: GLenum = gl::ONE_MINUS_SRC_ALPHA;
-pub const DST_ALPHA: GLenum = gl::DST_ALPHA;
-pub const ONE_MINUS_DST_ALPHA: GLenum = gl::ONE_MINUS_DST_ALPHA;
-pub const DST_COLOR: GLenum = gl::DST_COLOR;
-pub const ONE_MINUS_DST_COLOR: GLenum = gl::ONE_MINUS_DST_COLOR;
-pub const SRC_ALPHA_SATURATE: GLenum = gl::SRC_ALPHA_SATURATE;
-pub const CONSTANT_COLOR: GLenum = gl::CONSTANT_COLOR;
-pub const ONE_MINUS_CONSTANT_ALPHA: GLenum = gl::ONE_MINUS_CONSTANT_ALPHA;
-
-pub const DEPTH_TEST: GLenum = gl::DEPTH_TEST;
+#[derive(Clone, Copy)]
+pub enum MyGlBlendEnum {
+    ZERO = gl::ZERO as isize,
+    ONE = gl::ONE as isize,
+    SRC_COLOR = gl::SRC_COLOR as isize,
+    ONE_MINUS_SRC_COLOR = gl::ONE_MINUS_SRC_COLOR as isize,
+    SRC_ALPHA = gl::SRC_ALPHA as isize,
+    ONE_MINUS_SRC_ALPHA = gl::ONE_MINUS_SRC_ALPHA as isize,
+    DST_ALPHA = gl::DST_ALPHA as isize,
+    ONE_MINUS_DST_ALPHA = gl::ONE_MINUS_DST_ALPHA as isize,
+    DST_COLOR = gl::DST_COLOR as isize,
+    ONE_MINUS_DST_COLOR = gl::ONE_MINUS_DST_COLOR as isize,
+    SRC_ALPHA_SATURATE = gl::SRC_ALPHA_SATURATE as isize,
+    CONSTANT_COLOR = gl::CONSTANT_COLOR as isize,
+    ONE_MINUS_CONSTANT_ALPHA = gl::ONE_MINUS_CONSTANT_ALPHA as isize,
+}
 
 impl Gl {
     pub fn new(
@@ -73,6 +81,7 @@ impl Gl {
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::LineWidth(2.0);
+            gl::PointSize(2.0);
         }
         return (Gl, gl_context);
     }
@@ -81,18 +90,18 @@ impl Gl {
         gl::GenBuffers(n, buffers);
     }
 
-    pub unsafe fn BindBuffer(&self, target: GLenum, buffer: GLuint) {
-        gl::BindBuffer(target, buffer);
+    pub unsafe fn BindBuffer(&self, target: MyGlEnum, buffer: GLuint) {
+        gl::BindBuffer(target as u32, buffer);
     }
 
     pub unsafe fn BufferData(
         &self,
-        target: GLenum,
+        target: MyGlEnum,
         size: GLsizeiptr,
         data: *const c_void,
-        usage: GLenum,
+        usage: MyGlEnum,
     ) {
-        gl::BufferData(target, size, data, usage);
+        gl::BufferData(target as u32, size, data, usage as u32);
     }
 
     pub unsafe fn GenVertexArrays(&self, n: GLsizei, arrays: *mut GLuint) {
@@ -111,43 +120,43 @@ impl Gl {
         &self,
         index: GLuint,
         size: GLint,
-        type_: GLenum,
+        type_: MyGlEnum,
         normalized: GLboolean,
         stride: GLsizei,
         pointer: *const c_void,
     ) {
-        gl::VertexAttribPointer(index, size, type_, normalized, stride, pointer);
+        gl::VertexAttribPointer(index, size, type_ as u32, normalized, stride, pointer);
     }
 
-    pub unsafe fn DrawArrays(&self, mode: GLenum, first: GLint, count: GLsizei) {
-        gl::DrawArrays(mode, first, count);
+    pub unsafe fn DrawArrays(&self, mode: MyGlEnum, first: GLint, count: GLsizei) {
+        gl::DrawArrays(mode as u32, first, count);
     }
 
-    pub unsafe fn BindTexture(&self, target: GLenum, texture: GLuint) {
-        gl::BindTexture(target, texture);
+    pub unsafe fn BindTexture(&self, target: MyGlEnum, texture: GLuint) {
+        gl::BindTexture(target as u32, texture);
     }
 
-    pub unsafe fn ActiveTexture(&self, texture: GLenum) {
-        gl::ActiveTexture(texture);
+    pub unsafe fn ActiveTexture(&self, texture: MyGlEnum) {
+        gl::ActiveTexture(texture as u32);
     }
 
     pub unsafe fn GetTexImage(
         &self,
-        target: GLenum,
+        target: MyGlEnum,
         level: GLint,
-        format: GLenum,
-        type_: GLenum,
+        format: MyGlEnum,
+        type_: MyGlEnum,
         pixels: *mut c_void,
     ) {
-        gl::GetTexImage(target, level, format, type_, pixels);
+        gl::GetTexImage(target as u32, level, format as u32, type_ as u32, pixels);
     }
 
-    pub unsafe fn TexParameteri(&self, target: GLenum, pname: GLenum, param: GLint) {
-        gl::TexParameteri(target, pname, param);
+    pub unsafe fn TexParameteri(&self, target: MyGlEnum, pname: MyGlEnum, param: GLint) {
+        gl::TexParameteri(target as u32, pname as u32, param);
     }
 
-    pub unsafe fn GenerateMipmap(&self, target: GLenum) {
-        gl::GenerateMipmap(target);
+    pub unsafe fn GenerateMipmap(&self, target: MyGlEnum) {
+        gl::GenerateMipmap(target as u32);
     }
 
     pub unsafe fn DisableVertexAttribArray(&self, index: GLuint) {
@@ -164,25 +173,25 @@ impl Gl {
 
     pub unsafe fn TexImage2D(
         &self,
-        target: GLenum,
+        target: MyGlEnum,
         level: GLint,
         internalformat: GLint,
         width: GLsizei,
         height: GLsizei,
         border: GLint,
-        format: GLenum,
-        type_: GLenum,
+        format: MyGlEnum,
+        type_: MyGlEnum,
         pixels: *const c_void,
     ) {
         gl::TexImage2D(
-            target,
+            target as u32,
             level,
             internalformat,
             width,
             height,
             border,
-            format,
-            type_,
+            format as u32,
+            type_ as u32,
             pixels,
         );
     }
@@ -217,20 +226,20 @@ impl Gl {
         gl::CompileShader(n);
     }
 
-    pub unsafe fn GetProgramiv(&self, program: GLuint, pname: GLenum, params: *mut GLint) {
-        gl::GetProgramiv(program, pname, params);
+    pub unsafe fn GetProgramiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
+        gl::GetProgramiv(program, pname as u32, params);
     }
 
-    pub unsafe fn GetShaderiv(&self, program: GLuint, pname: GLenum, params: *mut GLint) {
-        gl::GetShaderiv(program, pname, params);
+    pub unsafe fn GetShaderiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
+        gl::GetShaderiv(program, pname as u32, params);
     }
 
     pub unsafe fn GetUniformLocation(&self, program: GLuint, name: *const GLchar) -> GLint {
         return gl::GetUniformLocation(program, name);
     }
 
-    pub unsafe fn CreateShader(&self, kind: GLenum) -> GLuint {
-        return gl::CreateShader(kind);
+    pub unsafe fn CreateShader(&self, kind: MyGlEnum) -> GLuint {
+        return gl::CreateShader(kind as u32);
     }
 
     pub unsafe fn GetProgramInfoLog(
@@ -305,16 +314,16 @@ impl Gl {
         gl::AttachShader(program, shader);
     }
 
-    pub unsafe fn Disable(&self, n: GLenum) {
-        gl::Disable(n);
+    pub unsafe fn Disable(&self, n: MyGlEnum) {
+        gl::Disable(n as u32);
     }
 
-    pub unsafe fn Enable(&self, n: GLenum) {
-        gl::Enable(n);
+    pub unsafe fn Enable(&self, n: MyGlEnum) {
+        gl::Enable(n as u32);
     }
 
-    pub unsafe fn BlendFunc(&self, n: GLenum, b: GLenum) {
-        gl::BlendFunc(n, b);
+    pub unsafe fn BlendFunc(&self, n: MyGlBlendEnum, b: MyGlBlendEnum) {
+        gl::BlendFunc(n as u32, b as u32);
     }
 
     pub unsafe fn DetachShader(&self, program: GLuint, shader: GLuint) {

@@ -1,7 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
 use nalgebra::{
@@ -378,9 +377,9 @@ impl Rsm {
 
                     let (name, gl_tex) = &textures[node.textures[texture_index as usize] as usize];
                     let renderable = SameTextureNodeFaces {
-                        vao: VertexArray::new(
+                        vao: VertexArray::new_static(
                             gl,
-                            gl::TRIANGLES,
+                            MyGlEnum::TRIANGLES,
                             mesh,
                             vec![
                                 VertexAttribDefinition {
@@ -435,7 +434,7 @@ impl Rsm {
                     gl,
                     &path,
                     surface,
-                    gl::NEAREST,
+                    MyGlEnum::NEAREST,
                     asset_database,
                 );
                 log::trace!("Texture was created loaded: {}", path);

@@ -129,16 +129,19 @@ sealed class RenderCommand {
                         val color: Float32Array,
                         val radius: Float) : RenderCommand()
 
-    data class PartialCircle2D(val matrix: Float32Array,
+    data class PartialCircle2D(val screen_pos_x: Short,
+                               val screen_pos_y: Short,
                                val color: Float32Array,
                                val layer: Int,
                                val index: Int) : RenderCommand()
 
-    data class Rectangle2D(val matrix: Float32Array,
-                               val color: Float32Array,
-                               val layer: Int,
-                               val w: Int,
-                               val h: Int) : RenderCommand()
+    data class Rectangle2D(val color: Float32Array,
+                           val layer: Int,
+                           val screen_pos_x: Short,
+                           val screen_pos_y: Short,
+                           val rotation_rad: Short,
+                           val w: Int,
+                           val h: Int) : RenderCommand()
 
 
     data class Model3D(val model_instance_index: Int,
@@ -436,12 +439,14 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
 private fun parse_partial_circle_2d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
-        val matrix = reader.next_4x4matrix()
+        val x = reader.next_i16()
+        val y = reader.next_i16()
         val layer = reader.next_u16()
         val index = reader.next_u16()
         renderer.partial_circle2d_render_commands.add(RenderCommand.PartialCircle2D(
                 color = color,
-                matrix = matrix,
+                screen_pos_x = x.toShort(),
+                screen_pos_y = y.toShort(),
                 layer = layer,
                 index = index
         ))
@@ -451,19 +456,24 @@ private fun parse_partial_circle_2d_render_commands(reader: BufferReader, render
 private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
-        val matrix = reader.next_4x4matrix()
+        // i32 only because padding
+        val rotation_rad = reader.next_i32()
+        val x = reader.next_i16()
+        val y = reader.next_i16()
         val packed_int2 = reader.next_u32()
         val packed_int = packed_int2.toUInt()
         val h = packed_int.and(0b1111_11111111u) // lower 12 bit is h
         val w = packed_int.and(0b11111111_11110000_00000000u).shr(12) // next 12 bit is w
-        val layer = packed_int.and(0b11111111_00000000_00000000_00000000u).shr(12+12) // next 8 bit is layer
+        val layer = packed_int.and(0b11111111_00000000_00000000_00000000u).shr(12 + 12) // next 8 bit is layer
 
         renderer.rectangle2d_render_commands.add(RenderCommand.Rectangle2D(
                 color = color,
-                matrix = matrix,
                 layer = layer.toInt(),
                 w = w.toInt(),
-                h = h.toInt()
+                h = h.toInt(),
+                screen_pos_x = x.toShort(),
+                screen_pos_y = y.toShort(),
+                rotation_rad = rotation_rad.toShort()
         ))
     }
 }
@@ -688,6 +698,13 @@ class BufferReader(val buffer: ArrayBuffer) {
         offset += 1
         return ret.toInt()
     }
+
+    fun next_i32(): Int {
+        val ret = view.getInt32(offset, true)
+        offset += 4
+        return ret
+    }
+
 
     fun next_i16(): Int {
         val ret = view.getInt16(offset, true)

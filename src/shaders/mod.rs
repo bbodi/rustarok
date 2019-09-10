@@ -1,5 +1,4 @@
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::{
     Shader, ShaderParam1f, ShaderParam1i, ShaderParam2fv, ShaderParam2i, ShaderParam3fv,
     ShaderParam3x3fv, ShaderParam4ubv, ShaderParam4x4fv, ShaderProgram,
@@ -14,6 +13,7 @@ pub struct Shaders {
     pub sprite2d_shader: ShaderProgram<Texture2dShaderParameters>,
     pub trimesh_shader: ShaderProgram<Trimesh3dShaderParameters>,
     pub trimesh2d_shader: ShaderProgram<Trimesh2dShaderParameters>,
+    pub point2d_shader: ShaderProgram<Point2dShaderParameters>,
 }
 
 pub fn load_shaders(gl: &Gl) -> Shaders {
@@ -21,8 +21,10 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         ground_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("ground.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("ground.frag"), gl::FRAGMENT_SHADER).unwrap(),
+                Shader::from_source(gl, include_str!("ground.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("ground.frag"), MyGlEnum::FRAGMENT_SHADER)
+                    .unwrap(),
             ],
             |program_id| GroundShaderParameters::new(gl, program_id),
         )
@@ -30,8 +32,10 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         model_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("model.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("model.frag"), gl::FRAGMENT_SHADER).unwrap(),
+                Shader::from_source(gl, include_str!("model.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("model.frag"), MyGlEnum::FRAGMENT_SHADER)
+                    .unwrap(),
             ],
             |program_id| ModelShaderParameters::new(gl, program_id),
         )
@@ -39,8 +43,10 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         sprite_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("sprite.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("sprite.frag"), gl::FRAGMENT_SHADER).unwrap(),
+                Shader::from_source(gl, include_str!("sprite.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("sprite.frag"), MyGlEnum::FRAGMENT_SHADER)
+                    .unwrap(),
             ],
             |program_id| Sprite3dShaderParameters::new(gl, program_id),
         )
@@ -48,10 +54,14 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         str_effect_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("str_effect.vert"), gl::VERTEX_SHADER)
+                Shader::from_source(gl, include_str!("str_effect.vert"), MyGlEnum::VERTEX_SHADER)
                     .unwrap(),
-                Shader::from_source(gl, include_str!("str_effect.frag"), gl::FRAGMENT_SHADER)
-                    .unwrap(),
+                Shader::from_source(
+                    gl,
+                    include_str!("str_effect.frag"),
+                    MyGlEnum::FRAGMENT_SHADER,
+                )
+                .unwrap(),
             ],
             |program_id| StrEffect3dShaderParameters::new(gl, program_id),
         )
@@ -59,8 +69,9 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         sprite2d_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("sprite2d.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("sprite2d.frag"), gl::FRAGMENT_SHADER)
+                Shader::from_source(gl, include_str!("sprite2d.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("sprite2d.frag"), MyGlEnum::FRAGMENT_SHADER)
                     .unwrap(),
             ],
             |program_id| Texture2dShaderParameters::new(gl, program_id),
@@ -69,8 +80,10 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         trimesh_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("trimesh.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("trimesh.frag"), gl::FRAGMENT_SHADER).unwrap(),
+                Shader::from_source(gl, include_str!("trimesh.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("trimesh.frag"), MyGlEnum::FRAGMENT_SHADER)
+                    .unwrap(),
             ],
             |program_id| Trimesh3dShaderParameters::new(gl, program_id),
         )
@@ -78,11 +91,27 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
         trimesh2d_shader: ShaderProgram::from_shaders(
             gl,
             &[
-                Shader::from_source(gl, include_str!("trimesh2d.vert"), gl::VERTEX_SHADER).unwrap(),
-                Shader::from_source(gl, include_str!("trimesh2d.frag"), gl::FRAGMENT_SHADER)
+                Shader::from_source(gl, include_str!("trimesh2d.vert"), MyGlEnum::VERTEX_SHADER)
                     .unwrap(),
+                Shader::from_source(
+                    gl,
+                    include_str!("trimesh2d.frag"),
+                    MyGlEnum::FRAGMENT_SHADER,
+                )
+                .unwrap(),
             ],
             |program_id| Trimesh2dShaderParameters::new(gl, program_id),
+        )
+        .unwrap(),
+        point2d_shader: ShaderProgram::from_shaders(
+            gl,
+            &[
+                Shader::from_source(gl, include_str!("point2d.vert"), MyGlEnum::VERTEX_SHADER)
+                    .unwrap(),
+                Shader::from_source(gl, include_str!("point2d.frag"), MyGlEnum::FRAGMENT_SHADER)
+                    .unwrap(),
+            ],
+            |program_id| Point2dShaderParameters::new(gl, program_id),
         )
         .unwrap(),
     }
@@ -264,7 +293,6 @@ pub struct Trimesh2dShaderParameters {
     pub model_mat: ShaderParam4x4fv,
     pub color: ShaderParam4ubv,
     pub size: ShaderParam2fv,
-    pub z: ShaderParam1f,
 }
 
 impl Trimesh2dShaderParameters {
@@ -274,7 +302,18 @@ impl Trimesh2dShaderParameters {
             model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
             size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
-            z: ShaderParam1f(Shader::get_location(gl, program_id, "z")),
+        }
+    }
+}
+
+pub struct Point2dShaderParameters {
+    pub projection_mat: ShaderParam4x4fv,
+}
+
+impl Point2dShaderParameters {
+    pub fn new(gl: &Gl, program_id: c_uint) -> Point2dShaderParameters {
+        Point2dShaderParameters {
+            projection_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "projection")),
         }
     }
 }

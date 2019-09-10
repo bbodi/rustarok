@@ -8,6 +8,18 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
     private val trimesh_2d_shader = load_shader(gl)
     private val circle_buffers = create_partial_circle_vertex_buffers(gl)
 
+    private val matrix = Float32Array(arrayOf(
+            1f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f
+    )).apply {
+        this[0] = 1f
+        this[5] = 1f
+        this[10] = 1f
+        this[15] = 1f
+    };
+
     fun render_rectangles(gl: WebGL2RenderingContext,
                           commands: List<RenderCommand.Rectangle2D>,
                           sprite_vertex_buffer: WebGLBuffer) {
@@ -19,13 +31,15 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
         gl.vertexAttribPointer(trimesh_2d_shader.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
 
         for (command in commands) {
-            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
-
-            gl.uniform2f(trimesh_2d_shader.size, command.w.toFloat(), command.h.toFloat())
-            gl.uniform4fv(trimesh_2d_shader.color, command.color)
-            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
-
-            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
+            // TODO
+            continue
+//            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
+//
+//            gl.uniform2f(trimesh_2d_shader.size, command.w.toFloat(), command.h.toFloat())
+//            gl.uniform4fv(trimesh_2d_shader.color, command.color)
+//            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
+//
+//            gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
     }
 
@@ -34,11 +48,13 @@ class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
         gl.useProgram(trimesh_2d_shader.program)
         gl.uniformMatrix4fv(trimesh_2d_shader.projection_mat, false, ORTHO_MATRIX)
         for (command in commands) {
-            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, command.matrix)
+            matrix[12] = command.screen_pos_x.toFloat()
+            matrix[13] = command.screen_pos_y.toFloat()
+            matrix[14] = 0.01f * command.layer
+            gl.uniformMatrix4fv(trimesh_2d_shader.model_mat, false, matrix)
 
             gl.uniform2f(trimesh_2d_shader.size, 1f, 1f)
             gl.uniform4fv(trimesh_2d_shader.color, command.color)
-            gl.uniform1f(trimesh_2d_shader.z, 0.01f * command.layer)
 
             gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, circle_buffers[command.index])
             gl.enableVertexAttribArray(trimesh_2d_shader.a_pos)
@@ -90,7 +106,7 @@ uniform vec2 size;
 uniform float z;
 
 void main() {
-    vec4 pos = vec4(Position.x * size.x, Position.y * size.y, z, 1.0);
+    vec4 pos = vec4(Position.x * size.x, Position.y * size.y, 0.0, 1.0);
     gl_Position = projection * model * pos;
 }""")
             gl.compileShader(this)
@@ -148,7 +164,6 @@ void main() {
                                model_mat = gl.getUniformLocation(program, "model")!!,
                                size = gl.getUniformLocation(program, "size")!!,
                                color = gl.getUniformLocation(program, "color")!!,
-                               z = gl.getUniformLocation(program, "z")!!,
                                a_pos = gl.getAttribLocation(program, "Position"))
     }
 
@@ -157,6 +172,5 @@ void main() {
                                        val model_mat: WebGLUniformLocation,
                                        val size: WebGLUniformLocation,
                                        val color: WebGLUniformLocation,
-                                       val z: WebGLUniformLocation,
                                        val a_pos: Int)
 }

@@ -6,8 +6,7 @@ use crate::asset::rsm::Rsm;
 use crate::asset::rsw::Rsw;
 use crate::asset::spr::SpriteFile;
 use crate::asset::str::StrFile;
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::{GlNativeTextureId, GlTexture};
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
@@ -278,7 +277,7 @@ impl AssetLoader {
         gl: &Gl,
         name: &str,
         surface: sdl2::surface::Surface,
-        min_mag: u32,
+        min_mag: MyGlEnum,
         asset_db: &mut AssetDatabase,
     ) -> GlTexture {
         let ret = AssetLoader::create_texture_from_surface_inner(gl, surface, min_mag);
@@ -299,21 +298,29 @@ impl AssetLoader {
         unsafe {
             gl.GenTextures(1, &mut texture_id.0);
             log::debug!("Texture from_data {}", texture_id.0);
-            gl.BindTexture(gl::TEXTURE_2D, texture_id.0);
+            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
             gl.TexImage2D(
-                gl::TEXTURE_2D,
-                0,               // Pyramid level (for mip-mapping) - 0 is the top level
-                gl::RGBA as i32, // Internal colour format to convert to
+                MyGlEnum::TEXTURE_2D,
+                0,                     // Pyramid level (for mip-mapping) - 0 is the top level
+                MyGlEnum::RGBA as i32, // Internal colour format to convert to
                 width,
                 height,
-                0,        // border
-                gl::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
-                gl::UNSIGNED_BYTE,
+                0,              // border
+                MyGlEnum::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                MyGlEnum::UNSIGNED_BYTE,
                 data.as_ptr() as *const c_void,
             );
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            gl.GenerateMipmap(gl::TEXTURE_2D);
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_MIN_FILTER,
+                MyGlEnum::LINEAR as i32,
+            );
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_MAG_FILTER,
+                MyGlEnum::LINEAR as i32,
+            );
+            gl.GenerateMipmap(MyGlEnum::TEXTURE_2D);
         }
         let texture = GlTexture::new(gl, texture_id, width, height);
 
@@ -325,7 +332,7 @@ impl AssetLoader {
         &self,
         gl: &Gl,
         path: &str,
-        min_mag: u32,
+        min_mag: MyGlEnum,
         asset_db: &mut AssetDatabase,
     ) -> Result<GlTexture, String> {
         let surface = self.load_sdl_surface(&path);
@@ -337,7 +344,7 @@ impl AssetLoader {
     pub fn create_texture_from_surface_inner(
         gl: &Gl,
         mut surface: sdl2::surface::Surface,
-        min_mag: u32,
+        min_mag: MyGlEnum,
     ) -> GlTexture {
         let surface = if surface.pixel_format_enum() != PixelFormatEnum::RGBA32 {
             let mut optimized_surf = sdl2::surface::Surface::new(
@@ -357,24 +364,40 @@ impl AssetLoader {
         let mut texture_id = GlNativeTextureId(0);
         unsafe {
             gl.GenTextures(1, &mut texture_id.0);
-            gl.BindTexture(gl::TEXTURE_2D, texture_id.0);
+            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
             gl.TexImage2D(
-                gl::TEXTURE_2D,
-                0,               // Pyramid level (for mip-mapping) - 0 is the top level
-                gl::RGBA as i32, // Internal colour format to convert to
+                MyGlEnum::TEXTURE_2D,
+                0,                     // Pyramid level (for mip-mapping) - 0 is the top level
+                MyGlEnum::RGBA as i32, // Internal colour format to convert to
                 surface.width() as i32,
                 surface.height() as i32,
-                0,               // border
-                gl::RGBA as u32, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
-                gl::UNSIGNED_BYTE,
+                0,              // border
+                MyGlEnum::RGBA, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
+                MyGlEnum::UNSIGNED_BYTE,
                 surface.without_lock().unwrap().as_ptr() as *const c_void,
             );
 
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min_mag as i32);
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, min_mag as i32);
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
-            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
-            gl.GenerateMipmap(gl::TEXTURE_2D);
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_MIN_FILTER,
+                min_mag as i32,
+            );
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_MAG_FILTER,
+                min_mag as i32,
+            );
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_WRAP_S,
+                MyGlEnum::CLAMP_TO_EDGE as i32,
+            );
+            gl.TexParameteri(
+                MyGlEnum::TEXTURE_2D,
+                MyGlEnum::TEXTURE_WRAP_T,
+                MyGlEnum::CLAMP_TO_EDGE as i32,
+            );
+            gl.GenerateMipmap(MyGlEnum::TEXTURE_2D);
         }
         GlTexture::new(
             gl,
@@ -430,7 +453,11 @@ impl AssetLoader {
             .blit(None, &mut opengl_surface, dst_rect)
             .unwrap();
 
-        return AssetLoader::create_texture_from_surface_inner(gl, opengl_surface, gl::NEAREST);
+        return AssetLoader::create_texture_from_surface_inner(
+            gl,
+            opengl_surface,
+            MyGlEnum::NEAREST,
+        );
     }
 }
 

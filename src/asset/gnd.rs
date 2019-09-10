@@ -4,8 +4,7 @@ use sdl2::rect::Rect;
 
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
-use crate::my_gl as gl;
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::GlTexture;
 
 pub struct Gnd {
@@ -416,7 +415,7 @@ impl Gnd {
             gl,
             "ground_tile_color_texture",
             scaled_tiles_color_surface,
-            gl::LINEAR,
+            MyGlEnum::LINEAR,
             asset_database,
         );
     }
@@ -742,7 +741,7 @@ impl Gnd {
             gl,
             "ground_texture_atlas",
             surface_atlas,
-            gl::NEAREST,
+            MyGlEnum::NEAREST,
             asset_database,
         );
     }

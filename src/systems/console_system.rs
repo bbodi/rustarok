@@ -1149,11 +1149,12 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
             if console.y_pos > 0 {
                 // background
                 render_commands
-                    .prepare_for_2d()
+                    .rectangle_2d()
                     .screen_pos(0, 0)
-                    .scale2(VIDEO_WIDTH as i32, console.y_pos)
+                    .size(VIDEO_WIDTH as u16, console.y_pos as u16)
                     .color(&console_color)
-                    .add_rectangle_command(UiLayer2d::Console);
+                    .layer(UiLayer2d::Console)
+                    .add();
                 // cursor
                 if console.cursor_shown {
                     render_commands
@@ -1216,14 +1217,16 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                             .max(0);
                         // background
                         render_commands
-                            .prepare_for_2d()
+                            .rectangle_2d()
                             .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
-                            .scale2(
-                                help_text_len as i32 * NORMAL_FONT_W + border_size * 2,
-                                NORMAL_FONT_H + border_size * 2,
+                            .size(
+                                help_text_len as u16 * NORMAL_FONT_W as u16
+                                    + border_size as u16 * 2,
+                                NORMAL_FONT_H as u16 + border_size as u16 * 2,
                             )
                             .color(&[55, 57, 57, console_color[3]])
-                            .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
+                            .layer(UiLayer2d::ConsoleAutocompletion)
+                            .add();
                         // text
                         let mut x: usize = border_size as usize;
                         command_def
@@ -1268,16 +1271,17 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                         .max(0);
                     // background
                     render_commands
-                        .prepare_for_2d()
+                        .rectangle_2d()
                         .screen_pos(start_x, console.y_pos)
-                        .scale2(
-                            longest_text_len as i32 * NORMAL_FONT_W,
-                            NORMAL_FONT_H
+                        .size(
+                            longest_text_len as u16 * NORMAL_FONT_W as u16,
+                            NORMAL_FONT_H as u16
                                 * console.filtered_autocompletion_list.iter().take(20).count()
-                                    as i32,
+                                    as u16,
                         )
                         .color(&[55, 57, 57, console_color[3]])
-                        .add_rectangle_command(UiLayer2d::ConsoleAutocompletion);
+                        .layer(UiLayer2d::ConsoleAutocompletion)
+                        .add();
                     // texts
                     for (i, line) in console
                         .filtered_autocompletion_list
