@@ -424,19 +424,21 @@ impl Rsm {
             .iter()
             .map(|texture_name| {
                 let path = format!("data\\texture\\{}", texture_name);
-                let surface = asset_loader.load_sdl_surface(&path);
-                log::trace!("Surface loaded: {}", path);
-                let surface = surface.unwrap_or_else(|e| {
-                    log::warn!("Missing texture: {}, {}", path, e);
-                    asset_loader.backup_surface()
+                let ret = asset_database.get_texture(gl, &path).unwrap_or_else(|| {
+                    let surface = asset_loader.load_sdl_surface(&path);
+                    log::trace!("Surface loaded: {}", path);
+                    let surface = surface.unwrap_or_else(|e| {
+                        log::warn!("Missing texture: {}, {}", path, e);
+                        asset_loader.backup_surface()
+                    });
+                    AssetLoader::create_texture_from_surface(
+                        gl,
+                        &path,
+                        surface,
+                        MyGlEnum::NEAREST,
+                        asset_database,
+                    )
                 });
-                let ret = AssetLoader::create_texture_from_surface(
-                    gl,
-                    &path,
-                    surface,
-                    MyGlEnum::NEAREST,
-                    asset_database,
-                );
                 log::trace!("Texture was created loaded: {}", path);
                 return (AssetDatabase::replace_non_ascii_chars(&path), ret);
             })

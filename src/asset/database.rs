@@ -59,10 +59,19 @@ impl AssetDatabase {
         }
     }
 
+    pub fn get_texture(&self, gl: &Gl, path: &str) -> Option<GlTexture> {
+        let key = AssetDatabase::replace_non_ascii_chars(&path);
+        return self.texture_db.entries.get(&key).map(|it| {
+            let t: (GlNativeTextureId, u32, u32) = it.gl_textures[0];
+            GlTexture::new(gl, t.0, t.1 as i32, t.2 as i32)
+        });
+    }
+
     pub fn register_texture(&mut self, gl: &Gl, path: &str, textures: &[&GlTexture]) {
         let mut hasher = DefaultHasher::new();
 
         for texture in textures {
+            log::info!("{}: {}", texture.id().0, path);
             let mut buffer =
                 Vec::<u8>::with_capacity((texture.width * texture.height * 4) as usize);
             unsafe {
@@ -79,9 +88,13 @@ impl AssetDatabase {
             hasher.write(buffer.as_slice());
         }
         let hash = hasher.finish();
+        let key = AssetDatabase::replace_non_ascii_chars(&path);
+        if self.texture_db.entries.contains_key(&key) {
+            panic!("Texture already exists with this name: {}", key);
+        }
 
         self.texture_db.entries.insert(
-            AssetDatabase::replace_non_ascii_chars(&path),
+            key,
             TextureDatabaseEntry {
                 hash: hash.to_string(),
                 gl_textures: textures

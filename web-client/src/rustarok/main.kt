@@ -1,6 +1,7 @@
 package rustarok
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import org.khronos.webgl.*
 import org.w3c.dom.*
 import org.w3c.files.Blob
@@ -210,7 +211,7 @@ sealed class RenderCommand {
 
 var socket: WebSocket = 0.asDynamic()
 var dummy_texture: BrowserTextureData = 0.asDynamic()
-val jobs = arrayListOf<suspend () -> Unit>()
+val job_channel = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
 fun main() {
     if (canvas.getContext("webgl2") == null) {
@@ -237,14 +238,11 @@ fun main() {
     GlobalScope.launch {
         while (true) {
             delay(100)
-            console.log(jobs.size)
-            while (jobs.iterator().hasNext()) {
-                val job = jobs.removeAt(0)
+            for (job in job_channel) {
                 GlobalScope.launch {
                     job.invoke()
                 }
             }
-
         }
     }
 
@@ -291,12 +289,14 @@ fun main() {
                             val count = reader.next_u16()
                             console.info("Download $path with $count textures")
                             IndexedDb.store_texture_info(path, hash, count)
-                            for (i in 0 until count) {
+                            val textures = (0 until count).map {
                                 val w = reader.next_u16()
                                 val h = reader.next_u16()
                                 val raw_data = reader.read(w * h * 4)
-                                IndexedDb.store_texture(path, i, w, h, raw_data)
+                                Triple(w, h, raw_data)
                             }
+                            IndexedDb.store_textures(path, textures)
+                            console.info("Stored: $path")
                         }
                     }
                 }
@@ -713,11 +713,13 @@ private fun process_welcome_msg(result: dynamic): Job {
             server_tile_color_texture_id = 0
     )
 
-
     val texture_db = result.asset_database.texture_db.entries
     val keys: Array<String> = js("Object").keys(texture_db)
     val map = hashMapOf<String, DatabaseTextureEntry>()
     for (key in keys) {
+        if (key != "data\\sprite\\[195, 128][195, 142][194, 176][194, 163][195, 129][194, 183]\\[194, 184][195, 182][195, 133][195, 171]\\[194, 179][194, 178]\\[195, 133][194, 169][194, 183][195, 167][194, 188][194, 188][195, 128][195, 140][194, 180][195, 181]_[194, 179][194, 178]") {
+
+        }
         val databaseTextureEntry: DatabaseTextureEntry = texture_db[key]
         for (i in databaseTextureEntry.gl_textures.indices) {
             databaseTextureEntry.gl_textures[i] =
@@ -726,6 +728,9 @@ private fun process_welcome_msg(result: dynamic): Job {
         map[key] = databaseTextureEntry
         path_to_server_gl_indices[key] = databaseTextureEntry
         for ((i, glTexture) in databaseTextureEntry.gl_textures.withIndex()) {
+            if (glTexture.server_gl_index == 4090) {
+                js("debugger")
+            }
             server_texture_index_to_path[glTexture.server_gl_index] = Triple(glTexture, key, i)
             when (key) {
                 "ground_texture_atlas" -> ground_render_command = ground_render_command.copy(
@@ -742,6 +747,14 @@ private fun process_welcome_msg(result: dynamic): Job {
     }
     return GlobalScope.launch {
         val mismatched_textures = IndexedDb.collect_mismatched_textures(map)
+        (0 until 110).forEach {
+            val t =
+                    IndexedDb.get_texture("data\\sprite\\[195, 128][195, 142][194, 176][194, 163][195, 129][194, 183]\\[194, 184][195, 182][195, 133][195, 171]\\[194, 179][194, 178]\\[194, 189][195, 133][195, 134][195, 164][195, 132][195, 154][195, 133][194, 169][194, 183][195, 167][194, 188][194, 188][195, 128][195, 140][194, 180][195, 181]_[194, 179][194, 178]",
+                                          it)
+            if (t == null) {
+                console.log("$it is missing shit")
+            }
+        }
         console.log(mismatched_textures)
         socket.send(JSON.stringify(object {
             val mismatched_textures = mismatched_textures
@@ -836,7 +849,8 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTex
         console.log("Loading texture $server_texture_id")
         // put dummy value into it so it won't trigger loading again
         server_to_client_gl_indices[server_texture_id] = dummy_texture
-        jobs.add {
+
+        job_channel.offer() {
             val maybe = server_texture_index_to_path[server_texture_id]
             if (maybe == null) {
                 console.error("No path data for $server_texture_id")
@@ -844,7 +858,7 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTex
                 val (glTexture, path, i) = maybe
                 val new_texture_id = load_texture(glTexture, path, i, min_mag)
                 if (new_texture_id == null) {
-                    console.error("Texture was not found: $path")
+                    console.error("Texture was not found: $path, $i")
                 } else {
                     console.log("Texture was loaded: $path, $i")
                     server_to_client_gl_indices[server_texture_id] =
@@ -854,6 +868,7 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTex
                 }
             }
         }
+
         return dummy_texture
     } else {
         return texture_id

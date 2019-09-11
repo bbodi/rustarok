@@ -1,6 +1,6 @@
 package rustarok
 
-import kotlinx.coroutines.await
+import kotlinx.coroutines.*
 import org.khronos.webgl.Uint8Array
 import kotlin.js.Promise
 
@@ -20,7 +20,7 @@ object IndexedDb {
 
     suspend fun collect_mismatched_textures(entries: Map<String, DatabaseTextureEntry>): ArrayList<String> {
         val db = open()
-        val tx = db.transaction("textures", "readwrite")
+        val tx = db.transaction("textures", "readonly")
         val store = tx.objectStore("textures")
         val mismatched_textures = arrayListOf<String>()
         for (entry in entries) {
@@ -73,24 +73,23 @@ object IndexedDb {
         }
     }
 
-    suspend fun store_texture(path: String,
-                              texture_index: Int,
-                              w: Int,
-                              h: Int,
-                              rawData: Uint8Array) {
+    suspend fun store_textures(path: String,
+                               textures: List<Triple<Int, Int, Uint8Array>>) {
         val db = open()
         val tx = db.transaction("texture_data", "readwrite")
         val store = tx.objectStore("texture_data")
-        val key = "${path}_$texture_index"
-        val result = make_await<dynamic> {
-            store.put(object {
-                val w = w
-                val h = h
-                val raw = rawData
-            }, key)
-        }
-        if (result != key) {
-            js("debugger")
+        for ((texture_index, texture) in textures.withIndex()) {
+            val key = "${path}_$texture_index"
+            val result = make_await<dynamic> {
+                store.put(object {
+                    val w = texture.first
+                    val h = texture.second
+                    val raw = texture.third
+                }, key)
+            }
+            if (result != key) {
+                js("debugger")
+            }
         }
     }
 

@@ -323,26 +323,32 @@ pub fn load_texts(
         );
     }
     STATUS_NAMES.iter().for_each(|name| {
+        let key = format!("outlinetext_{}", name);
         texts.custom_texts.insert(
             name.to_string(),
-            Video::create_outline_text_texture(
-                gl,
-                &skill_key_font,
-                &skill_key_font_outline,
-                name,
-                asset_database,
-            ),
+            asset_database.get_texture(gl, &key).unwrap_or_else(|| {
+                Video::create_outline_text_texture(
+                    gl,
+                    &skill_key_font,
+                    &skill_key_font_outline,
+                    name,
+                    asset_database,
+                )
+            }),
         );
     });
 
     for skill in Skills::iter() {
-        let texture = Video::create_outline_text_texture(
-            gl,
-            &skill_name_font,
-            &skill_name_font_outline,
-            &format!("{:?}", skill),
-            asset_database,
-        );
+        let key = format!("outlinetext_{:?}", skill);
+        let texture = asset_database.get_texture(gl, &key).unwrap_or_else(|| {
+            Video::create_outline_text_texture(
+                gl,
+                &skill_name_font,
+                &skill_name_font_outline,
+                &format!("{:?}", skill),
+                asset_database,
+            )
+        });
         texts.skill_name_texts.insert(skill, texture);
     }
 

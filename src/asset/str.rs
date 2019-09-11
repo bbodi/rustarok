@@ -139,13 +139,17 @@ impl StrFile {
                                 );
                                 asset_loader.backup_surface()
                             });
-                            let texture = AssetLoader::create_texture_from_surface(
-                                gl,
-                                &texture_name,
-                                surface,
-                                MyGlEnum::NEAREST,
-                                asset_database,
-                            );
+                            let texture = asset_database
+                                .get_texture(gl, &texture_name)
+                                .unwrap_or_else(|| {
+                                    AssetLoader::create_texture_from_surface(
+                                        gl,
+                                        &texture_name,
+                                        surface,
+                                        MyGlEnum::NEAREST,
+                                        asset_database,
+                                    )
+                                });
                             textures.push(texture);
                             let size = texture_names_to_index.len();
                             texture_names_to_index.insert(texture_name.clone(), size);

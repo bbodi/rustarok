@@ -58,15 +58,16 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
             match client.receive() {
                 Ok(msg) => match msg {
                     OwnedMessage::Pong(buf) => {
-                        let ping_time = u128::from_le_bytes([
-                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
-                            buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
-                        ]);
-                        let now_ms = SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis();
-                        client.ping = (now_ms - ping_time) as u16;
+                        // TODO
+                        //                        let ping_time = u128::from_le_bytes([
+                        //                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
+                        //                            buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+                        //                        ]);
+                        //                        let now_ms = SystemTime::now()
+                        //                            .duration_since(SystemTime::UNIX_EPOCH)
+                        //                            .unwrap()
+                        //                            .as_millis();
+                        //                        client.ping = (now_ms - ping_time) as u16;
                     }
                     OwnedMessage::Binary(buf) => {
                         let mut iter = buf.iter().enumerate();
