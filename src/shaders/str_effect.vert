@@ -10,7 +10,6 @@ uniform vec2 offset;
 
 const float ONE_SPRITE_PIXEL_SIZE_IN_3D = 1.0 / 35.0;
 
-
 out vec2 tex_coord;
 
 void main() {

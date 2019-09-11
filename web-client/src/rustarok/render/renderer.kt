@@ -9,6 +9,7 @@ const val ONE_SPRITE_PIXEL_SIZE_IN_3D: Float = 1.0f / 35.0f;
 
 class Renderer(gl: WebGL2RenderingContext) {
 
+    var effects: Array<StrFile> = emptyArray()
     var models: Array<ModelData> = emptyArray()
     var model_instances: ArrayList<ModelInstance> = arrayListOf()
 
@@ -18,6 +19,7 @@ class Renderer(gl: WebGL2RenderingContext) {
     val trimesh_3d_renderer = Trimesh3dRenderer(gl)
     val ground_renderer = GroundRenderer(gl)
     val texture_2d_renderer = Texture2dRenderer(gl)
+    val effect_3d_renderer = Effect3dRenderer(gl)
     val trimesh_2d_renderer = Trimesh2dRenderer(gl)
     val model_renderer = ModelRenderer(gl)
     val sprite_3d_renderer = Sprite3dRenderer(gl)
@@ -25,6 +27,7 @@ class Renderer(gl: WebGL2RenderingContext) {
 
     val sprite_render_commands = arrayListOf<RenderCommand.Sprite3D>()
     val number_render_commands = arrayListOf<RenderCommand.Number3D>()
+    val effect3d_render_commands = arrayListOf<RenderCommand.Effect3D>()
     val circle3d_render_commands = arrayListOf<RenderCommand.Circle3D>()
     val partial_circle2d_render_commands = arrayListOf<RenderCommand.PartialCircle2D>()
     val rectangle2d_render_commands = arrayListOf<RenderCommand.Rectangle2D>()
@@ -40,6 +43,7 @@ class Renderer(gl: WebGL2RenderingContext) {
         circle3d_render_commands.clear()
         rectangle3d_render_commands.clear()
         partial_circle2d_render_commands.clear()
+        effect3d_render_commands.clear()
         rectangle2d_render_commands.clear()
     }
 
@@ -50,6 +54,8 @@ class Renderer(gl: WebGL2RenderingContext) {
         sprite_3d_renderer.render_sprites(gl, sprite_render_commands, centered_sprite_vertex_buffer)
 
         sprite_3d_renderer.render_numbers(gl, number_render_commands)
+
+        effect_3d_renderer.render_effects(gl, effect3d_render_commands, effects)
 
         model_renderer.render_models(gl, model3d_render_commands, ground_render_command, models, model_instances)
 

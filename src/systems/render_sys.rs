@@ -1352,6 +1352,7 @@ impl RenderDesktopClientSystem {
             .div(seconds_needed_for_one_frame) as i32
             % max_key as i32;
 
+        render_commands.add_effect_command2(world_pos, effect_id, key_index);
         for layer_index in 0..str_file.layers.len() {
             render_commands.add_effect_command(world_pos, effect_id, key_index, layer_index);
         }

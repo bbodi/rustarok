@@ -5,6 +5,7 @@ use crate::common::measure_time;
 use crate::effect::StrEffectType;
 use crate::my_gl::Gl;
 use crate::systems::render::opengl_render_sys::StrEffectCache;
+use strum::IntoEnumIterator;
 
 pub fn load_str_effects(
     gl: &Gl,
@@ -35,107 +36,17 @@ fn load_effects(
 ) -> Vec<StrFile> {
     let mut str_effects: Vec<StrFile> = Vec::new();
 
-    load_and_prepare_effect(
-        gl,
-        "firewall",
-        StrEffectType::FireWall,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "stormgust",
-        StrEffectType::StormGust,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "lord",
-        StrEffectType::LordOfVermilion,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-
-    load_and_prepare_effect(
-        gl,
-        "lightning",
-        StrEffectType::Lightning,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "concentration",
-        StrEffectType::Concentration,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "moonstar",
-        StrEffectType::Moonstar,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "hunter_poison",
-        StrEffectType::Poison,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "quagmire",
-        StrEffectType::Quagmire,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "firewall_blue",
-        StrEffectType::FireWallBlue,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-
-    load_and_prepare_effect(
-        gl,
-        "firepillarbomb",
-        StrEffectType::FirePillarBomb,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
-    load_and_prepare_effect(
-        gl,
-        "ramadan",
-        StrEffectType::Ramadan,
-        &mut str_effects,
-        asset_loader,
-        asset_database,
-        effect_cache,
-    );
+    for effect_type in StrEffectType::iter() {
+        load_and_prepare_effect(
+            gl,
+            effect_type.get_effect_filename(),
+            effect_type,
+            &mut str_effects,
+            asset_loader,
+            asset_database,
+            effect_cache,
+        )
+    }
 
     str_effects
 }

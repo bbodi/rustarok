@@ -1,4 +1,5 @@
 use crate::components::BrowserClient;
+use crate::effect::StrEffectId;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand, PartialCircle2dRenderCommand,
     Rectangle2dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollectorComponent,
@@ -6,7 +7,7 @@ use crate::systems::render::render_command::{
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
-use nalgebra::{Matrix3, Matrix4};
+use nalgebra::{Matrix3, Matrix4, Vector2};
 use specs::prelude::*;
 
 pub struct WebSocketBrowserRenderSystem {
@@ -95,10 +96,10 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
                 &render_commands.number_3d_commands,
             );
 
-            /////////////////////////////////
-            // 3D EFFECTS
-            /////////////////////////////////
-            {}
+            WebSocketBrowserRenderSystem::send_3d_effect_commands(
+                &mut self.send_buffer,
+                &render_commands.effect_commands2,
+            );
 
             WebSocketBrowserRenderSystem::send_3d_model_commands(
                 &mut self.send_buffer,
@@ -180,6 +181,24 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_u16::<LittleEndian>(command.circumference_index as u16)
                 .unwrap();
+        }
+    }
+
+    fn send_3d_effect_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<(StrEffectId, i32, Vector2<f32>)>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            let effect_id = (command.0).0 as u16;
+            let key_index = command.1 as u16;
+            let pos = command.2;
+            send_buffer.write_u16::<LittleEndian>(effect_id).unwrap();
+            send_buffer.write_u16::<LittleEndian>(key_index).unwrap();
+            send_buffer.write_f32::<LittleEndian>(pos.x).unwrap();
+            send_buffer.write_f32::<LittleEndian>(pos.y).unwrap();
         }
     }
 

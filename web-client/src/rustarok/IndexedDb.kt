@@ -50,6 +50,7 @@ object IndexedDb {
                 db.createObjectStore("texture_data")
                 db.createObjectStore("models")
                 db.createObjectStore("vertex_arrays")
+                db.createObjectStore("effects")
             }
             req.onerror = { event: dynamic ->
                 console.error("DB error: " + event.target.errorCode)
@@ -72,7 +73,11 @@ object IndexedDb {
         }
     }
 
-    suspend fun store_texture(path: String, texture_index: Int, w: Int, h: Int, rawData: Uint8Array) {
+    suspend fun store_texture(path: String,
+                              texture_index: Int,
+                              w: Int,
+                              h: Int,
+                              rawData: Uint8Array) {
         val db = open()
         val tx = db.transaction("texture_data", "readwrite")
         val store = tx.objectStore("texture_data")
@@ -89,7 +94,11 @@ object IndexedDb {
         }
     }
 
-    suspend fun store_model(path: String, node_index: Int, vertex_count: Int, texture_name: String, rawData: Uint8Array) {
+    suspend fun store_model(path: String,
+                            node_index: Int,
+                            vertex_count: Int,
+                            texture_name: String,
+                            rawData: Uint8Array) {
         val db = open()
         val tx = db.transaction("models", "readwrite")
         val store = tx.objectStore("models")
@@ -105,6 +114,20 @@ object IndexedDb {
             js("debugger")
         }
     }
+
+    suspend fun store_effect(name: String,
+                             effect: StrFile) {
+        val db = open()
+        val tx = db.transaction("effects", "readwrite")
+        val store = tx.objectStore("effects")
+        val result = make_await<dynamic> {
+            store.put(effect, name)
+        }
+        if (result != name) {
+            js("debugger")
+        }
+    }
+
 
     suspend fun store_vertex_array(key: String, vertex_count: Int, rawData: Uint8Array) {
         val db = open()
@@ -123,7 +146,7 @@ object IndexedDb {
 
     suspend fun get_vertex_array(path: String): StoredVertexArray? {
         val db = open()
-        val tx = db.transaction("vertex_arrays", "readwrite")
+        val tx = db.transaction("vertex_arrays", "readonly")
         val store = tx.objectStore("vertex_arrays")
         val result = make_await<dynamic> { store.get(path) }
         return if (result != null) {
@@ -133,9 +156,18 @@ object IndexedDb {
         }
     }
 
+    suspend fun get_effect(name: String): StrFile? {
+        val db = open()
+        val tx = db.transaction("effects", "readonly")
+        val store = tx.objectStore("effects")
+        val result = make_await<dynamic> { store.get(name) }
+        return result
+    }
+
+
     suspend fun get_model(path: String, i: Int): StoredModel? {
         val db = open()
-        val tx = db.transaction("models", "readwrite")
+        val tx = db.transaction("models", "readonly")
         val store = tx.objectStore("models")
         val result = make_await<dynamic> { store.get("${path}_$i") }
         return if (result != null) {
@@ -147,7 +179,7 @@ object IndexedDb {
 
     suspend fun get_texture(path: String, i: Int): StoredTexture? {
         val db = open()
-        val tx = db.transaction("texture_data", "readwrite")
+        val tx = db.transaction("texture_data", "readonly")
         val store = tx.objectStore("texture_data")
         val sh = make_await<dynamic> { store.get("${path}_$i") }
         return if (sh != null) {

@@ -3,6 +3,7 @@ use crate::components::char::{attach_human_player_components, Team};
 use crate::components::controller::{CameraComponent, CharEntityId, ControllerEntityId};
 use crate::components::BrowserClient;
 use crate::consts::JobId;
+use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{Sex, SystemVariables};
 use crate::video::VIDEO_HEIGHT;
@@ -11,8 +12,11 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use nalgebra::Point2;
 use specs::prelude::*;
 use std::convert::TryInto;
+use std::io::Write;
 use std::net::TcpListener;
+use std::str::FromStr;
 use std::time::SystemTime;
+use strum::IntoEnumIterator;
 use websocket::server::{NoTlsAcceptor, WsServer};
 use websocket::OwnedMessage;
 
@@ -35,6 +39,7 @@ pub fn handle_new_connections(
                     "screen_height": VIDEO_HEIGHT,
                     "map_name": map_name,
                     "asset_database": serde_json::to_value(asset_db).unwrap(),
+                    "effect_names": StrEffectType::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
                     "ground": json!({
                         "light_dir" : system_vars.map_render_data.rsw.light.direction,
                         "light_ambient" : system_vars.map_render_data.rsw.light.ambient,
@@ -118,6 +123,35 @@ pub fn handle_client_handshakes(mut ecs_world: &mut World) {
                                     .map_render_data
                                     .ground_vertex_array;
                                 ground_vao.write_into(&mut response_buf);
+                                client.send_message(&response_buf);
+                                response_buf.clear();
+                            }
+                        }
+                        // send closing message
+                        {
+                            response_buf.push(0xB1);
+                            response_buf.push(0x6B);
+                            response_buf.push(0x00);
+                            response_buf.push(0xB5);
+                            client.send_message(&response_buf);
+                        }
+                    }
+                    if let Some(missing_effects) = deserialized["missing_effects"].as_array() {
+                        log::trace!("missing_effects: {:?}", missing_effects);
+                        let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                        for missing_effect_name in missing_effects {
+                            let missing_effect_name = missing_effect_name.as_str().unwrap_or("");
+                            if let Ok(effect_type) = StrEffectType::from_str(missing_effect_name) {
+                                let str_file = &ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .str_effects[effect_type as usize];
+
+                                response_buf
+                                    .write_u16::<LittleEndian>(missing_effect_name.len() as u16)
+                                    .unwrap();
+                                response_buf.write(missing_effect_name.as_bytes()).unwrap();
+
+                                str_file.write_into(&mut response_buf);
                                 client.send_message(&response_buf);
                                 response_buf.clear();
                             }

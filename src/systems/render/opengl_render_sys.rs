@@ -719,7 +719,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 }
             }
 
-            // TODO: experiment the validity of effect caching
+            // TODO: measure the validity of effect caching
             /////////////////////////////////
             // 3D EFFECTS
             /////////////////////////////////
@@ -767,6 +767,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                 unsafe {
                                     gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
                                 }
+                                // TODO: save the native_id into the command, so str_file should not be looked up
                                 str_file.textures[cached_frame.texture_index]
                                     .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                                 let bind = cached_frame.pos_vao.bind(&system_vars.gl);

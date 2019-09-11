@@ -65,6 +65,39 @@ class StoredModel(private val native: dynamic) {
         get() = native.texture_name
 }
 
+class StoredEffect(private val native: dynamic) {
+    val raw: Uint8Array
+        get() = native.raw
+
+    val vertex_count: Int
+        get() = native.vertex_count
+
+    val texture_name: String
+        get() = native.texture_name
+}
+
+class StrKeyFrame(
+        val frame: Int,
+        val typ: Int,
+        val pos_x: Float,
+        val pos_y: Float,
+        val xy: Array<Float>,
+        val color: Float32Array,
+        val angle: Float,
+        val src_alpha: Int,
+        val dst_alpha: Int,
+        val texture_index: Int
+)
+
+class StrLayer(val key_frames: Array<StrKeyFrame>)
+
+class StrFile(
+        val max_key: Int,
+        val fps: Int,
+        val layers: Array<StrLayer>,
+        val server_texture_indices: Array<Int>
+)
+
 
 interface DatabaseTextureEntry {
     val gl_textures: Array<ServerTextureData>
@@ -75,7 +108,8 @@ abstract external class WebGL2RenderingContext : WebGLRenderingContext
 
 val server_to_client_gl_indices = hashMapOf<Int, BrowserTextureData>()
 val path_to_server_gl_indices = hashMapOf<String, DatabaseTextureEntry>()
-val server_texture_index_to_path = hashMapOf<Int, Triple<ServerTextureData, String, Int>>() // path, i
+val server_texture_index_to_path =
+        hashMapOf<Int, Triple<ServerTextureData, String, Int>>() // path, i
 var canvas = document.getElementById("main_canvas") as HTMLCanvasElement
 private var gl: WebGL2RenderingContext = 0.asDynamic()
 
@@ -91,6 +125,7 @@ var map_name = ""
 enum class ApppState {
     WaitingForWelcomeMsg,
     ReceivingMismatchingTextures,
+    ReceivingMissingEffects,
     ReceivingGroundVertexBuffer,
     ReceivingModels,
     ReceivingModelInstances,
@@ -125,6 +160,12 @@ sealed class RenderCommand {
                         val z: Float,
                         val color: Float32Array,
                         val scale: Float) : RenderCommand()
+
+    data class Effect3D(val x: Float,
+                        val y: Float,
+                        val key_index: Int,
+                        val effect_id: Int) : RenderCommand()
+
 
     data class Rectangle3D(val x: Float,
                            val y: Float,
@@ -227,25 +268,21 @@ fun main() {
                 console.info("Received missing textures")
                 GlobalScope.launch {
                     val reader = BufferReader(event.data as ArrayBuffer)
-                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js("0xB16B00B5")) {
+                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js(
+                                    "0xB16B00B5")) {
                         console.info("DONE")
                         reader.next_f32()
                         console.log("All textures have been downloaded")
 
-                        val mismatched_vertex_buffers = arrayListOf<String>()
-                        val ground_vertex_array_data = IndexedDb.get_vertex_array("${map_name}_ground")
-                        if (ground_vertex_array_data == null) {
-                            console.info("${map_name}_ground is missing")
-                            mismatched_vertex_buffers.add("3d_ground")
-                        } else {
-                            renderer.ground_renderer.set_vertex_buffer(gl,
-                                                                       ground_vertex_array_data.raw,
-                                                                       ground_vertex_array_data.vertex_count)
+                        val effect_names: Array<String> = welcome_msg.effect_names
+
+                        val missing_effects = effect_names.filter { effect_name ->
+                            IndexedDb.get_effect(effect_name) == null
                         }
 
-                        state = ApppState.ReceivingGroundVertexBuffer
+                        state = ApppState.ReceivingMissingEffects
                         socket.send(JSON.stringify(object {
-                            val mismatched_vertex_buffers = mismatched_vertex_buffers
+                            val missing_effects = missing_effects
                         }))
                     } else {
                         while (reader.has_next()) {
@@ -264,10 +301,88 @@ fun main() {
                     }
                 }
             }
+            ApppState.ReceivingMissingEffects -> {
+                console.info("Received missing effects")
+                GlobalScope.launch {
+                    val reader = BufferReader(event.data as ArrayBuffer)
+                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js(
+                                    "0xB16B00B5")) {
+                        console.info("DONE")
+                        reader.next_f32()
+                        console.log("All effects have been downloaded")
+                        val effect_names: Array<String> = welcome_msg.effect_names
+
+                        renderer.effects = effect_names.map { effect_name ->
+                            IndexedDb.get_effect(effect_name)!!
+                        }.toTypedArray()
+
+
+                        val mismatched_vertex_buffers = arrayListOf<String>()
+                        val ground_vertex_array_data =
+                                IndexedDb.get_vertex_array("${map_name}_ground")
+                        if (ground_vertex_array_data == null) {
+                            console.info("${map_name}_ground is missing")
+                            mismatched_vertex_buffers.add("3d_ground")
+                        } else {
+                            renderer.ground_renderer.set_vertex_buffer(gl,
+                                                                       ground_vertex_array_data.raw,
+                                                                       ground_vertex_array_data.vertex_count)
+                        }
+
+                        state = ApppState.ReceivingGroundVertexBuffer
+                        socket.send(JSON.stringify(object {
+                            val mismatched_vertex_buffers = mismatched_vertex_buffers
+                        }))
+                    } else {
+                        while (reader.has_next()) {
+                            val name = reader.next_string_with_length()
+                            val max_key = reader.next_u32()
+                            val fps = reader.next_u32()
+                            val layer_count = reader.next_u16()
+                            val texture_count = reader.next_u16()
+                            val server_texture_indices = (0 until texture_count).map {
+                                reader.next_u32()
+                            }.toTypedArray()
+                            val layers = (0 until layer_count).map {
+                                val frame_count = reader.next_u16()
+                                val key_frames = (0 until frame_count).map {
+                                    val frame = reader.next_i32()
+                                    val typ = reader.next_u8()
+                                    val posx = reader.next_f32()
+                                    val posy = reader.next_f32()
+                                    val xy = (0 until 8).map {
+                                        reader.next_f32()
+                                    }.toTypedArray()
+                                    val color = reader.next_color4_u8()
+                                    val angle = reader.next_f32()
+                                    val src_alpha = reader.next_i32()
+                                    val dst_alpha = reader.next_i32()
+                                    val texture_index = reader.next_u16()
+                                    StrKeyFrame(frame,
+                                                typ,
+                                                posx,
+                                                posy,
+                                                xy,
+                                                color,
+                                                angle,
+                                                src_alpha,
+                                                dst_alpha,
+                                                texture_index)
+                                }.toTypedArray()
+                                StrLayer(key_frames)
+                            }.toTypedArray()
+                            val str_file = StrFile(max_key, fps, layers, server_texture_indices)
+                            console.info("Download effect: $name")
+                            IndexedDb.store_effect(name, str_file)
+                        }
+                    }
+                }
+            }
             ApppState.ReceivingGroundVertexBuffer -> {
                 GlobalScope.launch {
                     val reader = BufferReader(event.data as ArrayBuffer)
-                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js("0xB16B00B5")) {
+                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js(
+                                    "0xB16B00B5")) {
                         console.info("ground DONE")
                         reader.next_f32()
 
@@ -293,8 +408,12 @@ fun main() {
                                     val vertex_count = reader.next_u32()
                                     val buffer_len = reader.next_u32()
                                     val raw_data = reader.read(buffer_len)
-                                    IndexedDb.store_vertex_array("${map_name}_ground", vertex_count, raw_data)
-                                    renderer.ground_renderer.set_vertex_buffer(gl, raw_data, vertex_count)
+                                    IndexedDb.store_vertex_array("${map_name}_ground",
+                                                                 vertex_count,
+                                                                 raw_data)
+                                    renderer.ground_renderer.set_vertex_buffer(gl,
+                                                                               raw_data,
+                                                                               vertex_count)
                                 }
                             }
                         }
@@ -304,14 +423,17 @@ fun main() {
             ApppState.ReceivingModels -> {
                 GlobalScope.launch {
                     val reader = BufferReader(event.data as ArrayBuffer)
-                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js("0xB16B00B5")) {
+                    if (reader.view.byteLength >= 4 && reader.view.getUint32(reader.offset).asDynamic() == js(
+                                    "0xB16B00B5")) {
                         console.info("Models DONE")
                         reader.next_f32()
 
                         // prepare models
-                        val model_name_to_index: Map<String, Int> = welcome_msg.asset_database.model_name_to_index
+                        val model_name_to_index: Map<String, Int> =
+                                welcome_msg.asset_database.model_name_to_index
 
-                        val model_index_to_models = Array<ModelData>(model_name_to_index.size) { 0.asDynamic() }
+                        val model_index_to_models =
+                                Array<ModelData>(model_name_to_index.size) { 0.asDynamic() }
                         model_name_to_index.forEach { (model_name, server_index) ->
                             val model = ModelData()
                             for (i in 0 until 1000) {
@@ -388,6 +510,7 @@ fun main() {
                     parse_circle3d_render_commands(reader, renderer)
                     parse_sprite_render_commands(reader, renderer)
                     parse_number_render_commands(reader, renderer)
+                    parse_effect_3d_render_commands(reader, renderer)
                     parse_model3d_render_commands(reader, renderer)
                 }
             }
@@ -400,7 +523,8 @@ fun create_vertex_buffer(gl: WebGL2RenderingContext, raw: Uint8Array): WebGLBuff
     gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
     try {
         gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
-                      Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)),
+                      Float32Array(raw.buffer.slice(raw.byteOffset,
+                                                    raw.byteOffset + raw.byteLength)),
                       WebGLRenderingContext.STATIC_DRAW)
     } catch (e: Throwable) {
         js("debugger")
@@ -428,6 +552,16 @@ private fun parse_number_render_commands(reader: BufferReader, renderer: Rendere
                 y = reader.next_f32(),
                 z = reader.next_f32(),
                 value = reader.next_u32()))
+    }
+}
+
+private fun parse_effect_3d_render_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        renderer.effect3d_render_commands.add(RenderCommand.Effect3D(
+                effect_id = reader.next_u16(),
+                key_index = reader.next_u16(),
+                x = reader.next_f32(),
+                y = reader.next_f32()))
     }
 }
 
@@ -480,7 +614,9 @@ private fun parse_rectangle_2d_render_commands(reader: BufferReader, renderer: R
         val packed_int = packed_int2.toUInt()
         val h = packed_int.and(0b1111_11111111u) // lower 12 bit is h
         val w = packed_int.and(0b11111111_11110000_00000000u).shr(12) // next 12 bit is w
-        val layer = packed_int.and(0b11111111_00000000_00000000_00000000u).shr(12 + 12) // next 8 bit is layer
+        val layer =
+                packed_int.and(0b11111111_00000000_00000000_00000000u)
+                        .shr(12 + 12) // next 8 bit is layer
 
         renderer.rectangle2d_render_commands.add(RenderCommand.Rectangle2D(
                 color = color,
@@ -584,7 +720,8 @@ private fun process_welcome_msg(result: dynamic): Job {
     for (key in keys) {
         val databaseTextureEntry: DatabaseTextureEntry = texture_db[key]
         for (i in databaseTextureEntry.gl_textures.indices) {
-            databaseTextureEntry.gl_textures[i] = ServerTextureData(databaseTextureEntry.gl_textures[i])
+            databaseTextureEntry.gl_textures[i] =
+                    ServerTextureData(databaseTextureEntry.gl_textures[i])
         }
         map[key] = databaseTextureEntry
         path_to_server_gl_indices[key] = databaseTextureEntry
@@ -671,7 +808,9 @@ private suspend fun load_texture(glServerTexture: ServerTextureData,
     canvas.height = glServerTexture.height
     val ctx = canvas.getContext("2d") as CanvasRenderingContext2D
     val imageData =
-            ImageData(Uint8ClampedArray(raw_data.raw.buffer, raw_data.raw.byteOffset, raw_data.raw.byteLength),
+            ImageData(Uint8ClampedArray(raw_data.raw.buffer,
+                                        raw_data.raw.byteOffset,
+                                        raw_data.raw.byteLength),
                       glServerTexture.width,
                       glServerTexture.height)
     ctx.putImageData(imageData,
@@ -709,7 +848,9 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTex
                 } else {
                     console.log("Texture was loaded: $path, $i")
                     server_to_client_gl_indices[server_texture_id] =
-                            BrowserTextureData(new_texture_id, glTexture.width.toFloat(), glTexture.height.toFloat())
+                            BrowserTextureData(new_texture_id,
+                                               glTexture.width.toFloat(),
+                                               glTexture.height.toFloat())
                 }
             }
         }

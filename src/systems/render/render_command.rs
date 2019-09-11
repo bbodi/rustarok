@@ -50,6 +50,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
     pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Vector2<f32>>>,
+    pub(super) effect_commands2: Vec<(StrEffectId, i32, Vector2<f32>)>,
     pub(super) view_matrix: Matrix4<f32>,
     pub(super) normal_matrix: Matrix3<f32>,
 }
@@ -67,6 +68,7 @@ impl<'a> RenderCommandCollectorComponent {
             sprite_3d_commands: Vec::with_capacity(128),
             number_3d_commands: Vec::with_capacity(128),
             effect_commands: HashMap::with_capacity(128),
+            effect_commands2: Vec::with_capacity(128),
             model_commands: Vec::with_capacity(128),
             view_matrix: Matrix4::identity(),
             normal_matrix: Matrix3::identity(),
@@ -88,6 +90,7 @@ impl<'a> RenderCommandCollectorComponent {
         self.circle_3d_commands.clear();
         self.sprite_3d_commands.clear();
         self.number_3d_commands.clear();
+        self.effect_commands2.clear();
         self.effect_commands
             .iter_mut()
             .for_each(|(_key, vec)| vec.clear());
@@ -135,6 +138,15 @@ impl<'a> RenderCommandCollectorComponent {
 
     pub fn sprite_2d(&'a mut self) -> Texture2dRenderCommandCommandBuilder {
         Texture2dRenderCommandCommandBuilder::new(self)
+    }
+
+    pub fn add_effect_command2(
+        &'a mut self,
+        pos: &Vector2<f32>,
+        effect_id: StrEffectId,
+        key_index: i32,
+    ) {
+        self.effect_commands2.push((effect_id, key_index, *pos));
     }
 
     pub fn add_effect_command(
