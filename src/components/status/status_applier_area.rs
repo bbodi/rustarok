@@ -1,4 +1,5 @@
 use crate::components::char::CharacterStateComponent;
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
@@ -14,11 +15,11 @@ where
     F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
 {
     pub collider_handle: DefaultColliderHandle,
-    pub extents: Vector2<f32>,
+    pub extents: Vector2<u16>,
     pub pos: Vector2<f32>,
-    pub name: &'static str,
+    pub name: String,
     pub status_creator: F,
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub next_action_at: ElapsedTime,
 }
 
@@ -27,14 +28,15 @@ where
     F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
 {
     pub fn new(
-        name: &'static str,
+        name: String,
         status_creator: F,
         skill_center: &Vector2<f32>,
-        size: Vector2<f32>,
-        caster_entity_id: Entity,
+        size: Vector2<u16>,
+        caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
-        let collider_handle = physics_world.add_cuboid_skill(*skill_center, 0.0, size);
+        let collider_handle =
+            physics_world.add_cuboid_skill(*skill_center, 0.0, v2!(size.x, size.y));
         StatusApplierArea {
             collider_handle,
             name,
@@ -94,20 +96,21 @@ where
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands
-            .prepare_for_3d()
+            .rectangle_3d()
             .pos_2d(&self.pos)
-            .color(&[0.0, 1.0, 0.0, 1.0])
-            .add_rectangle_command(&(self.extents));
+            .color(&[0, 255, 0, 255])
+            .size(self.extents.x, self.extents.y)
+            .add();
 
         render_commands
-            .prepare_for_3d()
+            .sprite_3d()
             .pos_2d(&self.pos)
             .y(3.0)
             .color(&if self.next_action_at.is_earlier_than(now) {
-                [0.0, 1.0, 0.0, 1.0]
+                [0, 255, 0, 255]
             } else {
-                [0.3, 0.3, 0.3, 1.0]
+                [77, 77, 77, 255]
             })
-            .add_billboard_command(&assets.texts.custom_texts[self.name], false);
+            .add(&assets.texts.custom_texts[&self.name]);
     }
 }

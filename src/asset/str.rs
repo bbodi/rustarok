@@ -1,5 +1,9 @@
+use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::video::GlTexture;
+use byteorder::{LittleEndian, WriteBytesExt};
+use encoding::ByteWriter;
 use std::collections::HashMap;
 
 pub struct StrFile {
@@ -13,7 +17,7 @@ pub struct StrLayer {
     pub key_frames: Vec<StrKeyFrame>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum KeyFrameType {
     Start,
     End,
@@ -23,20 +27,68 @@ pub struct StrKeyFrame {
     pub frame: i32,
     pub typ: KeyFrameType,
     pub pos: [f32; 2],
-    pub uv: [f32; 8],
+    //    pub uv: [f32; 8], it is not used, don't store it
     pub xy: [f32; 8],
-    pub color: [f32; 4],
+    pub color: [u8; 4],
     pub angle: f32,
-    pub src_alpha: u32,
-    pub dst_alpha: u32,
+    pub src_alpha: MyGlBlendEnum,
+    pub dst_alpha: MyGlBlendEnum,
     pub texture_index: usize,
-    pub anitype: u32,
-    pub delay: f32,
-    pub mtpreset: u32,
+    //    pub anitype: u32, not used
+    //    pub delay: f32, not used O-O
+    //    pub mtpreset: u32, not used
 }
 
 impl StrFile {
-    pub(super) fn load(asset_loader: &AssetLoader, mut buf: BinaryReader, str_name: &str) -> Self {
+    pub fn write_into(&self, buffer: &mut Vec<u8>) {
+        buffer.write_u32::<LittleEndian>(self.max_key).unwrap();
+
+        buffer.write_u32::<LittleEndian>(self.fps).unwrap();
+        buffer
+            .write_u16::<LittleEndian>(self.layers.len() as u16)
+            .unwrap();
+        buffer
+            .write_u16::<LittleEndian>(self.textures.len() as u16)
+            .unwrap();
+        for texture in &self.textures {
+            buffer.write_u32::<LittleEndian>(texture.id().0).unwrap();
+        }
+        for layer in &self.layers {
+            buffer
+                .write_u16::<LittleEndian>(layer.key_frames.len() as u16)
+                .unwrap();
+            for frame in &layer.key_frames {
+                buffer.write_i32::<LittleEndian>(frame.frame).unwrap();
+                buffer.write_byte(frame.typ as u8);
+                buffer.write_f32::<LittleEndian>(frame.pos[0]).unwrap();
+                buffer.write_f32::<LittleEndian>(frame.pos[1]).unwrap();
+                for xy in &frame.xy {
+                    buffer.write_f32::<LittleEndian>(*xy).unwrap();
+                }
+                for color in &frame.color {
+                    buffer.write_u8(*color).unwrap();
+                }
+                buffer.write_f32::<LittleEndian>(frame.angle).unwrap();
+                buffer
+                    .write_i32::<LittleEndian>(frame.src_alpha as i32)
+                    .unwrap();
+                buffer
+                    .write_i32::<LittleEndian>(frame.dst_alpha as i32)
+                    .unwrap();
+                buffer
+                    .write_u16::<LittleEndian>(frame.texture_index as u16)
+                    .unwrap();
+            }
+        }
+    }
+
+    pub(super) fn load(
+        gl: &Gl,
+        asset_loader: &AssetLoader,
+        asset_database: &mut AssetDatabase,
+        mut buf: BinaryReader,
+        str_name: &str,
+    ) -> Self {
         let header = buf.string(4);
         if header != "STRM" {
             panic!("Invalig STR header: {}", header);
@@ -51,20 +103,20 @@ impl StrFile {
         buf.skip(16);
 
         let d3d_to_gl_blend = [
-            gl::ZERO, // 0
-            gl::ZERO,
-            gl::ONE,
-            gl::SRC_COLOR,
-            gl::ONE_MINUS_SRC_COLOR,
-            gl::SRC_ALPHA, // 5
-            gl::ONE_MINUS_SRC_ALPHA,
-            gl::DST_ALPHA,
-            gl::ONE_MINUS_DST_ALPHA,
-            gl::DST_COLOR,
-            gl::ONE_MINUS_DST_COLOR, // 10
-            gl::SRC_ALPHA_SATURATE,
-            gl::CONSTANT_COLOR,
-            gl::ONE_MINUS_CONSTANT_ALPHA, // 13
+            MyGlBlendEnum::ZERO, // 0
+            MyGlBlendEnum::ZERO,
+            MyGlBlendEnum::ONE,
+            MyGlBlendEnum::SRC_COLOR,
+            MyGlBlendEnum::ONE_MINUS_SRC_COLOR,
+            MyGlBlendEnum::SRC_ALPHA, // 5
+            MyGlBlendEnum::ONE_MINUS_SRC_ALPHA,
+            MyGlBlendEnum::DST_ALPHA,
+            MyGlBlendEnum::ONE_MINUS_DST_ALPHA,
+            MyGlBlendEnum::DST_COLOR,
+            MyGlBlendEnum::ONE_MINUS_DST_COLOR, // 10
+            MyGlBlendEnum::SRC_ALPHA_SATURATE,
+            MyGlBlendEnum::CONSTANT_COLOR,
+            MyGlBlendEnum::ONE_MINUS_CONSTANT_ALPHA, // 13
         ];
 
         let mut texture_names_to_index: HashMap<String, usize> = HashMap::new();
@@ -87,7 +139,17 @@ impl StrFile {
                                 );
                                 asset_loader.backup_surface()
                             });
-                            let texture = GlTexture::from_surface(surface, gl::NEAREST);
+                            let texture = asset_database
+                                .get_texture(gl, &texture_name)
+                                .unwrap_or_else(|| {
+                                    AssetLoader::create_texture_from_surface(
+                                        gl,
+                                        &texture_name,
+                                        surface,
+                                        MyGlEnum::NEAREST,
+                                        asset_database,
+                                    )
+                                });
                             textures.push(texture);
                             let size = texture_names_to_index.len();
                             texture_names_to_index.insert(texture_name.clone(), size);
@@ -105,16 +167,16 @@ impl StrFile {
                             KeyFrameType::End
                         };
                         let pos = [buf.next_f32(), buf.next_f32()];
-                        let uv = [
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                            buf.next_f32(),
-                        ];
+                        //                        let uv = [
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        buf.next_f32();
+                        //                        ];
                         let xy = [
                             buf.next_f32(),
                             buf.next_f32(),
@@ -129,22 +191,32 @@ impl StrFile {
                             frame,
                             typ,
                             pos,
-                            uv,
+                            //                            uv,
                             xy,
                             texture_index: texture_names_to_index
                                 [&texture_names[buf.next_f32() as usize]],
-                            anitype: buf.next_u32(),
-                            delay: buf.next_f32(),
-                            angle: buf.next_f32() / (1024.0 / 360.0),
+                            //                            anitype: buf.next_u32(),
+                            //                            delay: buf.next_f32(),
+                            angle: {
+                                {
+                                    buf.next_u32(); // anitype
+                                    buf.next_f32(); // delay
+                                }
+                                buf.next_f32() / (1024.0 / 360.0)
+                            },
                             color: [
-                                buf.next_f32() / 255.0,
-                                buf.next_f32() / 255.0,
-                                buf.next_f32() / 255.0,
-                                buf.next_f32() / 255.0,
+                                buf.next_f32() as u8,
+                                buf.next_f32() as u8,
+                                buf.next_f32() as u8,
+                                buf.next_f32() as u8,
                             ],
                             src_alpha: d3d_to_gl_blend[buf.next_u32() as usize],
-                            dst_alpha: d3d_to_gl_blend[buf.next_u32() as usize],
-                            mtpreset: buf.next_u32(),
+                            dst_alpha: {
+                                let ret = d3d_to_gl_blend[buf.next_u32() as usize];
+                                buf.next_u32(); // mtpreset
+                                ret
+                            },
+                            //                            mtpreset: buf.next_u32(),
                         }
                     })
                     .collect();

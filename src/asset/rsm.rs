@@ -1,6 +1,8 @@
+use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::my_gl::{Gl, MyGlEnum};
+use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
-use crate::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use nalgebra::{
     Matrix3, Matrix4, Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3, Vector4,
 };
@@ -22,7 +24,7 @@ where
 pub struct Rsm {
     pub anim_len: i32,
     pub shade_type: i32,
-    pub alpha: f32,
+    pub alpha: u8,
     pub version: f32,
     pub texture_names: Vec<String>,
     pub nodes: Vec<RsmNode>,
@@ -257,11 +259,7 @@ impl Rsm {
         let version = buf.next_u8() as f32 + buf.next_u8() as f32 / 10f32;
         let anim_len = buf.next_i32();
         let shade_type = buf.next_i32();
-        let alpha: f32 = if version >= 1.4 {
-            buf.next_u8() as f32 / 255.0
-        } else {
-            1.0
-        };
+        let alpha: u8 = if version >= 1.4 { buf.next_u8() } else { 255 };
 
         let _ = buf.string(16); // skip, reserved
 
@@ -339,11 +337,12 @@ impl Rsm {
     }
 
     pub fn generate_meshes_by_texture_id(
+        gl: &Gl,
         model_bbox: &BoundingBox,
         shade_type: i32,
         is_only: bool,
         nodes: &Vec<RsmNode>,
-        textures: &Vec<GlTexture>,
+        textures: &Vec<(String, GlTexture)>,
     ) -> (Vec<DataForRenderingSingleNode>, BoundingBox) {
         let mut real_bounding_box = BoundingBox::new();
         let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
@@ -376,12 +375,12 @@ impl Rsm {
                         }
                     }
 
-                    let gl_tex = textures[node.textures[texture_index as usize] as usize].clone();
+                    let (name, gl_tex) = &textures[node.textures[texture_index as usize] as usize];
                     let renderable = SameTextureNodeFaces {
-                        vao: VertexArray::new(
-                            gl::TRIANGLES,
-                            &mesh,
-                            mesh.len(),
+                        vao: VertexArray::new_static(
+                            gl,
+                            MyGlEnum::TRIANGLES,
+                            mesh,
                             vec![
                                 VertexAttribDefinition {
                                     number_of_components: 3,
@@ -399,7 +398,8 @@ impl Rsm {
                                 },
                             ],
                         ),
-                        texture: gl_tex,
+                        texture: gl_tex.clone(),
+                        texture_name: name.to_owned(),
                     };
                     renderable
                 })
@@ -415,22 +415,32 @@ impl Rsm {
     }
 
     pub fn load_textures(
+        gl: &Gl,
         asset_loader: &AssetLoader,
+        asset_database: &mut AssetDatabase,
         texture_names: &Vec<String>,
-    ) -> Vec<GlTexture> {
+    ) -> Vec<(String, GlTexture)> {
         texture_names
             .iter()
             .map(|texture_name| {
                 let path = format!("data\\texture\\{}", texture_name);
-                let surface = asset_loader.load_sdl_surface(&path);
-                log::trace!("Surface loaded: {}", path);
-                let surface = surface.unwrap_or_else(|e| {
-                    log::warn!("Missing texture: {}, {}", path, e);
-                    asset_loader.backup_surface()
+                let ret = asset_database.get_texture(gl, &path).unwrap_or_else(|| {
+                    let surface = asset_loader.load_sdl_surface(&path);
+                    log::trace!("Surface loaded: {}", path);
+                    let surface = surface.unwrap_or_else(|e| {
+                        log::warn!("Missing texture: {}, {}", path, e);
+                        asset_loader.backup_surface()
+                    });
+                    AssetLoader::create_texture_from_surface(
+                        gl,
+                        &path,
+                        surface,
+                        MyGlEnum::NEAREST,
+                        asset_database,
+                    )
                 });
-                let ret = GlTexture::from_surface(surface, gl::NEAREST);
                 log::trace!("Texture was created loaded: {}", path);
-                return ret;
+                return (AssetDatabase::replace_non_ascii_chars(&path), ret);
             })
             .collect()
     }

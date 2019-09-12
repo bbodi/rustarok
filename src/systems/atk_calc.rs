@@ -1,5 +1,5 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
@@ -7,13 +7,14 @@ use crate::components::status::status::{
 use crate::components::{
     AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
 };
-use crate::systems::{AssetResources, Sounds, SystemFrameDurations, SystemVariables};
+use crate::runtime_assets::audio::Sounds;
+use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Vector2};
 use ncollide2d::query::Proximity;
 use rand::Rng;
 use specs::prelude::*;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Debug)]
 pub enum AttackOutcome {
@@ -124,12 +125,16 @@ impl<'a> specs::System<'a> for AttackSystem {
 
         for apply_force in &system_vars.pushes {
             if let Some(char_body) = physics_world.bodies.rigid_body_mut(apply_force.body_handle) {
-                let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
+                let char_state = char_state_storage
+                    .get_mut(apply_force.dst_entity.0)
+                    .unwrap();
                 log::trace!("Try to apply push {:?}", apply_force);
                 if char_state.statuses.allow_push(apply_force) {
                     log::trace!("Push was allowed");
                     char_body.set_linear_velocity(apply_force.force);
-                    let char_state = char_state_storage.get_mut(apply_force.dst_entity).unwrap();
+                    let char_state = char_state_storage
+                        .get_mut(apply_force.dst_entity.0)
+                        .unwrap();
                     char_state
                         .cannot_control_until
                         .run_at_least_until_seconds(system_vars.time, apply_force.duration);
@@ -146,10 +151,10 @@ impl<'a> specs::System<'a> for AttackSystem {
             // so src data (or an attack specific data structure) must be copied
             log::trace!("Process attack {:?}", attack);
             let outcomes = char_state_storage
-                .get(attack.src_entity)
+                .get(attack.src_entity.0)
                 .and_then(|src_char_state| {
                     char_state_storage
-                        .get(attack.dst_entity)
+                        .get(attack.dst_entity.0)
                         .filter(|it| {
                             it.state().is_alive()
                                 && match attack.typ {
@@ -202,6 +207,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         }
         system_vars.attacks.clear();
 
+        // TODO: use a preallocated backbuffer
         let status_changes =
             std::mem::replace(&mut system_vars.apply_statuses, Vec::with_capacity(128));
         AttackSystem::add_new_statuses(status_changes, &mut char_state_storage, system_vars.time);
@@ -217,8 +223,8 @@ pub struct AttackCalculation;
 
 impl AttackCalculation {
     pub fn process_outcome(
-        attacker_entity: Entity,
-        attacked_entity: Entity,
+        attacker_entity: CharEntityId,
+        attacked_entity: CharEntityId,
         outcome: AttackOutcome,
         attack: &AttackComponent,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
@@ -227,7 +233,7 @@ impl AttackCalculation {
         updater: &mut specs::Write<LazyUpdate>,
         assets: &AssetResources,
     ) {
-        let attacked_entity_state = char_state_storage.get_mut(attacked_entity).unwrap();
+        let attacked_entity_state = char_state_storage.get_mut(attacked_entity.0).unwrap();
 
         // Allow statuses to affect incoming damages/heals
         log::trace!("Attack outcome: {:?}", outcome);
@@ -268,11 +274,12 @@ impl AttackCalculation {
         char_storage: &specs::WriteStorage<CharacterStateComponent>,
         skill_shape: &Box<dyn ncollide2d::shape::Shape<f32>>,
         skill_isom: &Isometry2<f32>,
-        caster_entity_id: Entity,
+        caster_entity_id: CharEntityId,
         attack_typ: AttackType,
     ) -> Vec<AttackComponent> {
         let mut result_attacks = vec![];
         for (target_entity_id, char_state) in (entities, char_storage).join() {
+            let target_entity_id = CharEntityId(target_entity_id);
             // for optimized, shape-specific queries
             // ncollide2d::query::distance_internal::
             let coll_result = ncollide2d::query::proximity(
@@ -300,6 +307,7 @@ impl AttackCalculation {
     ) -> Vec<ApplyStatusComponent> {
         let mut result_statuses = vec![];
         for (target_entity_id, char_state) in (entities, char_storage).join() {
+            let target_entity_id = CharEntityId(target_entity_id);
             if area_status
                 .except
                 .map(|it| it == target_entity_id)
@@ -386,7 +394,7 @@ impl AttackCalculation {
     pub fn make_sound(
         entities: &Entities,
         pos: WorldCoords,
-        target_entity_id: Entity,
+        target_entity_id: CharEntityId,
         outcome: &AttackOutcome,
         attack_type: AttackType,
         now: ElapsedTime,
@@ -394,12 +402,12 @@ impl AttackCalculation {
         sounds: &Sounds,
     ) {
         match outcome {
-            AttackOutcome::Heal(val) => {}
-            AttackOutcome::Damage(val) => match attack_type {
+            AttackOutcome::Heal(_val) => {}
+            AttackOutcome::Damage(_val) => match attack_type {
                 AttackType::Basic(_) => {
-                    let damage_entity = entities.create();
+                    let entity = entities.create();
                     updater.insert(
-                        damage_entity,
+                        entity,
                         SoundEffectComponent {
                             target_entity_id,
                             sound_id: sounds.attack,
@@ -415,10 +423,10 @@ impl AttackCalculation {
             AttackOutcome::Combo {
                 single_attack_damage: _,
                 attack_count: _,
-                sum_damage,
+                sum_damage: _,
             } => {}
-            AttackOutcome::Poison(val) => {}
-            AttackOutcome::Crit(val) => {}
+            AttackOutcome::Poison(_val) => {}
+            AttackOutcome::Crit(_val) => {}
             AttackOutcome::Block => {}
             AttackOutcome::Absorb => {}
         }
@@ -473,8 +481,8 @@ impl AttackCalculation {
         outcome: &AttackOutcome,
         entities: &Entities,
         updater: &mut specs::Write<LazyUpdate>,
-        src_entity_id: Entity,
-        target_entity_id: Entity,
+        src_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         char_pos: &Vector2<f32>,
         sys_time: ElapsedTime,
     ) {
@@ -520,7 +528,8 @@ impl AttackSystem {
         now: ElapsedTime,
     ) {
         for status_change in status_changes.into_iter() {
-            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
+            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
+            {
                 if target_char.hp <= 0 {
                     continue;
                 }
@@ -549,7 +558,7 @@ impl AttackSystem {
                         target_char.statuses.ugly_add(box_status);
                     }
                 }
-                target_char.update_attributes();
+                target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status added. Attributes({:?}): bonuses: {:?}, current: {:?}",
                     status_change.target_entity_id,
@@ -565,7 +574,8 @@ impl AttackSystem {
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
     ) {
         for status_change in status_changes.into_iter() {
-            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id) {
+            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
+            {
                 match &status_change.status {
                     RemoveStatusComponentPayload::MainStatus(status_name) => {
                         log::debug!(
@@ -579,7 +589,7 @@ impl AttackSystem {
                         target_char.statuses.remove(*status_type);
                     }
                 }
-                target_char.update_attributes();
+                target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status removed. Attributes({:?}): bonuses: {:?}, current: {:?}",
                     status_change.target_entity_id,

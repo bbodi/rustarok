@@ -1,35 +1,73 @@
 use crate::asset::SpriteResource;
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, HumanInputComponent, SkillKey, WorldCoords,
+    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
+use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
+use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
-use crate::{CharActionIndex, CollisionGroup, ElapsedTime, MonsterActionIndex, PhysicEngine};
-use nalgebra::{Point2, Vector2};
+use crate::ElapsedTime;
+use nalgebra::{Matrix4, Point2, Vector2};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
     BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle, RigidBodyDesc,
 };
+use serde::Deserialize;
 use specs::prelude::*;
-use specs::Entity;
 use std::collections::HashMap;
 
-pub fn create_human_player(
-    ecs_world: &mut specs::world::World,
+#[derive(Clone, Copy)]
+pub enum CharActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Sitting = 16,
+    PickingItem = 24,
+    StandBy = 32,
+    Attacking1 = 40,
+    ReceivingDamage = 48,
+    Freeze1 = 56,
+    Dead = 65,
+    Freeze2 = 72,
+    Attacking2 = 80,
+    Attacking3 = 88,
+    CastingSpell = 96,
+}
+
+#[derive(Clone, Copy)]
+pub enum MonsterActionIndex {
+    Idle = 0,
+    Walking = 8,
+    Attack = 16,
+    ReceivingDamage = 24,
+    Die = 32,
+}
+
+pub fn attach_human_player_components(
+    username: &str,
+    char_entity_id: CharEntityId,
+    controller_id: ControllerEntityId,
+    updater: &LazyUpdate,
+    physic_world: &mut PhysicEngine,
+    projection_mat: Matrix4<f32>,
     pos2d: Point2<f32>,
     sex: Sex,
     job_id: JobId,
     head_index: usize,
     radius: i32,
     team: Team,
-) -> Entity {
-    let desktop_client_entity = create_char(
-        ecs_world,
+    dev_configs: &DevConfig,
+) {
+    attach_char_components(
+        username.to_owned(),
+        char_entity_id,
+        updater,
+        physic_world,
         pos2d,
         sex,
         job_id,
@@ -39,48 +77,33 @@ pub fn create_human_player(
         CharType::Player,
         CollisionGroup::Player,
         &[CollisionGroup::NonPlayer],
+        dev_configs,
     );
-    let mut human_player = HumanInputComponent::new();
+
+    let mut human_player = HumanInputComponent::new(username);
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
     human_player.assign_skill(SkillKey::E, Skills::Heal);
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    ecs_world
-        .write_storage()
-        .insert(
-            desktop_client_entity,
-            RenderCommandCollectorComponent::new(),
-        )
-        .unwrap();
-    ecs_world
-        .write_storage()
-        .insert(desktop_client_entity, AudioCommandCollectorComponent::new())
-        .unwrap();
-    ecs_world
-        .write_storage()
-        .insert(desktop_client_entity, human_player)
-        .unwrap();
+    updater.insert(controller_id.0, RenderCommandCollectorComponent::new());
+    updater.insert(controller_id.0, AudioCommandCollectorComponent::new());
+    updater.insert(controller_id.0, human_player);
+    updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));
     // camera
     {
-        let mut camera_component = CameraComponent::new();
-        camera_component.reset_y_and_angle(
-            &ecs_world
-                .read_resource::<SystemVariables>()
-                .matrices
-                .projection,
-        );
-        ecs_world
-            .write_storage()
-            .insert(desktop_client_entity, camera_component)
-            .unwrap();
+        let mut camera_component = CameraComponent::new(Some(controller_id));
+        camera_component.reset_y_and_angle(&projection_mat);
+        updater.insert(controller_id.0, camera_component);
     }
-    return desktop_client_entity;
 }
 
-pub fn create_char(
-    ecs_world: &mut specs::world::World,
+pub fn attach_char_components(
+    name: String,
+    entity_id: CharEntityId,
+    updater: &LazyUpdate,
+    physics_world: &mut PhysicEngine,
     pos2d: Point2<f32>,
     sex: Sex,
     job_id: JobId,
@@ -90,9 +113,12 @@ pub fn create_char(
     typ: CharType,
     collision_group: CollisionGroup,
     blacklist_coll_groups: &[CollisionGroup],
-) -> Entity {
-    let entity_id = {
-        let char_comp = CharacterStateComponent::new(
+    dev_configs: &DevConfig,
+) {
+    updater.insert(
+        entity_id.0,
+        CharacterStateComponent::new(
+            name,
             typ,
             CharOutlook::Player {
                 job_id,
@@ -100,20 +126,10 @@ pub fn create_char(
                 sex,
             },
             team,
-        );
-        let mut entity_builder = ecs_world.create_entity().with(char_comp);
-
-        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
-            action_index: CharActionIndex::Idle as usize,
-            animation_started: ElapsedTime(0.0),
-            animation_ends_at: ElapsedTime(0.0),
-            forced_duration: None,
-            direction: 0,
-            fps_multiplier: 1.0,
-        });
-        entity_builder.build()
-    };
-    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+            dev_configs,
+        ),
+    );
+    updater.insert(entity_id.0, SpriteRenderDescriptorComponent::new());
     let physics_component = PhysicsComponent::new(
         physics_world,
         pos2d.coords,
@@ -122,57 +138,7 @@ pub fn create_char(
         collision_group,
         blacklist_coll_groups,
     );
-    ecs_world
-        .write_storage()
-        .insert(entity_id, physics_component)
-        .unwrap();
-
-    // controller
-    ecs_world
-        .write_storage()
-        .insert(entity_id, ControllerComponent::new())
-        .unwrap();
-    return entity_id;
-}
-
-pub fn create_monster(
-    ecs_world: &mut specs::world::World,
-    pos2d: Point2<f32>,
-    monster_id: MonsterId,
-    radius: i32,
-    team: Team,
-    typ: CharType,
-    collision_group: CollisionGroup,
-    blacklist_coll_groups: &[CollisionGroup],
-) -> Entity {
-    let entity_id = {
-        let mut entity_builder = ecs_world.create_entity().with(CharacterStateComponent::new(
-            typ,
-            CharOutlook::Monster(monster_id),
-            team,
-        ));
-        entity_builder = entity_builder.with(SpriteRenderDescriptorComponent {
-            action_index: CharActionIndex::Idle as usize,
-            animation_started: ElapsedTime(0.0),
-            animation_ends_at: ElapsedTime(0.0),
-            forced_duration: None,
-            direction: 0,
-            fps_multiplier: 1.0,
-        });
-        entity_builder.build()
-    };
-    let mut storage = ecs_world.write_storage();
-    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-    let physics_component = PhysicsComponent::new(
-        physics_world,
-        pos2d.coords,
-        ComponentRadius(radius),
-        entity_id,
-        collision_group,
-        blacklist_coll_groups,
-    );
-    storage.insert(entity_id, physics_component).unwrap();
-    return entity_id;
+    updater.insert(entity_id.0, physics_component);
 }
 
 // radius = ComponentRadius * 0.5f32
@@ -197,7 +163,7 @@ impl PhysicsComponent {
         world: &mut PhysicEngine,
         pos: Vector2<f32>,
         radius: ComponentRadius,
-        entity_id: Entity,
+        entity_id: CharEntityId,
         collision_group: CollisionGroup,
         blacklist_coll_groups: &[CollisionGroup],
     ) -> PhysicsComponent {
@@ -239,7 +205,7 @@ impl PhysicsComponent {
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vector2<f32>>,
     pub char_to_skill_dir_when_casted: Vector2<f32>,
-    pub target_entity: Option<Entity>,
+    pub target_entity: Option<CharEntityId>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
     pub can_move: bool,
@@ -254,7 +220,7 @@ pub enum CharState {
     PickingItem,
     StandBy,
     Attacking {
-        target: Entity,
+        target: CharEntityId,
         damage_occurs_at: ElapsedTime,
     },
     ReceivingDamage,
@@ -357,14 +323,21 @@ impl SpriteBoundingRect {
 
 #[derive(Debug, Clone)]
 pub enum EntityTarget {
-    OtherEntity(Entity),
+    OtherEntity(CharEntityId),
     Pos(WorldCoords),
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(from = "i32")]
 pub struct Percentage {
     value: i32,
+}
+
+impl From<i32> for Percentage {
+    fn from(value: i32) -> Self {
+        Percentage(value)
+    }
 }
 
 // able to represent numbers in 0.1% discrete steps
@@ -517,7 +490,7 @@ impl CharOutlook {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct CharAttributes {
     pub max_hp: i32,
     pub attack_damage: u16,
@@ -774,8 +747,15 @@ impl Team {
     }
 }
 
+pub struct NpcComponent;
+
+impl Component for NpcComponent {
+    type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
+}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
+    pub name: String, // characters also has names so it is possible to follow them with a camera
     pos: WorldCoords,
     pub team: Team,
     pub target: Option<EntityTarget>,
@@ -801,11 +781,23 @@ impl Drop for CharacterStateComponent {
 }
 
 impl CharacterStateComponent {
-    pub fn new(typ: CharType, outlook: CharOutlook, team: Team) -> CharacterStateComponent {
+    pub fn update_base_attributes(&mut self, dev_configs: &DevConfig) {
+        self.base_attributes = Statuses::get_base_attributes(&self.typ, &self.outlook, dev_configs);
+        self.recalc_attribs_based_on_statuses()
+    }
+
+    pub fn new(
+        name: String,
+        typ: CharType,
+        outlook: CharOutlook,
+        team: Team,
+        dev_configs: &DevConfig,
+    ) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let base_attributes = Statuses::get_base_attributes(&typ);
+        let base_attributes = Statuses::get_base_attributes(&typ, &outlook, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
+            name,
             pos: v2!(0, 0),
             team,
             typ,
@@ -838,7 +830,7 @@ impl CharacterStateComponent {
         &self.attrib_bonuses
     }
 
-    pub fn update_attributes(&mut self) {
+    pub fn recalc_attribs_based_on_statuses(&mut self) {
         let modifier_collector = self.statuses.calc_attributes();
         self.calculated_attribs = self.base_attributes.apply(modifier_collector);
 
@@ -849,7 +841,7 @@ impl CharacterStateComponent {
 
     pub fn update_statuses(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
@@ -858,7 +850,7 @@ impl CharacterStateComponent {
             self.statuses
                 .update(self_char_id, &self.pos(), system_vars, entities, updater);
         if changed {
-            self.update_attributes();
+            self.recalc_attribs_based_on_statuses();
             log::trace!(
                 "Status expired. Attributes({:?}): mod: {:?}, attribs: {:?}",
                 self_char_id,
@@ -966,4 +958,17 @@ pub struct SpriteRenderDescriptorComponent {
     pub direction: usize,
     /// duration of the current animation
     pub animation_ends_at: ElapsedTime,
+}
+
+impl SpriteRenderDescriptorComponent {
+    pub fn new() -> SpriteRenderDescriptorComponent {
+        SpriteRenderDescriptorComponent {
+            action_index: CharActionIndex::Idle as usize,
+            animation_started: ElapsedTime(0.0),
+            animation_ends_at: ElapsedTime(0.0),
+            forced_duration: None,
+            direction: 0,
+            fps_multiplier: 1.0,
+        }
+    }
 }

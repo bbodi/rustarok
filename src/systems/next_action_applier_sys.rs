@@ -3,7 +3,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
+    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::systems::render_sys::DIRECTION_TABLE;
@@ -37,39 +37,38 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
         let now = system_vars.time;
-        for (entity_id, controller, char_state) in
-            (&entities, &mut controller_storage, &mut char_state_storage).join()
-        {
-            // for autocompletion...
-            let controller: &mut ControllerComponent = controller;
-            let char_state: &mut CharacterStateComponent = char_state;
+        for controller in (&mut controller_storage).join() {
+            let char_state = char_state_storage.get_mut(controller.controlled_entity.0);
 
-            controller.next_action_allowed = match controller.next_action {
-                Some(PlayerIntention::MoveTo(pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(pos));
-                    true
+            // the controlled character might have been removed due to death etc
+            if let Some(char_state) = char_state {
+                controller.repeat_next_action = match controller.next_action {
+                    Some(PlayerIntention::MoveTo(pos)) => {
+                        char_state.target = Some(EntityTarget::Pos(pos));
+                        false
+                    }
+                    Some(PlayerIntention::Attack(target_entity_id)) => {
+                        char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
+                        false
+                    }
+                    Some(PlayerIntention::MoveTowardsMouse(pos)) => {
+                        char_state.target = Some(EntityTarget::Pos(pos));
+                        false
+                    }
+                    Some(PlayerIntention::AttackTowards(_)) => false,
+                    Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
+                        NextActionApplierSystem::try_cast_skill(
+                            skill,
+                            now,
+                            char_state,
+                            &world_coords,
+                            &controller.entities_below_cursor,
+                            controller.controlled_entity,
+                            is_self_cast,
+                        )
+                    }
+                    None => false,
                 }
-                Some(PlayerIntention::Attack(target_entity_id)) => {
-                    char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
-                    true
-                }
-                Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                    char_state.target = Some(EntityTarget::Pos(pos));
-                    true
-                }
-                Some(PlayerIntention::AttackTowards(_)) => true,
-                Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
-                    NextActionApplierSystem::try_cast_skill(
-                        skill,
-                        now,
-                        char_state,
-                        &world_coords,
-                        &controller.entities_below_cursor,
-                        entity_id,
-                        is_self_cast,
-                    )
-                }
-                None => true,
             }
         }
 
@@ -78,8 +77,8 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
             (&entities, &mut char_state_storage, &mut sprite_storage).join()
         {
             let sprite: &mut SpriteRenderDescriptorComponent = sprite;
-            // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage let
-            //   ReceivingDamage animation play till to the end
+            // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
+            // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();
             let prev_state: CharState = char_comp.prev_state().clone();
             let prev_animation_has_ended = sprite.animation_ends_at.is_earlier_than(now);
@@ -147,7 +146,7 @@ impl NextActionApplierSystem {
         char_state: &mut CharacterStateComponent,
         world_coords: &WorldCoords,
         entities_below_cursor: &EntitiesBelowCursor,
-        self_id: Entity,
+        self_char_id: CharEntityId,
         is_self_cast: bool,
     ) -> bool {
         if char_state
@@ -156,17 +155,17 @@ impl NextActionApplierSystem {
             .or_insert(ElapsedTime(0.0))
             .is_later_than(now)
         {
-            return false;
+            return true;
         }
         let (target_pos, target_entity) = if is_self_cast {
-            (char_state.pos(), Some(self_id))
+            (char_state.pos(), Some(self_char_id))
         } else {
             let target_entity = match skill.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor.get_enemy_or_friend(),
                 SkillTargetType::NoTarget => panic!(), /* NoTarget should have been casted already */
                 SkillTargetType::Area => None,
                 SkillTargetType::OnlyAllyButNoSelf => {
-                    entities_below_cursor.get_friend_except(self_id)
+                    entities_below_cursor.get_friend_except(self_char_id)
                 }
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor.get_friend(),
                 SkillTargetType::OnlyEnemy => entities_below_cursor.get_enemy(),
@@ -175,7 +174,8 @@ impl NextActionApplierSystem {
             (*world_coords, target_entity)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
-        let allowed = skill.is_casting_allowed_based_on_target(self_id, target_entity, distance);
+        let allowed =
+            skill.is_casting_allowed_based_on_target(self_char_id, target_entity, distance);
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
@@ -198,7 +198,7 @@ impl NextActionApplierSystem {
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if is_self_cast && target_entity.map(|it| it == self_id).is_some() {
+            let dir = if is_self_cast && target_entity.map(|it| it == self_char_id).is_some() {
                 // skill on self, don't change direction
                 char_state.dir()
             } else {
@@ -208,7 +208,7 @@ impl NextActionApplierSystem {
             char_state.set_state(new_state, dir);
             *char_state.skill_cast_allowed_at.get_mut(&skill).unwrap() =
                 now.add(skill.get_cast_delay(&char_state));
-            return true;
+            return false;
         } else {
             log::debug!(
                 "Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
@@ -216,7 +216,7 @@ impl NextActionApplierSystem {
                 allowed,
                 can_move
             );
-            return false;
+            return !can_move; // try to repeat casting only when it was interrupted, but not when the target was invalid
         }
     }
 

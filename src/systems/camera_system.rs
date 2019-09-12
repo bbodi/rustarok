@@ -1,5 +1,7 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{CameraComponent, CameraMode, HumanInputComponent};
+use crate::components::controller::{
+    CameraComponent, CameraMode, ControllerComponent, HumanInputComponent,
+};
 use crate::systems::SystemVariables;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
@@ -10,20 +12,21 @@ impl<'a> specs::System<'a> for CameraSystem {
     type SystemData = (
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::ReadStorage<'a, HumanInputComponent>,
+        specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, CameraComponent>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (char_state_storage, input_storage, mut camera_storage, system_vars): Self::SystemData,
+        (char_state_storage, input_storage, controller_storage, mut camera_storage, system_vars): Self::SystemData,
     ) {
-        for (input, camera, char_state) in
-            (&input_storage, &mut camera_storage, &char_state_storage).join()
-        {
+        for (input, camera) in (&input_storage, &mut camera_storage).join() {
             match input.camera_movement_mode {
                 CameraMode::Free => {
-                    CameraSystem::free_movement(camera, input);
+                    if !input.is_console_open {
+                        CameraSystem::free_movement(camera, input);
+                    }
                     if input.left_mouse_down {
                         camera.yaw += input.delta_mouse_x as f32;
                         camera.pitch += input.delta_mouse_y as f32;
@@ -42,17 +45,25 @@ impl<'a> specs::System<'a> for CameraSystem {
                     }
                 }
                 CameraMode::FollowChar => {
-                    if input.mouse_wheel != 0 {
-                        camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
-                        camera
-                            .camera
-                            .update_visible_z_range(&system_vars.matrices.projection);
+                    if let Some(followed_controller) = camera.followed_controller {
+                        if let Some(followed_char) = controller_storage
+                            .get(followed_controller.0)
+                            .map(|it| it.controlled_entity)
+                        {
+                            if input.mouse_wheel != 0 {
+                                camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
+                                camera
+                                    .camera
+                                    .update_visible_z_range(&system_vars.matrices.projection);
+                            };
+                            if let Some(char_state) = char_state_storage.get(followed_char.0) {
+                                let pos = char_state.pos();
+                                camera.camera.set_x(pos.x);
+                                let z_range = camera.camera.visible_z_range;
+                                camera.camera.set_z(pos.y + z_range);
+                            }
+                        }
                     }
-
-                    let pos = char_state.pos();
-                    camera.camera.set_x(pos.x);
-                    let z_range = camera.camera.visible_z_range;
-                    camera.camera.set_z(pos.y + z_range);
                 }
                 CameraMode::FreeMoveButFixedAngle => {
                     if input.mouse_wheel != 0 {
@@ -61,7 +72,9 @@ impl<'a> specs::System<'a> for CameraSystem {
                             .camera
                             .update_visible_z_range(&system_vars.matrices.projection);
                     }
-                    CameraSystem::axis_aligned_movement(camera, input);
+                    if !input.is_console_open {
+                        CameraSystem::axis_aligned_movement(camera, input);
+                    }
                 }
             }
 

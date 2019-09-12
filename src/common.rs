@@ -1,4 +1,11 @@
 use nalgebra::{Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
+use std::time::{Duration, Instant};
+
+pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
+    let start = Instant::now();
+    let r = f();
+    (start.elapsed(), r)
+}
 
 #[macro_export]
 macro_rules! v2 {
@@ -55,4 +62,70 @@ pub fn rotate_vec2(rad: f32, vec: &Vector2<f32>) -> Vector2<f32> {
     let rot_matrix = rot_matrix * rotation;
     let rotated = rot_matrix.transform_point(&v2_to_p3(vec));
     return p3_to_v2(&rotated);
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct DeltaTime(pub f32);
+
+#[derive(Debug, Copy, Clone)]
+pub struct ElapsedTime(pub f32);
+
+impl PartialEq for ElapsedTime {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 * 1000.0) as u32 == (other.0 * 1000.0) as u32
+    }
+}
+
+impl Eq for ElapsedTime {}
+
+impl ElapsedTime {
+    pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
+        ElapsedTime(self.0 + seconds as f32)
+    }
+
+    pub fn minus(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 - other.0)
+    }
+
+    pub fn percentage_between(&self, from: ElapsedTime, to: ElapsedTime) -> f32 {
+        let current = self.0 - from.0;
+        let range = to.0 - from.0;
+        return current / range;
+    }
+
+    pub fn add(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 + other.0)
+    }
+
+    pub fn elapsed_since(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0 - other.0)
+    }
+
+    pub fn div(&self, other: f32) -> f32 {
+        self.0 / other
+    }
+
+    pub fn run_at_least_until_seconds(&mut self, system_time: ElapsedTime, seconds: f32) {
+        self.0 = self.0.max(system_time.0 + seconds);
+    }
+
+    pub fn is_earlier_than(&self, system_time: ElapsedTime) -> bool {
+        self.0 <= system_time.0
+    }
+
+    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
+        self.0 > other.0
+    }
+
+    pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0.max(other.0))
+    }
+
+    pub fn min(&self, other: ElapsedTime) -> ElapsedTime {
+        ElapsedTime(self.0.min(other.0))
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
+    }
 }

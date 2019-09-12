@@ -1,4 +1,5 @@
 use crate::asset::BinaryReader;
+use crate::systems::render_sys::COLOR_WHITE;
 use std::ops::RangeBounds;
 
 #[derive(Debug, Clone)]
@@ -28,7 +29,7 @@ pub struct Layer {
     // can be -1!!
     pub is_mirror: bool,
     pub scale: [f32; 2],
-    pub color: [f32; 4],
+    pub color: [u8; 4],
     pub angle: i32,
     pub spr_type: i32,
     pub width: i32,
@@ -110,14 +111,9 @@ impl ActionFile {
                 let sprite_frame_index = buf.next_i32();
                 let is_mirror = buf.next_i32() != 0;
                 let color = if version >= 2.0 {
-                    [
-                        buf.next_u8() as f32 / 255.0,
-                        buf.next_u8() as f32 / 255.0,
-                        buf.next_u8() as f32 / 255.0,
-                        buf.next_u8() as f32 / 255.0,
-                    ]
+                    [buf.next_u8(), buf.next_u8(), buf.next_u8(), buf.next_u8()]
                 } else {
-                    [1.0, 1.0, 1.0, 1.0]
+                    COLOR_WHITE
                 };
                 let scale = if version >= 2.0 {
                     let scale_0 = buf.next_f32();

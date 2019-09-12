@@ -15,18 +15,11 @@ impl<'a> specs::System<'a> for FrictionSystem {
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (
-        physics_world,
-        mut system_benchmark,
-        physics_storage,
-        mut char_storage,
-        system_vars,
-    ): Self::SystemData,
+        (physics_world, mut system_benchmark, physics_storage, mut char_storage): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for (physics, char_state) in (&physics_storage, &mut char_storage).join() {
@@ -84,7 +77,6 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
         for event in physics_world.geometrical_world.proximity_events() {
             let collider1 = physics_world.colliders.get(event.collider1).unwrap();
             let collider1_body = physics_world.bodies.get(collider1.body()).unwrap();
-            let collider2 = physics_world.colliders.get(event.collider2).unwrap();
             let (character_coll_handle, other_coll_handle) = if collider1_body.is_ground() {
                 (event.collider2, event.collider1)
             } else {

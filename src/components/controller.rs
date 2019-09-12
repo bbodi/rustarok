@@ -5,7 +5,6 @@ use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
-use specs::Entity;
 use std::collections::HashMap;
 use strum_macros::EnumIter;
 
@@ -69,7 +68,7 @@ pub enum PlayerIntention {
     MoveTowardsMouse(WorldCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.
     MoveTo(WorldCoords),
-    Attack(Entity),
+    Attack(CharEntityId),
     /// Move to the coordination, attack any enemy on the way.
     AttackTowards(WorldCoords),
     /// bool = is self cast
@@ -88,28 +87,33 @@ pub enum CastMode {
     OnKeyPress,
 }
 
+// Camera follows a controller, a Controller controls a Character
 #[derive(Component)]
 pub struct ControllerComponent {
+    pub select_skill_target: Option<(SkillKey, Skills)>,
+    pub controlled_entity: CharEntityId,
     pub next_action: Option<PlayerIntention>,
     pub last_action: Option<PlayerIntention>,
-    pub next_action_allowed: bool,
+    pub repeat_next_action: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
-    pub bounding_rect_2d: HashMap<Entity, (SpriteBoundingRect, Team)>,
+    pub bounding_rect_2d: HashMap<CharEntityId, (SpriteBoundingRect, Team)>,
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
-    pub cursor_color: [f32; 3],
+    pub cursor_color: [u8; 3],
 }
 
 impl ControllerComponent {
-    pub fn new() -> ControllerComponent {
+    pub fn new(controlled_entity: CharEntityId) -> ControllerComponent {
         ControllerComponent {
-            next_action_allowed: true,
+            select_skill_target: None,
+            controlled_entity,
+            repeat_next_action: false,
             next_action: None,
             last_action: None,
             entities_below_cursor: EntitiesBelowCursor::new(),
             bounding_rect_2d: HashMap::new(),
             cell_below_cursor_walkable: false,
-            cursor_color: [1.0, 1.0, 1.0],
+            cursor_color: [255, 255, 255],
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
@@ -136,15 +140,16 @@ impl ControllerComponent {
                 } else {
                     self.entities_below_cursor.add_enemy(*entity_id);
                 }
-                break;
             }
         }
         self.bounding_rect_2d.clear();
     }
 }
 
+// Camera follows a controller, a Controller controls a Character
 #[derive(Component, Clone)]
 pub struct CameraComponent {
+    pub followed_controller: Option<ControllerEntityId>,
     pub view_matrix: Matrix4<f32>,
     pub normal_matrix: Matrix3<f32>,
     pub camera: Camera,
@@ -155,9 +160,10 @@ pub struct CameraComponent {
 impl CameraComponent {
     const YAW: f32 = 270.0;
     const PITCH: f32 = -60.0;
-    pub fn new() -> CameraComponent {
+    pub fn new(followed_controller: Option<ControllerEntityId>) -> CameraComponent {
         let camera = Camera::new(Point3::new(0.0, 40.0, 0.0));
         return CameraComponent {
+            followed_controller,
             view_matrix: Matrix4::identity(), // it is filled before every frame
             normal_matrix: Matrix3::identity(), // it is filled before every frame
             camera,
@@ -182,9 +188,15 @@ pub enum CameraMode {
 }
 
 pub struct EntitiesBelowCursor {
-    friendly: Vec<Entity>,
-    enemy: Vec<Entity>,
+    friendly: Vec<CharEntityId>,
+    enemy: Vec<CharEntityId>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CharEntityId(pub Entity);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ControllerEntityId(pub Entity);
 
 impl EntitiesBelowCursor {
     pub fn new() -> EntitiesBelowCursor {
@@ -199,19 +211,19 @@ impl EntitiesBelowCursor {
         self.enemy.clear();
     }
 
-    pub fn add_friend(&mut self, entity_id: Entity) {
+    pub fn add_friend(&mut self, entity_id: CharEntityId) {
         self.friendly.push(entity_id);
     }
 
-    pub fn add_enemy(&mut self, entity_id: Entity) {
+    pub fn add_enemy(&mut self, entity_id: CharEntityId) {
         self.enemy.push(entity_id);
     }
 
-    pub fn get_enemy_or_friend(&self) -> Option<Entity> {
+    pub fn get_enemy_or_friend(&self) -> Option<CharEntityId> {
         self.enemy.get(0).or(self.friendly.get(0)).map(|it| *it)
     }
 
-    pub fn get_friend_except(&self, except_id: Entity) -> Option<Entity> {
+    pub fn get_friend_except(&self, except_id: CharEntityId) -> Option<CharEntityId> {
         self.friendly
             .iter()
             .filter(|it| **it != except_id)
@@ -219,24 +231,26 @@ impl EntitiesBelowCursor {
             .map(|it| *it)
     }
 
-    pub fn get_friend(&self) -> Option<Entity> {
+    pub fn get_friend(&self) -> Option<CharEntityId> {
         self.friendly.get(0).map(|it| *it)
     }
 
-    pub fn get_enemy(&self) -> Option<Entity> {
+    pub fn get_enemy(&self) -> Option<CharEntityId> {
         self.enemy.get(0).map(|it| *it)
     }
 }
 
 #[derive(Component)]
 pub struct HumanInputComponent {
-    pub select_skill_target: Option<(SkillKey, Skills)>,
+    pub is_console_open: bool,
+    pub username: String,
     pub inputs: Vec<sdl2::event::Event>,
-    skills_for_keys: [Option<Skills>; 8],
+    skills_for_keys: [Option<Skills>; 9],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
     keys_pressed_in_prev_frame: Vec<Scancode>,
+    pub text: String,
     pub mouse_wheel: i32,
     pub camera_movement_mode: CameraMode,
     pub left_mouse_down: bool,
@@ -245,6 +259,8 @@ pub struct HumanInputComponent {
     pub right_mouse_pressed: bool,
     pub left_mouse_released: bool,
     pub right_mouse_released: bool,
+    pub alt_down: bool,
+    pub ctrl_down: bool,
     pub last_mouse_x: u16,
     pub last_mouse_y: u16,
     pub delta_mouse_x: i32,
@@ -259,9 +275,10 @@ impl Drop for HumanInputComponent {
 }
 
 impl HumanInputComponent {
-    pub fn new() -> HumanInputComponent {
+    pub fn new(username: &str) -> HumanInputComponent {
         HumanInputComponent {
-            select_skill_target: None,
+            is_console_open: false,
+            username: username.to_owned(),
             cast_mode: CastMode::Normal,
             inputs: vec![],
             skills_for_keys: Default::default(),
@@ -275,12 +292,15 @@ impl HumanInputComponent {
             left_mouse_pressed: false,
             right_mouse_pressed: false,
             right_mouse_released: false,
+            alt_down: false,
+            ctrl_down: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
             mouse_world_pos: v2!(0, 0),
             mouse_wheel: 0,
             delta_mouse_x: 0,
             delta_mouse_y: 0,
+            text: String::new(),
         }
     }
 

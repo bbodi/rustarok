@@ -1,6 +1,7 @@
 extern crate rand;
 
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
 use nalgebra::{Isometry2, Vector2};
@@ -16,9 +17,12 @@ pub mod status;
 
 #[derive(Component)]
 pub struct BrowserClient {
-    pub websocket: Mutex<websocket::sync::Client<TcpStream>>,
-    pub offscreen: Vec<u8>,
+    websocket: Mutex<websocket::sync::Client<TcpStream>>,
     pub ping: u16,
+    pub state: usize,
+    pub sum_sent_bytes: u64,
+    pub current_bytes_per_second: u32,
+    pub prev_bytes_per_second: u32,
 }
 
 impl Drop for BrowserClient {
@@ -27,11 +31,53 @@ impl Drop for BrowserClient {
     }
 }
 
+impl BrowserClient {
+    pub fn new(websocket: websocket::sync::Client<TcpStream>) -> BrowserClient {
+        BrowserClient {
+            websocket: Mutex::new(websocket),
+            ping: 0,
+            state: 0,
+            sum_sent_bytes: 0,
+            current_bytes_per_second: 0,
+            prev_bytes_per_second: 0,
+        }
+    }
+
+    pub fn send_message(&mut self, buf: &Vec<u8>) {
+        self.sum_sent_bytes += buf.len() as u64;
+        self.current_bytes_per_second += buf.len() as u32;
+        let msg = websocket::Message::binary(buf.as_slice());
+        let _ = self.websocket.lock().unwrap().send_message(&msg);
+    }
+
+    pub fn set_ping(&mut self, ping: u128) {
+        self.ping = ping as u16
+    }
+
+    pub fn send_ping(&mut self, buf: &[u8]) {
+        self.sum_sent_bytes += buf.len() as u64;
+        self.current_bytes_per_second += buf.len() as u32;
+        let msg = websocket::Message::ping(buf);
+        let _ = self.websocket.lock().unwrap().send_message(&msg);
+    }
+
+    pub fn reset_byte_per_second(&mut self) {
+        self.prev_bytes_per_second = self.current_bytes_per_second;
+        self.current_bytes_per_second = 0;
+    }
+
+    pub fn receive(
+        &mut self,
+    ) -> websocket::result::WebSocketResult<websocket::message::OwnedMessage> {
+        self.websocket.lock().unwrap().recv_message()
+    }
+}
+
 #[derive(Component)]
 pub struct FlyingNumberComponent {
     pub value: u32,
-    pub target_entity_id: Entity,
-    pub src_entity_id: Entity,
+    pub target_entity_id: CharEntityId,
+    pub src_entity_id: CharEntityId,
     pub typ: FlyingNumberType,
     pub start_pos: Vector2<f32>,
     pub start_time: ElapsedTime,
@@ -41,7 +87,7 @@ pub struct FlyingNumberComponent {
 
 #[derive(Component)]
 pub struct SoundEffectComponent {
-    pub target_entity_id: Entity,
+    pub target_entity_id: CharEntityId,
     pub sound_id: SoundId,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
@@ -49,11 +95,10 @@ pub struct SoundEffectComponent {
 
 #[derive(Component)]
 pub struct StrEffectComponent {
-    pub effect: String, /*StrEffect*/
+    pub effect_id: StrEffectId,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
-    pub duration: ElapsedTime,
 }
 
 #[derive(Component)]
@@ -82,27 +127,27 @@ impl FlyingNumberType {
         target_is_current_user: bool,
         target_is_friend: bool,
         damage_was_initiated_by_current_user: bool,
-    ) -> [f32; 3] {
+    ) -> [u8; 3] {
         match self {
             FlyingNumberType::Damage | FlyingNumberType::SubCombo => {
                 if target_is_current_user {
-                    [1.0, 0.0, 0.0]
+                    [255, 0, 0]
                 } else if target_is_friend {
-                    [1.0, 0.0, 0.0] // [1.0, 0.55, 0.0] orange
+                    [255, 0, 0] // [1.0, 0.55, 0.0] orange
                 } else if damage_was_initiated_by_current_user {
-                    [1.0, 1.0, 1.0]
+                    [255, 255, 255]
                 } else {
-                    [1.0, 1.0, 1.0]
+                    [255, 255, 255]
                     //                    [0.73, 0.73, 0.73] // simple damage by other, greyish
                 }
             }
-            FlyingNumberType::Combo { .. } => [0.9, 0.9, 0.15],
-            FlyingNumberType::Heal => [0.0, 1.0, 0.0],
-            FlyingNumberType::Poison => [0.55, 0.0, 0.55],
-            FlyingNumberType::Mana => [0.0, 0.0, 1.0],
-            FlyingNumberType::Crit => [1.0, 1.0, 1.0],
-            FlyingNumberType::Block => [1.0, 1.0, 1.0],
-            FlyingNumberType::Absorb => [1.0, 1.0, 1.0],
+            FlyingNumberType::Combo { .. } => [230, 230, 38],
+            FlyingNumberType::Heal => [0, 255, 0],
+            FlyingNumberType::Poison => [140, 0, 140],
+            FlyingNumberType::Mana => [0, 0, 255],
+            FlyingNumberType::Crit => [255, 255, 255],
+            FlyingNumberType::Block => [255, 255, 255],
+            FlyingNumberType::Absorb => [255, 255, 255],
         }
     }
 }
@@ -111,8 +156,8 @@ impl FlyingNumberComponent {
     pub fn new(
         typ: FlyingNumberType,
         value: u32,
-        src_entity_id: Entity,
-        target_entity_id: Entity,
+        src_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         duration: f32,
         start_pos: Vector2<f32>,
         sys_time: ElapsedTime,
@@ -140,22 +185,23 @@ pub enum AttackType {
 
 #[derive(Debug)]
 pub struct AttackComponent {
-    pub src_entity: Entity,
-    pub dst_entity: Entity,
+    pub src_entity: CharEntityId,
+    pub dst_entity: CharEntityId,
     pub typ: AttackType,
 }
 
+// TODO: be static types for Cuboid area attack components, Circle, etc
 pub struct AreaAttackComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub source_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
     pub typ: AttackType,
 }
 
 #[derive(Debug)]
 pub struct ApplyForceComponent {
-    pub src_entity: Entity,
-    pub dst_entity: Entity,
+    pub src_entity: CharEntityId,
+    pub dst_entity: CharEntityId,
     pub force: Vector2<f32>,
     pub body_handle: DefaultBodyHandle,
     pub duration: f32,

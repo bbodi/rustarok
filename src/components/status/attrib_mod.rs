@@ -1,5 +1,5 @@
 use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     Status, StatusStackingResult, StatusType, StatusUpdateResult,
 };
@@ -8,7 +8,7 @@ use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct ArmorModifierStatus {
@@ -44,8 +44,8 @@ impl Status for ArmorModifierStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -62,7 +62,7 @@ impl Status for ArmorModifierStatus {
 
     fn update(
         &mut self,
-        _self_char_id: Entity,
+        _self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

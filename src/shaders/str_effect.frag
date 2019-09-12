@@ -5,7 +5,6 @@ out vec4 out_color;
 in vec2 tex_coord;
 
 uniform sampler2D model_texture;
-uniform float alpha;
 uniform vec4 color;
 
 

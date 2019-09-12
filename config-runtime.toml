@@ -1,0 +1,51 @@
+
+sleep_ms = 0
+minions_enabled = false
+
+[network]
+    send_render_data_every_nth_frame = 1
+
+[console]
+    color = [0, 0, 0, 179]
+
+[stats]
+    [stats.minion]
+        [stats.minion.melee]
+            # Percentages
+            walking_speed = 100
+            attack_range = 100
+            attack_speed = 67
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            # normal values
+            attack_damage = 5
+            max_hp = 990
+
+        [stats.minion.ranged]
+            # Percentages
+            walking_speed = 100
+            attack_range = 500
+            attack_speed = 67
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            # normal values
+            attack_damage = 72
+            max_hp = 660
+
+    [stats.player]
+        [stats.player.crusader]
+            # Percentages
+            walking_speed = 100
+            attack_range = 100
+            attack_speed = 130
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            # normal values
+            attack_damage = 120
+            max_hp = 50_000

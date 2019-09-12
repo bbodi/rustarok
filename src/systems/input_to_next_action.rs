@@ -7,7 +7,6 @@ use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSO
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
-use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
 
@@ -16,7 +15,7 @@ pub struct InputToNextActionSystem;
 impl<'a> specs::System<'a> for InputToNextActionSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::WriteStorage<'a, HumanInputComponent>,
+        specs::ReadStorage<'a, HumanInputComponent>,
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -27,7 +26,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         &mut self,
         (
             entities,
-            mut input_storage,
+            input_storage,
             char_state_storage,
             mut controller_storage,
             mut system_benchmark,
@@ -35,16 +34,14 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("InputToNextActionSystem");
-        for (self_id, self_char_comp, input, controller) in (
-            &entities,
-            &char_state_storage,
-            &mut input_storage,
-            &mut controller_storage,
-        )
-            .join()
+        for (_self_id, input, controller) in
+            (&entities, &input_storage, &mut controller_storage).join()
         {
-            let controller: &mut ControllerComponent = controller;
-            let input: &mut HumanInputComponent = input;
+            // TODO: it can happen that this unwrap panics if browser clients disconnects
+            let self_char_comp = char_state_storage
+                .get(controller.controlled_entity.0)
+                .unwrap();
+
             let just_pressed_skill_key = SkillKey::iter()
                 .filter(|key| input.is_key_just_pressed(key.scancode()))
                 .take(1)
@@ -68,8 +65,6 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             );
             let (cursor_frame, cursor_color) = InputToNextActionSystem::determine_cursor(
                 system_vars.time,
-                self_id,
-                input,
                 controller,
                 &char_state_storage,
                 self_char_comp.team,
@@ -81,22 +76,22 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 // here 'next_action' is the action from the prev frame
                 controller.last_action = std::mem::replace(&mut controller.next_action, None);
             }
-            let alt_down = input.is_key_down(Scancode::LAlt);
+            let alt_down = input.alt_down;
             controller.next_action = if let Some((casting_skill_key, skill)) =
-                input.select_skill_target
+                controller.select_skill_target
             {
                 match input.cast_mode {
                     CastMode::Normal => {
                         if input.left_mouse_released {
                             log::debug!("Player wants to cast {:?}", skill);
-                            input.select_skill_target = None;
+                            controller.select_skill_target = None;
                             Some(PlayerIntention::Casting(
                                 skill,
                                 false,
                                 input.mouse_world_pos,
                             ))
                         } else if input.right_mouse_pressed {
-                            input.select_skill_target = None;
+                            controller.select_skill_target = None;
                             None
                         } else if let Some((skill_key, skill)) =
                             just_pressed_skill_key.and_then(|skill_key| {
@@ -113,7 +108,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                             if let Some(s) = shhh {
                                 Some(s)
                             } else {
-                                input.select_skill_target = Some((skill_key, skill));
+                                if !input.is_console_open {
+                                    controller.select_skill_target = Some((skill_key, skill));
+                                }
                                 None
                             }
                         } else {
@@ -123,7 +120,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                     CastMode::OnKeyRelease => {
                         if input.is_key_just_released(casting_skill_key.scancode()) {
                             log::debug!("Player wants to cast {:?}", skill);
-                            input.select_skill_target = None;
+                            controller.select_skill_target = None;
                             Some(
                                 PlayerIntention::Casting(
                                     input.get_skill_for_key(casting_skill_key)
@@ -133,7 +130,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                                 )
                             )
                         } else if input.right_mouse_pressed {
-                            input.select_skill_target = None;
+                            controller.select_skill_target = None;
                             None
                         } else {
                             None
@@ -163,7 +160,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                             if let Some(s) = shh {
                                 Some(s)
                             } else {
-                                input.select_skill_target = Some((skill_key, skill));
+                                if !input.is_console_open {
+                                    controller.select_skill_target = Some((skill_key, skill));
+                                }
                                 None
                             }
                         } else {
@@ -172,7 +171,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                     }
                     CastMode::OnKeyPress => {
                         log::debug!("Player wants to cast {:?}, alt={:?}", skill, alt_down);
-                        input.select_skill_target = None;
+                        controller.select_skill_target = None;
                         Some(PlayerIntention::Casting(
                             skill,
                             alt_down,
@@ -202,7 +201,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 // user released the mouse, so it is not a MoveTowardsMouse but a move/attack to command
                 if let Some(target_entity_id) = controller.entities_below_cursor.get_enemy() {
                     if char_state_storage
-                        .get(target_entity_id)
+                        .get(target_entity_id.0)
                         .map(|it| !it.state().is_dead())
                         .unwrap_or(false)
                     {
@@ -214,9 +213,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                     Some(PlayerIntention::MoveTo((*pos).clone()))
                 }
             } else if let Some(PlayerIntention::Casting(..)) = &controller.last_action {
-                // Casting might have been rejected because for example the char was attacking at the time, but
+                // Casting might have been rejected because for example the char was attacked at the time, but
                 // we want to cast it as soon as the rejection reason ceases AND there is no other intention
-                if !controller.next_action_allowed {
+                if controller.repeat_next_action {
                     controller.last_action.clone()
                 } else {
                     None
@@ -224,51 +223,63 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             } else {
                 None
             };
+            // in console mode, only moving around is allowed
+            if input.is_console_open {
+                if let Some(next_action) = &controller.next_action {
+                    match next_action {
+                        PlayerIntention::MoveTo(_) => {}
+                        PlayerIntention::MoveTowardsMouse(_) => {}
+                        PlayerIntention::Attack(_) => {}
+                        PlayerIntention::AttackTowards(_) => {}
+                        PlayerIntention::Casting(_, _, _) => {
+                            log::debug!("...but the console is open");
+                            controller.next_action = None;
+                        }
+                    }
+                }
+            }
         }
     }
 }
 impl InputToNextActionSystem {
     pub fn determine_cursor(
         now: ElapsedTime,
-        self_id: Entity,
-        input: &HumanInputComponent,
         controller: &ControllerComponent,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         self_team: Team,
-    ) -> (CursorFrame, [f32; 3]) {
-        // TODO: move select_skill_target into ControllerComponent?
-        return if let Some((_skill_key, skill)) = input.select_skill_target {
+    ) -> (CursorFrame, [u8; 3]) {
+        return if let Some((_skill_key, skill)) = controller.select_skill_target {
             let is_castable = char_state_storage
-                .get(self_id)
+                .get(controller.controlled_entity.0)
                 .unwrap()
                 .skill_cast_allowed_at
                 .get(&skill)
                 .unwrap_or(&ElapsedTime(0.0))
                 .is_earlier_than(now);
             if !is_castable {
-                (CURSOR_STOP, [1.0, 1.0, 1.0])
+                (CURSOR_STOP, [255, 255, 255])
             } else if skill.get_skill_target_type() != SkillTargetType::Area {
-                (CURSOR_TARGET, [1.0, 1.0, 1.0])
+                (CURSOR_TARGET, [255, 255, 255])
             } else {
-                (CURSOR_CLICK, [1.0, 1.0, 1.0])
+                (CURSOR_CLICK, [255, 255, 255])
             }
         } else if let Some(entity_below_cursor) =
             controller.entities_below_cursor.get_enemy_or_friend()
         {
             let ent_is_dead_or_friend = char_state_storage
-                .get(entity_below_cursor)
+                .get(entity_below_cursor.0)
                 .map(|it| !it.state().is_alive() || it.team == self_team)
                 .unwrap_or(false);
-            if entity_below_cursor == self_id || ent_is_dead_or_friend {
+            if entity_below_cursor == controller.controlled_entity || ent_is_dead_or_friend {
                 // self or dead
-                (CURSOR_NORMAL, [0.2, 0.46, 0.9])
+                (CURSOR_NORMAL, [51, 117, 230])
             } else {
-                (CURSOR_NORMAL, [1.0, 0.0, 0.0])
+                (CURSOR_NORMAL, [255, 0, 0])
             }
         } else if !controller.cell_below_cursor_walkable {
-            (CURSOR_STOP, [1.0, 1.0, 1.0])
+            (CURSOR_STOP, [255, 255, 255])
         } else {
-            (CURSOR_NORMAL, [1.0, 1.0, 1.0])
+            (CURSOR_NORMAL, [255, 255, 255])
         };
     }
 }

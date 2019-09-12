@@ -1,21 +1,22 @@
 use crate::components::char::CharAttributeModifierCollector;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
     StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
+use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct FireBombStatus {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
 }
@@ -37,8 +38,8 @@ impl Status for FireBombStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -49,7 +50,7 @@ impl Status for FireBombStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -78,11 +79,10 @@ impl Status for FireBombStatus {
                     except: Some(self_char_id),
                 });
             let effect_comp = StrEffectComponent {
-                effect: "firepillarbomb".to_owned(),
+                effect_id: StrEffectType::FirePillarBomb.into(),
                 pos: *char_pos,
                 start_time: system_vars.time.add_seconds(-0.5),
                 die_at: system_vars.time.add_seconds(1.0),
-                duration: ElapsedTime(1.0),
             };
             updater.insert(entities.create(), effect_comp);
 
@@ -107,7 +107,7 @@ impl Status for FireBombStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "firewall",
+            StrEffectType::FireWall,
             self.started,
             char_pos,
             system_vars,

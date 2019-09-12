@@ -1,13 +1,20 @@
-use crate::components::controller::SkillKey;
+use crate::asset::str::StrFile;
+use crate::asset::AssetLoader;
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
+use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
-use crate::systems::sound_sys::SoundId;
-use crate::video::{DynamicVertexArray, GlTexture};
-use crate::{DeltaTime, ElapsedTime, MapRenderData, RenderMatrices, Shaders, SpriteResource};
+use crate::my_gl::Gl;
+use crate::runtime_assets::audio::Sounds;
+use crate::runtime_assets::graphic::Texts;
+use crate::runtime_assets::map::MapRenderData;
+use crate::shaders::Shaders;
+use crate::video::{ortho, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -15,6 +22,9 @@ use std::time::Instant;
 pub mod atk_calc;
 pub mod camera_system;
 pub mod char_state_sys;
+pub mod console_commands;
+pub mod console_system;
+pub mod frame_end_system;
 pub mod input_sys;
 pub mod input_to_next_action;
 pub mod minion_ai_sys;
@@ -48,22 +58,6 @@ pub struct Sprites {
     pub effect_sprites: EffectSprites,
 }
 
-pub struct Texts {
-    pub skill_name_texts: HashMap<Skills, GlTexture>,
-    pub skill_key_texts: HashMap<SkillKey, GlTexture>,
-    pub custom_texts: HashMap<String, GlTexture>,
-    pub attack_absorbed: GlTexture,
-    pub attack_blocked: GlTexture,
-    pub minus: GlTexture,
-    pub plus: GlTexture,
-}
-
-pub struct Sounds {
-    pub attack: SoundId,
-    pub heal: SoundId,
-    pub firewall: SoundId,
-}
-
 pub struct AssetResources {
     pub sprites: Sprites,
     pub shaders: Shaders,
@@ -73,8 +67,29 @@ pub struct AssetResources {
     pub sounds: Sounds,
 }
 
+pub struct RenderMatrices {
+    pub projection: Matrix4<f32>,
+    pub ortho: Matrix4<f32>,
+}
+
+impl RenderMatrices {
+    pub fn new(fov: f32) -> RenderMatrices {
+        RenderMatrices {
+            projection: Matrix4::new_perspective(
+                VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+                fov,
+                0.1f32,
+                1000.0f32,
+            ),
+            ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
+        }
+    }
+}
+
 pub struct SystemVariables {
+    pub gl: Gl,
     pub assets: AssetResources,
+    pub asset_loader: AssetLoader,
     pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
@@ -88,8 +103,56 @@ pub struct SystemVariables {
     pub apply_statuses: Vec<ApplyStatusComponent>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
-    // Todo: put it into the new Graphic module if it is ready
-    pub str_effect_vao: DynamicVertexArray,
+    pub dev_configs: DevConfig,
+    pub str_effects: Vec<StrFile>,
+}
+
+impl SystemVariables {
+    pub fn new(
+        sprites: Sprites,
+        texts: Texts,
+        shaders: Shaders,
+        render_matrices: RenderMatrices,
+        map_render_data: MapRenderData,
+        status_icons: HashMap<&'static str, GlTexture>,
+        skill_icons: HashMap<Skills, GlTexture>,
+        str_effects: Vec<StrFile>,
+        sounds: Sounds,
+        asset_loader: AssetLoader,
+        gl: Gl,
+    ) -> SystemVariables {
+        SystemVariables {
+            assets: AssetResources {
+                shaders,
+                sprites,
+                texts,
+                skill_icons,
+                status_icons,
+                sounds,
+            },
+            asset_loader,
+            dev_configs: DevConfig::new().unwrap(),
+            tick: 1,
+            dt: DeltaTime(0.0),
+            time: ElapsedTime(0.0),
+            matrices: render_matrices,
+            map_render_data,
+            attacks: Vec::with_capacity(128),
+            area_attacks: Vec::with_capacity(128),
+            pushes: Vec::with_capacity(128),
+            apply_statuses: Vec::with_capacity(128),
+            apply_area_statuses: Vec::with_capacity(128),
+            remove_statuses: Vec::with_capacity(128),
+            str_effects,
+            gl,
+        }
+    }
+
+    pub fn update_timers(&mut self, dt: f32) {
+        self.tick += 1;
+        self.dt.0 = dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        self.time.0 += dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+    }
 }
 
 #[derive(Debug)]

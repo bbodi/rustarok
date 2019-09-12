@@ -1,16 +1,20 @@
 use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharType, Percentage,
+    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, CharType,
+    Percentage,
 };
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::configs::DevConfig;
+use crate::consts::JobId;
+use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
-use std::any::Any;
+use specs::LazyUpdate;
+use std::any::{Any, TypeId};
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
@@ -26,12 +30,12 @@ pub trait Status: Any {
     fn can_target_move(&self) -> bool;
     fn typ(&self) -> StatusType;
     fn can_target_cast(&self) -> bool;
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4];
+    fn get_render_color(&self, now: ElapsedTime) -> [u8; 4];
     fn get_render_size(&self) -> f32;
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -116,7 +120,7 @@ impl Statuses {
 
     pub fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -169,29 +173,45 @@ impl Statuses {
         }
     }
 
-    pub fn get_base_attributes(typ: &CharType) -> CharAttributes {
+    pub fn get_base_attributes(
+        typ: &CharType,
+        outlook: &CharOutlook,
+        configs: &DevConfig,
+    ) -> CharAttributes {
         return match typ {
-            CharType::Player => CharAttributes {
-                walking_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(130),
-                attack_damage: 120,
-                armor: Percentage(50),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
-                max_hp: 50_000,
-                mana_regen: Percentage(100),
+            CharType::Player => match outlook {
+                CharOutlook::Player { job_id, .. } => match job_id {
+                    JobId::CRUSADER => configs.stats.player.crusader.clone(),
+                    _ => configs.stats.player.crusader.clone(),
+                },
+                CharOutlook::Monster(_) => CharAttributes {
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
+                    attack_damage: 76,
+                    armor: Percentage(10),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
+                    max_hp: 2000,
+                    mana_regen: Percentage(100),
+                },
             },
-            CharType::Minion => CharAttributes {
-                walking_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(100),
-                attack_damage: 76,
-                armor: Percentage(10),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
-                max_hp: 2000,
-                mana_regen: Percentage(100),
+            CharType::Minion => match outlook {
+                CharOutlook::Player { job_id, .. } => match job_id {
+                    JobId::ARCHER => configs.stats.minion.ranged.clone(),
+                    _ => configs.stats.minion.melee.clone(),
+                },
+                CharOutlook::Monster(_) => CharAttributes {
+                    walking_speed: Percentage(100),
+                    attack_range: Percentage(100),
+                    attack_speed: Percentage(100),
+                    attack_damage: 76,
+                    armor: Percentage(10),
+                    healing: Percentage(100),
+                    hp_regen: Percentage(100),
+                    max_hp: 2000,
+                    mana_regen: Percentage(100),
+                },
             },
             CharType::Boss => CharAttributes {
                 walking_speed: Percentage(100),
@@ -236,8 +256,8 @@ impl Statuses {
         return &self.cached_modifier_collector;
     }
 
-    pub fn calc_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        let mut ret = [1.0, 1.0, 1.0, 1.0];
+    pub fn calc_render_color(&self, now: ElapsedTime) -> [u8; 4] {
+        let mut ret = [255, 255, 255, 255];
         for status in &mut self
             .statuses
             .iter()
@@ -251,7 +271,7 @@ impl Statuses {
                 .unwrap()
                 .get_render_color(now);
             for i in 0..4 {
-                ret[i] *= status_color[i];
+                ret[i] = (ret[i] as u32 * status_color[i] as u32 / 255) as u8;
             }
         }
         return ret;
@@ -347,16 +367,30 @@ impl Statuses {
         self.statuses[status as usize] = None;
     }
 
-    pub unsafe fn hack_cast<T>(boxx: &Box<dyn Status>) -> &T {
-        // TODO: I could not get back a PosionStatus struct from a Status trait without unsafe, HELP
-        // hacky as hell, nothing guarantees that the first pointer in a Trait is the value pointer
-        let raw_object: *const T = std::mem::transmute(boxx);
-        return &*raw_object;
+    unsafe fn trait_to_struct<T>(boxx: &Box<dyn Status>) -> &T {
+        return std::mem::transmute::<_, &Box<T>>(boxx);
+    }
+
+    pub fn get_status<F, T: 'static, R>(&self, func: F) -> Option<R>
+    where
+        F: Fn(&T) -> R,
+    {
+        let requested_type_id = TypeId::of::<T>();
+        for status in self.statuses.iter().filter(|it| it.is_some()) {
+            let guard = status.as_ref().unwrap().lock().unwrap();
+            let boxx: &Box<dyn Status> = &guard;
+            let type_id = boxx.as_ref().type_id();
+            if requested_type_id == type_id {
+                let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
+                return Some(func(param));
+            }
+        }
+        return None;
     }
 
     pub fn add_poison(
         &mut self,
-        poison_caster_entity_id: Entity,
+        poison_caster_entity_id: CharEntityId,
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
@@ -364,7 +398,11 @@ impl Statuses {
             let status = &self.statuses[MainStatuses::Poison as usize];
             if let Some(current_poison) = status {
                 let boxx: &Box<dyn Status> = &*current_poison.lock().unwrap();
-                unsafe { Statuses::hack_cast::<PoisonStatus>(boxx).until.max(until) }
+                unsafe {
+                    Statuses::trait_to_struct::<PoisonStatus>(boxx)
+                        .until
+                        .max(until)
+                }
             } else {
                 until
             }
@@ -402,8 +440,8 @@ impl Status for MountedStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -421,7 +459,7 @@ impl Status for MountedStatus {
 
     fn update(
         &mut self,
-        _self_char_id: Entity,
+        _self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -457,7 +495,7 @@ impl Status for MountedStatus {
 
 #[derive(Clone)]
 pub struct PoisonStatus {
-    pub poison_caster_entity_id: Entity,
+    pub poison_caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
     pub next_damage_at: ElapsedTime,
@@ -480,8 +518,8 @@ impl Status for PoisonStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        [0.5, 1.0, 0.5, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [128, 255, 128, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -492,7 +530,7 @@ impl Status for PoisonStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -528,7 +566,7 @@ impl Status for PoisonStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "quagmire",
+            StrEffectType::Quagmire,
             self.started,
             char_pos,
             system_vars,
@@ -577,17 +615,17 @@ impl Clone for ApplyStatusComponentPayload {
 }
 
 pub struct ApplyStatusComponent {
-    pub source_entity_id: Entity,
-    pub target_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
+    pub target_entity_id: CharEntityId,
     pub status: ApplyStatusComponentPayload,
 }
 
 pub struct ApplyStatusInAreaComponent {
-    pub source_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
     pub status: ApplyStatusComponentPayload,
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub except: Option<Entity>,
+    pub except: Option<CharEntityId>,
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -602,8 +640,8 @@ pub enum RemoveStatusComponentPayload {
 }
 
 pub struct RemoveStatusComponent {
-    pub source_entity_id: Entity,
-    pub target_entity_id: Entity,
+    pub source_entity_id: CharEntityId,
+    pub target_entity_id: CharEntityId,
     pub status: RemoveStatusComponentPayload,
 }
 
@@ -617,8 +655,8 @@ unsafe impl Send for ApplyStatusInAreaComponent {}
 
 impl ApplyStatusComponent {
     pub fn from_main_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         m: MainStatuses,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
@@ -629,8 +667,8 @@ impl ApplyStatusComponent {
     }
 
     pub fn from_secondary_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         status: Box<dyn Status>,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
@@ -643,8 +681,8 @@ impl ApplyStatusComponent {
 
 impl RemoveStatusComponent {
     pub fn from_main_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         m: MainStatuses,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {
@@ -655,8 +693,8 @@ impl RemoveStatusComponent {
     }
 
     pub fn from_secondary_status(
-        source_entity_id: Entity,
-        target_entity_id: Entity,
+        source_entity_id: CharEntityId,
+        target_entity_id: CharEntityId,
         status_type: StatusType,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {

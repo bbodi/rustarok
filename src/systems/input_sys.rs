@@ -1,6 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
+    CameraComponent, CameraMode, ControllerEntityId, HumanInputComponent, PlayerIntention,
+    SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
@@ -11,8 +12,8 @@ use sdl2::keyboard::Scancode;
 use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use specs::prelude::*;
 use std::io::ErrorKind;
+use std::iter::Enumerate;
 use std::slice::Iter;
-use std::time::SystemTime;
 use websocket::{OwnedMessage, WebSocketError};
 
 pub struct BrowserInputProducerSystem;
@@ -24,15 +25,15 @@ const PACKET_KEY_DOWN: i32 = 4;
 const PACKET_KEY_UP: i32 = 5;
 const PACKET_MOUSE_WHEEL: i32 = 6;
 
-fn read_u16(iter: &mut Iter<u8>) -> u16 {
-    let upper_byte = iter.next().unwrap();
-    let lower_byte = iter.next().unwrap();
+fn read_u16(iter: &mut Enumerate<Iter<u8>>) -> u16 {
+    let (_, upper_byte) = iter.next().unwrap();
+    let (_, lower_byte) = iter.next().unwrap();
     return ((*upper_byte as u16) << 8) | *lower_byte as u16;
 }
 
-fn read_i16(iter: &mut Iter<u8>) -> i16 {
-    let upper_byte = iter.next().unwrap();
-    let lower_byte = iter.next().unwrap();
+fn read_i16(iter: &mut Enumerate<Iter<u8>>) -> i16 {
+    let (_, upper_byte) = iter.next().unwrap();
+    let (_, lower_byte) = iter.next().unwrap();
     return ((*upper_byte as i16) << 8) | *lower_byte as i16;
 }
 
@@ -41,43 +42,46 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, BrowserClient>,
+        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::Write<'a, LazyUpdate>,
     );
 
     fn run(
         &mut self,
-        (entities, mut input_storage, mut browser_client_storage, _updater): Self::SystemData,
+        (entities, mut input_storage, mut browser_client_storage, char_state_storage, _updater): Self::SystemData,
     ) {
-        for (entity_id, client, input_producer) in
+        for (controller_id, client, input_producer) in
             (&entities, &mut browser_client_storage, &mut input_storage).join()
         {
-            let sh = client.websocket.lock().unwrap().recv_message();
-            if let Ok(msg) = sh {
-                match msg {
+            let controller_id = ControllerEntityId(controller_id);
+            match client.receive() {
+                Ok(msg) => match msg {
                     OwnedMessage::Pong(buf) => {
-                        let ping_time = u128::from_le_bytes([
-                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
-                            buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
-                        ]);
-                        let now_ms = SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis();
-                        client.ping = (now_ms - ping_time) as u16;
+                        // TODO
+                        //                        let ping_time = u128::from_le_bytes([
+                        //                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],
+                        //                            buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+                        //                        ]);
+                        //                        let now_ms = SystemTime::now()
+                        //                            .duration_since(SystemTime::UNIX_EPOCH)
+                        //                            .unwrap()
+                        //                            .as_millis();
+                        //                        client.ping = (now_ms - ping_time) as u16;
                     }
                     OwnedMessage::Binary(buf) => {
-                        let mut iter = buf.iter();
-                        while let Some(header) = iter.next() {
+                        let mut iter = buf.iter().enumerate();
+                        while let Some((index, header)) = iter.next() {
+                            let read_bytes = index + 1;
+                            let remaining_bytes = buf.len() - read_bytes;
                             let header = *header as i32;
                             match header & 0b1111 {
                                 PACKET_MOUSE_MOVE => {
+                                    let expected_size = 2 * 2;
+                                    if remaining_bytes < expected_size {
+                                        continue;
+                                    }
                                     let mouse_x: u16 = read_u16(&mut iter);
                                     let mouse_y: u16 = read_u16(&mut iter);
-                                    log::trace!(
-                                        "Message arrived: MouseMove({}, {})",
-                                        mouse_x,
-                                        mouse_y
-                                    );
                                     let mousestate = {
                                         unsafe {
                                             std::mem::transmute((0 as u32, 0 as i32, 0 as i32))
@@ -94,6 +98,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         yrel: 0,
                                     });
                                 }
+
                                 PACKET_MOUSE_DOWN => {
                                     let mouse_btn = match (header >> 4) & 0b11 {
                                         0 => sdl2::mouse::MouseButton::Left,
@@ -133,19 +138,34 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                         });
                                 }
                                 PACKET_KEY_DOWN => {
-                                    let scancode = *iter.next().unwrap();
+                                    let expected_size = 1 + 2;
+                                    if remaining_bytes < expected_size {
+                                        continue;
+                                    }
+                                    let scancode = *iter.next().unwrap().1;
+                                    let modifiers: u8 = *iter.next().unwrap().1;
                                     let input_char: u16 = read_u16(&mut iter);
                                     log::trace!(
-                                        "Message arrived: KeyDown({}, {})",
+                                        "Message arrived: KeyDown({}, {}, mod: {})",
                                         scancode,
-                                        input_char
+                                        input_char,
+                                        modifiers
                                     );
+                                    let keymod = match modifiers {
+                                        0b11 => {
+                                            sdl2::keyboard::Mod::LALTMOD
+                                                | sdl2::keyboard::Mod::LCTRLMOD
+                                        }
+                                        0b10 => sdl2::keyboard::Mod::LALTMOD,
+                                        0b01 => sdl2::keyboard::Mod::LCTRLMOD,
+                                        _ => sdl2::keyboard::Mod::NOMOD,
+                                    };
                                     input_producer.inputs.push(sdl2::event::Event::KeyDown {
                                         timestamp: 0,
                                         window_id: 0,
                                         keycode: None,
                                         scancode: Scancode::from_i32(scancode as i32),
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        keymod,
                                         repeat: false,
                                     });
                                     if let Some(ch) = std::char::from_u32(input_char as u32) {
@@ -157,14 +177,24 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     }
                                 }
                                 PACKET_KEY_UP => {
-                                    let scancode = *iter.next().unwrap();
+                                    let scancode = *iter.next().unwrap().1;
+                                    let modifiers = *iter.next().unwrap().1;
                                     log::trace!("Message arrived: KeyUp({})", scancode);
+                                    let keymod = match modifiers {
+                                        0b11 => {
+                                            sdl2::keyboard::Mod::LALTMOD
+                                                | sdl2::keyboard::Mod::LCTRLMOD
+                                        }
+                                        0b10 => sdl2::keyboard::Mod::LALTMOD,
+                                        0b01 => sdl2::keyboard::Mod::LCTRLMOD,
+                                        _ => sdl2::keyboard::Mod::NOMOD,
+                                    };
                                     input_producer.inputs.push(sdl2::event::Event::KeyUp {
                                         timestamp: 0,
                                         window_id: 0,
                                         keycode: None,
                                         scancode: Scancode::from_i32(scancode as i32),
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        keymod,
                                         repeat: false,
                                     });
                                 }
@@ -182,22 +212,45 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                 }
                                 _ => {
                                     log::warn!("Unknown header: {}", header);
-                                    entities.delete(entity_id).unwrap();
+                                    entities.delete(controller_id.0).unwrap();
                                 }
                             };
                         }
                     }
                     _ => {
                         log::warn!("Unknown msg: {:?}", msg);
-                        entities.delete(entity_id).unwrap();
+                        BrowserInputProducerSystem::remove_browser_client(
+                            &entities,
+                            &char_state_storage,
+                            controller_id,
+                            &input_producer.username,
+                        );
+                    }
+                },
+                Err(WebSocketError::IoError(e)) => {
+                    if e.kind() == ErrorKind::ConnectionAborted {
+                        // 10053, ConnectionAborted
+                        log::info!("Client '{:?}' has disconnected", controller_id);
+                        BrowserInputProducerSystem::remove_browser_client(
+                            &entities,
+                            &char_state_storage,
+                            controller_id,
+                            &input_producer.username,
+                        );
                     }
                 }
-            } else if let Err(WebSocketError::IoError(e)) = sh {
-                if e.kind() == ErrorKind::ConnectionAborted {
-                    // 10053, ConnectionAborted
-                    log::info!("Client '{:?}' has disconnected", entity_id);
-                    entities.delete(entity_id).unwrap();
-                }
+                Err(WebSocketError::ProtocolError(_)) => {}
+                Err(WebSocketError::RequestError(_)) => {}
+                Err(WebSocketError::ResponseError(_)) => {}
+                Err(WebSocketError::DataFrameError(_)) => {}
+                Err(WebSocketError::NoDataAvailable) => {}
+                Err(WebSocketError::HttpError(_)) => {}
+                Err(WebSocketError::UrlError(_)) => {}
+                Err(WebSocketError::WebSocketUrlError(_)) => {}
+                Err(WebSocketError::TlsError(_)) => {}
+                Err(WebSocketError::TlsHandshakeFailure) => {}
+                Err(WebSocketError::TlsHandshakeInterruption) => {}
+                Err(WebSocketError::Utf8Error(_)) => {}
             }
         }
     }
@@ -208,17 +261,17 @@ pub struct InputConsumerSystem;
 impl<'a> specs::System<'a> for InputConsumerSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, CameraComponent>,
+        specs::ReadStorage<'a, BrowserClient>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (entities, char_state_storage, mut input_storage, mut camera_storage, system_vars): Self::SystemData,
+        (entities, mut input_storage, mut camera_storage, browser_storage, system_vars): Self::SystemData,
     ) {
-        for (entity_id, input, camera) in
+        for (controller_id, input, camera) in
             (&entities, &mut input_storage, &mut camera_storage).join()
         {
             // for autocompletion...
@@ -232,6 +285,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             input.mouse_wheel = 0;
             input.delta_mouse_x = 0;
             input.delta_mouse_y = 0;
+            input.alt_down = false;
+            input.ctrl_down = false;
+            input.text = String::new();
             input.cleanup_released_keys();
             for event in events {
                 match event {
@@ -277,21 +333,57 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     sdl2::event::Event::MouseWheel { y, .. } => {
                         input.mouse_wheel = y;
                     }
-                    sdl2::event::Event::KeyDown { scancode, .. } => {
+                    sdl2::event::Event::KeyDown {
+                        scancode, keymod, ..
+                    } => {
                         if let Some(scancode) = scancode {
+                            if scancode == Scancode::LCtrl || scancode == Scancode::LAlt {
+                                // It causes problems on the browser because alt-tabbing
+                                // does not releases the alt key
+                                // So alt and ctrl keys should be registered only together with other keys
+                                continue;
+                            }
                             input.key_pressed(scancode);
+                            if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
+                                input.alt_down = true;
+                            }
+                            if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                                input.ctrl_down = true;
+                            }
                         }
                     }
-                    sdl2::event::Event::KeyUp { scancode, .. } => {
+                    sdl2::event::Event::KeyUp {
+                        scancode, keymod, ..
+                    } => {
                         if let Some(scancode) = scancode {
+                            if scancode == Scancode::LCtrl || scancode == Scancode::LAlt {
+                                // see above
+                                continue;
+                            }
                             input.key_released(scancode);
+                            if keymod.contains(sdl2::keyboard::Mod::LALTMOD) {
+                                input.alt_down = true;
+                            }
+                            if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
+                                input.ctrl_down = true;
+                            }
                         }
+                    }
+                    sdl2::event::Event::TextInput { text, .. } => {
+                        input.text = text;
                     }
                     _ => {}
                 }
             }
 
-            if input.is_key_just_released(Scancode::L) {
+            if input.is_key_just_pressed(Scancode::Grave)
+                && input.alt_down
+                && browser_storage.get(controller_id).is_none()
+            {
+                input.is_console_open = !input.is_console_open;
+            }
+
+            if input.is_key_just_released(Scancode::L) && !input.is_console_open {
                 match input.camera_movement_mode {
                     CameraMode::Free => {
                         input.camera_movement_mode = CameraMode::FollowChar;
@@ -378,5 +470,22 @@ impl InputConsumerSystem {
             / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
         return v2!(world_pos.x, world_pos.z);
+    }
+}
+
+impl BrowserInputProducerSystem {
+    fn remove_browser_client(
+        entities: &Entities,
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        controller_id: ControllerEntityId,
+        username: &str,
+    ) {
+        for (char_id, char_state) in (entities, char_state_storage).join() {
+            if char_state.name == username {
+                entities.delete(char_id).unwrap();
+                break;
+            }
+        }
+        entities.delete(controller_id.0).unwrap();
     }
 }

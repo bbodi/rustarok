@@ -1,6 +1,4 @@
 use crate::asset::BinaryReader;
-use crate::video::GlTexture;
-use sdl2::pixels::PixelFormatEnum;
 
 pub struct SpriteFile {
     pub frames: Vec<Frame>,
@@ -16,13 +14,6 @@ pub struct Frame {
     pub width: usize,
     pub height: usize,
     pub data: Vec<u8>,
-}
-
-#[derive(Clone)]
-pub struct SpriteTexture {
-    pub original_width: usize,
-    pub original_height: usize,
-    pub texture: GlTexture,
 }
 
 impl SpriteFile {
@@ -142,43 +133,5 @@ impl SpriteFile {
                 }
             })
             .collect()
-    }
-}
-
-impl SpriteTexture {
-    pub fn from(mut frame: Frame) -> SpriteTexture {
-        let frame_surface = sdl2::surface::Surface::from_data(
-            &mut frame.data,
-            frame.width as u32,
-            frame.height as u32,
-            (4 * frame.width) as u32,
-            PixelFormatEnum::RGBA32,
-        )
-        .unwrap();
-        // Calculate new texture size and move the sprite into the center
-        let gl_width = frame.width; //.next_power_of_two();
-        let gl_height = frame.height; //.next_power_of_two();
-        let start_x = ((gl_width - frame.width) as f32 * 0.5).floor() as u32;
-        let start_y = ((gl_height - frame.height) as f32 * 0.5).floor() as u32;
-
-        let mut opengl_surface =
-            sdl2::surface::Surface::new(gl_width as u32, gl_height as u32, PixelFormatEnum::RGBA32)
-                .unwrap();
-
-        let dst_rect = sdl2::rect::Rect::new(
-            start_x as i32,
-            start_y as i32,
-            frame.width as u32,
-            frame.height as u32,
-        );
-        frame_surface
-            .blit(None, &mut opengl_surface, dst_rect)
-            .unwrap();
-
-        SpriteTexture {
-            original_width: frame.width,
-            original_height: frame.height,
-            texture: GlTexture::from_surface(opengl_surface, gl::NEAREST),
-        }
     }
 }

@@ -1,19 +1,20 @@
 use crate::components::char::CharAttributeModifierCollector;
-use crate::components::controller::WorldCoords;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     Status, StatusStackingResult, StatusType, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::{Entity, LazyUpdate};
+use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct AbsorbStatus {
-    pub caster_entity_id: Entity,
+    pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub animation_started: ElapsedTime,
     pub until: ElapsedTime,
@@ -21,12 +22,12 @@ pub struct AbsorbStatus {
 }
 
 impl AbsorbStatus {
-    pub fn new(caster_entity_id: Entity, now: ElapsedTime) -> AbsorbStatus {
+    pub fn new(caster_entity_id: CharEntityId, now: ElapsedTime, duration: f32) -> AbsorbStatus {
         AbsorbStatus {
             caster_entity_id,
             started: now,
             animation_started: now.add_seconds(-1.9),
-            until: now.add_seconds(3.0),
+            until: now.add_seconds(duration),
             absorbed_damage: 0,
         }
     }
@@ -49,8 +50,8 @@ impl Status for AbsorbStatus {
         true
     }
 
-    fn get_render_color(&self, now: ElapsedTime) -> [f32; 4] {
-        [1.0, 1.0, 1.0, 1.0]
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
     }
 
     fn get_render_size(&self) -> f32 {
@@ -61,7 +62,7 @@ impl Status for AbsorbStatus {
 
     fn update(
         &mut self,
-        self_char_id: Entity,
+        self_char_id: CharEntityId,
         _char_pos: &WorldCoords,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -114,7 +115,7 @@ impl Status for AbsorbStatus {
         render_commands: &mut RenderCommandCollectorComponent,
     ) {
         RenderDesktopClientSystem::render_str(
-            "ramadan",
+            StrEffectType::Ramadan,
             self.animation_started,
             char_pos,
             system_vars,
