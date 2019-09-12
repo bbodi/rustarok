@@ -100,6 +100,8 @@ mod web_server;
 mod components;
 mod systems;
 
+// TODO: throttle: if browser is not able to keep up e.g. 140 FPS, slow down render command sending
+
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
 pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;

@@ -37,6 +37,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         for (_self_id, input, controller) in
             (&entities, &input_storage, &mut controller_storage).join()
         {
+            // TODO: it can happen that this unwrap panics if browser clients disconnects
             let self_char_comp = char_state_storage
                 .get(controller.controlled_entity.0)
                 .unwrap();

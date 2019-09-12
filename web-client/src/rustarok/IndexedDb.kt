@@ -60,86 +60,70 @@ object IndexedDb {
         return db
     }
 
-    suspend fun store_texture_info(path: String, hash: String, count: Int) {
-        val db = open()
-        val tx = db.transaction("textures", "readwrite")
-        val store = tx.objectStore("textures")
-        make_await<dynamic> {
-            store.put(object {
-                val path = path
-                val hash = hash
-                val count = count
-            })
-        }
-    }
-
     suspend fun store_textures(path: String,
-                               textures: List<Triple<Int, Int, Uint8Array>>) {
+                               hash: String, count: Int,
+                               textures: List<Triple<Int, Int, Uint8Array>>): Promise<Array<out dynamic>> {
         val db = open()
-        val tx = db.transaction("texture_data", "readwrite")
-        val store = tx.objectStore("texture_data")
-        for ((texture_index, texture) in textures.withIndex()) {
+        val tx = db.transaction(arrayOf("textures", "texture_data"), "readwrite")
+        val texture_info_store = tx.objectStore("textures")
+        val texture_data_store = tx.objectStore("texture_data")
+        val promises = textures.withIndex().map { (texture_index, texture) ->
             val key = "${path}_$texture_index"
-            val result = make_await<dynamic> {
-                store.put(object {
+            to_promise<dynamic> {
+                texture_data_store.put(object {
                     val w = texture.first
                     val h = texture.second
                     val raw = texture.third
                 }, key)
             }
-            if (result != key) {
-                js("debugger")
-            }
-        }
+        }.toTypedArray()
+        return Promise.all(promises + to_promise {
+            texture_info_store.put(object {
+                val path = path
+                val hash = hash
+                val count = count
+            })
+        })
     }
 
     suspend fun store_model(path: String,
                             node_index: Int,
                             vertex_count: Int,
                             texture_name: String,
-                            rawData: Uint8Array) {
+                            rawData: Uint8Array): Promise<dynamic> {
         val db = open()
         val tx = db.transaction("models", "readwrite")
         val store = tx.objectStore("models")
         val key = "${path}_$node_index"
-        val result = make_await<dynamic> {
+        return to_promise<dynamic> {
             store.put(object {
                 val vertex_count = vertex_count
                 val texture_name = texture_name
                 val raw = rawData
             }, key)
         }
-        if (result != key) {
-            js("debugger")
-        }
     }
 
     suspend fun store_effect(name: String,
-                             effect: StrFile) {
+                             effect: StrFile): Promise<dynamic> {
         val db = open()
         val tx = db.transaction("effects", "readwrite")
         val store = tx.objectStore("effects")
-        val result = make_await<dynamic> {
+        return to_promise<dynamic> {
             store.put(effect, name)
-        }
-        if (result != name) {
-            js("debugger")
         }
     }
 
 
-    suspend fun store_vertex_array(key: String, vertex_count: Int, rawData: Uint8Array) {
+    suspend fun store_vertex_array(key: String, vertex_count: Int, rawData: Uint8Array): Promise<dynamic> {
         val db = open()
         val tx = db.transaction("vertex_arrays", "readwrite")
         val store = tx.objectStore("vertex_arrays")
-        val result = make_await<dynamic> {
+        return to_promise<dynamic> {
             store.put(object {
                 val vertex_count = vertex_count
                 val raw = rawData
             }, key)
-        }
-        if (result != key) {
-            js("debugger")
         }
     }
 
@@ -186,6 +170,22 @@ object IndexedDb {
         } else {
             null
         }
+    }
+}
+
+fun <T> to_promise(block: () -> dynamic): Promise<T> {
+    return Promise<T> { resolve, reject ->
+        val req = block()
+        req.onsuccess = {
+            resolve(req.result)
+        }
+        req.onerror = { event: dynamic ->
+            reject(event)
+        }
+    }.catch { e ->
+        console.error(e)
+        throw e
+        0.asDynamic()
     }
 }
 

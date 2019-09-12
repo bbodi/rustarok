@@ -14,7 +14,6 @@ use specs::prelude::*;
 use std::io::ErrorKind;
 use std::iter::Enumerate;
 use std::slice::Iter;
-use std::time::SystemTime;
 use websocket::{OwnedMessage, WebSocketError};
 
 pub struct BrowserInputProducerSystem;

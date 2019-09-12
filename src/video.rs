@@ -117,34 +117,42 @@ impl Video {
         text: &str,
         asset_database: &mut AssetDatabase,
     ) -> GlTexture {
-        let mut bg_surface = outline_font
-            .render(text)
-            .blended(Color::RGBA(0, 0, 0, 255))
-            .unwrap();
-        let mut fg_surface = font
-            .render(text)
-            .blended(Color::RGBA(255, 255, 255, 255))
-            .unwrap();
-        fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
-        fg_surface
-            .blit(
-                None,
-                &mut bg_surface,
-                sdl2::rect::Rect::new(
-                    outline_font.get_outline_width() as i32,
-                    outline_font.get_outline_width() as i32,
-                    fg_surface.width(),
-                    fg_surface.height(),
-                ),
-            )
-            .unwrap();
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            &format!("outlinetext_{}", text),
-            bg_surface,
-            MyGlEnum::NEAREST,
-            asset_database,
+        let key = format!(
+            "outlinetext_{}_{}_{}",
+            text,
+            font.height(),
+            outline_font.get_outline_width()
         );
+        return asset_database.get_texture(gl, &key).unwrap_or_else(|| {
+            let mut bg_surface = outline_font
+                .render(text)
+                .blended(Color::RGBA(0, 0, 0, 255))
+                .unwrap();
+            let mut fg_surface = font
+                .render(text)
+                .blended(Color::RGBA(255, 255, 255, 255))
+                .unwrap();
+            fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
+            fg_surface
+                .blit(
+                    None,
+                    &mut bg_surface,
+                    sdl2::rect::Rect::new(
+                        outline_font.get_outline_width() as i32,
+                        outline_font.get_outline_width() as i32,
+                        fg_surface.width(),
+                        fg_surface.height(),
+                    ),
+                )
+                .unwrap();
+            AssetLoader::create_texture_from_surface(
+                gl,
+                &key,
+                bg_surface,
+                MyGlEnum::NEAREST,
+                asset_database,
+            )
+        });
     }
 }
 

@@ -106,15 +106,18 @@ impl AssetDatabase {
     }
 
     pub fn replace_non_ascii_chars(name: &str) -> String {
-        name.chars()
-            .map(|it| {
-                if it.is_ascii() {
-                    it.to_string()
-                } else {
-                    format!("{:?}", it.to_string().as_bytes())
-                }
-            })
-            .collect()
+        let mut ret = String::with_capacity(name.len() * 2);
+        name.chars().for_each(|it| {
+            if it.is_ascii() {
+                ret.push(it);
+            } else {
+                it.to_string()
+                    .as_bytes()
+                    .iter()
+                    .for_each(|it| ret.push_str(&it.to_string()));
+            }
+        });
+        return ret;
     }
 
     pub fn copy_model_into(&self, name: &str, dst_buf: &mut Vec<u8>) {

@@ -83,143 +83,145 @@ pub fn handle_client_handshakes(mut ecs_world: &mut World) {
             match msg {
                 OwnedMessage::Binary(_buf) => {}
                 OwnedMessage::Text(text) => {
-                    let deserialized: serde_json::Value = serde_json::from_str(&text).unwrap();
-                    if let Some(mismatched_textures) =
-                        deserialized["mismatched_textures"].as_array()
-                    {
-                        log::trace!("mismatched_textures: {:?}", mismatched_textures);
-                        let mut response_buf =
-                            Vec::with_capacity(mismatched_textures.len() * 256 * 256);
-                        for mismatched_texture in mismatched_textures {
-                            ecs_world
-                                .read_resource::<AssetDatabase>()
-                                .copy_texture_into(
-                                    &ecs_world.read_resource::<SystemVariables>().gl,
-                                    mismatched_texture.as_str().unwrap_or(""),
+                    if let Ok(deserialized) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(mismatched_textures) =
+                            deserialized["mismatched_textures"].as_array()
+                        {
+                            log::trace!("mismatched_textures: {:?}", mismatched_textures);
+                            let mut response_buf =
+                                Vec::with_capacity(mismatched_textures.len() * 256 * 256);
+                            for mismatched_texture in mismatched_textures {
+                                ecs_world
+                                    .read_resource::<AssetDatabase>()
+                                    .copy_texture_into(
+                                        &ecs_world.read_resource::<SystemVariables>().gl,
+                                        mismatched_texture.as_str().unwrap_or(""),
+                                        &mut response_buf,
+                                    );
+                                client.send_message(&response_buf);
+                                response_buf.clear();
+                            }
+                        }
+                        if let Some(mismatched_vertex_buffers) =
+                            deserialized["mismatched_vertex_buffers"].as_array()
+                        {
+                            log::trace!(
+                                "mismatched_vertex_buffers: {:?}",
+                                mismatched_vertex_buffers
+                            );
+                            let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                            for mismatched_vertex_buffer in mismatched_vertex_buffers {
+                                if let Some("3d_ground") = mismatched_vertex_buffer.as_str() {
+                                    response_buf.write_u8(1).unwrap();
+                                    let ground_vao = &ecs_world
+                                        .read_resource::<SystemVariables>()
+                                        .map_render_data
+                                        .ground_vertex_array;
+                                    ground_vao.write_into(&mut response_buf);
+                                    client.send_message(&response_buf);
+                                    response_buf.clear();
+                                }
+                            }
+                            // send closing message
+                            {
+                                response_buf.push(0xB1);
+                                response_buf.push(0x6B);
+                                response_buf.push(0x00);
+                                response_buf.push(0xB5);
+                                client.send_message(&response_buf);
+                            }
+                        }
+                        if let Some(missing_effects) = deserialized["missing_effects"].as_array() {
+                            log::trace!("missing_effects: {:?}", missing_effects);
+                            let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                            for missing_effect_name in missing_effects {
+                                let missing_effect_name =
+                                    missing_effect_name.as_str().unwrap_or("");
+                                if let Ok(effect_type) =
+                                    StrEffectType::from_str(missing_effect_name)
+                                {
+                                    let str_file = &ecs_world
+                                        .read_resource::<SystemVariables>()
+                                        .str_effects[effect_type as usize];
+
+                                    response_buf
+                                        .write_u16::<LittleEndian>(missing_effect_name.len() as u16)
+                                        .unwrap();
+                                    response_buf.write(missing_effect_name.as_bytes()).unwrap();
+
+                                    str_file.write_into(&mut response_buf);
+                                    client.send_message(&response_buf);
+                                    response_buf.clear();
+                                }
+                            }
+                            // send closing message
+                            {
+                                response_buf.push(0xB1);
+                                response_buf.push(0x6B);
+                                response_buf.push(0x00);
+                                response_buf.push(0xB5);
+                                client.send_message(&response_buf);
+                            }
+                        }
+                        if deserialized["send_me_model_instances"].as_bool().is_some() {
+                            let mut response_buf = Vec::with_capacity(256 * 256 * 4);
+                            for model_instance in &ecs_world
+                                .read_resource::<SystemVariables>()
+                                .map_render_data
+                                .model_instances
+                            {
+                                response_buf
+                                    .write_u32::<LittleEndian>(
+                                        model_instance.asset_db_model_index as u32,
+                                    )
+                                    .unwrap();
+                                for v in &model_instance.matrix {
+                                    response_buf.write_f32::<LittleEndian>(*v).unwrap();
+                                }
+                            }
+                            client.send_message(&response_buf);
+                        }
+                        if let Some(missing_models) = deserialized["missing_models"].as_array() {
+                            log::trace!("missing_models: {:?}", missing_models);
+                            let mut response_buf =
+                                Vec::with_capacity(missing_models.len() * 256 * 256);
+                            for missing_model in missing_models {
+                                ecs_world.read_resource::<AssetDatabase>().copy_model_into(
+                                    missing_model.as_str().unwrap_or(""),
                                     &mut response_buf,
                                 );
-                            client.send_message(&response_buf);
-                            response_buf.clear();
-                        }
-                        // send closing message
-                        {
-                            response_buf.push(0xB1);
-                            response_buf.push(0x6B);
-                            response_buf.push(0x00);
-                            response_buf.push(0xB5);
-                            client.send_message(&response_buf);
-                        }
-                    }
-                    if let Some(mismatched_vertex_buffers) =
-                        deserialized["mismatched_vertex_buffers"].as_array()
-                    {
-                        log::trace!("mismatched_vertex_buffers: {:?}", mismatched_vertex_buffers);
-                        let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                        for mismatched_vertex_buffer in mismatched_vertex_buffers {
-                            if let Some("3d_ground") = mismatched_vertex_buffer.as_str() {
-                                response_buf.write_u8(1).unwrap();
-                                let ground_vao = &ecs_world
-                                    .read_resource::<SystemVariables>()
-                                    .map_render_data
-                                    .ground_vertex_array;
-                                ground_vao.write_into(&mut response_buf);
                                 client.send_message(&response_buf);
                                 response_buf.clear();
                             }
-                        }
-                        // send closing message
-                        {
-                            response_buf.push(0xB1);
-                            response_buf.push(0x6B);
-                            response_buf.push(0x00);
-                            response_buf.push(0xB5);
-                            client.send_message(&response_buf);
-                        }
-                    }
-                    if let Some(missing_effects) = deserialized["missing_effects"].as_array() {
-                        log::trace!("missing_effects: {:?}", missing_effects);
-                        let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                        for missing_effect_name in missing_effects {
-                            let missing_effect_name = missing_effect_name.as_str().unwrap_or("");
-                            if let Ok(effect_type) = StrEffectType::from_str(missing_effect_name) {
-                                let str_file = &ecs_world
-                                    .read_resource::<SystemVariables>()
-                                    .str_effects[effect_type as usize];
-
-                                response_buf
-                                    .write_u16::<LittleEndian>(missing_effect_name.len() as u16)
-                                    .unwrap();
-                                response_buf.write(missing_effect_name.as_bytes()).unwrap();
-
-                                str_file.write_into(&mut response_buf);
+                            // send closing message
+                            {
+                                response_buf.push(0xB1);
+                                response_buf.push(0x6B);
+                                response_buf.push(0x00);
+                                response_buf.push(0xB5);
                                 client.send_message(&response_buf);
-                                response_buf.clear();
                             }
                         }
-                        // send closing message
-                        {
-                            response_buf.push(0xB1);
-                            response_buf.push(0x6B);
-                            response_buf.push(0x00);
-                            response_buf.push(0xB5);
-                            client.send_message(&response_buf);
-                        }
-                    }
-                    if deserialized["send_me_model_instances"].as_bool().is_some() {
-                        let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                        for model_instance in &ecs_world
-                            .read_resource::<SystemVariables>()
-                            .map_render_data
-                            .model_instances
-                        {
-                            response_buf
-                                .write_u32::<LittleEndian>(
-                                    model_instance.asset_db_model_index as u32,
-                                )
-                                .unwrap();
-                            for v in &model_instance.matrix {
-                                response_buf.write_f32::<LittleEndian>(*v).unwrap();
-                            }
-                        }
-                        client.send_message(&response_buf);
-                    }
-                    if let Some(missing_models) = deserialized["missing_models"].as_array() {
-                        log::trace!("missing_models: {:?}", missing_models);
-                        let mut response_buf = Vec::with_capacity(missing_models.len() * 256 * 256);
-                        for missing_model in missing_models {
-                            ecs_world.read_resource::<AssetDatabase>().copy_model_into(
-                                missing_model.as_str().unwrap_or(""),
-                                &mut response_buf,
+                        if deserialized["ready"].as_bool().is_some() {
+                            let char_entity_id = CharEntityId(entities.create());
+                            attach_human_player_components(
+                                "browser",
+                                char_entity_id,
+                                controller_id,
+                                &updater,
+                                &mut ecs_world.write_resource::<PhysicEngine>(),
+                                projection_mat,
+                                Point2::new(250.0, -200.0),
+                                Sex::Male,
+                                JobId::CRUSADER,
+                                2,
+                                1,
+                                Team::Right,
+                                &ecs_world.read_resource::<SystemVariables>().dev_configs,
                             );
-                            client.send_message(&response_buf);
-                            response_buf.clear();
                         }
-                        // send closing message
-                        {
-                            response_buf.push(0xB1);
-                            response_buf.push(0x6B);
-                            response_buf.push(0x00);
-                            response_buf.push(0xB5);
-                            client.send_message(&response_buf);
-                        }
-                    }
-                    if deserialized["ready"].as_bool().is_some() {
-                        let char_entity_id = CharEntityId(entities.create());
-                        attach_human_player_components(
-                            "browser",
-                            char_entity_id,
-                            controller_id,
-                            &updater,
-                            &mut ecs_world.write_resource::<PhysicEngine>(),
-                            projection_mat,
-                            Point2::new(250.0, -200.0),
-                            Sex::Male,
-                            JobId::CRUSADER,
-                            2,
-                            1,
-                            Team::Right,
-                            &ecs_world.read_resource::<SystemVariables>().dev_configs,
-                        );
+                    } else {
+                        log::warn!("Invalid msg: {}", text);
                     }
                 }
                 OwnedMessage::Close(_) => {}
