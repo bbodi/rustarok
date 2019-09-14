@@ -1,11 +1,6 @@
 use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
 use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::status::status::{
-    Status, StatusStackingResult, StatusType, StatusUpdateResult,
-};
-use crate::components::ApplyForceComponent;
-use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::components::status::status::{Status, StatusNature, StatusUpdateResult};
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use specs::LazyUpdate;
@@ -32,24 +27,8 @@ impl Status for ArmorModifierStatus {
         Box::new(self.clone())
     }
 
-    fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn typ(&self) -> StatusType {
-        StatusType::Supportive // depends
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [255, 255, 255, 255]
-    }
-
-    fn get_render_size(&self) -> f32 {
-        1.0
+    fn typ(&self) -> StatusNature {
+        StatusNature::Supportive // depends
     }
 
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
@@ -68,35 +47,10 @@ impl Status for ArmorModifierStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.is_earlier_than(system_vars.time) {
+        if self.until.has_already_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
         }
-    }
-
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
-        true
-    }
-
-    fn render(
-        &self,
-        _char_pos: &WorldCoords,
-        _system_vars: &SystemVariables,
-        _render_commands: &mut RenderCommandCollectorComponent,
-    ) {
-
-    }
-
-    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-        None
-    }
-
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::AddTheNewStatus
     }
 }

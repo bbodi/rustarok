@@ -385,7 +385,7 @@ impl VertexArray {
     pub fn new_static<T>(
         gl: &Gl,
         draw_mode: MyGlEnum,
-        mut vertices: Vec<T>,
+        vertices: Vec<T>,
         definitions: Vec<VertexAttribDefinition>,
     ) -> VertexArray {
         VertexArray::new(gl, draw_mode, vertices, definitions, MyGlEnum::STATIC_DRAW)
@@ -394,7 +394,7 @@ impl VertexArray {
     pub fn new_dynamic<T>(
         gl: &Gl,
         draw_mode: MyGlEnum,
-        mut vertices: Vec<T>,
+        vertices: Vec<T>,
         definitions: Vec<VertexAttribDefinition>,
     ) -> VertexArray {
         VertexArray::new(gl, draw_mode, vertices, definitions, MyGlEnum::DYNAMIC_DRAW)

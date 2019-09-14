@@ -1,24 +1,60 @@
+use nalgebra::{Isometry2, Vector2};
+use specs::{Entities, Entity, LazyUpdate};
+
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{
-    SkillManifestation, SkillManifestationComponent, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
-use crate::components::{AreaAttackComponent, AttackType, StrEffectComponent};
+use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use nalgebra::{Isometry2, Vector2};
-use specs::{Entity, LazyUpdate};
 
 pub struct LightningSkill;
 
-impl LightningSkill {
-    pub fn render_target_selection(
+pub const LIGHTNING_SKILL: &'static LightningSkill = &LightningSkill;
+
+impl SkillDef for LightningSkill {
+    fn get_icon_path(&self) -> &'static str {
+        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp"
+    }
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster: &CharacterStateComponent,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        physics_world: &mut PhysicEngine,
+        system_vars: &mut SystemVariables,
+        entities: &Entities,
+        updater: &mut specs::Write<LazyUpdate>,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        Some(Box::new(LightningManifest::new(
+            caster_entity_id,
+            &skill_pos.unwrap(),
+            char_to_skill_dir,
+            system_vars.time,
+            entities,
+        )))
+    }
+
+    fn get_skill_target_type(&self) -> SkillTargetType {
+        SkillTargetType::Area
+    }
+
+    fn render_target_selection(
+        &self,
+        is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         render_commands: &mut RenderCommandCollectorComponent,
+        _configs: &DevConfig,
     ) {
         for i in 0..3 {
             let pos = skill_pos + char_to_skill_dir * i as f32 * 2.2;
@@ -74,19 +110,19 @@ impl SkillManifestation for LightningManifest {
         _all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
         updater: &mut specs::Write<LazyUpdate>,
     ) {
         if self
             .created_at
             .add_seconds(12.0)
-            .is_earlier_than(system_vars.time)
+            .has_already_passed(system_vars.time)
         {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             updater.remove::<StrEffectComponent>(self.effect_id);
         } else {
-            if self.next_action_at.is_earlier_than(system_vars.time) {
+            if self.next_action_at.has_already_passed(system_vars.time) {
                 updater.remove::<StrEffectComponent>(self.effect_id);
                 let effect_comp = match self.action_count {
                     0 => StrEffectComponent {
@@ -147,12 +183,12 @@ impl SkillManifestation for LightningManifest {
                 self.next_action_at = system_vars.time.add_seconds(1.5);
                 self.next_damage_at = system_vars.time.add_seconds(1.0);
             }
-            if self.next_damage_at.is_earlier_than(system_vars.time) {
+            if self.next_damage_at.has_already_passed(system_vars.time) {
                 system_vars.area_attacks.push(AreaAttackComponent {
                     area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::SpellDamage(120),
+                    typ: AttackType::SpellDamage(120, DamageDisplayType::SingleNumber),
                 });
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);
             }
@@ -164,6 +200,7 @@ impl SkillManifestation for LightningManifest {
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,
+        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollectorComponent,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {

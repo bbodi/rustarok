@@ -71,7 +71,6 @@ impl AssetDatabase {
         let mut hasher = DefaultHasher::new();
 
         for texture in textures {
-            log::info!("{}: {}", texture.id().0, path);
             let mut buffer =
                 Vec::<u8>::with_capacity((texture.width * texture.height * 4) as usize);
             unsafe {

@@ -10,7 +10,8 @@ use crate::components::controller::{
 };
 use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
-    FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
+    BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
+    StrEffectComponent,
 };
 use crate::cursor::CURSOR_TARGET;
 use crate::effect::StrEffectId;
@@ -103,31 +104,37 @@ impl RenderDesktopClientSystem {
                     let _stopwatch = system_benchmark.start_measurement("render.casting");
                     let char_pos = controller.controlled_char.pos();
                     if let Some((_skill_key, skill)) = controller.controller.select_skill_target {
+                        let skill_def = skill.get_definition();
+                        let skill_cast_attr = skill.get_cast_attributes(
+                            &system_vars.dev_configs,
+                            controller.controlled_char,
+                        );
                         render_commands
                             .circle_3d()
                             .pos_2d(&char_pos)
                             .y(0.0)
-                            .radius(skill.get_casting_range())
+                            .radius(skill_cast_attr.casting_range)
                             .color(&[0, 255, 0, 255])
                             .add();
 
-                        if skill.get_skill_target_type() == SkillTargetType::Area {
+                        if skill_def.get_skill_target_type() == SkillTargetType::Area {
                             let is_castable = controller
                                 .controlled_char
                                 .skill_cast_allowed_at
                                 .get(&skill)
                                 .unwrap_or(&ElapsedTime(0.0))
-                                .is_earlier_than(system_vars.time);
+                                .has_already_passed(system_vars.time);
                             let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
                                 &char_pos,
                                 &input.mouse_world_pos,
-                                skill.get_casting_range(),
+                                skill_cast_attr.casting_range,
                             );
-                            skill.render_target_selection(
+                            skill_def.render_target_selection(
                                 is_castable,
                                 &skill_3d_pos,
                                 &dir_vector,
                                 render_commands,
+                                &system_vars.dev_configs,
                             );
                         }
                     } else {
@@ -135,11 +142,12 @@ impl RenderDesktopClientSystem {
                             controller.controlled_char.state()
                         {
                             let skill = casting_info.skill;
-                            skill.render_casting(
+                            skill.get_definition().render_casting(
                                 &char_pos,
                                 &casting_info,
                                 system_vars,
                                 render_commands,
+                                &char_state_storage,
                             );
                         }
                     }
@@ -194,6 +202,7 @@ impl RenderDesktopClientSystem {
                 system_vars.time,
                 system_vars.tick,
                 &system_vars.assets,
+                &system_vars.dev_configs,
                 render_commands,
                 audio_commands,
             );
@@ -203,7 +212,7 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.str_effect");
             for (entity_id, str_effect) in (entities, str_effect_storage).join() {
-                if str_effect.die_at.is_earlier_than(system_vars.time) {
+                if str_effect.die_at.has_already_passed(system_vars.time) {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
                     RenderDesktopClientSystem::render_str(
@@ -243,7 +252,7 @@ impl RenderDesktopClientSystem {
         desktop_target: &Option<EntityTarget>,
     ) -> bool {
         return if let Some((_skill_key, skill)) = select_skill_target {
-            match skill.get_skill_target_type() {
+            match skill.get_definition().get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor
                     .get_enemy_or_friend()
                     .map(|it| it == rendering_entity_id)
@@ -568,6 +577,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::WriteStorage<'a, AudioCommandCollectorComponent>,
         specs::ReadExpect<'a, AssetDatabase>,
         specs::ReadStorage<'a, NpcComponent>,
+        specs::ReadStorage<'a, BrowserClient>,
     );
 
     fn run(
@@ -592,6 +602,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             mut audio_commands_storage,
             asset_database,
             npc_storage,
+            browser_storage,
         ): Self::SystemData,
     ) {
         let join = {
@@ -607,6 +618,14 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         };
         for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
             let entity_id = ControllerEntityId(entity_id);
+
+            if let Some(browser) = browser_storage.get(entity_id.0) {
+                if browser.next_send_at.has_not_passed_yet(system_vars.time) {
+                    // commands won't be sent to the client in this frame, skip rendering for her
+                    continue;
+                }
+            }
+
             let mut controller_and_controlled: Option<ControllerAndControlled> = camera
                 .followed_controller
                 .map(|controller_id| controller_storage.get_mut(controller_id.0).unwrap())
@@ -731,6 +750,7 @@ pub fn render_single_layer_action<'a>(
         match play_mode {
             ActionPlayMode::Repeat => real_index % frame_count,
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
+            ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
         }
     };
     let frame = &action.frames[frame_index];
@@ -823,6 +843,7 @@ pub fn render_action(
         let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
         match play_mode {
             ActionPlayMode::Repeat => real_index % frame_count,
+            ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
         }
     };
@@ -962,7 +983,7 @@ impl DamageRenderSystem {
                 render_commands,
             );
 
-            if number.die_at.is_earlier_than(now) {
+            if number.die_at.has_already_passed(now) {
                 updater.remove::<FlyingNumberComponent>(entity_id);
             }
         }
@@ -1056,8 +1077,12 @@ impl DamageRenderSystem {
                 DamageRenderSystem::calc_heal_size_pos(char_state_storage, number, width, perc)
             }
             FlyingNumberType::Combo { .. } => {
+                let real_pos = char_state_storage
+                    .get(number.target_entity_id.0)
+                    .map(|it| it.pos())
+                    .unwrap_or(number.start_pos);
                 let size = 1.0;
-                let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+                let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
                 pos.x -= width * size / 2.0;
                 let y_offset = perc * 1.2;
                 pos.y += 4.0 + y_offset;
@@ -1066,9 +1091,11 @@ impl DamageRenderSystem {
                 pos.z -= y_offset;
                 (size, pos)
             }
-            FlyingNumberType::Damage => DamageRenderSystem::calc_damage_size_pos(number, perc, 1.0),
+            FlyingNumberType::Damage => {
+                DamageRenderSystem::calc_damage_size_pos(char_state_storage, number, perc, 1.0)
+            }
             FlyingNumberType::SubCombo => {
-                DamageRenderSystem::calc_damage_size_pos(number, perc, 2.0)
+                DamageRenderSystem::calc_damage_size_pos(char_state_storage, number, perc, 2.0)
             }
             FlyingNumberType::Poison => {
                 DamageRenderSystem::calc_poison_size_pos(char_state_storage, number, width, perc)
@@ -1156,11 +1183,16 @@ impl DamageRenderSystem {
     }
 
     fn calc_damage_size_pos(
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
         number: &FlyingNumberComponent,
         perc: f32,
         speed: f32,
     ) -> (f32, Vector3<f32>) {
-        let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
+        let real_pos = char_state_storage
+            .get(number.target_entity_id.0)
+            .map(|it| it.pos())
+            .unwrap_or(number.start_pos);
+        let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
         pos.x += perc * 1.0;
         pos.z -= perc * 1.0;
         pos.y += 2.0

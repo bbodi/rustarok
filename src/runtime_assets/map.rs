@@ -579,7 +579,7 @@ impl PhysicEngine {
         );
     }
 
-    pub fn add_cuboid_skill(
+    pub fn add_cuboid_skill_area(
         &mut self,
         pos: Vector2<f32>,
         rot_angle_in_rad: f32,

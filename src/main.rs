@@ -47,7 +47,7 @@ use crate::components::controller::{
 };
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
-use crate::consts::JobId;
+use crate::consts::{JobId, JobSpriteId};
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
@@ -106,21 +106,6 @@ mod systems;
 pub const SIMULATION_FREQ: u64 = 30;
 pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
 
-pub const PLAYABLE_OUTLOOKS: [JobId; 12] = [
-    JobId::CRUSADER,
-    JobId::SWORDMAN,
-    JobId::ARCHER,
-    JobId::ASSASSIN,
-    JobId::KNIGHT,
-    JobId::WIZARD,
-    JobId::SAGE,
-    JobId::ALCHEMIST,
-    JobId::BLACKSMITH,
-    JobId::PRIEST,
-    JobId::MONK,
-    JobId::GUNSLINGER,
-];
-
 //  csak a camera felé néző falak rajzolódjanak ilyenkor ki
 //  a modelleket z sorrendben növekvőleg rajzold ki
 //jobIDt tartalmazzon ne indexet a sprite
@@ -171,7 +156,7 @@ fn main() {
     );
 
     let command_defs: HashMap<String, CommandDefinition> =
-        ConsoleSystem::init_commands(all_str_names, &PLAYABLE_OUTLOOKS);
+        ConsoleSystem::init_commands(all_str_names);
 
     let mut ecs_world = create_ecs_world();
 
@@ -180,7 +165,7 @@ fn main() {
     let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
     let (maybe_sound_system, sounds) = init_audio_and_load_sounds(&sdl_context, &asset_loader);
     let system_vars = SystemVariables::new(
-        load_sprites(&gl, &asset_loader, &mut asset_database, &PLAYABLE_OUTLOOKS),
+        load_sprites(&gl, &asset_loader, &mut asset_database),
         load_texts(&gl, &ttf_context, &mut asset_database),
         load_shaders(&gl),
         render_matrices,
@@ -404,7 +389,7 @@ fn main() {
             .update_timers(dt);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
-        if next_minion_spawn.is_earlier_than(now)
+        if next_minion_spawn.has_already_passed(now)
             && ecs_world
                 .read_resource::<SystemVariables>()
                 .dev_configs
@@ -453,7 +438,7 @@ fn send_ping_packets(ecs_world: &mut World) -> () {
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
     let mut camera_storage = ecs_world.read_storage::<CameraComponent>();
 
-    for (browser_client, _no_camera) in (&mut browser_storage, !&camera_storage).join() {
+    for (browser_client, _no_camera) in (&mut browser_storage, &camera_storage).join() {
         browser_client.send_ping(&data);
         browser_client.reset_byte_per_second();
     }

@@ -1,22 +1,66 @@
-use crate::components::char::CharAttributeModifierCollector;
+use nalgebra::{Isometry2, Vector2};
+use specs::{Entities, LazyUpdate};
+
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
-    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status, StatusStackingResult,
-    StatusType, StatusUpdateResult,
+    ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
+    StatusNature, StatusUpdateResult,
 };
-use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackType, StrEffectComponent};
+use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::effect::StrEffectType;
-use crate::systems::atk_calc::AttackOutcome;
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use nalgebra::Isometry2;
-use specs::LazyUpdate;
+
+pub struct FireBombSkill;
+
+pub const FIRE_BOMB_SKILL: &'static FireBombSkill = &FireBombSkill;
+
+impl SkillDef for FireBombSkill {
+    fn get_icon_path(&self) -> &'static str {
+        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp"
+    }
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster: &CharacterStateComponent,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        physics_world: &mut PhysicEngine,
+        system_vars: &mut SystemVariables,
+        entities: &Entities,
+        updater: &mut specs::Write<LazyUpdate>,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        system_vars
+            .apply_statuses
+            .push(ApplyStatusComponent::from_secondary_status(
+                caster_entity_id,
+                target_entity.unwrap(),
+                Box::new(FireBombStatus {
+                    caster_entity_id,
+                    started: system_vars.time,
+                    until: system_vars.time.add_seconds(2.0),
+                    damage: system_vars.dev_configs.skills.firebomb.damage,
+                }),
+            ));
+        None
+    }
+
+    fn get_skill_target_type(&self) -> SkillTargetType {
+        SkillTargetType::OnlyEnemy
+    }
+}
 
 #[derive(Clone)]
 pub struct FireBombStatus {
     pub caster_entity_id: CharEntityId,
+    pub damage: u32,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
 }
@@ -26,28 +70,6 @@ impl Status for FireBombStatus {
         Box::new(self.clone())
     }
 
-    fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn typ(&self) -> StatusType {
-        StatusType::Harmful
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [255, 255, 255, 255]
-    }
-
-    fn get_render_size(&self) -> f32 {
-        1.0
-    }
-
-    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
-
     fn update(
         &mut self,
         self_char_id: CharEntityId,
@@ -56,14 +78,14 @@ impl Status for FireBombStatus {
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.is_earlier_than(system_vars.time) {
+        if self.until.has_already_passed(system_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
             let area_isom = Isometry2::new(*char_pos, 0.0);
             system_vars.area_attacks.push(AreaAttackComponent {
                 area_shape: area_shape.clone(),
                 area_isom: area_isom.clone(),
                 source_entity_id: self.caster_entity_id,
-                typ: AttackType::SpellDamage(200),
+                typ: AttackType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
             });
             system_vars
                 .apply_area_statuses
@@ -73,6 +95,7 @@ impl Status for FireBombStatus {
                         caster_entity_id: self.caster_entity_id,
                         started: system_vars.time,
                         until: system_vars.time.add_seconds(2.0),
+                        damage: self.damage,
                     })),
                     area_shape: area_shape.clone(),
                     area_isom: area_isom.clone(),
@@ -90,14 +113,6 @@ impl Status for FireBombStatus {
         } else {
             StatusUpdateResult::KeepIt
         }
-    }
-
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
-        true
     }
 
     fn render(
@@ -119,7 +134,7 @@ impl Status for FireBombStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::AddTheNewStatus
+    fn typ(&self) -> StatusNature {
+        StatusNature::Harmful
     }
 }

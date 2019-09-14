@@ -49,7 +49,9 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
         for (render_commands, browser) in
             (&render_commands_storage, &mut browser_client_storage).join()
         {
-            let render_commands: &RenderCommandCollectorComponent = render_commands;
+            if browser.next_send_at.has_not_passed_yet(system_vars.time) {
+                continue;
+            }
             self.send_buffer.clear();
 
             WebSocketBrowserRenderSystem::write4x4(
@@ -107,6 +109,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             );
 
             browser.send_message(&self.send_buffer);
+            browser.update_sending_fps(system_vars.time);
         }
     }
 }

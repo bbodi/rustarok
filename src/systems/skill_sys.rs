@@ -10,7 +10,7 @@ pub struct SkillSystem;
 impl<'a> specs::System<'a> for SkillSystem {
     type SystemData = (
         specs::Entities<'a>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
+        specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, CollisionsFromPrevFrame>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -23,7 +23,7 @@ impl<'a> specs::System<'a> for SkillSystem {
         &mut self,
         (
             entities,
-            char_storage,
+            mut char_storage,
             mut system_vars,
             collisions_resource,
             mut system_benchmark,
@@ -39,7 +39,7 @@ impl<'a> specs::System<'a> for SkillSystem {
                 &collisions_resource.collisions,
                 &mut system_vars,
                 &entities,
-                &char_storage,
+                &mut char_storage,
                 &mut physics_world,
                 &mut updater,
             );

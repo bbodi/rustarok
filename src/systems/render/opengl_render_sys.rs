@@ -1,6 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
-use crate::common::rotate_vec2;
+use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
 use crate::effect::StrEffectId;
@@ -716,6 +716,56 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     unsafe {
                         gl.Enable(MyGlEnum::DEPTH_TEST);
                     }
+                }
+            }
+            /////////////////////////////////
+            // 3D Horizontal textures
+            /////////////////////////////////
+            {
+                let _stopwatch =
+                    system_benchmark.start_measurement("OpenGlRenderSystem.horiz_texture");
+                let shader = system_vars.assets.shaders.horiz_texture_shader.gl_use(gl);
+                shader
+                    .params
+                    .projection_mat
+                    .set(gl, &system_vars.matrices.projection);
+                shader.params.view_mat.set(gl, &render_commands.view_matrix);
+                shader.params.texture.set(gl, 0);
+
+                unsafe {
+                    system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                }
+                let vao_bind = system_vars
+                    .map_render_data
+                    .centered_sprite_vertex_array
+                    .bind(&system_vars.gl);
+                for command in &render_commands.horizontal_texture_3d_commands {
+                    shader.params.size.set(
+                        gl,
+                        &[
+                            command.texture_width as f32
+                                * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                * command.scale,
+                            command.texture_height as f32
+                                * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                                * command.scale,
+                        ],
+                    );
+
+                    let model_matrix = create_3d_pos_rot_matrix(
+                        &v2_to_v3(&command.pos),
+                        &(Vector3::y(), command.rotation_rad),
+                    );
+
+                    shader.params.model_mat.set(gl, &model_matrix);
+                    shader.params.color.set(gl, &command.color);
+
+                    unsafe {
+                        system_vars
+                            .gl
+                            .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
+                    }
+                    vao_bind.draw(&system_vars.gl);
                 }
             }
 

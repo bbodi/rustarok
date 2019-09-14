@@ -255,10 +255,10 @@ impl InputToNextActionSystem {
                 .skill_cast_allowed_at
                 .get(&skill)
                 .unwrap_or(&ElapsedTime(0.0))
-                .is_earlier_than(now);
+                .has_already_passed(now);
             if !is_castable {
                 (CURSOR_STOP, [255, 255, 255])
-            } else if skill.get_skill_target_type() != SkillTargetType::Area {
+            } else if skill.get_definition().get_skill_target_type() != SkillTargetType::Area {
                 (CURSOR_TARGET, [255, 255, 255])
             } else {
                 (CURSOR_CLICK, [255, 255, 255])

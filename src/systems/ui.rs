@@ -217,7 +217,7 @@ impl RenderUI {
                 .skill_cast_allowed_at
                 .get(&skill)
                 .unwrap_or(&ElapsedTime(0.0))
-                .is_later_than(system_vars.time);
+                .has_not_passed_yet(system_vars.time);
             render_commands
                 .sprite_2d()
                 .color(
@@ -270,7 +270,7 @@ impl RenderUI {
                     .skill_cast_allowed_at
                     .get(&skill)
                     .unwrap_or(&ElapsedTime(0.0))
-                    .is_later_than(system_vars.time);
+                    .has_not_passed_yet(system_vars.time);
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
                 } else {

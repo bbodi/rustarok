@@ -1,7 +1,6 @@
-use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
-    Status, StatusStackingResult, StatusType, StatusUpdateResult,
+    Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::effect::StrEffectType;
@@ -38,27 +37,9 @@ impl Status for AbsorbStatus {
         Box::new(self.clone())
     }
 
-    fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn typ(&self) -> StatusType {
-        StatusType::Supportive
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [255, 255, 255, 255]
-    }
-
     fn get_render_size(&self) -> f32 {
         1.0
     }
-
-    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn update(
         &mut self,
@@ -68,7 +49,7 @@ impl Status for AbsorbStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.is_earlier_than(system_vars.time) {
+        if self.until.has_already_passed(system_vars.time) {
             if self.absorbed_damage > 0 {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
@@ -81,7 +62,7 @@ impl Status for AbsorbStatus {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .is_earlier_than(system_vars.time)
+                .has_already_passed(system_vars.time)
             {
                 self.animation_started = system_vars.time.add_seconds(-1.9);
             }
@@ -138,5 +119,9 @@ impl Status for AbsorbStatus {
         //            self.animation_started = other_absorb.animation_started;
         //        }
         StatusStackingResult::AddTheNewStatus
+    }
+
+    fn typ(&self) -> StatusNature {
+        StatusNature::Supportive
     }
 }

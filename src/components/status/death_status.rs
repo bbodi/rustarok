@@ -1,11 +1,8 @@
-use crate::components::char::CharAttributeModifierCollector;
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
-    Status, StatusStackingResult, StatusType, StatusUpdateResult,
+    Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::ApplyForceComponent;
-use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use specs::LazyUpdate;
@@ -36,8 +33,8 @@ impl Status for DeathStatus {
         false
     }
 
-    fn typ(&self) -> StatusType {
-        StatusType::Harmful
+    fn typ(&self) -> StatusNature {
+        StatusNature::Harmful
     }
 
     fn can_target_cast(&self) -> bool {
@@ -57,12 +54,6 @@ impl Status for DeathStatus {
         ]
     }
 
-    fn get_render_size(&self) -> f32 {
-        1.0
-    }
-
-    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
-
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
@@ -74,24 +65,8 @@ impl Status for DeathStatus {
         StatusUpdateResult::KeepIt
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
     fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
         false
-    }
-
-    fn render(
-        &self,
-        _char_pos: &WorldCoords,
-        _system_vars: &SystemVariables,
-        _render_commands: &mut RenderCommandCollectorComponent,
-    ) {
-    }
-
-    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-        None
     }
 
     fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {

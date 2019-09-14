@@ -9,6 +9,7 @@ pub struct Shaders {
     pub ground_shader: ShaderProgram<GroundShaderParameters>,
     pub model_shader: ShaderProgram<ModelShaderParameters>,
     pub sprite_shader: ShaderProgram<Sprite3dShaderParameters>,
+    pub horiz_texture_shader: ShaderProgram<HorizTexture3dShaderParameters>,
     pub str_effect_shader: ShaderProgram<StrEffect3dShaderParameters>,
     pub sprite2d_shader: ShaderProgram<Texture2dShaderParameters>,
     pub trimesh_shader: ShaderProgram<Trimesh3dShaderParameters>,
@@ -38,6 +39,25 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
                     .unwrap(),
             ],
             |program_id| ModelShaderParameters::new(gl, program_id),
+        )
+        .unwrap(),
+        horiz_texture_shader: ShaderProgram::from_shaders(
+            gl,
+            &[
+                Shader::from_source(
+                    gl,
+                    include_str!("horiz_texture.vert"),
+                    MyGlEnum::VERTEX_SHADER,
+                )
+                .unwrap(),
+                Shader::from_source(
+                    gl,
+                    include_str!("horiz_texture.frag"),
+                    MyGlEnum::FRAGMENT_SHADER,
+                )
+                .unwrap(),
+            ],
+            |program_id| HorizTexture3dShaderParameters::new(gl, program_id),
         )
         .unwrap(),
         sprite_shader: ShaderProgram::from_shaders(
@@ -155,6 +175,28 @@ impl Texture2dShaderParameters {
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
             z: ShaderParam1f(Shader::get_location(gl, program_id, "z")),
             offset: ShaderParam2i(Shader::get_location(gl, program_id, "offset")),
+            size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
+            texture: ShaderParam1i(Shader::get_location(gl, program_id, "model_texture")),
+        }
+    }
+}
+
+pub struct HorizTexture3dShaderParameters {
+    pub projection_mat: ShaderParam4x4fv,
+    pub model_mat: ShaderParam4x4fv,
+    pub view_mat: ShaderParam4x4fv,
+    pub color: ShaderParam4ubv,
+    pub size: ShaderParam2fv,
+    pub texture: ShaderParam1i,
+}
+
+impl HorizTexture3dShaderParameters {
+    pub fn new(gl: &Gl, program_id: c_uint) -> HorizTexture3dShaderParameters {
+        HorizTexture3dShaderParameters {
+            projection_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "projection")),
+            model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
+            view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
+            color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
             size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
             texture: ShaderParam1i(Shader::get_location(gl, program_id, "model_texture")),
         }

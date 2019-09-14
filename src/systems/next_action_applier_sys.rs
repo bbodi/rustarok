@@ -6,10 +6,10 @@ use crate::components::controller::{
     CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
 };
 use crate::components::skills::skill::{SkillTargetType, Skills};
+use crate::configs::DevConfig;
 use crate::systems::render_sys::DIRECTION_TABLE;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::Vector2;
 use specs::prelude::*;
 
 pub struct NextActionApplierSystem;
@@ -56,12 +56,13 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                         false
                     }
                     Some(PlayerIntention::AttackTowards(_)) => false,
-                    Some(PlayerIntention::Casting(skill, is_self_cast, world_coords)) => {
+                    Some(PlayerIntention::Casting(skill, is_self_cast, mouse_world_pos)) => {
                         NextActionApplierSystem::try_cast_skill(
                             skill,
                             now,
+                            &system_vars.dev_configs,
                             char_state,
-                            &world_coords,
+                            &mouse_world_pos,
                             &controller.entities_below_cursor,
                             controller.controlled_entity,
                             is_self_cast,
@@ -81,7 +82,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
             // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();
             let prev_state: CharState = char_comp.prev_state().clone();
-            let prev_animation_has_ended = sprite.animation_ends_at.is_earlier_than(now);
+            let prev_animation_has_ended = sprite.animation_ends_at.has_already_passed(now);
             let prev_animation_must_stop_at_end = match char_comp.prev_state() {
                 CharState::Walking(_) => true,
                 _ => false,
@@ -143,8 +144,9 @@ impl NextActionApplierSystem {
     pub fn try_cast_skill(
         skill: Skills,
         now: ElapsedTime,
+        configs: &DevConfig,
         char_state: &mut CharacterStateComponent,
-        world_coords: &WorldCoords,
+        mouse_world_pos: &WorldCoords,
         entities_below_cursor: &EntitiesBelowCursor,
         self_char_id: CharEntityId,
         is_self_cast: bool,
@@ -153,14 +155,16 @@ impl NextActionApplierSystem {
             .skill_cast_allowed_at
             .entry(skill)
             .or_insert(ElapsedTime(0.0))
-            .is_later_than(now)
+            .has_not_passed_yet(now)
         {
             return true;
         }
+        let skill_def = skill.get_definition();
+        let skill_cast_attrs = skill.get_cast_attributes(configs, char_state);
         let (target_pos, target_entity) = if is_self_cast {
             (char_state.pos(), Some(self_char_id))
         } else {
-            let target_entity = match skill.get_skill_target_type() {
+            let target_entity = match skill_def.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor.get_enemy_or_friend(),
                 SkillTargetType::NoTarget => panic!(), /* NoTarget should have been casted already */
                 SkillTargetType::Area => None,
@@ -171,28 +175,32 @@ impl NextActionApplierSystem {
                 SkillTargetType::OnlyEnemy => entities_below_cursor.get_enemy(),
                 SkillTargetType::OnlySelf => panic!(), /* NoTarget should have been casted already */
             };
-            (*world_coords, target_entity)
+            (*mouse_world_pos, target_entity)
         };
         let distance = (char_state.pos() - target_pos).magnitude();
-        let allowed =
-            skill.is_casting_allowed_based_on_target(self_char_id, target_entity, distance);
+        let allowed = Skills::is_casting_allowed_based_on_target(
+            skill_def.get_skill_target_type(),
+            skill_cast_attrs.casting_range,
+            self_char_id,
+            target_entity,
+            distance,
+        );
         let can_move = char_state.can_move(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
-            let casting_time_seconds = skill.get_casting_time(&char_state);
-            let dir_vector = target_pos - char_state.pos();
-            let dir_vector = if dir_vector.x == 0.0 && dir_vector.y == 0.0 {
-                v2!(1, 0)
-            } else {
-                dir_vector.normalize()
-            };
+            let casting_time_seconds = skill_cast_attrs.casting_time;
+            let (target_pos, dir_vector) = Skills::limit_vector_into_range(
+                &char_state.pos(),
+                &target_pos,
+                skill_cast_attrs.casting_range,
+            );
             let new_state = CharState::CastingSkill(CastingSkillData {
                 target_entity,
                 cast_started: now,
                 cast_ends: now.add(casting_time_seconds),
                 can_move: false,
                 skill,
-                target_area_pos: match skill.get_skill_target_type() {
+                target_area_pos: match skill_def.get_skill_target_type() {
                     SkillTargetType::Area => Some(target_pos),
                     _ => None,
                 },
@@ -207,7 +215,7 @@ impl NextActionApplierSystem {
             };
             char_state.set_state(new_state, dir);
             *char_state.skill_cast_allowed_at.get_mut(&skill).unwrap() =
-                now.add(skill.get_cast_delay(&char_state));
+                now.add(skill_cast_attrs.cast_delay);
             return false;
         } else {
             log::debug!(

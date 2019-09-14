@@ -40,6 +40,7 @@ pub struct EffectSprites {
     pub torch: SpriteResource,
     pub fire_wall: SpriteResource,
     pub fire_ball: SpriteResource,
+    pub plasma: SpriteResource,
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -51,6 +52,7 @@ pub enum Sex {
 pub struct Sprites {
     pub cursors: SpriteResource,
     pub numbers: GlTexture,
+    pub magic_target: GlTexture,
     pub character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],

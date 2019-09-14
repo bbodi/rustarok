@@ -1,4 +1,5 @@
 use nalgebra::{Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
+use serde::Deserialize;
 use std::time::{Duration, Instant};
 
 pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
@@ -67,8 +68,15 @@ pub fn rotate_vec2(rad: f32, vec: &Vector2<f32>) -> Vector2<f32> {
 #[derive(Copy, Clone, Debug)]
 pub struct DeltaTime(pub f32);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Deserialize)]
+#[serde(from = "f32")]
 pub struct ElapsedTime(pub f32);
+
+impl From<f32> for ElapsedTime {
+    fn from(value: f32) -> Self {
+        ElapsedTime(value)
+    }
+}
 
 impl PartialEq for ElapsedTime {
     fn eq(&self, other: &Self) -> bool {
@@ -109,11 +117,11 @@ impl ElapsedTime {
         self.0 = self.0.max(system_time.0 + seconds);
     }
 
-    pub fn is_earlier_than(&self, system_time: ElapsedTime) -> bool {
+    pub fn has_already_passed(&self, system_time: ElapsedTime) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn is_later_than(&self, other: ElapsedTime) -> bool {
+    pub fn has_not_passed_yet(&self, other: ElapsedTime) -> bool {
         self.0 > other.0
     }
 

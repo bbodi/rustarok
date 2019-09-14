@@ -2,6 +2,7 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
+use crate::configs::DevConfig;
 use crate::systems::render::render_command::RenderCommandCollectorComponent;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -36,7 +37,7 @@ where
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
         let collider_handle =
-            physics_world.add_cuboid_skill(*skill_center, 0.0, v2!(size.x, size.y));
+            physics_world.add_cuboid_skill_area(*skill_center, 0.0, v2!(size.x, size.y));
         StatusApplierArea {
             collider_handle,
             name,
@@ -59,11 +60,11 @@ where
         all_collisions_in_world: &WorldCollisions,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _char_storage: &specs::ReadStorage<CharacterStateComponent>,
+        _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         _updater: &mut specs::Write<LazyUpdate>,
     ) {
-        if self.next_action_at.is_earlier_than(system_vars.time) {
+        if self.next_action_at.has_already_passed(system_vars.time) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = all_collisions_in_world
                 .iter()
@@ -92,6 +93,7 @@ where
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,
+        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollectorComponent,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
@@ -106,7 +108,7 @@ where
             .sprite_3d()
             .pos_2d(&self.pos)
             .y(3.0)
-            .color(&if self.next_action_at.is_earlier_than(now) {
+            .color(&if self.next_action_at.has_already_passed(now) {
                 [0, 255, 0, 255]
             } else {
                 [77, 77, 77, 255]

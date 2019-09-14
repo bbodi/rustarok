@@ -18,7 +18,8 @@ use crate::components::status::status::{
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
-    AttackComponent, AttackType, BrowserClient, MinionComponent, StrEffectComponent,
+    AttackComponent, AttackType, BrowserClient, DamageDisplayType, MinionComponent,
+    StrEffectComponent,
 };
 use crate::consts::{JobId, MonsterId};
 use crate::effect::StrEffectId;
@@ -51,15 +52,14 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
     }
 }
 
-pub(super) fn cmd_set_outlook(playable_outlooks: &[JobId]) -> CommandDefinition {
-    let outlook_names = playable_outlooks
-        .iter()
+pub(super) fn cmd_set_class() -> CommandDefinition {
+    let outlook_names = JobId::iter()
         .map(|it| format!("{:?}", it))
         .collect::<Vec<_>>();
     CommandDefinition {
-        name: "set_outlook".to_string(),
+        name: "set_class".to_string(),
         arguments: vec![
-            ("outlook", CommandParamType::String, true),
+            ("class_name", CommandParamType::String, true),
             ("[username]", CommandParamType::String, false),
         ],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
@@ -67,7 +67,7 @@ pub(super) fn cmd_set_outlook(playable_outlooks: &[JobId]) -> CommandDefinition 
                 if index == 0 {
                     Some(
                         [
-                            outlook_names.clone(),
+                            JobId::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
                             MonsterId::iter()
                                 .map(|it| it.to_string())
                                 .collect::<Vec<_>>(),
@@ -534,8 +534,8 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
                 self_controller_id,
                 ConsoleEntry::new().add(
                     &format!(
-                        "{:15}{:15}{:17}{:15}",
-                        "name", "traffic(sum)", "traffic/sec[KB]", "ping[ms]",
+                        "{:<15}{:>15}{:>17}{:>15}{:>15}",
+                        "name", "traffic(sum)", "traffic/sec[KB]", "ping[ms]", "server fps",
                     ),
                     ConsoleWordType::CommandName,
                 ),
@@ -546,21 +546,29 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
             )
                 .join()
             {
-                let (prev_bytes_per_second, sum_sent_bytes, ping) = ecs_world
+                let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) = ecs_world
                     .read_storage::<BrowserClient>()
                     .get(entity_id)
-                    .map(|it| (it.prev_bytes_per_second, it.sum_sent_bytes, it.ping))
-                    .unwrap_or((0, 0, 0));
+                    .map(|it| {
+                        (
+                            it.prev_bytes_per_second,
+                            it.sum_sent_bytes,
+                            it.ping,
+                            it.sending_fps,
+                        )
+                    })
+                    .unwrap_or((0, 0, 0, 1.0));
                 print_console(
                     &mut ecs_world.write_storage::<ConsoleComponent>(),
                     self_controller_id,
                     ConsoleEntry::new().add(
                         &format!(
-                            "{:15}{:15}{:17}{:15}",
+                            "{:<15}{:>15}{:>17}{:>15}{:>15}",
                             &human.username,
-                            humanize_byte(sum_sent_bytes),
-                            format!("{:.2} KB", prev_bytes_per_second as f32 / KIB as f32),
+                            humanize_bytes(sum_sent_bytes),
+                            format!("{:>8.2}", prev_bytes_per_second as f32 / KIB as f32),
                             ping,
+                            (1.0 / sending_fps).round() as u32
                         ),
                         ConsoleWordType::Normal,
                     ),
@@ -581,7 +589,7 @@ const GIB: u64 = 1_073_741_824;
 const TIB: u64 = 1_099_511_627_776;
 /// bytes size for 1 pebibyte
 const PIB: u64 = 1_125_899_906_842_624;
-fn humanize_byte(bytes: u64) -> String {
+fn humanize_bytes(bytes: u64) -> String {
     if bytes / PIB > 0 {
         format!("{:.2} PB", bytes as f32 / PIB as f32)
     } else if bytes / TIB > 0 {
@@ -593,7 +601,7 @@ fn humanize_byte(bytes: u64) -> String {
     } else if bytes / KIB > 0 {
         format!("{:.2} KB", bytes as f32 / KIB as f32)
     } else {
-        format!("{} B", bytes)
+        format!("{}  B", bytes)
     }
 }
 
@@ -708,7 +716,10 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                             )),
                             "damage" => Box::new(HealApplierArea::new(
                                 "Damage",
-                                AttackType::Basic(value.max(0) as u32),
+                                AttackType::Basic(
+                                    value.max(0) as u32,
+                                    DamageDisplayType::SingleNumber,
+                                ),
                                 &pos,
                                 Vector2::new(width, height),
                                 interval,
@@ -757,10 +768,11 @@ fn create_status_payload(
                 caster_entity_id: self_controller_id,
                 started: now,
                 until: now.add_seconds(time as f32 / 1000.0),
+                damage: value.max(1) as u32,
             },
         ))),
         "poison" => Ok(ApplyStatusComponentPayload::from_main_status(
-            MainStatuses::Poison,
+            MainStatuses::Poison(value.max(1) as u32),
         )),
         "armor" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             ArmorModifierStatus::new(now, Percentage(value)),
@@ -824,7 +836,7 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
         name: "set_team".to_string(),
         arguments: vec![
             ("team", CommandParamType::String, true),
-            ("charname", CommandParamType::String, false),
+            ("[charname]", CommandParamType::String, false),
         ],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |index, username_completor, input_storage| {
@@ -913,6 +925,79 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
     }
 }
 
+pub(super) fn cmd_set_server_fps() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_server_fps".to_string(),
+        arguments: vec![
+            ("username", CommandParamType::String, true),
+            ("fps", CommandParamType::Int, true),
+        ],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
+            let username = args.as_str(0).unwrap();
+            let fps = args.as_int(1).unwrap().max(1);
+
+            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+            if let Some(target_entity_id) = target_entity_id {
+                if let Some(browser) = ecs_world
+                    .write_storage::<BrowserClient>()
+                    .get_mut(target_entity_id.0)
+                {
+                    browser.set_sending_fps(fps as u32);
+                    Ok(())
+                } else {
+                    Err("User is not a browser".to_owned())
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_get_server_fps() -> CommandDefinition {
+    CommandDefinition {
+        name: "get_server_fps".to_string(),
+        arguments: vec![("username", CommandParamType::String, true)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
+        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
+            let username = args.as_str(0).unwrap();
+
+            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+            if let Some(target_entity_id) = target_entity_id {
+                if let Some(browser) = ecs_world
+                    .read_storage::<BrowserClient>()
+                    .get(target_entity_id.0)
+                {
+                    print_console(
+                        &mut ecs_world.write_storage::<ConsoleComponent>(),
+                        self_controller_id,
+                        ConsoleEntry::new().add(
+                            &format!("{}", (1.0 / browser.sending_fps).round() as u32),
+                            ConsoleWordType::Normal,
+                        ),
+                    );
+                    Ok(())
+                } else {
+                    Err("User is not a browser".to_owned())
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
 pub(super) fn cmd_follow_char() -> CommandDefinition {
     CommandDefinition {
         name: "follow_char".to_string(),
@@ -981,6 +1066,96 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
     }
 }
 
+pub(super) fn cmd_set_mass() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_mass".to_string(),
+        arguments: vec![
+            ("mass", CommandParamType::Float, true),
+            ("[username]", CommandParamType::String, false),
+        ],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 1 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let mass = args.as_f32(0).unwrap();
+            let username = args.as_str(1);
+
+            let entity_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+            if let Some(entity_id) = entity_id {
+                let body_handle = ecs_world
+                    .read_storage::<PhysicsComponent>()
+                    .get(entity_id.0)
+                    .map(|it| it.body_handle)
+                    .unwrap();
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
+                    body.set_mass(mass);
+                    Ok(())
+                } else {
+                    Err("No rigid body was found for this user".to_owned())
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_set_damping() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_damping".to_string(),
+        arguments: vec![
+            ("damping", CommandParamType::Float, true),
+            ("[username]", CommandParamType::String, false),
+        ],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 1 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let damping = args.as_f32(0).unwrap();
+            let username = args.as_str(1);
+
+            let entity_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+            if let Some(entity_id) = entity_id {
+                let body_handle = ecs_world
+                    .read_storage::<PhysicsComponent>()
+                    .get(entity_id.0)
+                    .map(|it| it.body_handle)
+                    .unwrap();
+                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
+                    body.set_linear_damping(damping);
+                    Ok(())
+                } else {
+                    Err("No rigid body was found for this user".to_owned())
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
 pub(super) fn cmd_goto() -> CommandDefinition {
     CommandDefinition {
         name: "goto".to_string(),
@@ -1005,7 +1180,6 @@ pub(super) fn cmd_goto() -> CommandDefinition {
                     .unwrap();
                 let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
                 if let Some(self_body) = physics_world.bodies.rigid_body_mut(self_body_handle) {
-                    // body.position().translation
                     self_body.set_position(Isometry2::translation(target_pos.x, target_pos.y));
                     Ok(())
                 } else {

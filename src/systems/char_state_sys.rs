@@ -7,7 +7,7 @@ use crate::components::char::{
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::status::death_status::DeathStatus;
-use crate::components::{AttackComponent, AttackType};
+use crate::components::{AttackComponent, AttackType, DamageDisplayType};
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
@@ -82,7 +82,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     .statuses
                     .get_status::<_, DeathStatus, _>(|status| status.remove_char_at)
                     .unwrap();
-                if remove_char_at.is_earlier_than(system_vars.time) {
+                if remove_char_at.has_already_passed(system_vars.time) {
                     entities.delete(char_entity_id.0).unwrap();
                 }
                 continue;
@@ -97,7 +97,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             let char_pos = char_comp.pos();
             match char_comp.state().clone() {
                 CharState::CastingSkill(casting_info) => {
-                    if casting_info.cast_ends.is_earlier_than(now) {
+                    if casting_info.cast_ends.has_already_passed(now) {
                         log::debug!("Skill cast has finished: {:?}", casting_info.skill);
                         let skill_pos = if let Some(target_entity) = casting_info
                             .target_entity
@@ -107,9 +107,9 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         } else {
                             casting_info.target_area_pos
                         };
-                        let manifestation = casting_info.skill.finish_cast(
+                        let manifestation = casting_info.skill.get_definition().finish_cast(
                             char_entity_id,
-                            &char_pos,
+                            char_comp,
                             skill_pos,
                             &casting_info.char_to_skill_dir_when_casted,
                             casting_info.target_entity,
@@ -133,13 +133,14 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     target,
                     damage_occurs_at,
                 } => {
-                    if damage_occurs_at.is_earlier_than(now) {
+                    if damage_occurs_at.has_already_passed(now) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                         system_vars.attacks.push(AttackComponent {
                             src_entity: char_entity_id,
                             dst_entity: target,
                             typ: AttackType::Basic(
                                 char_comp.calculated_attribs().attack_damage as u32,
+                                DamageDisplayType::SingleNumber,
                             ),
                         });
                     }
@@ -159,7 +160,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             if distance
                                 <= char_comp.calculated_attribs().attack_range.as_f32() * 2.0
                             {
-                                if char_comp.attack_delay_ends_at.is_earlier_than(now) {
+                                if char_comp.attack_delay_ends_at.has_already_passed(now) {
                                     let attack_anim_duration =
                                         1.0 / char_comp.calculated_attribs().attack_speed.as_f32();
                                     let damage_occurs_at =

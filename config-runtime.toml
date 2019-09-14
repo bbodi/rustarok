@@ -8,6 +8,78 @@ minions_enabled = false
 [console]
     color = [0, 0, 0, 179]
 
+[skills]
+    [skills.firewall]
+        pushback_force = 20.0
+        damage = 600
+        duration_seconds = 3.0
+        force_duration_seconds = 1.0
+        casting_time = 0.0
+        cast_delay = 3.0
+        casting_range = 10.0
+        width = 3
+
+    [skills.wiz_pyroblast]
+        casting_time = 3.0
+        cast_delay = 3.0
+        casting_range = 12
+        damage = 2000
+        moving_speed = 9
+        ball_size = 2
+        splash_radius = 1.0
+
+    [skills.heal]
+        casting_time = 0.0
+        cast_delay = 1.0
+        casting_range = 10
+        heal = 8000
+
+    [skills.brutal_test_skill]
+        damage = 600
+        casting_time = 3.0
+        cast_delay = 3.0
+        casting_range = 20.0
+        width = 10
+        height = 10
+
+    [skills.lightning]
+        casting_time = 0.0
+        cast_delay = 3.0
+        casting_range = 7.0
+
+    [skills.mounting]
+        casting_time = 2.0
+        cast_delay = 4.0
+        casting_range = 0
+
+    [skills.unmounting]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 0
+
+    [skills.poison]
+        damage = 50
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 10.0
+
+    [skills.cure]
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 10.0
+
+    [skills.firebomb]
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 10
+        damage = 200
+
+    [skills.absorb_shield]
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 10
+        duration_seconds = 3.0
+
 [stats]
     [stats.minion]
         [stats.minion.melee]
@@ -46,6 +118,7 @@ minions_enabled = false
             healing =  100
             hp_regen = 100
             mana_regen = 100
+            mounted_speedup = 30
             # normal values
             attack_damage = 120
             max_hp = 50_000

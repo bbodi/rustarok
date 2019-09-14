@@ -47,6 +47,7 @@ pub struct RenderCommandCollectorComponent {
     pub(super) text_2d_commands: Vec<Text2dRenderCommand>,
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
     pub(super) sprite_3d_commands: Vec<Sprite3dRenderCommand>,
+    pub(super) horizontal_texture_3d_commands: Vec<HorizontalTexture3dRenderCommand>,
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
     pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Vector2<f32>>>,
@@ -66,6 +67,7 @@ impl<'a> RenderCommandCollectorComponent {
             point_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
             sprite_3d_commands: Vec::with_capacity(128),
+            horizontal_texture_3d_commands: Vec::with_capacity(128),
             number_3d_commands: Vec::with_capacity(128),
             effect_commands: HashMap::with_capacity(128),
             effect_commands2: Vec::with_capacity(128),
@@ -89,6 +91,7 @@ impl<'a> RenderCommandCollectorComponent {
         self.point_2d_commands.clear();
         self.circle_3d_commands.clear();
         self.sprite_3d_commands.clear();
+        self.horizontal_texture_3d_commands.clear();
         self.number_3d_commands.clear();
         self.effect_commands2.clear();
         self.effect_commands
@@ -122,6 +125,10 @@ impl<'a> RenderCommandCollectorComponent {
 
     pub fn number_3d(&'a mut self) -> Number3dRenderCommandBuilder {
         Number3dRenderCommandBuilder::new(self)
+    }
+
+    pub fn horizontal_texture_3d(&'a mut self) -> HorizontalTexture3dRenderCommandBuilder {
+        HorizontalTexture3dRenderCommandBuilder::new(self)
     }
 
     pub fn sprite_3d(&'a mut self) -> Sprite3dRenderCommandBuilder {
@@ -754,6 +761,90 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
                 pos: self.pos,
                 radius: self.radius,
             });
+    }
+}
+
+#[derive(Debug)]
+pub struct HorizontalTexture3dRenderCommand {
+    pub color: [u8; 4],
+    pub scale: f32,
+    pub pos: Vector2<f32>,
+    pub rotation_rad: f32,
+    pub texture: GlNativeTextureId,
+    pub texture_width: u16,
+    pub texture_height: u16,
+}
+
+pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
+    collector: &'a mut RenderCommandCollectorComponent,
+    color: [u8; 4],
+    pos: Vector2<f32>,
+    scale: f32,
+    rotation_rad: f32,
+}
+
+impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
+    fn new(
+        collector: &mut RenderCommandCollectorComponent,
+    ) -> HorizontalTexture3dRenderCommandBuilder {
+        HorizontalTexture3dRenderCommandBuilder {
+            collector,
+            color: [255, 255, 255, 255],
+            pos: Vector2::zeros(),
+            scale: 1.0,
+            rotation_rad: 0.0,
+        }
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn color_rgb(
+        &mut self,
+        color: &[u8; 3],
+    ) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn alpha(&mut self, a: u8) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.color[3] = a;
+        self
+    }
+
+    pub fn rotation_rad(
+        &mut self,
+        rotation_rad: f32,
+    ) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.rotation_rad = rotation_rad;
+        self
+    }
+
+    pub fn pos(&mut self, pos: &Vector2<f32>) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.pos = *pos;
+        self
+    }
+
+    pub fn scale(&'a mut self, scale: f32) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.scale = scale;
+        self
+    }
+
+    pub fn add(&'a mut self, texture: &GlTexture) {
+        let command = HorizontalTexture3dRenderCommand {
+            color: self.color,
+            scale: self.scale,
+            texture: texture.id(),
+            texture_width: texture.width as u16,
+            texture_height: texture.height as u16,
+            pos: self.pos,
+            rotation_rad: self.rotation_rad,
+        };
+        self.collector.horizontal_texture_3d_commands.push(command);
     }
 }
 

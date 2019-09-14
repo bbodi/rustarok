@@ -1,10 +1,10 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
-use crate::consts::JobId;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal,
-    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect, cmd_set_outlook, cmd_set_pos,
-    cmd_set_team, cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
+    cmd_add_status, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_get_server_fps, cmd_goto,
+    cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect, cmd_set_class,
+    cmd_set_damping, cmd_set_mass, cmd_set_pos, cmd_set_server_fps, cmd_set_team, cmd_spawn_area,
+    cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
@@ -653,10 +653,7 @@ impl<'a> ConsoleSystem<'a> {
         return None;
     }
 
-    pub fn init_commands(
-        effect_names: Vec<String>,
-        playable_outlooks: &[JobId],
-    ) -> HashMap<String, CommandDefinition> {
+    pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
         ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_pos());
@@ -671,9 +668,13 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_goto());
         ConsoleSystem::add_command(&mut command_defs, cmd_follow_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_control_char());
-        ConsoleSystem::add_command(&mut command_defs, cmd_set_outlook(playable_outlooks));
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_class());
         ConsoleSystem::add_command(&mut command_defs, cmd_resurrect());
         ConsoleSystem::add_command(&mut command_defs, cmd_set_team());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_damping());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_mass());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_server_fps());
+        ConsoleSystem::add_command(&mut command_defs, cmd_get_server_fps());
 
         return command_defs;
     }
@@ -782,6 +783,16 @@ impl CommandArguments {
     }
     // first argument is the command name!
     pub fn as_int(&self, index: usize) -> Option<i32> {
+        self.args.get(index + 1).and_then(|it| {
+            if it.qouted {
+                it.text[1..it.text.len() - 1].parse().ok()
+            } else {
+                it.text.parse().ok()
+            }
+        })
+    }
+
+    pub fn as_f32(&self, index: usize) -> Option<f32> {
         self.args.get(index + 1).and_then(|it| {
             if it.qouted {
                 it.text[1..it.text.len() - 1].parse().ok()
@@ -1006,7 +1017,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 if console.y_pos < console_height {
                     console.y_pos += 4;
                 }
-                if console.cursor_change.is_earlier_than(system_vars.time) {
+                if console.cursor_change.has_already_passed(system_vars.time) {
                     console.cursor_shown = !console.cursor_shown;
                     console.cursor_change = system_vars.time.add_seconds(0.5);
                 }
@@ -1055,13 +1066,13 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     }
                 } else if input.is_key_down(Scancode::Left)
                     && console.cursor_x > 0
-                    && console.key_repeat_allowed_at.is_earlier_than(now)
+                    && console.key_repeat_allowed_at.has_already_passed(now)
                 {
                     ConsoleSystem::handle_left_cursor(input, console);
                     console.key_repeat_allowed_at = now.add_seconds(repeat_time);
                 } else if input.is_key_down(Scancode::Right)
                     && console.cursor_x < console.input.chars().count()
-                    && console.key_repeat_allowed_at.is_earlier_than(now)
+                    && console.key_repeat_allowed_at.has_already_passed(now)
                 {
                     ConsoleSystem::handle_right_cursor(input, console);
                     console.key_repeat_allowed_at = now.add_seconds(repeat_time);
@@ -1071,12 +1082,12 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                     console.set_cursor_x(console.input.chars().count());
                 } else if input.is_key_down(Scancode::Backspace)
                     && console.cursor_x > 0
-                    && console.key_repeat_allowed_at.is_earlier_than(now)
+                    && console.key_repeat_allowed_at.has_already_passed(now)
                 {
                     ConsoleSystem::handle_backspace(input, console, now, repeat_time);
                 } else if input.is_key_down(Scancode::Delete)
                     && console.cursor_x < console.input.chars().count()
-                    && console.key_repeat_allowed_at.is_earlier_than(now)
+                    && console.key_repeat_allowed_at.has_already_passed(now)
                 {
                     ConsoleSystem::handle_delete_key(input, console, now, repeat_time);
                 } else if input.ctrl_down && input.is_key_just_released(Scancode::Space) {

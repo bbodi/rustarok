@@ -27,34 +27,59 @@ pub enum StatusStackingResult {
 
 pub trait Status: Any {
     fn dupl(&self) -> Box<dyn Status>;
-    fn can_target_move(&self) -> bool;
-    fn typ(&self) -> StatusType;
-    fn can_target_cast(&self) -> bool;
-    fn get_render_color(&self, now: ElapsedTime) -> [u8; 4];
-    fn get_render_size(&self) -> f32;
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector);
+
+    fn can_target_move(&self) -> bool {
+        true
+    }
+
+    fn can_target_cast(&self) -> bool {
+        true
+    }
+
+    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
+        [255, 255, 255, 255]
+    }
+
+    fn get_render_size(&self) -> f32 {
+        1.0
+    }
+
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+
     fn update(
         &mut self,
-        self_char_id: CharEntityId,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        _self_char_id: CharEntityId,
+        _char_pos: &WorldCoords,
+        _system_vars: &mut SystemVariables,
+        _entities: &specs::Entities,
+        _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult;
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome;
-    fn allow_push(&mut self, push: &ApplyForceComponent) -> bool;
+    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+        outcome
+    }
+
+    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+        true
+    }
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
-        system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
-    );
-    // (ElapsedTime, f32) == ends_at, percentage
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)>;
+        _char_pos: &WorldCoords,
+        _system_vars: &SystemVariables,
+        _render_commands: &mut RenderCommandCollectorComponent,
+    ) {
+    }
 
-    fn stack(&mut self, other: Box<dyn Status>) -> StatusStackingResult;
+    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+        None
+    }
+
+    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::AddTheNewStatus
+    }
+
+    fn typ(&self) -> StatusNature;
 }
 
 // TODO: should 'Dead' be a status?
@@ -62,11 +87,20 @@ pub trait Status: Any {
 pub enum MainStatuses {
     Mounted,
     Stun,
+    Poison(u32),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MainStatusesIndex {
+    Mounted,
+    Stun,
     Poison,
 }
 
 #[derive(Clone)]
-struct MountedStatus;
+struct MountedStatus {
+    speedup: Percentage,
+}
 
 const STATUS_ARRAY_SIZE: usize = 32;
 pub struct Statuses {
@@ -181,8 +215,8 @@ impl Statuses {
         return match typ {
             CharType::Player => match outlook {
                 CharOutlook::Player { job_id, .. } => match job_id {
-                    JobId::CRUSADER => configs.stats.player.crusader.clone(),
-                    _ => configs.stats.player.crusader.clone(),
+                    JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
+                    _ => configs.stats.player.crusader.attributes.clone(),
                 },
                 CharOutlook::Monster(_) => CharAttributes {
                     walking_speed: Percentage(100),
@@ -293,7 +327,7 @@ impl Statuses {
                 .get_status_completion_percent(now);
             ret = if let Some((status_ends_at, _status_remaining_time)) = rem {
                 if let Some((current_ends_at, _current_rem_time)) = ret {
-                    if current_ends_at.is_later_than(status_ends_at) {
+                    if current_ends_at.has_not_passed_yet(status_ends_at) {
                         rem
                     } else {
                         ret
@@ -309,21 +343,23 @@ impl Statuses {
     }
 
     pub fn is_mounted(&self) -> bool {
-        self.statuses[MainStatuses::Mounted as usize].is_some()
+        self.statuses[MainStatusesIndex::Mounted as usize].is_some()
     }
 
     pub fn is_stunned(&self) -> bool {
-        self.statuses[MainStatuses::Stun as usize].is_some()
+        self.statuses[MainStatusesIndex::Stun as usize].is_some()
     }
 
-    pub fn switch_mounted(&mut self) {
-        let is_mounted = self.statuses[MainStatuses::Mounted as usize].is_some();
+    pub fn switch_mounted(&mut self, mounted_speedup: Percentage) {
+        let is_mounted = self.statuses[MainStatusesIndex::Mounted as usize].is_some();
         let value: Option<Arc<Mutex<Box<dyn Status>>>> = if !is_mounted {
-            Some(Arc::new(Mutex::new(Box::new(MountedStatus {}))))
+            Some(Arc::new(Mutex::new(Box::new(MountedStatus {
+                speedup: mounted_speedup,
+            }))))
         } else {
             None
         };
-        self.statuses[MainStatuses::Mounted as usize] = value;
+        self.statuses[MainStatusesIndex::Mounted as usize] = value;
     }
 
     pub fn add(&mut self, status: Box<dyn Status>) {
@@ -351,7 +387,29 @@ impl Statuses {
         self.first_free_index = MAINSTATUSES_COUNT;
     }
 
-    pub fn remove(&mut self, status_type: StatusType) {
+    pub fn remove<T: 'static, P>(&mut self, predicate: P)
+    where
+        P: Fn(&T) -> bool,
+    {
+        let removing_type_id = std::any::TypeId::of::<T>();
+        for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
+            let should_remove = arc_status
+                .as_ref()
+                .map(|it| {
+                    let guard = it.lock().unwrap();
+                    let boxx: &Box<dyn Status> = &guard;
+                    let type_id = boxx.as_ref().type_id();
+                    type_id == removing_type_id
+                        && unsafe { predicate(Statuses::trait_to_struct(boxx)) }
+                })
+                .unwrap_or(false);
+            if should_remove {
+                *arc_status = None;
+            }
+        }
+    }
+
+    pub fn remove_by_nature(&mut self, status_type: StatusNature) {
         for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
             let should_remove = arc_status
                 .as_ref()
@@ -363,7 +421,7 @@ impl Statuses {
         }
     }
 
-    pub fn remove_main_status(&mut self, status: MainStatuses) {
+    pub fn remove_main_status(&mut self, status: MainStatusesIndex) {
         self.statuses[status as usize] = None;
     }
 
@@ -391,6 +449,7 @@ impl Statuses {
     pub fn add_poison(
         &mut self,
         poison_caster_entity_id: CharEntityId,
+        dmg: u32,
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
@@ -414,6 +473,7 @@ impl Statuses {
                 started,
                 until: new_until,
                 next_damage_at: started.add_seconds(1.0),
+                damage: dmg,
             }))));
     }
 }
@@ -425,33 +485,13 @@ pub enum StatusUpdateResult {
 
 impl Status for MountedStatus {
     fn dupl(&self) -> Box<dyn Status> {
-        Box::new(MountedStatus)
-    }
-
-    fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn typ(&self) -> StatusType {
-        StatusType::Supportive
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [255, 255, 255, 255]
-    }
-
-    fn get_render_size(&self) -> f32 {
-        1.0
+        Box::new(self.clone())
     }
 
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         // it is applied directly on the base moving speed, since it is called first
         modifiers.change_walking_speed(
-            CharAttributeModifier::IncreaseByPercentage(Percentage(200)),
+            CharAttributeModifier::IncreaseByPercentage(self.speedup),
             ElapsedTime(0.0),
             ElapsedTime(0.0),
         );
@@ -468,28 +508,12 @@ impl Status for MountedStatus {
         StatusUpdateResult::KeepIt
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
-        true
-    }
-
-    fn render(
-        &self,
-        _char_pos: &WorldCoords,
-        _system_vars: &SystemVariables,
-        _render_commands: &mut RenderCommandCollectorComponent,
-    ) {
-    }
-
-    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-        None
-    }
-
     fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
+    }
+
+    fn typ(&self) -> StatusNature {
+        StatusNature::Supportive
     }
 }
 
@@ -499,6 +523,7 @@ pub struct PoisonStatus {
     pub started: ElapsedTime,
     pub until: ElapsedTime,
     pub next_damage_at: ElapsedTime,
+    pub damage: u32,
 }
 
 impl Status for PoisonStatus {
@@ -506,27 +531,13 @@ impl Status for PoisonStatus {
         Box::new(self.clone())
     }
 
-    fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn typ(&self) -> StatusType {
-        StatusType::Harmful
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
+    fn typ(&self) -> StatusNature {
+        StatusNature::Harmful
     }
 
     fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
         [128, 255, 128, 255]
     }
-
-    fn get_render_size(&self) -> f32 {
-        1.0
-    }
-
-    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn update(
         &mut self,
@@ -536,10 +547,10 @@ impl Status for PoisonStatus {
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
-        if self.until.is_earlier_than(system_vars.time) {
+        if self.until.has_already_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.is_earlier_than(system_vars.time) {
+            if self.next_damage_at.has_already_passed(system_vars.time) {
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,
@@ -549,14 +560,6 @@ impl Status for PoisonStatus {
             }
             StatusUpdateResult::KeepIt
         }
-    }
-
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
-        outcome
-    }
-
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
-        true
     }
 
     fn render(
@@ -576,10 +579,6 @@ impl Status for PoisonStatus {
 
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
-    }
-
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::AddTheNewStatus
     }
 }
 
@@ -629,14 +628,15 @@ pub struct ApplyStatusInAreaComponent {
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
-pub enum StatusType {
+pub enum StatusNature {
     Supportive,
     Harmful,
+    Neutral,
 }
 
 pub enum RemoveStatusComponentPayload {
-    MainStatus(MainStatuses),
-    SecondaryStatus(StatusType),
+    MainStatus(MainStatusesIndex),
+    RemovingStatusType(StatusNature),
 }
 
 pub struct RemoveStatusComponent {
@@ -683,7 +683,7 @@ impl RemoveStatusComponent {
     pub fn from_main_status(
         source_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
-        m: MainStatuses,
+        m: MainStatusesIndex,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {
             source_entity_id,
@@ -692,15 +692,15 @@ impl RemoveStatusComponent {
         }
     }
 
-    pub fn from_secondary_status(
+    pub fn by_status_nature(
         source_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
-        status_type: StatusType,
+        status_type: StatusNature,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {
             source_entity_id,
             target_entity_id,
-            status: RemoveStatusComponentPayload::SecondaryStatus(status_type),
+            status: RemoveStatusComponentPayload::RemovingStatusType(status_type),
         }
     }
 }

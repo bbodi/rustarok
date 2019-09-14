@@ -64,7 +64,7 @@ pub fn handle_new_connections(
     }
 }
 
-pub fn handle_client_handshakes(mut ecs_world: &mut World) {
+pub fn handle_client_handshakes(ecs_world: &mut World) {
     let projection_mat = ecs_world
         .read_resource::<SystemVariables>()
         .matrices

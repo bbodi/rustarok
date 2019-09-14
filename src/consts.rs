@@ -13,8 +13,43 @@ pub enum MonsterId {
     Poring,
 }
 
-#[derive(EnumIter, EnumString, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobId {
+    CRUSADER,
+    SWORDMAN,
+    ARCHER,
+    ASSASSIN,
+    KNIGHT,
+    WIZARD,
+    SAGE,
+    ALCHEMIST,
+    BLACKSMITH,
+    PRIEST,
+    MONK,
+    GUNSLINGER,
+}
+
+impl JobId {
+    pub fn get_job_sprite_id(&self) -> JobSpriteId {
+        match self {
+            JobId::WIZARD => JobSpriteId::WIZARD,
+            JobId::CRUSADER => JobSpriteId::CRUSADER,
+            JobId::SWORDMAN => JobSpriteId::SWORDMAN,
+            JobId::ARCHER => JobSpriteId::ARCHER,
+            JobId::ASSASSIN => JobSpriteId::ASSASSIN,
+            JobId::KNIGHT => JobSpriteId::KNIGHT,
+            JobId::SAGE => JobSpriteId::SAGE,
+            JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
+            JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
+            JobId::PRIEST => JobSpriteId::PRIEST,
+            JobId::MONK => JobSpriteId::MONK,
+            JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
+        }
+    }
+}
+
+#[derive(EnumIter, EnumString, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum JobSpriteId {
     NOVICE = 0,
     SWORDMAN = 1,
     MAGICIAN = 2,
@@ -241,61 +276,61 @@ pub enum JobId {
     FrogOboro = 4214,
 }
 
-pub fn job_name_table() -> HashMap<JobId, String> {
+pub fn job_name_table() -> HashMap<JobSpriteId, String> {
     let mut table = HashMap::new();
 
     table.insert(
-        JobId::NOVICE,
+        JobSpriteId::NOVICE,
         encoding::all::WINDOWS_1252
             .decode(&[0xC3, 0xCA, 0xBA, 0xB8, 0xC0, 0xDA], DecoderTrap::Strict)
             .unwrap(),
     );
 
     table.insert(
-        JobId::SWORDMAN,
+        JobSpriteId::SWORDMAN,
         encoding::all::WINDOWS_1252
             .decode(&[0xB0, 0xCB, 0xBB, 0xE7], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::MAGICIAN,
+        JobSpriteId::MAGICIAN,
         encoding::all::WINDOWS_1252
             .decode(&[0xB8, 0xB6, 0xB9, 0xFD, 0xBB, 0xE7], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ARCHER,
+        JobSpriteId::ARCHER,
         encoding::all::WINDOWS_1252
             .decode(&[0xB1, 0xC3, 0xBC, 0xF6], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ACOLYTE,
+        JobSpriteId::ACOLYTE,
         encoding::all::WINDOWS_1252
             .decode(&[0xBC, 0xBA, 0xC1, 0xF7, 0xC0, 0xDA], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::MERCHANT,
+        JobSpriteId::MERCHANT,
         encoding::all::WINDOWS_1252
             .decode(&[0xBB, 0xF3, 0xC0, 0xCE], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::THIEF,
+        JobSpriteId::THIEF,
         encoding::all::WINDOWS_1252
             .decode(&[0xB5, 0xB5, 0xB5, 0xCF], DecoderTrap::Strict)
             .unwrap(),
     );
 
     table.insert(
-        JobId::KNIGHT,
+        JobSpriteId::KNIGHT,
         encoding::all::WINDOWS_1252
             .decode(&[0xB1, 0xE2, 0xBB, 0xE7], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::PRIEST,
+        JobSpriteId::PRIEST,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC7, 0xC1, 0xB8, 0xAE, 0xBD, 0xBA, 0xC6, 0xAE],
@@ -304,31 +339,31 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::WIZARD,
+        JobSpriteId::WIZARD,
         encoding::all::WINDOWS_1252
             .decode(&[0xC0, 0xA7, 0xC0, 0xFA, 0xB5, 0xE5], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::BLACKSMITH,
+        JobSpriteId::BLACKSMITH,
         encoding::all::WINDOWS_1252
             .decode(&[0xC1, 0xA6, 0xC3, 0xB6, 0xB0, 0xF8], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::HUNTER,
+        JobSpriteId::HUNTER,
         encoding::all::WINDOWS_1252
             .decode(&[0xC7, 0xE5, 0xC5, 0xCD], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ASSASSIN,
+        JobSpriteId::ASSASSIN,
         encoding::all::WINDOWS_1252
             .decode(&[0xBE, 0xEE, 0xBC, 0xBC, 0xBD, 0xC5], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::KNIGHT2,
+        JobSpriteId::KNIGHT2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -340,7 +375,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::CRUSADER,
+        JobSpriteId::CRUSADER,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC5, 0xA9, 0xB7, 0xE7, 0xBC, 0xBC, 0xC0, 0xCC, 0xB4, 0xF5],
@@ -349,25 +384,25 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::MONK,
+        JobSpriteId::MONK,
         encoding::all::WINDOWS_1252
             .decode(&[0xB8, 0xF9, 0xC5, 0xA9], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::SAGE,
+        JobSpriteId::SAGE,
         encoding::all::WINDOWS_1252
             .decode(&[0xBC, 0xBC, 0xC0, 0xCC, 0xC1, 0xF6], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ROGUE,
+        JobSpriteId::ROGUE,
         encoding::all::WINDOWS_1252
             .decode(&[0xB7, 0xCE, 0xB1, 0xD7], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ALCHEMIST,
+        JobSpriteId::ALCHEMIST,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xBF, 0xAC, 0xB1, 0xDD, 0xBC, 0xFA, 0xBB, 0xE7],
@@ -376,19 +411,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::BARD,
+        JobSpriteId::BARD,
         encoding::all::WINDOWS_1252
             .decode(&[0xB9, 0xD9, 0xB5, 0xE5], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::DANCER,
+        JobSpriteId::DANCER,
         encoding::all::WINDOWS_1252
             .decode(&[0xB9, 0xAB, 0xC8, 0xF1], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::CRUSADER2,
+        JobSpriteId::CRUSADER2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -401,7 +436,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::SUPERNOVICE,
+        JobSpriteId::SUPERNOVICE,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xBD, 0xB4, 0xC6, 0xDB, 0xB3, 0xEB, 0xBA, 0xF1, 0xBD, 0xBA],
@@ -410,19 +445,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::GUNSLINGER,
+        JobSpriteId::GUNSLINGER,
         encoding::all::WINDOWS_1252
             .decode(&[0xB0, 0xC7, 0xB3, 0xCA], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::NINJA,
+        JobSpriteId::NINJA,
         encoding::all::WINDOWS_1252
             .decode(&[0xB4, 0xD1, 0xC0, 0xDA], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::TAEKWON,
+        JobSpriteId::TAEKWON,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xc5, 0xc2, 0xb1, 0xc7, 0xbc, 0xd2, 0xb3, 0xe2],
@@ -431,13 +466,13 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::STAR,
+        JobSpriteId::STAR,
         encoding::all::WINDOWS_1252
             .decode(&[0xb1, 0xc7, 0xbc, 0xba], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::STAR2,
+        JobSpriteId::STAR2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xb1, 0xc7, 0xbc, 0xba, 0xc0, 0xb6, 0xc7, 0xd5],
@@ -446,7 +481,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::LINKER,
+        JobSpriteId::LINKER,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xbc, 0xd2, 0xbf, 0xef, 0xb8, 0xb5, 0xc4, 0xbf],
@@ -456,26 +491,26 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::MARRIED,
+        JobSpriteId::MARRIED,
         encoding::all::WINDOWS_1252
             .decode(&[0xB0, 0xE1, 0xC8, 0xA5], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::XMAS,
+        JobSpriteId::XMAS,
         encoding::all::WINDOWS_1252
             .decode(&[0xBB, 0xEA, 0xC5, 0xB8], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::SUMMER,
+        JobSpriteId::SUMMER,
         encoding::all::WINDOWS_1252
             .decode(&[0xBF, 0xA9, 0xB8, 0xA7], DecoderTrap::Strict)
             .unwrap(),
     );
 
     table.insert(
-        JobId::KnightH,
+        JobSpriteId::KnightH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB7, 0xCE, 0xB5, 0xE5, 0xB3, 0xAA, 0xC0, 0xCC, 0xC6, 0xAE],
@@ -484,7 +519,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::PriestH,
+        JobSpriteId::PriestH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC7, 0xCF, 0xC0, 0xCC, 0xC7, 0xC1, 0xB8, 0xAE],
@@ -493,7 +528,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::WizardH,
+        JobSpriteId::WizardH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC7, 0xCF, 0xC0, 0xCC, 0xC0, 0xA7, 0xC0, 0xFA, 0xB5, 0xE5],
@@ -502,7 +537,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::BlacksmithH,
+        JobSpriteId::BlacksmithH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -513,7 +548,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::HunterH,
+        JobSpriteId::HunterH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xBD, 0xBA, 0xB3, 0xAA, 0xC0, 0xCC, 0xC6, 0xDB],
@@ -522,7 +557,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::AssassinH,
+        JobSpriteId::AssassinH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -533,7 +568,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::Knight2H,
+        JobSpriteId::Knight2H,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB7, 0xCE, 0xB5, 0xE5, 0xC6, 0xE4, 0xC4, 0xDA],
@@ -542,19 +577,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::CrusaderH,
+        JobSpriteId::CrusaderH,
         encoding::all::WINDOWS_1252
             .decode(&[0xC6, 0xC8, 0xB6, 0xF3, 0xB5, 0xF2], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::MonkH,
+        JobSpriteId::MonkH,
         encoding::all::WINDOWS_1252
             .decode(&[0xC3, 0xA8, 0xC7, 0xC7, 0xBF, 0xC2], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::SageH,
+        JobSpriteId::SageH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC7, 0xC1, 0xB7, 0xCE, 0xC6, 0xE4, 0xBC, 0xAD],
@@ -563,13 +598,13 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::RogueH,
+        JobSpriteId::RogueH,
         encoding::all::WINDOWS_1252
             .decode(&[0xBD, 0xBA, 0xC5, 0xE4, 0xC4, 0xBF], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::AlchemistH,
+        JobSpriteId::AlchemistH,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC5, 0xA9, 0xB8, 0xAE, 0xBF, 0xA1, 0xC0, 0xCC, 0xC5, 0xCD],
@@ -578,19 +613,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::BardH,
+        JobSpriteId::BardH,
         encoding::all::WINDOWS_1252
             .decode(&[0xC5, 0xAC, 0xB6, 0xF3, 0xBF, 0xEE], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::DancerH,
+        JobSpriteId::DancerH,
         encoding::all::WINDOWS_1252
             .decode(&[0xC1, 0xFD, 0xBD, 0xC3], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::Crusader2H,
+        JobSpriteId::Crusader2H,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xC6, 0xE4, 0xC4, 0xDA, 0xC6, 0xC8, 0xB6, 0xF3, 0xB5, 0xF2],
@@ -600,7 +635,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::RuneKnight,
+        JobSpriteId::RuneKnight,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB7, 0xE9, 0xB3, 0xAA, 0xC0, 0xCC, 0xC6, 0xAE],
@@ -609,19 +644,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::WARLOCK,
+        JobSpriteId::WARLOCK,
         encoding::all::WINDOWS_1252
             .decode(&[0xBF, 0xF6, 0xB7, 0xCF], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::RANGER,
+        JobSpriteId::RANGER,
         encoding::all::WINDOWS_1252
             .decode(&[0xB7, 0xB9, 0xC0, 0xCE, 0xC1, 0xAE], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ARCHBISHOP,
+        JobSpriteId::ARCHBISHOP,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xBE, 0xC6, 0xC5, 0xA9, 0xBA, 0xF1, 0xBC, 0xF3],
@@ -630,13 +665,13 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::MECHANIC,
+        JobSpriteId::MECHANIC,
         encoding::all::WINDOWS_1252
             .decode(&[0xB9, 0xCC, 0xC4, 0xC9, 0xB4, 0xD0], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::GuillotineCross,
+        JobSpriteId::GuillotineCross,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -648,19 +683,19 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::RoyalGuard,
+        JobSpriteId::RoyalGuard,
         encoding::all::WINDOWS_1252
             .decode(&[0xB0, 0xA1, 0xB5, 0xE5], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::SORCERER,
+        JobSpriteId::SORCERER,
         encoding::all::WINDOWS_1252
             .decode(&[0xBC, 0xD2, 0xBC, 0xAD, 0xB7, 0xAF], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::MINSTREL,
+        JobSpriteId::MINSTREL,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB9, 0xCE, 0xBD, 0xBA, 0xC6, 0xAE, 0xB7, 0xB2],
@@ -669,25 +704,25 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::WANDERER,
+        JobSpriteId::WANDERER,
         encoding::all::WINDOWS_1252
             .decode(&[0xBF, 0xF8, 0xB4, 0xF5, 0xB7, 0xAF], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::SURA,
+        JobSpriteId::SURA,
         encoding::all::WINDOWS_1252
             .decode(&[0xBD, 0xB4, 0xB6, 0xF3], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::GENETIC,
+        JobSpriteId::GENETIC,
         encoding::all::WINDOWS_1252
             .decode(&[0xC1, 0xA6, 0xB3, 0xD7, 0xB8, 0xAF], DecoderTrap::Strict)
             .unwrap(),
     );
     table.insert(
-        JobId::ShadowChaser,
+        JobSpriteId::ShadowChaser,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -699,7 +734,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
     );
 
     table.insert(
-        JobId::RuneKnight2,
+        JobSpriteId::RuneKnight2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[
@@ -710,7 +745,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::RoyalGuard2,
+        JobSpriteId::RoyalGuard2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB1, 0xD7, 0xB8, 0xAE, 0xC6, 0xF9, 0xB0, 0xA1, 0xB5, 0xE5],
@@ -719,7 +754,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::RANGER2,
+        JobSpriteId::RANGER2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB7, 0xB9, 0xC0, 0xCE, 0xC1, 0xAE, 0xB4, 0xC1, 0xB4, 0xEB],
@@ -728,7 +763,7 @@ pub fn job_name_table() -> HashMap<JobId, String> {
             .unwrap(),
     );
     table.insert(
-        JobId::MECHANIC2,
+        JobSpriteId::MECHANIC2,
         encoding::all::WINDOWS_1252
             .decode(
                 &[0xB8, 0xB6, 0xB5, 0xB5, 0xB1, 0xE2, 0xBE, 0xEE],

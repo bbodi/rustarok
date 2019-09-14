@@ -255,7 +255,11 @@ impl AssetLoader {
     fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
         let buffer = self.get_content(path)?;
         let rwops = sdl2::rwops::RWops::from_bytes(buffer.as_slice())?;
-        let mut surface = rwops.load()?;
+        let mut surface = if path.ends_with(".tga") {
+            rwops.load_tga()?
+        } else {
+            rwops.load()?
+        };
 
         // I think it is an incorrect implementation in SDL rust lib.
         // Creating a new surface from an RWops keeps a reference to RWOPS,

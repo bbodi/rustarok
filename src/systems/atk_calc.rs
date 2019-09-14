@@ -1,12 +1,16 @@
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::Percentage;
+use crate::components::char::{CharOutlook, CharacterStateComponent};
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
 };
 use crate::components::{
-    AttackComponent, AttackType, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
+    AttackComponent, AttackType, DamageDisplayType, FlyingNumberComponent, FlyingNumberType,
+    SoundEffectComponent,
 };
+use crate::configs::DevConfig;
+use crate::consts::JobId;
 use crate::runtime_assets::audio::Sounds;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
@@ -210,7 +214,12 @@ impl<'a> specs::System<'a> for AttackSystem {
         // TODO: use a preallocated backbuffer
         let status_changes =
             std::mem::replace(&mut system_vars.apply_statuses, Vec::with_capacity(128));
-        AttackSystem::add_new_statuses(status_changes, &mut char_state_storage, system_vars.time);
+        AttackSystem::add_new_statuses(
+            status_changes,
+            &mut char_state_storage,
+            system_vars.time,
+            &system_vars.dev_configs,
+        );
 
         let status_changes =
             std::mem::replace(&mut system_vars.remove_statuses, Vec::with_capacity(128));
@@ -343,20 +352,23 @@ impl AttackCalculation {
         let src_outcomes = vec![];
         let mut dst_outcomes = vec![];
         match typ {
-            AttackType::SpellDamage(base_dmg) => {
+            AttackType::SpellDamage(base_dmg, damage_render_type) => {
                 let atk = base_dmg;
                 let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
                 let outcome = if atk <= 0 {
                     AttackOutcome::Block
                 } else {
-                    AttackOutcome::create_combo()
-                        .base_atk((atk / 10) as u32)
-                        .attack_count(10)
-                        .build()
+                    match damage_render_type {
+                        DamageDisplayType::SingleNumber => AttackOutcome::Damage(atk as u32),
+                        DamageDisplayType::Combo(count) => AttackOutcome::create_combo()
+                            .base_atk((atk / count as i32) as u32)
+                            .attack_count(count)
+                            .build(),
+                    }
                 };
                 dst_outcomes.push(outcome);
             }
-            AttackType::Basic(base_dmg) => {
+            AttackType::Basic(base_dmg, _damage_render_type) => {
                 let atk = dbg!(base_dmg);
                 let atk = dbg!(dst.calculated_attribs().armor).subtract_me_from(atk as i32);
                 dbg!(atk);
@@ -404,7 +416,7 @@ impl AttackCalculation {
         match outcome {
             AttackOutcome::Heal(_val) => {}
             AttackOutcome::Damage(_val) => match attack_type {
-                AttackType::Basic(_) => {
+                AttackType::Basic(_, _damage_render_type) => {
                     let entity = entities.create();
                     updater.insert(
                         entity,
@@ -416,7 +428,7 @@ impl AttackCalculation {
                         },
                     );
                 }
-                AttackType::SpellDamage(_) => {}
+                AttackType::SpellDamage(_, _damage_render_type) => {}
                 AttackType::Heal(_) => {}
                 AttackType::Poison(_) => {}
             },
@@ -526,6 +538,7 @@ impl AttackSystem {
         status_changes: Vec<ApplyStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
         now: ElapsedTime,
+        configs: &DevConfig,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
@@ -542,12 +555,15 @@ impl AttackSystem {
                         );
                         match status_name {
                             MainStatuses::Mounted => {
-                                target_char.statuses.switch_mounted();
+                                let mounted_speedup =
+                                    AttackSystem::calc_mounted_speedup(target_char, configs);
+                                target_char.statuses.switch_mounted(mounted_speedup);
                             }
                             MainStatuses::Stun => {}
-                            MainStatuses::Poison => {
+                            MainStatuses::Poison(dmg) => {
                                 target_char.statuses.add_poison(
                                     status_change.source_entity_id,
+                                    dmg,
                                     now,
                                     now.add_seconds(15.0),
                                 );
@@ -569,6 +585,19 @@ impl AttackSystem {
         }
     }
 
+    fn calc_mounted_speedup(
+        target_char: &mut CharacterStateComponent,
+        configs: &DevConfig,
+    ) -> Percentage {
+        return match target_char.outlook {
+            CharOutlook::Player { job_id, .. } => match job_id {
+                JobId::CRUSADER => configs.stats.player.crusader.mounted_speedup,
+                _ => Percentage(30),
+            },
+            _ => Percentage(30),
+        };
+    }
+
     fn remove_statuses(
         status_changes: Vec<RemoveStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
@@ -585,8 +614,8 @@ impl AttackSystem {
                         );
                         target_char.statuses.remove_main_status(*status_name);
                     }
-                    RemoveStatusComponentPayload::SecondaryStatus(status_type) => {
-                        target_char.statuses.remove(*status_type);
+                    RemoveStatusComponentPayload::RemovingStatusType(status_type) => {
+                        target_char.statuses.remove_by_nature(*status_type);
                     }
                 }
                 target_char.recalc_attribs_based_on_statuses();

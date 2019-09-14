@@ -172,7 +172,7 @@ impl PhysicsComponent {
             RigidBodyDesc::new()
                 .user_data(entity_id)
                 .gravity_enabled(false)
-                .linear_damping(50.0)
+                .linear_damping(5.0)
                 .set_translation(pos)
                 .build(),
         );
@@ -694,7 +694,7 @@ impl CharAttributeModifierCollector {
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
-        if self.durations.armor_bonus_ends_at.is_later_than(until) {
+        if self.durations.armor_bonus_ends_at.has_not_passed_yet(until) {
             self.durations.armor_bonus_ends_at = until;
             self.durations.armor_bonus_started_at = started;
         }
@@ -710,7 +710,7 @@ impl CharAttributeModifierCollector {
         if self
             .durations
             .walking_speed_bonus_ends_at
-            .is_later_than(until)
+            .has_not_passed_yet(until)
         {
             self.durations.walking_speed_bonus_ends_at = until;
             self.durations.walking_speed_bonus_started_at = started;
@@ -889,7 +889,7 @@ impl CharacterStateComponent {
             CharState::Freeze => false,
             CharState::Dead => false,
         };
-        can_move_by_state && self.cannot_control_until.is_earlier_than(sys_time)
+        can_move_by_state && self.cannot_control_until.has_already_passed(sys_time)
     }
 
     pub fn state(&self) -> &CharState {
@@ -946,7 +946,7 @@ impl CharacterStateComponent {
 pub enum ActionPlayMode {
     Repeat,
     PlayThenHold,
-    // FixFrame(12)
+    Reverse, // FixFrame(12)
 }
 
 #[derive(Component)]

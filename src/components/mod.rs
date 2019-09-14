@@ -23,6 +23,8 @@ pub struct BrowserClient {
     pub sum_sent_bytes: u64,
     pub current_bytes_per_second: u32,
     pub prev_bytes_per_second: u32,
+    pub sending_fps: f32,
+    pub next_send_at: ElapsedTime,
 }
 
 impl Drop for BrowserClient {
@@ -40,7 +42,14 @@ impl BrowserClient {
             sum_sent_bytes: 0,
             current_bytes_per_second: 0,
             prev_bytes_per_second: 0,
+            sending_fps: 1.0 / 60.0,
+            next_send_at: ElapsedTime(0.0),
         }
+    }
+
+    pub fn set_sending_fps(&mut self, sending_fps: u32) {
+        self.sending_fps = 1.0 / sending_fps as f32;
+        self.next_send_at = ElapsedTime(0.0);
     }
 
     pub fn send_message(&mut self, buf: &Vec<u8>) {
@@ -48,6 +57,10 @@ impl BrowserClient {
         self.current_bytes_per_second += buf.len() as u32;
         let msg = websocket::Message::binary(buf.as_slice());
         let _ = self.websocket.lock().unwrap().send_message(&msg);
+    }
+
+    pub fn update_sending_fps(&mut self, now: ElapsedTime) {
+        self.next_send_at = now.add_seconds(self.sending_fps);
     }
 
     pub fn set_ping(&mut self, ping: u128) {
@@ -176,9 +189,15 @@ impl FlyingNumberComponent {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum DamageDisplayType {
+    SingleNumber,
+    Combo(u8),
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum AttackType {
-    Basic(u32),
-    SpellDamage(u32),
+    Basic(u32, DamageDisplayType),
+    SpellDamage(u32, DamageDisplayType),
     Heal(u32),
     Poison(u32),
 }
