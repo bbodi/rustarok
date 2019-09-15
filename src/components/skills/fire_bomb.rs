@@ -2,7 +2,7 @@ use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, LazyUpdate};
 
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
@@ -11,7 +11,7 @@ use crate::components::status::status::{
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
@@ -73,14 +73,15 @@ impl Status for FireBombStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
+        _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(system_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
-            let area_isom = Isometry2::new(*char_pos, 0.0);
+            let area_isom = Isometry2::new(char_state.pos(), 0.0);
             system_vars.area_attacks.push(AreaAttackComponent {
                 area_shape: area_shape.clone(),
                 area_isom: area_isom.clone(),
@@ -103,7 +104,7 @@ impl Status for FireBombStatus {
                 });
             let effect_comp = StrEffectComponent {
                 effect_id: StrEffectType::FirePillarBomb.into(),
-                pos: *char_pos,
+                pos: char_state.pos(),
                 start_time: system_vars.time.add_seconds(-0.5),
                 die_at: system_vars.time.add_seconds(1.0),
             };
@@ -117,14 +118,14 @@ impl Status for FireBombStatus {
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::FireWall,
             self.started,
-            char_pos,
+            &char_state.pos(),
             system_vars,
             render_commands,
         );

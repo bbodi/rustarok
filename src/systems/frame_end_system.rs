@@ -1,4 +1,4 @@
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use specs::prelude::*;
 
@@ -6,7 +6,7 @@ pub struct FrameEndSystem;
 
 impl<'a> specs::System<'a> for FrameEndSystem {
     type SystemData = (
-        specs::WriteStorage<'a, RenderCommandCollectorComponent>,
+        specs::WriteStorage<'a, RenderCommandCollector>,
         specs::WriteStorage<'a, AudioCommandCollectorComponent>,
     );
 

@@ -38,7 +38,7 @@ pub struct EffectFrameCacheKey {
 }
 
 #[derive(Component)]
-pub struct RenderCommandCollectorComponent {
+pub struct RenderCommandCollector {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
@@ -54,11 +54,12 @@ pub struct RenderCommandCollectorComponent {
     pub(super) effect_commands2: Vec<(StrEffectId, i32, Vector2<f32>)>,
     pub(super) view_matrix: Matrix4<f32>,
     pub(super) normal_matrix: Matrix3<f32>,
+    pub yaw: f32,
 }
 
-impl<'a> RenderCommandCollectorComponent {
-    pub fn new() -> RenderCommandCollectorComponent {
-        RenderCommandCollectorComponent {
+impl<'a> RenderCommandCollector {
+    pub fn new() -> RenderCommandCollector {
+        RenderCommandCollector {
             partial_circle_2d_commands: Vec::with_capacity(128),
             texture_2d_commands: Vec::with_capacity(128),
             text_2d_commands: Vec::with_capacity(128),
@@ -74,12 +75,19 @@ impl<'a> RenderCommandCollectorComponent {
             model_commands: Vec::with_capacity(128),
             view_matrix: Matrix4::identity(),
             normal_matrix: Matrix3::identity(),
+            yaw: 0.0,
         }
     }
 
-    pub fn set_view_matrix(&mut self, view_matrix: &Matrix4<f32>, normal_matrix: &Matrix3<f32>) {
+    pub fn set_view_matrix(
+        &mut self,
+        view_matrix: &Matrix4<f32>,
+        normal_matrix: &Matrix3<f32>,
+        yaw: f32,
+    ) {
         self.view_matrix = *view_matrix;
         self.normal_matrix = *normal_matrix;
+        self.yaw = yaw;
     }
 
     pub fn clear(&mut self) {
@@ -196,7 +204,7 @@ pub struct Rectangle2dRenderCommand {
 }
 
 pub struct Rectangle2dCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     screen_pos: [i16; 2],
     rotation_rad: f32,
@@ -206,7 +214,7 @@ pub struct Rectangle2dCommandBuilder<'a> {
 }
 
 impl<'a> Rectangle2dCommandBuilder<'a> {
-    pub fn new(collector: &mut RenderCommandCollectorComponent) -> Rectangle2dCommandBuilder {
+    pub fn new(collector: &mut RenderCommandCollector) -> Rectangle2dCommandBuilder {
         Rectangle2dCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -282,14 +290,14 @@ pub struct Point2dRenderCommand {
 }
 
 pub struct Point2dCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     screen_pos: [i16; 2],
     layer: UiLayer2d,
 }
 
 impl<'a> Point2dCommandBuilder<'a> {
-    pub fn new(collector: &mut RenderCommandCollectorComponent) -> Point2dCommandBuilder {
+    pub fn new(collector: &mut RenderCommandCollector) -> Point2dCommandBuilder {
         Point2dCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -338,7 +346,7 @@ pub struct PartialCircle2dRenderCommand {
 }
 
 pub struct PartialCircl2dBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     screen_pos: [i16; 2],
     circumference_percentage: usize,
@@ -346,7 +354,7 @@ pub struct PartialCircl2dBuilder<'a> {
 }
 
 impl<'a> PartialCircl2dBuilder<'a> {
-    pub fn new(collector: &mut RenderCommandCollectorComponent) -> PartialCircl2dBuilder {
+    pub fn new(collector: &mut RenderCommandCollector) -> PartialCircl2dBuilder {
         PartialCircl2dBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -430,7 +438,7 @@ pub struct Texture2dRenderCommand {
 }
 
 pub struct Texture2dRenderCommandCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     screen_pos: [i16; 2],
     offset: [i16; 2],
@@ -441,9 +449,7 @@ pub struct Texture2dRenderCommandCommandBuilder<'a> {
 }
 
 impl<'a> Texture2dRenderCommandCommandBuilder<'a> {
-    pub fn new(
-        collector: &mut RenderCommandCollectorComponent,
-    ) -> Texture2dRenderCommandCommandBuilder {
+    pub fn new(collector: &mut RenderCommandCollector) -> Texture2dRenderCommandCommandBuilder {
         Texture2dRenderCommandCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -529,7 +535,7 @@ pub struct Text2dRenderCommand {
 }
 
 pub struct Text2dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     screen_pos: [i16; 2],
     layer: UiLayer2d,
@@ -538,7 +544,7 @@ pub struct Text2dRenderCommandBuilder<'a> {
 }
 
 impl<'a> Text2dRenderCommandBuilder<'a> {
-    pub fn new(collector: &mut RenderCommandCollectorComponent) -> Text2dRenderCommandBuilder {
+    pub fn new(collector: &mut RenderCommandCollector) -> Text2dRenderCommandBuilder {
         Text2dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -612,7 +618,7 @@ pub struct Rectangle3dRenderCommand {
 }
 
 pub struct Rectangle3dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector3<f32>,
     rotation_rad: f32,
@@ -621,7 +627,7 @@ pub struct Rectangle3dRenderCommandBuilder<'a> {
 }
 
 impl<'a> Rectangle3dRenderCommandBuilder<'a> {
-    fn new(collector: &mut RenderCommandCollectorComponent) -> Rectangle3dRenderCommandBuilder {
+    fn new(collector: &mut RenderCommandCollector) -> Rectangle3dRenderCommandBuilder {
         Rectangle3dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -699,14 +705,14 @@ pub struct Circle3dRenderCommand {
 }
 
 pub struct Circle3dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector3<f32>,
     radius: f32,
 }
 
 impl<'a> Circle3dRenderCommandBuilder<'a> {
-    fn new(collector: &mut RenderCommandCollectorComponent) -> Circle3dRenderCommandBuilder {
+    fn new(collector: &mut RenderCommandCollector) -> Circle3dRenderCommandBuilder {
         Circle3dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -776,7 +782,7 @@ pub struct HorizontalTexture3dRenderCommand {
 }
 
 pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector2<f32>,
     scale: f32,
@@ -784,9 +790,7 @@ pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
 }
 
 impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
-    fn new(
-        collector: &mut RenderCommandCollectorComponent,
-    ) -> HorizontalTexture3dRenderCommandBuilder {
+    fn new(collector: &mut RenderCommandCollector) -> HorizontalTexture3dRenderCommandBuilder {
         HorizontalTexture3dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -911,7 +915,7 @@ impl Sprite3dRenderCommand {
 }
 
 pub struct Sprite3dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector3<f32>,
     offset: [i16; 2],
@@ -920,7 +924,7 @@ pub struct Sprite3dRenderCommandBuilder<'a> {
 }
 
 impl<'a> Sprite3dRenderCommandBuilder<'a> {
-    fn new(collector: &mut RenderCommandCollectorComponent) -> Sprite3dRenderCommandBuilder {
+    fn new(collector: &mut RenderCommandCollector) -> Sprite3dRenderCommandBuilder {
         Sprite3dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],
@@ -1004,7 +1008,7 @@ pub struct Number3dRenderCommand {
 }
 
 pub struct Number3dRenderCommandBuilder<'a> {
-    collector: &'a mut RenderCommandCollectorComponent,
+    collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector3<f32>,
     offset: [i16; 2],
@@ -1012,7 +1016,7 @@ pub struct Number3dRenderCommandBuilder<'a> {
 }
 
 impl<'a> Number3dRenderCommandBuilder<'a> {
-    fn new(collector: &mut RenderCommandCollectorComponent) -> Number3dRenderCommandBuilder {
+    fn new(collector: &mut RenderCommandCollector) -> Number3dRenderCommandBuilder {
         Number3dRenderCommandBuilder {
             collector,
             color: [255, 255, 255, 255],

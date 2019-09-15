@@ -1,11 +1,6 @@
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateResult,
-};
+use crate::components::status::status::{Status, StatusNature, StatusStackingResult};
 use crate::components::ApplyForceComponent;
-use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::LazyUpdate;
 
 #[derive(Clone, Debug)]
 pub struct DeathStatus {
@@ -54,22 +49,11 @@ impl Status for DeathStatus {
         ]
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
-        _system_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
-    ) -> StatusUpdateResult {
-        StatusUpdateResult::KeepIt
-    }
-
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
         false
     }
 
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 }

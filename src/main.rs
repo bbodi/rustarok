@@ -47,7 +47,7 @@ use crate::components::controller::{
 };
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
-use crate::consts::{JobId, JobSpriteId};
+use crate::consts::JobId;
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
@@ -71,6 +71,7 @@ use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
@@ -228,6 +229,7 @@ fn main() {
             .build()
     };
     ecs_world.add_resource(system_vars);
+    ecs_world.add_resource(RenderCommandCollector::new());
 
     ecs_world.add_resource(asset_database);
 
@@ -436,7 +438,7 @@ fn send_ping_packets(ecs_world: &mut World) -> () {
     let now_ms = get_current_ms(SystemTime::now());
     let data = now_ms.to_le_bytes();
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
-    let mut camera_storage = ecs_world.read_storage::<CameraComponent>();
+    let camera_storage = ecs_world.read_storage::<CameraComponent>();
 
     for (browser_client, _no_camera) in (&mut browser_storage, &camera_storage).join() {
         browser_client.send_ping(&data);
@@ -834,6 +836,7 @@ fn create_random_char_minion(
             //CollisionGroup::NonPlayer,
             CollisionGroup::Player,
             CollisionGroup::StaticModel,
+            CollisionGroup::NonCollidablePlayer,
         ],
         &ecs_world.read_resource::<SystemVariables>().dev_configs,
     );

@@ -7,7 +7,7 @@ use crate::systems::console_commands::{
     cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
-use crate::systems::render::render_command::{Font, RenderCommandCollectorComponent, UiLayer2d};
+use crate::systems::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ElapsedTime;
@@ -407,7 +407,7 @@ impl<'a> ConsoleSystem<'a> {
     }
 
     fn render_console_entry(
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         console_color: &[u8; 4],
         input_row_y: i32,
         row_index: i32,
@@ -985,7 +985,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
     type SystemData = (
         specs::ReadStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, ConsoleComponent>,
-        specs::WriteStorage<'a, RenderCommandCollectorComponent>,
+        specs::WriteStorage<'a, RenderCommandCollector>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 

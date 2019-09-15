@@ -42,6 +42,9 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
 
             // the controlled character might have been removed due to death etc
             if let Some(char_state) = char_state {
+                if char_state.statuses.can_be_controlled() == false {
+                    continue;
+                }
                 controller.repeat_next_action = match controller.next_action {
                     Some(PlayerIntention::MoveTo(pos)) => {
                         char_state.target = Some(EntityTarget::Pos(pos));
@@ -77,6 +80,9 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         for (char_id, char_comp, sprite) in
             (&entities, &mut char_state_storage, &mut sprite_storage).join()
         {
+            if char_comp.statuses.can_be_controlled() == false {
+                continue;
+            }
             let sprite: &mut SpriteRenderDescriptorComponent = sprite;
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
@@ -166,8 +172,9 @@ impl NextActionApplierSystem {
         } else {
             let target_entity = match skill_def.get_skill_target_type() {
                 SkillTargetType::AnyEntity => entities_below_cursor.get_enemy_or_friend(),
-                SkillTargetType::NoTarget => panic!(), /* NoTarget should have been casted already */
+                SkillTargetType::NoTarget => None,
                 SkillTargetType::Area => None,
+                SkillTargetType::Directional => None,
                 SkillTargetType::OnlyAllyButNoSelf => {
                     entities_below_cursor.get_friend_except(self_char_id)
                 }
@@ -201,7 +208,7 @@ impl NextActionApplierSystem {
                 can_move: false,
                 skill,
                 target_area_pos: match skill_def.get_skill_target_type() {
-                    SkillTargetType::Area => Some(target_pos),
+                    SkillTargetType::Area | SkillTargetType::Directional => Some(target_pos),
                     _ => None,
                 },
                 char_to_skill_dir_when_casted: dir_vector,

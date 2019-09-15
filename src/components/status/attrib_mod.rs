@@ -1,6 +1,9 @@
-use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::char::{
+    CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent, Percentage,
+};
+use crate::components::controller::CharEntityId;
 use crate::components::status::status::{Status, StatusNature, StatusUpdateResult};
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use specs::LazyUpdate;
@@ -42,7 +45,8 @@ impl Status for ArmorModifierStatus {
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
+        _char_state: &CharacterStateComponent,
+        _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,

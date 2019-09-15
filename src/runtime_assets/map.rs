@@ -24,6 +24,7 @@ use std::collections::{HashMap, HashSet};
 pub enum CollisionGroup {
     StaticModel,
     Player,
+    NonCollidablePlayer,
     NonPlayer,
     SkillArea,
 }
@@ -130,7 +131,10 @@ pub fn load_map(
                 .collision_groups(
                     CollisionGroups::new()
                         .with_membership(&[CollisionGroup::StaticModel as usize])
-                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
+                        .with_blacklist(&[
+                            CollisionGroup::StaticModel as usize,
+                            CollisionGroup::NonCollidablePlayer as usize,
+                        ]),
                 )
                 .build(BodyPartHandle(parent_handle, 0));
             let cuboid_pos = cuboid.position_wrt_body().translation.vector;
@@ -599,7 +603,10 @@ impl PhysicEngine {
                 .collision_groups(
                     CollisionGroups::new()
                         .with_membership(&[CollisionGroup::SkillArea as usize])
-                        .with_blacklist(&[CollisionGroup::StaticModel as usize]),
+                        .with_blacklist(&[
+                            CollisionGroup::StaticModel as usize,
+                            CollisionGroup::SkillArea as usize,
+                        ]),
                 )
                 .sensor(true)
                 .build(BodyPartHandle(body_handle, 0)),

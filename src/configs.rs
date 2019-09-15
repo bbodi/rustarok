@@ -127,6 +127,15 @@ pub struct AbsorbShieldSkillConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AssaBladeDashSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub duration_seconds: f32,
+    pub first_damage: u32,
+    pub second_damage: u32,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SkillsConfig {
     pub firewall: SkillConfigFireWall,
     pub wiz_pyroblast: SkillConfigPyroBlast,
@@ -139,6 +148,7 @@ pub struct SkillsConfig {
     pub poison: PoisonSkillConfig,
     pub firebomb: FireBombSkillConfig,
     pub absorb_shield: AbsorbShieldSkillConfig,
+    pub assa_blade_dash: AssaBladeDashSkillConfig,
 }
 
 impl DevConfig {

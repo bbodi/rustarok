@@ -17,7 +17,7 @@ use crate::components::{
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
@@ -74,7 +74,7 @@ impl SkillDef for FireWallSkill {
         is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
         Skills::render_casting_box(
@@ -246,7 +246,7 @@ impl SkillManifestation for PushBackWallSkill {
         tick: u64,
         assets: &AssetResources,
         _configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
         if self.born_tick + 1 == tick {
@@ -256,7 +256,7 @@ impl SkillManifestation for PushBackWallSkill {
             .rectangle_3d()
             .pos_2d(&self.pos)
             .rotation_rad(self.rot_angle_in_rad)
-            .color(&[0, 255, 0, 25])
+            .color(&[0, 255, 0, 255])
             .size(self.extents.x, self.extents.y)
             .add();
     }

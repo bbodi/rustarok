@@ -1,9 +1,7 @@
 use specs::prelude::*;
 
 use crate::common::v2_to_p2;
-use crate::components::char::{
-    CharState, CharacterStateComponent, EntityTarget, NpcComponent, PhysicsComponent,
-};
+use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, NpcComponent};
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::status::death_status::DeathStatus;
@@ -19,7 +17,6 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
     type SystemData = (
         specs::Entities<'a>,
         specs::ReadStorage<'a, NpcComponent>,
-        specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
         specs::WriteExpect<'a, PhysicEngine>,
@@ -33,7 +30,6 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         (
             entities,
             npc_storage,
-            mut physics_storage,
             mut char_state_storage,
             mut system_vars,
             mut physics_world,
@@ -71,11 +67,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     npc_storage.get(char_entity_id.0).is_some(),
                 ));
                 // remove rigid bodies from the physic simulation
-                if let Some(phys_comp) = physics_storage.get(char_entity_id.0) {
-                    collisions_resource.remove_collider_handle(phys_comp.collider_handle);
-                    physics_world.bodies.remove(phys_comp.body_handle);
-                    physics_storage.remove(char_entity_id.0);
-                }
+                collisions_resource.remove_collider_handle(char_comp.collider_handle);
+                physics_world.bodies.remove(char_comp.body_handle);
                 continue;
             } else if is_dead && npc_storage.get(char_entity_id.0).is_some() {
                 let remove_char_at = char_comp
@@ -88,7 +81,13 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 continue;
             }
 
-            char_comp.update_statuses(char_entity_id, &mut system_vars, &entities, &mut updater);
+            char_comp.update_statuses(
+                char_entity_id,
+                &mut system_vars,
+                &entities,
+                &mut updater,
+                &mut physics_world,
+            );
 
             if *char_comp.state() == CharState::Dead {
                 continue;
@@ -217,17 +216,17 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             }
         }
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
-        for (char_comp, physics_comp) in (&char_state_storage, &physics_storage).join() {
+        for char_comp in (&char_state_storage).join() {
             if let CharState::Walking(target_pos) = char_comp.state() {
                 if char_comp.can_move(now) {
-                    // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the the attack)
+                    // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the attack)
                     let dir = (target_pos - char_comp.pos()).normalize();
                     let speed =
                         dir * char_comp.calculated_attribs().walking_speed.as_f32() * (60.0 * 0.1);
                     let force = speed;
                     let body = physics_world
                         .bodies
-                        .rigid_body_mut(physics_comp.body_handle)
+                        .rigid_body_mut(char_comp.body_handle)
                         .unwrap();
                     body.set_linear_velocity(force);
                 }

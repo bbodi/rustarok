@@ -2,7 +2,7 @@ use crate::components::BrowserClient;
 use crate::effect::StrEffectId;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand, PartialCircle2dRenderCommand,
-    Rectangle2dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollectorComponent,
+    Rectangle2dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollector,
     Sprite3dRenderCommand, Text2dRenderCommand, Texture2dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -24,7 +24,7 @@ impl WebSocketBrowserRenderSystem {
 
 impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
     type SystemData = (
-        specs::ReadStorage<'a, RenderCommandCollectorComponent>,
+        specs::ReadStorage<'a, RenderCommandCollector>,
         specs::WriteStorage<'a, BrowserClient>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,

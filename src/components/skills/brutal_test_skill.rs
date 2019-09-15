@@ -12,7 +12,7 @@ use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrE
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
@@ -64,7 +64,7 @@ impl SkillDef for BrutalTestSkill {
         is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
         Skills::render_casting_box(
@@ -182,7 +182,7 @@ impl SkillManifestation for BrutalSkillManifest {
         _tick: u64,
         _assets: &AssetResources,
         _configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         render_commands

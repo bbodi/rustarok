@@ -9,7 +9,7 @@ use crate::components::skills::skill::{
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
@@ -53,7 +53,7 @@ impl SkillDef for LightningSkill {
         is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         _configs: &DevConfig,
     ) {
         for i in 0..3 {
@@ -201,7 +201,7 @@ impl SkillManifestation for LightningManifest {
         _tick: u64,
         _assets: &AssetResources,
         _configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         for i in self.action_count..3 {

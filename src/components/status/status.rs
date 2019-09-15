@@ -1,14 +1,15 @@
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, CharType,
-    Percentage,
+    CharacterStateComponent, Percentage,
 };
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::controller::CharEntityId;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
@@ -32,6 +33,10 @@ pub trait Status: Any {
         true
     }
 
+    fn can_target_be_controlled(&self) -> bool {
+        true
+    }
+
     fn can_target_cast(&self) -> bool {
         true
     }
@@ -44,30 +49,33 @@ pub trait Status: Any {
         1.0
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {}
+    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
+        _char_pos: &CharacterStateComponent,
+        _phyisic_world: &mut PhysicEngine,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
-    ) -> StatusUpdateResult;
+    ) -> StatusUpdateResult {
+        StatusUpdateResult::KeepIt
+    }
 
     fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
         outcome
     }
 
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
         true
     }
 
     fn render(
         &self,
-        _char_pos: &WorldCoords,
+        _char_state: &CharacterStateComponent,
         _system_vars: &SystemVariables,
-        _render_commands: &mut RenderCommandCollectorComponent,
+        _render_commands: &mut RenderCommandCollector,
     ) {
     }
 
@@ -75,7 +83,7 @@ pub trait Status: Any {
         None
     }
 
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::AddTheNewStatus
     }
 
@@ -122,6 +130,37 @@ impl Statuses {
         }
     }
 
+    pub fn can_move(&self) -> bool {
+        let mut allow = true;
+        for status in self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            allow &= status.as_ref().unwrap().lock().unwrap().can_target_move();
+        }
+        return allow;
+    }
+
+    pub fn can_be_controlled(&self) -> bool {
+        let mut allow = true;
+        for status in self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            allow &= status
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .can_target_be_controlled();
+        }
+        return allow;
+    }
+
     pub fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
         let mut allow = true;
         for status in self
@@ -153,33 +192,45 @@ impl Statuses {
     }
 
     pub fn update(
-        &mut self,
+        &self,
         self_char_id: CharEntityId,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
+        physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
-    ) -> bool {
-        let mut changed = false;
-        for status in self
+    ) -> u32 {
+        let mut changed: u32 = 0;
+        for (i, status) in self
             .statuses
-            .iter_mut()
+            .iter()
+            .enumerate()
             .take(self.first_free_index)
-            .filter(|it| it.is_some())
+            .filter(|(i, it)| it.is_some())
         {
             let result = status.as_ref().unwrap().lock().unwrap().update(
                 self_char_id,
-                char_pos,
+                char_state,
+                physics_world,
                 system_vars,
                 entities,
                 updater,
             );
             match result {
                 StatusUpdateResult::RemoveIt => {
-                    *status = None;
-                    changed = true;
+                    changed |= 1 << i;
                 }
                 StatusUpdateResult::KeepIt => {}
+            }
+        }
+
+        return changed;
+    }
+
+    pub fn remove_statuses(&mut self, bit_indices: u32) {
+        for i in 0..32 {
+            if ((1 << i) & bit_indices) > 0 {
+                self.statuses[i] = None;
             }
         }
         while self.first_free_index > MAINSTATUSES_COUNT
@@ -187,14 +238,13 @@ impl Statuses {
         {
             self.first_free_index -= 1;
         }
-        return changed;
     }
 
     pub fn render(
         &self,
-        char_pos: &WorldCoords,
+        char_pos: &CharacterStateComponent,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
         for status in self.statuses.iter().filter(|it| it.is_some()) {
@@ -454,7 +504,7 @@ impl Statuses {
         until: ElapsedTime,
     ) {
         let new_until = {
-            let status = &self.statuses[MainStatuses::Poison as usize];
+            let status = &self.statuses[MainStatusesIndex::Poison as usize];
             if let Some(current_poison) = status {
                 let boxx: &Box<dyn Status> = &*current_poison.lock().unwrap();
                 unsafe {
@@ -467,7 +517,7 @@ impl Statuses {
             }
         };
 
-        self.statuses[MainStatuses::Poison as usize] =
+        self.statuses[MainStatusesIndex::Poison as usize] =
             Some(Arc::new(Mutex::new(Box::new(PoisonStatus {
                 poison_caster_entity_id,
                 started,
@@ -497,18 +547,7 @@ impl Status for MountedStatus {
         );
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
-        _system_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
-    ) -> StatusUpdateResult {
-        StatusUpdateResult::KeepIt
-    }
-
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 
@@ -542,7 +581,8 @@ impl Status for PoisonStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
+        _char_state: &CharacterStateComponent,
+        _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
@@ -564,14 +604,14 @@ impl Status for PoisonStatus {
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Quagmire,
             self.started,
-            char_pos,
+            &char_state.pos(),
             system_vars,
             render_commands,
         );

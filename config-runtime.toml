@@ -77,8 +77,17 @@ minions_enabled = false
     [skills.absorb_shield]
         casting_time = 0.0
         cast_delay = 2.0
-        casting_range = 10
+        casting_range = 10.0
         duration_seconds = 3.0
+
+    [skills.assa_blade_dash]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 6
+        width = 3
+        duration_seconds = 1.0
+        first_damage = 100
+        second_damage = 200
 
 [stats]
     [stats.minion]

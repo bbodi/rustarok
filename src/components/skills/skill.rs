@@ -21,9 +21,10 @@ use crate::components::skills::mounting::MOUNTING_SKILL;
 use crate::components::skills::poison::POISON_SKILL;
 use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
 
+use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, Collision, SystemVariables};
@@ -49,7 +50,7 @@ pub trait SkillManifestation {
         tick: u64,
         assets: &AssetResources,
         configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     );
 }
@@ -100,7 +101,7 @@ impl SkillManifestationComponent {
         tick: u64,
         assets: &AssetResources,
         configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let skill = self.skill.lock().unwrap();
@@ -133,7 +134,7 @@ pub trait SkillDef {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
     ) {
         RenderDesktopClientSystem::render_str(
@@ -155,6 +156,7 @@ pub trait SkillDef {
             if let Some(target_char) = char_storage.get(target_entity.0) {
                 render_commands
                     .horizontal_texture_3d()
+                    .rotation_rad(system_vars.time.0 % 6.28)
                     .pos(&target_char.pos())
                     .add(&system_vars.assets.sprites.magic_target)
             }
@@ -165,7 +167,7 @@ pub trait SkillDef {
         is_castable: bool,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
     }
@@ -183,6 +185,7 @@ pub enum Skills {
     FireBomb,
     AbsorbShield,
     WizPyroBlast,
+    AssaBladeDash,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -190,6 +193,8 @@ pub struct SkillCastingAttributes {
     pub casting_time: ElapsedTime,
     pub cast_delay: ElapsedTime,
     pub casting_range: f32,
+    // in case of Directional skills
+    pub width: Option<f32>,
 }
 
 impl Skills {
@@ -205,6 +210,7 @@ impl Skills {
             Skills::Cure => CURE_SKILL,
             Skills::FireBomb => FIRE_BOMB_SKILL,
             Skills::AbsorbShield => ABSORB_SHIELD_SKILL,
+            Skills::AssaBladeDash => ASSA_BLADE_DASH_SKILL,
         }
     }
 
@@ -230,6 +236,7 @@ impl Skills {
             Skills::Cure => &configs.skills.cure,
             Skills::FireBomb => &configs.skills.firebomb.attributes,
             Skills::AbsorbShield => &configs.skills.absorb_shield.attributes,
+            Skills::AssaBladeDash => &configs.skills.assa_blade_dash.attributes,
         }
     }
 
@@ -257,7 +264,7 @@ impl Skills {
         casting_area_size: &Vector2<u16>,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         let angle = char_to_skill_dir.angle(&Vector2::y());
         let angle = if char_to_skill_dir.x > 0.0 {
@@ -291,6 +298,7 @@ impl Skills {
     ) -> bool {
         match skill_target_type {
             SkillTargetType::Area => true,
+            SkillTargetType::Directional => true,
             SkillTargetType::NoTarget => true,
             SkillTargetType::AnyEntity => {
                 target_entity.is_some() && skill_casting_range >= target_distance
@@ -315,6 +323,7 @@ pub enum SkillTargetType {
     /// casts immediately
     NoTarget,
     Area,
+    Directional,
     AnyEntity,
     OnlyAllyButNoSelf,
     OnlyAllyAndSelf,

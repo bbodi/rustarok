@@ -6,7 +6,7 @@ use crate::components::char::{
 use crate::components::controller::{
     CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
 };
-use crate::systems::render::render_command::{RenderCommandCollectorComponent, UiLayer2d};
+use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{ElapsedTime, SpriteResource};
@@ -25,7 +25,7 @@ impl RenderUI {
         self_char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         controller: &ControllerComponent,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         system_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
@@ -104,7 +104,7 @@ impl RenderUI {
 
     fn draw_minimap(
         self_char_state: &CharacterStateComponent,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         system_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
@@ -208,7 +208,7 @@ impl RenderUI {
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         controller: &ControllerComponent,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         system_vars: &SystemVariables,
     ) {
         if let Some((_skill_key, skill)) = controller.select_skill_target {
@@ -240,7 +240,7 @@ impl RenderUI {
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         controller: &ControllerComponent,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         system_vars: &SystemVariables,
     ) {
         let single_icon_size = 48;
@@ -335,7 +335,7 @@ fn render_action_2d(
     sprite_res: &SpriteResource,
     pos: &Vector2<i32>,
     color: &[u8; 3],
-    render_commands: &mut RenderCommandCollectorComponent,
+    render_commands: &mut RenderCommandCollector,
     layer: UiLayer2d,
     scale: f32,
 ) {

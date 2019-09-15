@@ -8,14 +8,12 @@ use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
-use crate::components::status::status::{
-    ApplyStatusComponent, RemoveStatusComponent, Status, StatusNature, StatusUpdateResult,
-};
+use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{AttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::{render_action, RenderDesktopClientSystem, COLOR_WHITE};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -68,7 +66,7 @@ impl SkillDef for WizPyroBlastSkill {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
     ) {
         RenderDesktopClientSystem::render_str(
@@ -208,7 +206,7 @@ impl SkillManifestation for PyroBlastManifest {
         _tick: u64,
         assets: &AssetResources,
         configs: &DevConfig,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let anim_descr = SpriteRenderDescriptorComponent {
@@ -245,26 +243,15 @@ impl Status for PyroBlastTargetStatus {
         Box::new(self.clone())
     }
 
-    fn update(
-        &mut self,
-        self_char_id: CharEntityId,
-        char_pos: &WorldCoords,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
-    ) -> StatusUpdateResult {
-        StatusUpdateResult::KeepIt
-    }
-
     fn render(
         &self,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         render_commands
             .horizontal_texture_3d()
-            .pos(char_pos)
+            .pos(&char_state.pos())
             .rotation_rad(system_vars.time.0 % 6.28)
             .scale(system_vars.dev_configs.skills.wiz_pyroblast.splash_radius)
             .add(&system_vars.assets.sprites.magic_target);

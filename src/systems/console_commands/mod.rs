@@ -1,8 +1,8 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, CharOutlook, CharState, CharType, CharacterStateComponent,
-    ComponentRadius, NpcComponent, PhysicsComponent, SpriteRenderDescriptorComponent,
+    attach_char_components, create_physics_component, CharOutlook, CharState, CharType,
+    CharacterStateComponent, ComponentRadius, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
@@ -354,7 +354,10 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             team,
                             CharType::Mercenary,
                             CollisionGroup::Player,
-                            &[CollisionGroup::NonPlayer],
+                            &[
+                                CollisionGroup::NonPlayer,
+                                CollisionGroup::NonCollidablePlayer,
+                            ],
                         );
                         ecs_world
                             .create_entity()
@@ -396,6 +399,17 @@ pub fn create_monster(
 ) -> CharEntityId {
     let entity_id = {
         let entity_id = CharEntityId(ecs_world.create_entity().build());
+        let physics_component = {
+            let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+            create_physics_component(
+                physics_world,
+                pos2d.coords,
+                ComponentRadius(radius),
+                entity_id,
+                collision_group,
+                blacklist_coll_groups,
+            )
+        };
         ecs_world.write_storage().insert(
             entity_id.0,
             CharacterStateComponent::new(
@@ -404,6 +418,8 @@ pub fn create_monster(
                 CharOutlook::Monster(monster_id),
                 team,
                 &ecs_world.read_resource::<SystemVariables>().dev_configs,
+                ComponentRadius(radius),
+                physics_component,
             ),
         );
         ecs_world.write_storage().insert(
@@ -420,17 +436,6 @@ pub fn create_monster(
         ecs_world.write_storage().insert(entity_id.0, NpcComponent);
         entity_id
     };
-    let mut storage = ecs_world.write_storage();
-    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-    let physics_component = PhysicsComponent::new(
-        physics_world,
-        pos2d.coords,
-        ComponentRadius(radius),
-        entity_id,
-        collision_group,
-        blacklist_coll_groups,
-    );
-    storage.insert(entity_id.0, physics_component).unwrap();
     return entity_id;
 }
 
@@ -474,6 +479,7 @@ fn create_random_char_minion(
             //CollisionGroup::NonPlayer,
             CollisionGroup::Player,
             CollisionGroup::StaticModel,
+            CollisionGroup::NonCollidablePlayer,
         ],
         &ecs_world.read_resource::<SystemVariables>().dev_configs,
     );
@@ -905,17 +911,21 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                 };
 
                 // give him back it's physic component
-                let physics_component = PhysicsComponent::new(
+                let physics_component = create_physics_component(
                     &mut ecs_world.write_resource::<PhysicEngine>(),
                     pos2d,
                     ComponentRadius(1),
                     target_char_id,
                     CollisionGroup::Player,
-                    &[CollisionGroup::NonPlayer],
+                    &[
+                        CollisionGroup::NonPlayer,
+                        CollisionGroup::NonCollidablePlayer,
+                    ],
                 );
-                ecs_world
-                    .write_storage::<PhysicsComponent>()
-                    .insert(target_char_id.0, physics_component);
+                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                char_state.collider_handle = physics_component.0;
+                char_state.body_handle = physics_component.1;
 
                 Ok(())
             } else {
@@ -941,7 +951,7 @@ pub(super) fn cmd_set_server_fps() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, _self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
             let fps = args.as_int(1).unwrap().max(1);
 
@@ -1008,9 +1018,13 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
         action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
 
-            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            if let Some(target_entity_id) = target_entity_id {
+            let target_controller_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+            if let Some(target_controller_id) = target_controller_id {
                 // remove controller from self
+                if target_controller_id == self_controller_id {
+                    return Err("Can't follow yourself".to_owned());
+                }
+
                 ecs_world
                     .write_storage::<ControllerComponent>()
                     .remove(self_controller_id.0);
@@ -1020,7 +1034,7 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
                     .write_storage::<CameraComponent>()
                     .get_mut(self_controller_id.0)
                     .unwrap()
-                    .followed_controller = Some(target_entity_id);
+                    .followed_controller = Some(target_controller_id);
                 Ok(())
             } else {
                 Err("The user was not found".to_owned())
@@ -1093,7 +1107,7 @@ pub(super) fn cmd_set_mass() -> CommandDefinition {
             };
             if let Some(entity_id) = entity_id {
                 let body_handle = ecs_world
-                    .read_storage::<PhysicsComponent>()
+                    .read_storage::<CharacterStateComponent>()
                     .get(entity_id.0)
                     .map(|it| it.body_handle)
                     .unwrap();
@@ -1138,7 +1152,7 @@ pub(super) fn cmd_set_damping() -> CommandDefinition {
             };
             if let Some(entity_id) = entity_id {
                 let body_handle = ecs_world
-                    .read_storage::<PhysicsComponent>()
+                    .read_storage::<CharacterStateComponent>()
                     .get(entity_id.0)
                     .map(|it| it.body_handle)
                     .unwrap();
@@ -1174,7 +1188,7 @@ pub(super) fn cmd_goto() -> CommandDefinition {
                     char_state.pos()
                 };
                 let self_body_handle = ecs_world
-                    .read_storage::<PhysicsComponent>()
+                    .read_storage::<CharacterStateComponent>()
                     .get(self_char_id.0)
                     .map(|it| it.body_handle)
                     .unwrap();
@@ -1260,7 +1274,7 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
 
             let body_handle = entity_id.and_then(|it| {
                 ecs_world
-                    .read_storage::<PhysicsComponent>()
+                    .read_storage::<CharacterStateComponent>()
                     .get(it.0)
                     .map(|it| it.body_handle)
             });

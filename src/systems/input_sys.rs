@@ -417,6 +417,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                     }
                     Some(Skills::Poison) => {
                         input.assign_skill(SkillKey::Q, Skills::WizPyroBlast);
+                        input.assign_skill(SkillKey::W, Skills::AssaBladeDash);
                     }
                     Some(Skills::WizPyroBlast) => {
                         input.assign_skill(SkillKey::Q, Skills::FireWall);
@@ -439,7 +440,7 @@ impl InputConsumerSystem {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_definition().get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            Some(PlayerIntention::Casting(skill, true, mouse_pos))
+            Some(PlayerIntention::Casting(skill, false, mouse_pos))
         } else {
             None
         }

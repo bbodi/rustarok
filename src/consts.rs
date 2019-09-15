@@ -19,6 +19,7 @@ pub enum JobId {
     SWORDMAN,
     ARCHER,
     ASSASSIN,
+    ROGUE,
     KNIGHT,
     WIZARD,
     SAGE,
@@ -44,6 +45,7 @@ impl JobId {
             JobId::PRIEST => JobSpriteId::PRIEST,
             JobId::MONK => JobSpriteId::MONK,
             JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
+            JobId::ROGUE => JobSpriteId::ROGUE,
         }
     }
 }

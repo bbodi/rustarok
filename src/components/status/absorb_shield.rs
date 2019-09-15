@@ -1,11 +1,13 @@
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::char::CharacterStateComponent;
+use crate::components::controller::CharEntityId;
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
 use crate::effect::StrEffectType;
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::atk_calc::AttackOutcome;
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
@@ -44,7 +46,8 @@ impl Status for AbsorbStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        _char_pos: &WorldCoords,
+        _char_state: &CharacterStateComponent,
+        _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut specs::Write<LazyUpdate>,
@@ -85,20 +88,20 @@ impl Status for AbsorbStatus {
         }
     }
 
-    fn allow_push(&mut self, _push: &ApplyForceComponent) -> bool {
+    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
         false
     }
 
     fn render(
         &self,
-        char_pos: &WorldCoords,
+        char_state: &CharacterStateComponent,
         system_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollectorComponent,
+        render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Ramadan,
             self.animation_started,
-            char_pos,
+            &char_state.pos(),
             system_vars,
             render_commands,
         );
@@ -108,7 +111,7 @@ impl Status for AbsorbStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&mut self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
         // I think it should be overwritten only when the caster_entity_id is the same
         // otherwise other players should get the healed credits for their armors
         //        let other_absorb = unsafe { Statuses::hack_cast::<AbsorbStatus>(&other) };

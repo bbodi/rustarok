@@ -9,7 +9,7 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
     create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, EffectFrameCacheKey,
-    RenderCommandCollectorComponent, UiLayer2d,
+    RenderCommandCollector, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -524,7 +524,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
 
 impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
-        specs::ReadStorage<'a, RenderCommandCollectorComponent>,
+        specs::ReadStorage<'a, RenderCommandCollector>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadStorage<'a, CameraComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
@@ -556,7 +556,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
         )
             .join()
         {
-            let render_commands: &RenderCommandCollectorComponent = render_commands;
+            let render_commands: &RenderCommandCollector = render_commands;
 
             let gl = &system_vars.gl;
             {

@@ -1,4 +1,4 @@
-use crate::components::char::{CharacterStateComponent, PhysicsComponent};
+use crate::components::char::CharacterStateComponent;
 use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 use nalgebra::Vector2;
@@ -15,41 +15,39 @@ impl<'a> specs::System<'a> for FrictionSystem {
         specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
-        specs::WriteStorage<'a, PhysicsComponent>,
         specs::WriteStorage<'a, CharacterStateComponent>,
     );
 
     fn run(
         &mut self,
-        (mut physics_world, mut system_benchmark, system_vars, physics_storage, mut char_storage): Self::SystemData,
+        (mut physics_world, mut system_benchmark, system_vars, mut char_storage): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
-        for (physics, char_state) in (&physics_storage, &mut char_storage).join() {
-            let mut body = physics_world
-                .bodies
-                .rigid_body_mut(physics.body_handle)
-                .unwrap();
-            if char_state
-                .cannot_control_until
-                .has_already_passed(system_vars.time)
-            {
-                body.set_linear_velocity(Vector2::zeros());
-            } else {
-                // damping will solve this
-                //                let linear = body.velocity().linear;
-                //                if linear.x != 0.0 || linear.y != 0.0 {
-                //                    let dir = linear.normalize();
-                //                    let slowing_vector = body.velocity().linear - (dir * 1.0);
-                //                    let len = slowing_vector.magnitude();
-                //                    if len <= 0.001 {
-                //                        body.set_linear_velocity(Vector2::zeros());
-                //                    } else {
-                //                        body.set_linear_velocity(slowing_vector);
-                //                    }
-                //                }
+        for char_state in (&mut char_storage).join() {
+            let body = physics_world.bodies.rigid_body_mut(char_state.body_handle);
+            if let Some(body) = body {
+                if char_state
+                    .cannot_control_until
+                    .has_already_passed(system_vars.time)
+                {
+                    body.set_linear_velocity(Vector2::zeros());
+                } else {
+                    // damping will solve this
+                    //                let linear = body.velocity().linear;
+                    //                if linear.x != 0.0 || linear.y != 0.0 {
+                    //                    let dir = linear.normalize();
+                    //                    let slowing_vector = body.velocity().linear - (dir * 1.0);
+                    //                    let len = slowing_vector.magnitude();
+                    //                    if len <= 0.001 {
+                    //                        body.set_linear_velocity(Vector2::zeros());
+                    //                    } else {
+                    //                        body.set_linear_velocity(slowing_vector);
+                    //                    }
+                    //                }
+                }
+                let body_pos = body.position().translation.vector;
+                char_state.set_pos_dont_use_it(body_pos);
             }
-            let body_pos = body.position().translation.vector;
-            char_state.set_pos_dont_use_it(body_pos);
         }
     }
 }

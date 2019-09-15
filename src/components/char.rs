@@ -8,7 +8,7 @@ use crate::components::status::status::Statuses;
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
-use crate::systems::render::render_command::RenderCommandCollectorComponent;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
@@ -76,7 +76,10 @@ pub fn attach_human_player_components(
         team,
         CharType::Player,
         CollisionGroup::Player,
-        &[CollisionGroup::NonPlayer],
+        &[
+            CollisionGroup::NonPlayer,
+            CollisionGroup::NonCollidablePlayer,
+        ],
         dev_configs,
     );
 
@@ -87,7 +90,7 @@ pub fn attach_human_player_components(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    updater.insert(controller_id.0, RenderCommandCollectorComponent::new());
+    updater.insert(controller_id.0, RenderCommandCollector::new());
     updater.insert(controller_id.0, AudioCommandCollectorComponent::new());
     updater.insert(controller_id.0, human_player);
     updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));
@@ -115,6 +118,14 @@ pub fn attach_char_components(
     blacklist_coll_groups: &[CollisionGroup],
     dev_configs: &DevConfig,
 ) {
+    let physics_component = create_physics_component(
+        physics_world,
+        pos2d.coords,
+        ComponentRadius(radius),
+        entity_id,
+        collision_group,
+        blacklist_coll_groups,
+    );
     updater.insert(
         entity_id.0,
         CharacterStateComponent::new(
@@ -127,18 +138,48 @@ pub fn attach_char_components(
             },
             team,
             dev_configs,
+            ComponentRadius(radius),
+            physics_component,
         ),
     );
     updater.insert(entity_id.0, SpriteRenderDescriptorComponent::new());
-    let physics_component = PhysicsComponent::new(
-        physics_world,
-        pos2d.coords,
-        ComponentRadius(radius),
-        entity_id,
-        collision_group,
-        blacklist_coll_groups,
+}
+
+pub fn create_physics_component(
+    world: &mut PhysicEngine,
+    pos: Vector2<f32>,
+    radius: ComponentRadius,
+    entity_id: CharEntityId,
+    collision_group: CollisionGroup,
+    blacklist_coll_groups: &[CollisionGroup],
+) -> (DefaultColliderHandle, DefaultBodyHandle) {
+    let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
+    let body_handle = world.bodies.insert(
+        RigidBodyDesc::new()
+            .user_data(entity_id)
+            .gravity_enabled(false)
+            .linear_damping(5.0)
+            .set_translation(pos)
+            .build(),
     );
-    updater.insert(entity_id.0, physics_component);
+    let collider_handle = world.colliders.insert(
+        ColliderDesc::new(capsule)
+            .collision_groups(
+                CollisionGroups::new()
+                    .with_membership(&[collision_group as usize])
+                    .with_blacklist(
+                        blacklist_coll_groups
+                            .iter()
+                            .map(|it| *it as usize)
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    ),
+            )
+            .density(radius.0 as f32 * 500.0)
+            .user_data(entity_id)
+            .build(BodyPartHandle(body_handle, 0)),
+    );
+    (collider_handle, body_handle)
 }
 
 // radius = ComponentRadius * 0.5f32
@@ -148,56 +189,6 @@ pub struct ComponentRadius(pub i32);
 impl ComponentRadius {
     pub fn get(&self) -> f32 {
         self.0 as f32 * 0.5
-    }
-}
-
-#[derive(Component)]
-pub struct PhysicsComponent {
-    pub radius: ComponentRadius,
-    pub body_handle: DefaultBodyHandle,
-    pub collider_handle: DefaultColliderHandle,
-}
-
-impl PhysicsComponent {
-    pub fn new(
-        world: &mut PhysicEngine,
-        pos: Vector2<f32>,
-        radius: ComponentRadius,
-        entity_id: CharEntityId,
-        collision_group: CollisionGroup,
-        blacklist_coll_groups: &[CollisionGroup],
-    ) -> PhysicsComponent {
-        let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
-        let body_handle = world.bodies.insert(
-            RigidBodyDesc::new()
-                .user_data(entity_id)
-                .gravity_enabled(false)
-                .linear_damping(5.0)
-                .set_translation(pos)
-                .build(),
-        );
-        let collider_handle = world.colliders.insert(
-            ColliderDesc::new(capsule)
-                .collision_groups(
-                    CollisionGroups::new()
-                        .with_membership(&[collision_group as usize])
-                        .with_blacklist(
-                            blacklist_coll_groups
-                                .iter()
-                                .map(|it| *it as usize)
-                                .collect::<Vec<_>>()
-                                .as_slice(),
-                        ),
-                )
-                .density(radius.0 as f32 * 500.0)
-                .user_data(entity_id)
-                .build(BodyPartHandle(body_handle, 0)),
-        );
-        PhysicsComponent {
-            radius,
-            body_handle,
-            collider_handle,
-        }
     }
 }
 
@@ -772,6 +763,9 @@ pub struct CharacterStateComponent {
     calculated_attribs: CharAttributes,
     attrib_bonuses: CharAttributesBonuses,
     pub statuses: Statuses,
+    pub radius: ComponentRadius,
+    pub body_handle: DefaultBodyHandle,
+    pub collider_handle: DefaultColliderHandle,
 }
 
 impl Drop for CharacterStateComponent {
@@ -792,6 +786,8 @@ impl CharacterStateComponent {
         outlook: CharOutlook,
         team: Team,
         dev_configs: &DevConfig,
+        radius: ComponentRadius,
+        physics_component: (DefaultColliderHandle, DefaultBodyHandle),
     ) -> CharacterStateComponent {
         let statuses = Statuses::new();
         let base_attributes = Statuses::get_base_attributes(&typ, &outlook, dev_configs);
@@ -817,6 +813,9 @@ impl CharacterStateComponent {
                 durations: BonusDurations::with_invalid_times(),
             },
             statuses,
+            radius,
+            body_handle: physics_component.1,
+            collider_handle: physics_component.0,
         }
     }
 
@@ -845,11 +844,19 @@ impl CharacterStateComponent {
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut specs::Write<LazyUpdate>,
+        phyisics_world: &mut PhysicEngine,
     ) {
-        let changed =
+        let bit_indices_of_changed_statuses = self.statuses.update(
+            self_char_id,
+            self,
+            phyisics_world,
+            system_vars,
+            entities,
+            updater,
+        );
+        if bit_indices_of_changed_statuses > 0 {
             self.statuses
-                .update(self_char_id, &self.pos(), system_vars, entities, updater);
-        if changed {
+                .remove_statuses(bit_indices_of_changed_statuses);
             self.recalc_attribs_based_on_statuses();
             log::trace!(
                 "Status expired. Attributes({:?}): mod: {:?}, attribs: {:?}",
@@ -889,7 +896,9 @@ impl CharacterStateComponent {
             CharState::Freeze => false,
             CharState::Dead => false,
         };
-        can_move_by_state && self.cannot_control_until.has_already_passed(sys_time)
+        can_move_by_state
+            && self.cannot_control_until.has_already_passed(sys_time)
+            && self.statuses.can_move()
     }
 
     pub fn state(&self) -> &CharState {

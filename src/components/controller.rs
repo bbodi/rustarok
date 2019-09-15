@@ -187,6 +187,7 @@ pub enum CameraMode {
     FollowChar,
 }
 
+#[derive(Debug)]
 pub struct EntitiesBelowCursor {
     friendly: Vec<CharEntityId>,
     enemy: Vec<CharEntityId>,
