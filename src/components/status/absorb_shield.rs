@@ -1,4 +1,4 @@
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
@@ -104,6 +104,7 @@ impl Status for AbsorbStatus {
             &char_state.pos(),
             system_vars,
             render_commands,
+            ActionPlayMode::Repeat,
         );
     }
 

@@ -8,7 +8,7 @@ use specs::prelude::*;
 use strum_macros::EnumIter;
 
 use crate::common::v2_to_v3;
-use crate::components::char::{CastingSkillData, CharacterStateComponent};
+use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent};
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
@@ -143,6 +143,7 @@ pub trait SkillDef {
             char_pos,
             system_vars,
             render_commands,
+            ActionPlayMode::Repeat,
         );
         if let Some(target_area_pos) = casting_state.target_area_pos {
             self.render_target_selection(

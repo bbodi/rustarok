@@ -1,6 +1,6 @@
 use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharAttributes, CharOutlook, CharType,
-    CharacterStateComponent, Percentage,
+    ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
+    CharOutlook, CharType, CharacterStateComponent, Percentage,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
@@ -614,6 +614,7 @@ impl Status for PoisonStatus {
             &char_state.pos(),
             system_vars,
             render_commands,
+            ActionPlayMode::Repeat,
         );
     }
 

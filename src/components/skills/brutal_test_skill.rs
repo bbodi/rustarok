@@ -2,7 +2,7 @@ use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
@@ -114,7 +114,8 @@ impl BrutalSkillManifest {
                     effect_id: StrEffectType::FireWall.into(),
                     pos: effect_coords,
                     start_time: system_time,
-                    die_at: system_time.add_seconds(30.0),
+                    die_at: Some(system_time.add_seconds(30.0)),
+                    play_mode: ActionPlayMode::Repeat,
                 };
                 let effect_entity = entities.create();
                 updater.insert(effect_entity, effect_comp);

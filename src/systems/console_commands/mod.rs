@@ -1,8 +1,9 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, create_physics_component, CharOutlook, CharState, CharType,
-    CharacterStateComponent, ComponentRadius, NpcComponent, SpriteRenderDescriptorComponent,
+    attach_char_components, create_physics_component, ActionPlayMode, CharOutlook, CharState,
+    CharType, CharacterStateComponent, ComponentRadius, NpcComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
@@ -520,7 +521,8 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
                         effect_id,
                         pos: hero_pos,
                         start_time: ElapsedTime(0.0),
-                        die_at: ElapsedTime(20000.0),
+                        die_at: None,
+                        play_mode: ActionPlayMode::Repeat,
                     })
                     .build();
                 Ok(())

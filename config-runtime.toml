@@ -20,7 +20,7 @@ minions_enabled = false
         width = 3
 
     [skills.wiz_pyroblast]
-        casting_time = 3.0
+        casting_time = 1.0
         cast_delay = 3.0
         casting_range = 12
         damage = 2000

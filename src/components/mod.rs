@@ -1,5 +1,6 @@
 extern crate rand;
 
+use crate::components::char::ActionPlayMode;
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
@@ -111,7 +112,8 @@ pub struct StrEffectComponent {
     pub effect_id: StrEffectId,
     pub pos: WorldCoords,
     pub start_time: ElapsedTime,
-    pub die_at: ElapsedTime,
+    pub die_at: Option<ElapsedTime>,
+    pub play_mode: ActionPlayMode,
 }
 
 #[derive(Component)]

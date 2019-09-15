@@ -19,6 +19,7 @@ pub enum StrEffectType {
     FireWallBlue,
     FirePillarBomb,
     Ramadan,
+    Explosion,
 }
 
 impl From<StrEffectType> for StrEffectId {
@@ -41,6 +42,7 @@ impl StrEffectType {
             StrEffectType::FireWallBlue => "firewall_blue",
             StrEffectType::FirePillarBomb => "firepillarbomb",
             StrEffectType::Ramadan => "ramadan",
+            StrEffectType::Explosion => "sui_explosion",
         }
     }
 }

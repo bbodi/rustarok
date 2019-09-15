@@ -1,7 +1,7 @@
 use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, LazyUpdate};
 
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
@@ -106,7 +106,8 @@ impl Status for FireBombStatus {
                 effect_id: StrEffectType::FirePillarBomb.into(),
                 pos: char_state.pos(),
                 start_time: system_vars.time.add_seconds(-0.5),
-                die_at: system_vars.time.add_seconds(1.0),
+                die_at: Some(system_vars.time.add_seconds(1.0)),
+                play_mode: ActionPlayMode::Repeat,
             };
             updater.insert(entities.create(), effect_comp);
 
@@ -128,6 +129,7 @@ impl Status for FireBombStatus {
             &char_state.pos(),
             system_vars,
             render_commands,
+            ActionPlayMode::Repeat,
         );
     }
 

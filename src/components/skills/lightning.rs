@@ -1,7 +1,7 @@
 use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, Entity, LazyUpdate};
 
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
@@ -129,7 +129,8 @@ impl SkillManifestation for LightningManifest {
                         effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
-                        die_at: system_vars.time.add_seconds(1.0),
+                        die_at: Some(system_vars.time.add_seconds(1.0)),
+                        play_mode: ActionPlayMode::Repeat,
                     },
                     1 => {
                         let pos = self.pos + self.dir_vector * 2.2;
@@ -137,7 +138,8 @@ impl SkillManifestation for LightningManifest {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
+                            die_at: Some(system_vars.time.add_seconds(1.0)),
+                            play_mode: ActionPlayMode::Repeat,
                         }
                     }
                     2 => {
@@ -146,7 +148,8 @@ impl SkillManifestation for LightningManifest {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
+                            die_at: Some(system_vars.time.add_seconds(1.0)),
+                            play_mode: ActionPlayMode::Repeat,
                         }
                     }
                     3 => {
@@ -155,7 +158,8 @@ impl SkillManifestation for LightningManifest {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
+                            die_at: Some(system_vars.time.add_seconds(1.0)),
+                            play_mode: ActionPlayMode::Repeat,
                         }
                     }
                     4 => {
@@ -164,14 +168,16 @@ impl SkillManifestation for LightningManifest {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
                             start_time: system_vars.time.add_seconds(-0.5),
-                            die_at: system_vars.time.add_seconds(1.0),
+                            die_at: Some(system_vars.time.add_seconds(1.0)),
+                            play_mode: ActionPlayMode::Repeat,
                         }
                     }
                     5 => StrEffectComponent {
                         effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
                         start_time: system_vars.time.add_seconds(-0.5),
-                        die_at: system_vars.time.add_seconds(1.0),
+                        die_at: Some(system_vars.time.add_seconds(1.0)),
+                        play_mode: ActionPlayMode::Repeat,
                     },
                     _ => {
                         return;

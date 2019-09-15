@@ -220,16 +220,24 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.str_effect");
             for (entity_id, str_effect) in (entities, str_effect_storage).join() {
-                if str_effect.die_at.has_already_passed(system_vars.time) {
+                if str_effect
+                    .die_at
+                    .map(|it| it.has_already_passed(system_vars.time))
+                    .unwrap_or(false)
+                {
                     updater.remove::<StrEffectComponent>(entity_id);
                 } else {
-                    RenderDesktopClientSystem::render_str(
+                    let remove = RenderDesktopClientSystem::render_str(
                         str_effect.effect_id,
                         str_effect.start_time,
                         &str_effect.pos,
                         system_vars,
                         render_commands,
+                        str_effect.play_mode,
                     );
+                    if remove {
+                        updater.remove::<StrEffectComponent>(entity_id);
+                    }
                 }
             }
         }
@@ -771,7 +779,7 @@ pub fn render_single_layer_action<'a>(
         let elapsed_time = now.elapsed_since(animation.animation_started);
         let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
         match play_mode {
-            ActionPlayMode::Repeat => real_index % frame_count,
+            ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % frame_count,
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
             ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
         }
@@ -865,7 +873,7 @@ pub fn render_action(
         let elapsed_time = now.elapsed_since(animation.animation_started);
         let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
         match play_mode {
-            ActionPlayMode::Repeat => real_index % frame_count,
+            ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % frame_count,
             ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
         }
@@ -1394,22 +1402,29 @@ impl RenderDesktopClientSystem {
         world_pos: &WorldCoords,
         system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
-    ) where
+        play_mode: ActionPlayMode,
+    ) -> bool
+    where
         E: Into<StrEffectId>,
     {
         let effect_id = effect.into();
         let str_file = &system_vars.str_effects[effect_id.0];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
-        let max_key = str_file.max_key;
-        let key_index = system_vars
+        let max_key = str_file.max_key as i32;
+        let real_index = system_vars
             .time
             .elapsed_since(start_time)
-            .div(seconds_needed_for_one_frame) as i32
-            % max_key as i32;
+            .div(seconds_needed_for_one_frame) as i32;
+        let key_index = match play_mode {
+            ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % max_key,
+            ActionPlayMode::PlayThenHold => real_index.min(max_key - 1),
+            ActionPlayMode::Reverse => (max_key - 1) - (real_index % max_key),
+        };
 
         render_commands.add_effect_command2(world_pos, effect_id, key_index);
         for layer_index in 0..str_file.layers.len() {
             render_commands.add_effect_command(world_pos, effect_id, key_index, layer_index);
         }
+        return real_index >= max_key as i32 && play_mode == ActionPlayMode::Once;
     }
 }

@@ -75,6 +75,7 @@ impl SkillDef for WizPyroBlastSkill {
             char_pos,
             system_vars,
             render_commands,
+            ActionPlayMode::Repeat,
         );
         let casting_percentage = system_vars
             .time
@@ -183,10 +184,11 @@ impl SkillManifestation for PyroBlastManifest {
                 updater.insert(
                     entities.create(),
                     StrEffectComponent {
-                        effect_id: StrEffectType::FirePillarBomb.into(),
+                        effect_id: StrEffectType::Explosion.into(),
                         pos: target_pos,
-                        start_time: system_vars.time.add_seconds(-0.5),
-                        die_at: system_vars.time.add_seconds(1.0),
+                        start_time: system_vars.time.add_seconds(0.0),
+                        die_at: None,
+                        play_mode: ActionPlayMode::Once,
                     },
                 );
                 target_char

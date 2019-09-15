@@ -5,7 +5,7 @@ use nphysics2d::object::DefaultColliderHandle;
 use specs::{Entities, Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
-use crate::components::char::{CharacterStateComponent, Team};
+use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
@@ -128,7 +128,8 @@ impl PushBackWallSkill {
                     effect_id: StrEffectType::FireWall.into(),
                     pos: effect_coords,
                     start_time: system_time,
-                    die_at: system_time.add_seconds(duration_seconds),
+                    die_at: Some(system_time.add_seconds(duration_seconds)),
+                    play_mode: ActionPlayMode::Repeat,
                 };
                 let effect_entity = entities.create();
                 updater.insert(effect_entity, effect_comp);

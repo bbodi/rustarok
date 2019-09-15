@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
 use specs::{Entities, LazyUpdate};
 
-use crate::components::char::CharacterStateComponent;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{ApplyStatusComponent, MainStatuses};
@@ -44,7 +44,8 @@ impl SkillDef for MountingSkill {
                 effect_id: StrEffectType::Concentration.into(),
                 pos: caster.pos(),
                 start_time: system_vars.time,
-                die_at: system_vars.time.add_seconds(0.7),
+                die_at: Some(system_vars.time.add_seconds(0.7)),
+                play_mode: ActionPlayMode::PlayThenHold,
             },
         );
         None

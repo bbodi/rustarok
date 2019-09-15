@@ -951,10 +951,11 @@ impl CharacterStateComponent {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ActionPlayMode {
     Repeat,
     PlayThenHold,
+    Once,
     Reverse, // FixFrame(12)
 }
 
