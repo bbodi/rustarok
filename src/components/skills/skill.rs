@@ -22,6 +22,7 @@ use crate::components::skills::poison::POISON_SKILL;
 use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
 
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
+use crate::components::skills::assa_phase_prism::ASSA_PHASE_PRISM_SKILL;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -187,6 +188,7 @@ pub enum Skills {
     AbsorbShield,
     WizPyroBlast,
     AssaBladeDash,
+    AssaPhasePrism,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -212,6 +214,7 @@ impl Skills {
             Skills::FireBomb => FIRE_BOMB_SKILL,
             Skills::AbsorbShield => ABSORB_SHIELD_SKILL,
             Skills::AssaBladeDash => ASSA_BLADE_DASH_SKILL,
+            Skills::AssaPhasePrism => ASSA_PHASE_PRISM_SKILL,
         }
     }
 
@@ -238,6 +241,7 @@ impl Skills {
             Skills::FireBomb => &configs.skills.firebomb.attributes,
             Skills::AbsorbShield => &configs.skills.absorb_shield.attributes,
             Skills::AssaBladeDash => &configs.skills.assa_blade_dash.attributes,
+            Skills::AssaPhasePrism => &configs.skills.assa_phase_prism.attributes,
         }
     }
 

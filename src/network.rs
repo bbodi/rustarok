@@ -211,7 +211,16 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 &updater,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
                                 projection_mat,
-                                Point2::new(250.0, -200.0),
+                                Point2::new(
+                                    ecs_world
+                                        .read_resource::<SystemVariables>()
+                                        .dev_configs
+                                        .start_pos_x,
+                                    ecs_world
+                                        .read_resource::<SystemVariables>()
+                                        .dev_configs
+                                        .start_pos_y,
+                                ),
                                 Sex::Male,
                                 JobId::CRUSADER,
                                 2,

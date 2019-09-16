@@ -195,6 +195,7 @@ impl SkillManifestation for LightningManifest {
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,
                     typ: AttackType::SpellDamage(120, DamageDisplayType::SingleNumber),
+                    except: None,
                 });
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);
             }

@@ -4,7 +4,7 @@ use crate::common::measure_time;
 use crate::components::char::CharActionIndex;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skill::Skills;
-use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId};
+use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::{EffectSprites, Sprites};
@@ -46,6 +46,14 @@ pub fn load_sprites(
                     asset_database,
                 )
                 .unwrap(),
+            fire_particle: asset_loader
+                .load_texture(
+                    gl,
+                    "data\\texture\\effect\\fireparticle.tga",
+                    MyGlEnum::NEAREST,
+                    asset_database,
+                )
+                .unwrap(),
             mounted_character_sprites: {
                 let mut mounted_sprites = HashMap::new();
                 let mounted_file_name = &job_sprite_name_table[&JobSpriteId::CRUSADER2];
@@ -69,9 +77,10 @@ pub fn load_sprites(
                 mounted_sprites.insert(JobId::CRUSADER, [male, female]);
                 mounted_sprites
             },
-            character_sprites: JobId::iter()
-                .map(|job_id| {
-                    let job_file_name = &job_sprite_name_table[&job_id.get_job_sprite_id()];
+            character_sprites: PLAYABLE_CHAR_SPRITES
+                .iter()
+                .map(|job_sprite_id| {
+                    let job_file_name = &job_sprite_name_table[&job_sprite_id];
                     let folder1 = encoding::all::WINDOWS_1252
                         .decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict)
                         .unwrap();
@@ -91,7 +100,7 @@ pub fn load_sprites(
                     {
                         let mut male = asset_loader
                             .load_spr_and_act(gl, &male_file_name, asset_database)
-                            .expect(&format!("Failed loading {:?}", job_id));
+                            .expect(&format!("Failed loading {:?}", job_sprite_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         male.action
                             .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
@@ -100,7 +109,7 @@ pub fn load_sprites(
                     } else if !asset_loader.exists(&format!("{}.act", male_file_name)) {
                         let mut female = asset_loader
                             .load_spr_and_act(gl, &female_file_name, asset_database)
-                            .expect(&format!("Failed loading {:?}", job_id));
+                            .expect(&format!("Failed loading {:?}", job_sprite_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         female
                             .action
@@ -110,22 +119,22 @@ pub fn load_sprites(
                     } else {
                         let mut male = asset_loader
                             .load_spr_and_act(gl, &male_file_name, asset_database)
-                            .expect(&format!("Failed loading {:?}", job_id));
+                            .expect(&format!("Failed loading {:?}", job_sprite_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         male.action
                             .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                         let mut female = asset_loader
                             .load_spr_and_act(gl, &female_file_name, asset_database)
-                            .expect(&format!("Failed loading {:?}", job_id));
+                            .expect(&format!("Failed loading {:?}", job_sprite_id));
                         // for Idle action, character sprites contains head rotating animations, we don't need them
                         female
                             .action
                             .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                         (male, female)
                     };
-                    (job_id, [male, female])
+                    (*job_sprite_id, [male, female])
                 })
-                .collect::<HashMap<JobId, [SpriteResource; 2]>>(),
+                .collect::<HashMap<JobSpriteId, [SpriteResource; 2]>>(),
             head_sprites: [
                 (1..=25)
                     .map(|i| {
@@ -184,6 +193,13 @@ pub fn load_sprites(
                         monster_id,
                         asset_loader
                             .load_spr_and_act(gl, &file_name, asset_database)
+                            .or_else(|e| {
+                                let file_name = format!(
+                                    "data\\sprite\\¸ó½ºÅÍ\\{}",
+                                    monster_id.to_string().to_lowercase()
+                                );
+                                asset_loader.load_spr_and_act(gl, &file_name, asset_database)
+                            })
                             .unwrap(),
                     )
                 })

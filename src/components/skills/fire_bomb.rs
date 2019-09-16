@@ -47,6 +47,7 @@ impl SkillDef for FireBombSkill {
                     started: system_vars.time,
                     until: system_vars.time.add_seconds(2.0),
                     damage: system_vars.dev_configs.skills.firebomb.damage,
+                    spread_count: 0,
                 }),
             ));
         None
@@ -63,6 +64,7 @@ pub struct FireBombStatus {
     pub damage: u32,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
+    pub spread_count: u8,
 }
 
 impl Status for FireBombStatus {
@@ -87,21 +89,27 @@ impl Status for FireBombStatus {
                 area_isom: area_isom.clone(),
                 source_entity_id: self.caster_entity_id,
                 typ: AttackType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
+                except: None,
             });
-            system_vars
-                .apply_area_statuses
-                .push(ApplyStatusInAreaComponent {
-                    source_entity_id: self.caster_entity_id,
-                    status: ApplyStatusComponentPayload::from_secondary(Box::new(FireBombStatus {
-                        caster_entity_id: self.caster_entity_id,
-                        started: system_vars.time,
-                        until: system_vars.time.add_seconds(2.0),
-                        damage: self.damage,
-                    })),
-                    area_shape: area_shape.clone(),
-                    area_isom: area_isom.clone(),
-                    except: Some(self_char_id),
-                });
+            if self.spread_count < 1 {
+                system_vars
+                    .apply_area_statuses
+                    .push(ApplyStatusInAreaComponent {
+                        source_entity_id: self.caster_entity_id,
+                        status: ApplyStatusComponentPayload::from_secondary(Box::new(
+                            FireBombStatus {
+                                caster_entity_id: self.caster_entity_id,
+                                started: system_vars.time,
+                                until: system_vars.time.add_seconds(2.0),
+                                damage: self.damage,
+                                spread_count: 1,
+                            },
+                        )),
+                        area_shape: area_shape.clone(),
+                        area_isom: area_isom.clone(),
+                        except: Some(self_char_id),
+                    });
+            }
             let effect_comp = StrEffectComponent {
                 effect_id: StrEffectType::FirePillarBomb.into(),
                 pos: char_state.pos(),

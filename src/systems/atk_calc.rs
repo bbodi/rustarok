@@ -1,5 +1,5 @@
+use crate::components::char::CharacterStateComponent;
 use crate::components::char::Percentage;
-use crate::components::char::{CharOutlook, CharacterStateComponent};
 use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
@@ -104,6 +104,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                     &area_attack.area_isom,
                     area_attack.source_entity_id,
                     area_attack.typ,
+                    area_attack.except,
                 )
             })
             .flatten()
@@ -162,8 +163,8 @@ impl<'a> specs::System<'a> for AttackSystem {
                         .filter(|it| {
                             it.state().is_alive()
                                 && match attack.typ {
-                                    AttackType::Heal(_) => src_char_state.team == it.team,
-                                    _ => src_char_state.team != it.team,
+                                    AttackType::Heal(_) => src_char_state.team.can_support(it.team),
+                                    _ => src_char_state.team.can_attack(it.team),
                                 }
                         })
                         .and_then(|dst_char_state| {
@@ -285,10 +286,15 @@ impl AttackCalculation {
         skill_isom: &Isometry2<f32>,
         caster_entity_id: CharEntityId,
         attack_typ: AttackType,
+        except: Option<CharEntityId>,
     ) -> Vec<AttackComponent> {
         let mut result_attacks = vec![];
         for (target_entity_id, char_state) in (entities, char_storage).join() {
             let target_entity_id = CharEntityId(target_entity_id);
+            if except.map(|it| it == target_entity_id).unwrap_or(false) {
+                continue;
+            }
+
             // for optimized, shape-specific queries
             // ncollide2d::query::distance_internal::
             let coll_result = ncollide2d::query::proximity(
@@ -586,14 +592,11 @@ impl AttackSystem {
     }
 
     fn calc_mounted_speedup(
-        target_char: &mut CharacterStateComponent,
+        target_char: &CharacterStateComponent,
         configs: &DevConfig,
     ) -> Percentage {
-        return match target_char.outlook {
-            CharOutlook::Player { job_id, .. } => match job_id {
-                JobId::CRUSADER => configs.stats.player.crusader.mounted_speedup,
-                _ => Percentage(30),
-            },
+        return match target_char.job_id {
+            JobId::CRUSADER => configs.stats.player.crusader.mounted_speedup,
             _ => Percentage(30),
         };
     }

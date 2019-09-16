@@ -6,7 +6,7 @@ use crate::components::controller::{
 use crate::components::skills::skill::Skills;
 use crate::components::status::status::Statuses;
 use crate::configs::DevConfig;
-use crate::consts::{JobId, MonsterId};
+use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
@@ -16,7 +16,8 @@ use nalgebra::{Matrix4, Point2, Vector2};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
-    BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle, RigidBodyDesc,
+    BodyPartHandle, BodyStatus, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle,
+    RigidBodyDesc,
 };
 use serde::Deserialize;
 use specs::prelude::*;
@@ -69,9 +70,27 @@ pub fn attach_human_player_components(
         updater,
         physic_world,
         pos2d,
-        sex,
+        CharOutlook::Player {
+            sex,
+            job_sprite_id: match job_id {
+                JobId::WIZARD => JobSpriteId::WIZARD,
+                JobId::CRUSADER => JobSpriteId::CRUSADER,
+                JobId::SWORDMAN => JobSpriteId::SWORDMAN,
+                JobId::ARCHER => JobSpriteId::ARCHER,
+                JobId::ASSASSIN => JobSpriteId::ASSASSIN,
+                JobId::KNIGHT => JobSpriteId::KNIGHT,
+                JobId::SAGE => JobSpriteId::SAGE,
+                JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
+                JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
+                JobId::PRIEST => JobSpriteId::PRIEST,
+                JobId::MONK => JobSpriteId::MONK,
+                JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
+                JobId::ROGUE => JobSpriteId::ROGUE,
+                _ => panic!(),
+            },
+            head_index,
+        },
         job_id,
-        head_index,
         radius,
         team,
         CharType::Player,
@@ -84,6 +103,7 @@ pub fn attach_human_player_components(
     );
 
     let mut human_player = HumanInputComponent::new(username);
+    human_player.cast_mode = dev_configs.cast_mode;
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
     human_player.assign_skill(SkillKey::E, Skills::Heal);
@@ -108,9 +128,8 @@ pub fn attach_char_components(
     updater: &LazyUpdate,
     physics_world: &mut PhysicEngine,
     pos2d: Point2<f32>,
-    sex: Sex,
+    outlook: CharOutlook,
     job_id: JobId,
-    head_index: usize,
     radius: i32,
     team: Team,
     typ: CharType,
@@ -131,11 +150,8 @@ pub fn attach_char_components(
         CharacterStateComponent::new(
             name,
             typ,
-            CharOutlook::Player {
-                job_id,
-                head_index,
-                sex,
-            },
+            outlook,
+            job_id,
             team,
             dev_configs,
             ComponentRadius(radius),
@@ -446,10 +462,11 @@ pub enum CharType {
     Boss,
 }
 
+#[derive(Clone)]
 pub enum CharOutlook {
     Monster(MonsterId),
     Player {
-        job_id: JobId,
+        job_sprite_id: JobSpriteId,
         head_index: usize,
         sex: Sex,
     },
@@ -463,13 +480,13 @@ impl CharOutlook {
     ) -> (&'a SpriteResource, usize) {
         return match self {
             CharOutlook::Player {
-                job_id,
+                job_sprite_id,
                 head_index: _,
                 sex,
             } => {
                 let sprites = &sprites.character_sprites;
                 (
-                    &sprites[&job_id][*sex as usize],
+                    &sprites[&job_sprite_id][*sex as usize],
                     char_state.get_sprite_index(false),
                 )
             }
@@ -727,14 +744,64 @@ impl CharAttributeModifierCollector {
 pub enum Team {
     Left,
     Right,
+    Neutral,
+    EnemyForAll,
+    AllyForAll,
 }
 
 impl Team {
-    pub fn other(&self) -> Team {
+    pub fn is_ally_to(&self, other_team: Team) -> bool {
         match self {
-            Team::Left => Team::Right,
-            Team::Right => Team::Left,
+            Team::Left => match other_team {
+                Team::Left => true,
+                Team::Right => false,
+                Team::Neutral => false,
+                Team::EnemyForAll => false,
+                Team::AllyForAll => true,
+            },
+            Team::Right => match other_team {
+                Team::Left => false,
+                Team::Right => true,
+                Team::Neutral => false,
+                Team::EnemyForAll => false,
+                Team::AllyForAll => true,
+            },
+            Team::Neutral => false,
+            Team::EnemyForAll => false,
+            Team::AllyForAll => true,
         }
+    }
+
+    pub fn is_enemy_to(&self, other_team: Team) -> bool {
+        match self {
+            Team::Left => match other_team {
+                Team::Left => false,
+                Team::Right => true,
+                Team::Neutral => false,
+                Team::EnemyForAll => true,
+                Team::AllyForAll => false,
+            },
+            Team::Right => match other_team {
+                Team::Left => true,
+                Team::Right => false,
+                Team::Neutral => false,
+                Team::EnemyForAll => true,
+                Team::AllyForAll => false,
+            },
+            Team::Neutral => false,
+            Team::EnemyForAll => true,
+            Team::AllyForAll => false,
+        }
+    }
+
+    #[inline]
+    pub fn can_attack(&self, other: Team) -> bool {
+        !self.is_ally_to(other)
+    }
+
+    #[inline]
+    pub fn can_support(&self, other: Team) -> bool {
+        !self.is_enemy_to(other)
     }
 }
 
@@ -758,6 +825,7 @@ pub struct CharacterStateComponent {
     pub skill_cast_allowed_at: HashMap<Skills, ElapsedTime>,
     pub cannot_control_until: ElapsedTime,
     pub outlook: CharOutlook,
+    pub job_id: JobId,
     pub hp: i32,
     base_attributes: CharAttributes,
     calculated_attribs: CharAttributes,
@@ -776,23 +844,49 @@ impl Drop for CharacterStateComponent {
 
 impl CharacterStateComponent {
     pub fn update_base_attributes(&mut self, dev_configs: &DevConfig) {
-        self.base_attributes = Statuses::get_base_attributes(&self.typ, &self.outlook, dev_configs);
+        self.base_attributes = Statuses::get_base_attributes(self.job_id, dev_configs);
         self.recalc_attribs_based_on_statuses()
+    }
+
+    pub fn set_noncollidable(&self, physics_world: &mut PhysicEngine) {
+        if let Some(collider) = physics_world.colliders.get_mut(self.collider_handle) {
+            let mut cg = collider.collision_groups().clone();
+            cg.modify_membership(CollisionGroup::Player as usize, false);
+            cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, true);
+            collider.set_collision_groups(cg);
+        }
+        if let Some(body) = physics_world.bodies.get_mut(self.body_handle) {
+            body.set_status(BodyStatus::Kinematic);
+        }
+    }
+
+    pub fn set_collidable(&self, physics_world: &mut PhysicEngine) {
+        if let Some(collider) = physics_world.colliders.get_mut(self.collider_handle) {
+            let mut cg = collider.collision_groups().clone();
+            cg.modify_membership(CollisionGroup::Player as usize, true);
+            cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, false);
+            collider.set_collision_groups(cg);
+        }
+        if let Some(body) = physics_world.bodies.get_mut(self.body_handle) {
+            body.set_status(BodyStatus::Dynamic);
+        }
     }
 
     pub fn new(
         name: String,
         typ: CharType,
         outlook: CharOutlook,
+        job_id: JobId,
         team: Team,
         dev_configs: &DevConfig,
         radius: ComponentRadius,
         physics_component: (DefaultColliderHandle, DefaultBodyHandle),
     ) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let base_attributes = Statuses::get_base_attributes(&typ, &outlook, dev_configs);
+        let base_attributes = Statuses::get_base_attributes(job_id, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
+            job_id,
             name,
             pos: v2!(0, 0),
             team,
@@ -899,6 +993,24 @@ impl CharacterStateComponent {
         can_move_by_state
             && self.cannot_control_until.has_already_passed(sys_time)
             && self.statuses.can_move()
+    }
+
+    pub fn can_cast(&self, sys_time: ElapsedTime) -> bool {
+        let can_cast_by_state = match &self.state {
+            CharState::CastingSkill(_) => false,
+            CharState::Idle => true,
+            CharState::Walking(_pos) => true,
+            CharState::Sitting => true,
+            CharState::PickingItem => false,
+            CharState::StandBy => true,
+            CharState::Attacking { .. } => false,
+            CharState::ReceivingDamage => false,
+            CharState::Freeze => false,
+            CharState::Dead => false,
+        };
+        can_cast_by_state
+            && self.cannot_control_until.has_already_passed(sys_time)
+            && self.statuses.can_cast()
     }
 
     pub fn state(&self) -> &CharState {

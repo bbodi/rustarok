@@ -21,12 +21,12 @@ impl MinionAiSystem {
         [64, -204],  // left gate
     ];
 
-    pub fn get_closest_char_in_area(
+    pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         center: &WorldCoords,
         radius: f32,
-        team: Team,
+        self_team: Team,
         except: CharEntityId,
     ) -> Option<CharEntityId> {
         let mut ret = None;
@@ -36,7 +36,7 @@ impl MinionAiSystem {
             let entity_id = CharEntityId(entity_id);
             let pos = char_state.pos();
             if entity_id == except
-                || char_state.team != team
+                || !char_state.team.is_enemy_to(self_team)
                 || char_state.state().is_dead()
                 || (pos.x - center.x).abs() > radius
             {
@@ -101,12 +101,12 @@ impl<'a> specs::System<'a> for MinionAiSystem {
                 };
 
                 controller.next_action = if no_target_or_dead_or_out_of_range {
-                    let maybe_enemy = MinionAiSystem::get_closest_char_in_area(
+                    let maybe_enemy = MinionAiSystem::get_closest_enemy_in_area(
                         &entities,
                         &char_state_storage,
                         &char_state.pos(),
                         10.0,
-                        char_state.team.other(),
+                        char_state.team,
                         controller.controlled_entity,
                     );
                     match maybe_enemy {

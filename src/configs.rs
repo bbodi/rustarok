@@ -1,5 +1,6 @@
 use crate::components::char::CharAttributes;
 use crate::components::char::Percentage;
+use crate::components::controller::CastMode;
 use crate::components::skills::skill::SkillCastingAttributes;
 use serde::Deserialize;
 
@@ -60,6 +61,9 @@ pub struct DevConfig {
     pub console: DevConfigConsole,
     pub network: DevConfigNetwork,
     pub skills: SkillsConfig,
+    pub cast_mode: CastMode,
+    pub start_pos_x: f32,
+    pub start_pos_y: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +81,7 @@ pub struct SkillConfigFireWall {
 pub struct SkillConfigPyroBlast {
     pub moving_speed: f32,
     pub damage: u32,
+    pub secondary_damage: u32,
     pub ball_size: f32,
     pub splash_radius: f32,
     #[serde(flatten)]
@@ -136,6 +141,15 @@ pub struct AssaBladeDashSkillConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AssaPhasePrismSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub duration_seconds: f32,
+    pub swap_duration_unit_per_second: f32,
+    pub damage: u32,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SkillsConfig {
     pub firewall: SkillConfigFireWall,
     pub wiz_pyroblast: SkillConfigPyroBlast,
@@ -149,6 +163,7 @@ pub struct SkillsConfig {
     pub firebomb: FireBombSkillConfig,
     pub absorb_shield: AbsorbShieldSkillConfig,
     pub assa_blade_dash: AssaBladeDashSkillConfig,
+    pub assa_phase_prism: AssaPhasePrismSkillConfig,
 }
 
 impl DevConfig {

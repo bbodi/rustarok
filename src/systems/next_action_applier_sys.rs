@@ -192,7 +192,7 @@ impl NextActionApplierSystem {
             target_entity,
             distance,
         );
-        let can_move = char_state.can_move(now);
+        let can_move = char_state.can_cast(now);
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
             let casting_time_seconds = skill_cast_attrs.casting_time;
@@ -226,7 +226,7 @@ impl NextActionApplierSystem {
             return false;
         } else {
             log::debug!(
-                "Casting request for '{:?}' was rejected, allowed: {}, can_move: {}",
+                "Casting request for '{:?}' was rejected, allowed: {}, can_cast: {}",
                 skill,
                 allowed,
                 can_move

@@ -148,7 +148,7 @@ impl RenderUI {
             } else {
                 None
             };
-            let color = if self_char_state.team == char_state.team {
+            let color = if self_char_state.team.is_ally_to(char_state.team) {
                 &[0, 0, 255, 255]
             } else {
                 &[255, 0, 0, 255]

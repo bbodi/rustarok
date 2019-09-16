@@ -190,7 +190,7 @@ impl SkillManifestation for PushBackWallSkill {
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
                     if let Some(target_char) = char_storage.get(target_char_entity_id.0) {
-                        if target_char.team == self.team
+                        if !self.team.can_attack(target_char.team)
                             || !self
                                 .cannot_damage_until
                                 .get(&target_char_entity_id)

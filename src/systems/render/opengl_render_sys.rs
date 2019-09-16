@@ -9,7 +9,7 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
     create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, EffectFrameCacheKey,
-    RenderCommandCollector, UiLayer2d,
+    RenderCommandCollector, TextureSize, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -742,14 +742,16 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 for command in &render_commands.horizontal_texture_3d_commands {
                     shader.params.size.set(
                         gl,
-                        &[
-                            command.texture_width as f32
-                                * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                * command.scale,
-                            command.texture_height as f32
-                                * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                * command.scale,
-                        ],
+                        &match command.size {
+                            TextureSize::Scale(w, h, scale) => {
+                                // todo: store only scaled w and h
+                                [
+                                    w as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * scale,
+                                    h as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * scale,
+                                ]
+                            }
+                            TextureSize::FixSize(size) => [size, size],
+                        },
                     );
 
                     let model_matrix = create_3d_pos_rot_matrix(
@@ -813,6 +815,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             }
                             Some(Some(cached_frame)) => {
                                 shader.params.offset.set(gl, &cached_frame.offset);
+                                //                                shader.params.color.set(gl, &[255, 255, 255, 255]);
                                 shader.params.color.set(gl, &cached_frame.color);
                                 unsafe {
                                     gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
@@ -1065,33 +1068,34 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.text_2d_commands {
-                    let texture = self.text_cache.entry(command.text.clone()).or_insert(
-                        Video::create_text_texture_inner(
+                    if let Some(texture) = self.text_cache.get(&command.text) {
+                        let width = texture.width as f32;
+                        let height = texture.height as f32;
+                        unsafe {
+                            system_vars
+                                .gl
+                                .BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
+                        }
+                        shader
+                            .params
+                            .model_mat
+                            .set(gl, &create_2d_pos_rot_matrix(&command.screen_pos, 0.0));
+                        shader
+                            .params
+                            .z
+                            .set(gl, 0.01 * command.layer as usize as f32);
+                        shader.params.offset.set(gl, 0, 0);
+                        shader.params.size.set(gl, &[width, height]);
+                        shader.params.color.set(gl, &command.color);
+                        vertex_array_bind.draw(&system_vars.gl);
+                    } else {
+                        let texture = Video::create_text_texture_inner(
                             &system_vars.gl,
                             &self.fonts.normal_font,
                             &command.text,
-                        ),
-                    );
-
-                    let width = texture.width as f32;
-                    let height = texture.height as f32;
-                    unsafe {
-                        system_vars
-                            .gl
-                            .BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
-                    }
-                    shader
-                        .params
-                        .model_mat
-                        .set(gl, &create_2d_pos_rot_matrix(&command.screen_pos, 0.0));
-                    shader
-                        .params
-                        .z
-                        .set(gl, 0.01 * command.layer as usize as f32);
-                    shader.params.offset.set(gl, 0, 0);
-                    shader.params.size.set(gl, &[width, height]);
-                    shader.params.color.set(gl, &command.color);
-                    vertex_array_bind.draw(&system_vars.gl);
+                        );
+                        self.text_cache.insert(command.text.clone(), texture);
+                    };
                 }
             }
         }

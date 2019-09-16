@@ -4,6 +4,7 @@ use crate::components::skills::skill::Skills;
 use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
+use serde::Deserialize;
 use specs::prelude::*;
 use std::collections::HashMap;
 use strum_macros::EnumIter;
@@ -75,7 +76,7 @@ pub enum PlayerIntention {
     Casting(Skills, bool, WorldCoords),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug, Deserialize, Clone, Copy)]
 pub enum CastMode {
     /// Pressing the skill key moves you into target selection mode, then
     /// pressing LMB will cast the skill
@@ -135,7 +136,7 @@ impl ControllerComponent {
                 && my <= bounding_rect.bottom_left[1]
                 && my >= bounding_rect.top_right[1]
             {
-                if *entity_team == self_team {
+                if entity_team.is_ally_to(self_team) {
                     self.entities_below_cursor.add_friend(*entity_id);
                 } else {
                     self.entities_below_cursor.add_enemy(*entity_id);

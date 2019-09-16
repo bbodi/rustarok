@@ -11,6 +11,8 @@ use strum_macros::EnumString;
 pub enum MonsterId {
     Baphomet,
     Poring,
+    Barricade,
+    GEFFEN_MAGE_6,
 }
 
 #[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -28,29 +30,30 @@ pub enum JobId {
     PRIEST,
     MONK,
     GUNSLINGER,
+
+    TargetDummy,
+    HealingDummy,
+    MeleeMinion,
+    RangedMinion,
 }
 
-impl JobId {
-    pub fn get_job_sprite_id(&self) -> JobSpriteId {
-        match self {
-            JobId::WIZARD => JobSpriteId::WIZARD,
-            JobId::CRUSADER => JobSpriteId::CRUSADER,
-            JobId::SWORDMAN => JobSpriteId::SWORDMAN,
-            JobId::ARCHER => JobSpriteId::ARCHER,
-            JobId::ASSASSIN => JobSpriteId::ASSASSIN,
-            JobId::KNIGHT => JobSpriteId::KNIGHT,
-            JobId::SAGE => JobSpriteId::SAGE,
-            JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
-            JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
-            JobId::PRIEST => JobSpriteId::PRIEST,
-            JobId::MONK => JobSpriteId::MONK,
-            JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
-            JobId::ROGUE => JobSpriteId::ROGUE,
-        }
-    }
-}
+pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 13] = [
+    JobSpriteId::CRUSADER,
+    JobSpriteId::SWORDMAN,
+    JobSpriteId::ARCHER,
+    JobSpriteId::ASSASSIN,
+    JobSpriteId::ROGUE,
+    JobSpriteId::KNIGHT,
+    JobSpriteId::WIZARD,
+    JobSpriteId::SAGE,
+    JobSpriteId::ALCHEMIST,
+    JobSpriteId::BLACKSMITH,
+    JobSpriteId::PRIEST,
+    JobSpriteId::MONK,
+    JobSpriteId::GUNSLINGER,
+];
 
-#[derive(EnumIter, EnumString, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobSpriteId {
     NOVICE = 0,
     SWORDMAN = 1,

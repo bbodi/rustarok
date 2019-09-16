@@ -773,19 +773,29 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
 #[derive(Debug)]
 pub struct HorizontalTexture3dRenderCommand {
     pub color: [u8; 4],
-    pub scale: f32,
+    pub size: TextureSize,
     pub pos: Vector2<f32>,
     pub rotation_rad: f32,
     pub texture: GlNativeTextureId,
-    pub texture_width: u16,
-    pub texture_height: u16,
+}
+
+#[derive(Clone, Copy)]
+enum TextureSizeSetting {
+    Scale(f32),
+    FixSize(f32),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TextureSize {
+    Scale(u16, u16, f32),
+    FixSize(f32),
 }
 
 pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
     collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector2<f32>,
-    scale: f32,
+    size: TextureSizeSetting,
     rotation_rad: f32,
 }
 
@@ -795,7 +805,7 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
             collector,
             color: [255, 255, 255, 255],
             pos: Vector2::zeros(),
-            scale: 1.0,
+            size: TextureSizeSetting::Scale(1.0),
             rotation_rad: 0.0,
         }
     }
@@ -834,17 +844,25 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
     }
 
     pub fn scale(&'a mut self, scale: f32) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
-        self.scale = scale;
+        self.size = TextureSizeSetting::Scale(scale);
+        self
+    }
+
+    pub fn fix_size(&'a mut self, size: f32) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+        self.size = TextureSizeSetting::FixSize(size);
         self
     }
 
     pub fn add(&'a mut self, texture: &GlTexture) {
         let command = HorizontalTexture3dRenderCommand {
             color: self.color,
-            scale: self.scale,
+            size: match self.size {
+                TextureSizeSetting::Scale(scale) => {
+                    TextureSize::Scale(texture.width as u16, texture.height as u16, scale)
+                }
+                TextureSizeSetting::FixSize(size) => TextureSize::FixSize(size),
+            },
             texture: texture.id(),
-            texture_width: texture.width as u16,
-            texture_height: texture.height as u16,
             pos: self.pos,
             rotation_rad: self.rotation_rad,
         };

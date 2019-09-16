@@ -6,7 +6,7 @@ use crate::components::status::status::{
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::configs::DevConfig;
-use crate::consts::{JobId, MonsterId};
+use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::my_gl::Gl;
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
@@ -53,7 +53,8 @@ pub struct Sprites {
     pub cursors: SpriteResource,
     pub numbers: GlTexture,
     pub magic_target: GlTexture,
-    pub character_sprites: HashMap<JobId, [SpriteResource; 2]>,
+    pub fire_particle: GlTexture,
+    pub character_sprites: HashMap<JobSpriteId, [SpriteResource; 2]>,
     pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],
     pub monster_sprites: HashMap<MonsterId, SpriteResource>,

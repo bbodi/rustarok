@@ -333,7 +333,7 @@ impl RenderDesktopClientSystem {
             let color = char_state.statuses.calc_render_color(system_vars.time);
             match char_state.outlook {
                 CharOutlook::Player {
-                    job_id,
+                    job_sprite_id,
                     head_index,
                     sex,
                 } => {
@@ -341,15 +341,15 @@ impl RenderDesktopClientSystem {
                         let sprites = &system_vars.assets.sprites;
                         &sprites
                             .mounted_character_sprites
-                            .get(&job_id)
+                            .get(&char_state.job_id)
                             .and_then(|it| it.get(sex as usize))
                             .unwrap_or_else(|| {
                                 let sprites = &system_vars.assets.sprites.character_sprites;
-                                &sprites[&job_id][sex as usize]
+                                &sprites[&job_sprite_id][sex as usize]
                             })
                     } else {
                         let sprites = &system_vars.assets.sprites.character_sprites;
-                        &sprites[&job_id][sex as usize]
+                        &sprites[&job_sprite_id][sex as usize]
                     };
                     let play_mode = if char_state.state().is_dead() {
                         ActionPlayMode::PlayThenHold
@@ -369,11 +369,12 @@ impl RenderDesktopClientSystem {
                             &controller.controller.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
-                            let color = if controller.controlled_char.team == char_state.team {
-                                &[0, 0, 255, 179]
-                            } else {
-                                &[255, 0, 0, 179]
-                            };
+                            let color =
+                                if controller.controlled_char.team.is_ally_to(char_state.team) {
+                                    &[0, 0, 255, 179]
+                                } else {
+                                    &[255, 0, 0, 179]
+                                };
                             let body_pos_offset = render_single_layer_action(
                                 system_vars.time,
                                 &animated_sprite,
@@ -458,7 +459,7 @@ impl RenderDesktopClientSystem {
                                 .unwrap_or(false),
                             controller
                                 .as_ref()
-                                .map(|it| it.controlled_char.team == char_state.team)
+                                .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
                             system_vars.time,
@@ -493,11 +494,12 @@ impl RenderDesktopClientSystem {
                             &controller.controller.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
-                            let color = if controller.controlled_char.team == char_state.team {
-                                &[0, 0, 255, 179]
-                            } else {
-                                &[255, 0, 0, 179]
-                            };
+                            let color =
+                                if controller.controlled_char.team.is_ally_to(char_state.team) {
+                                    &[0, 0, 255, 179]
+                                } else {
+                                    &[255, 0, 0, 179]
+                                };
                             let _pos_offset = render_single_layer_action(
                                 system_vars.time,
                                 &animated_sprite,
@@ -542,7 +544,7 @@ impl RenderDesktopClientSystem {
                                 .unwrap_or(false),
                             controller
                                 .as_ref()
-                                .map(|it| it.controlled_char.team == char_state.team)
+                                .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
                             system_vars.time,
@@ -785,6 +787,10 @@ pub fn render_single_layer_action<'a>(
         }
     };
     let frame = &action.frames[frame_index];
+    if frame.layers.is_empty() {
+        // e.g. not every sprite has death status
+        return [0, 0];
+    }
 
     let layer = &frame.layers[0];
 
@@ -1161,7 +1167,7 @@ impl DamageRenderSystem {
         let is_friend = char_state_storage
             .get(number.target_entity_id.0)
             .and_then(|target| {
-                desktop_entity_team.map(|controller_team| controller_team == target.team)
+                desktop_entity_team.map(|controller_team| controller_team.is_ally_to(target.team))
             })
             .unwrap_or(true);
         let size_mult = if desktop_entity_id == number.target_entity_id

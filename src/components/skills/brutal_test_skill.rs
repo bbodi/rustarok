@@ -173,6 +173,7 @@ impl SkillManifestation for BrutalSkillManifest {
                 area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                 source_entity_id: self.caster_entity_id,
                 typ: AttackType::SpellDamage(600, DamageDisplayType::Combo(10)),
+                except: None,
             });
         }
     }

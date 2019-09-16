@@ -12,12 +12,10 @@ use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType};
-use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::SystemVariables;
-use nphysics2d::object::Body;
-use nphysics2d::object::BodyStatus;
 
 pub struct AssaBladeDashSkill;
 
@@ -41,16 +39,7 @@ impl SkillDef for AssaBladeDashSkill {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> Option<Box<dyn SkillManifestation>> {
         // allow to go through anything
-        if let Some(collider) = physics_world.colliders.get_mut(caster.collider_handle) {
-            let mut cg = collider.collision_groups().clone();
-            cg.modify_membership(CollisionGroup::Player as usize, false);
-            cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, true);
-            collider.set_collision_groups(cg);
-        }
-
-        if let Some(body) = physics_world.bodies.get_mut(caster.body_handle) {
-            body.set_status(BodyStatus::Kinematic);
-        }
+        caster.set_noncollidable(physics_world);
 
         let angle = char_to_skill_dir.angle(&Vector2::y());
         let angle = if char_to_skill_dir.x > 0.0 {
@@ -58,6 +47,7 @@ impl SkillDef for AssaBladeDashSkill {
         } else {
             -angle
         };
+        let configs = &system_vars.dev_configs.skills.assa_blade_dash;
         system_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
@@ -66,31 +56,12 @@ impl SkillDef for AssaBladeDashSkill {
                 Box::new(AssaBladeDashStatus {
                     caster_entity_id,
                     started_at: system_vars.time,
-                    ends_at: system_vars.time.add_seconds(
-                        system_vars
-                            .dev_configs
-                            .skills
-                            .assa_blade_dash
-                            .duration_seconds,
-                    ),
+                    ends_at: system_vars.time.add_seconds(configs.duration_seconds),
                     start_pos: caster.pos(),
                     center: caster.pos()
-                        + char_to_skill_dir
-                            * (system_vars
-                                .dev_configs
-                                .skills
-                                .assa_blade_dash
-                                .attributes
-                                .casting_range
-                                / 2.0),
+                        + char_to_skill_dir * (configs.attributes.casting_range / 2.0),
                     rot_radian: angle,
-                    vector: char_to_skill_dir
-                        * system_vars
-                            .dev_configs
-                            .skills
-                            .assa_blade_dash
-                            .attributes
-                            .casting_range,
+                    vector: char_to_skill_dir * configs.attributes.casting_range,
                     shadow1_pos: Vector2::zeros(),
                     shadow2_pos: Vector2::zeros(),
                     forward_damage_done: false,
@@ -129,6 +100,10 @@ impl Status for AssaBladeDashStatus {
         false
     }
 
+    fn can_target_cast(&self) -> bool {
+        true
+    }
+
     fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
         [0, 0, 0, 0]
     }
@@ -143,15 +118,9 @@ impl Status for AssaBladeDashStatus {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
+            let configs = &system_vars.dev_configs.skills.assa_blade_dash;
             if self.ends_at.has_already_passed(system_vars.time) {
-                body.set_status(BodyStatus::Dynamic);
-                if let Some(collider) = physics_world.colliders.get_mut(char_state.collider_handle)
-                {
-                    let mut cg = collider.collision_groups().clone();
-                    cg.modify_membership(CollisionGroup::Player as usize, true);
-                    cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, false);
-                    collider.set_collision_groups(cg);
-                }
+                char_state.set_collidable(physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
                 let duration_percentage = system_vars
@@ -170,36 +139,43 @@ impl Status for AssaBladeDashStatus {
                         self.start_pos + self.vector * (backward_perc + 0.2).min(1.0);
                     self.start_pos + self.vector * backward_perc
                 };
+                body.set_position(Isometry2::translation(pos.x, pos.y));
+
                 if !self.forward_damage_done && duration_percentage > 0.25 {
-                    let conf = &system_vars.dev_configs.skills.assa_blade_dash;
                     system_vars.area_attacks.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
-                                conf.attributes.width.unwrap_or(1.0),
-                                conf.attributes.casting_range,
+                                configs.attributes.width.unwrap_or(1.0),
+                                configs.attributes.casting_range,
                             ) / 2.0,
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(conf.first_damage, DamageDisplayType::SingleNumber),
+                        typ: AttackType::Basic(
+                            configs.first_damage,
+                            DamageDisplayType::SingleNumber,
+                        ),
+                        except: None,
                     });
                     self.forward_damage_done = true;
                 } else if !self.backward_damage_done && duration_percentage > 0.75 {
-                    let conf = &system_vars.dev_configs.skills.assa_blade_dash;
                     system_vars.area_attacks.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
-                                conf.attributes.width.unwrap_or(1.0),
-                                conf.attributes.casting_range,
+                                configs.attributes.width.unwrap_or(1.0),
+                                configs.attributes.casting_range,
                             ) / 2.0,
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(conf.second_damage, DamageDisplayType::SingleNumber),
+                        typ: AttackType::Basic(
+                            configs.second_damage,
+                            DamageDisplayType::SingleNumber,
+                        ),
+                        except: None,
                     });
                     self.backward_damage_done = true;
                 }
-                body.set_position(Isometry2::translation(pos.x, pos.y));
                 StatusUpdateResult::KeepIt
             }
         } else {
@@ -224,13 +200,13 @@ impl Status for AssaBladeDashStatus {
             / 2.0;
         match char_state.outlook {
             CharOutlook::Player {
-                job_id,
+                job_sprite_id,
                 head_index,
                 sex,
             } => {
                 let body_sprite = {
                     let sprites = &system_vars.assets.sprites.character_sprites;
-                    &sprites[&job_id][sex as usize]
+                    &sprites[&job_sprite_id][sex as usize]
                 };
                 let head_res = {
                     let sprites = &system_vars.assets.sprites.head_sprites;

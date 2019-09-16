@@ -268,7 +268,7 @@ impl InputToNextActionSystem {
         {
             let ent_is_dead_or_friend = char_state_storage
                 .get(entity_below_cursor.0)
-                .map(|it| !it.state().is_alive() || it.team == self_team)
+                .map(|it| !it.state().is_alive() || it.team.is_ally_to(self_team))
                 .unwrap_or(false);
             if entity_below_cursor == controller.controlled_entity || ent_is_dead_or_friend {
                 // self or dead

@@ -3,7 +3,6 @@ use crate::common::p3_to_p2;
 use crate::components::char::{
     attach_char_components, create_physics_component, ActionPlayMode, CharOutlook, CharState,
     CharType, CharacterStateComponent, ComponentRadius, NpcComponent,
-    SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
@@ -22,7 +21,7 @@ use crate::components::{
     AttackComponent, AttackType, BrowserClient, DamageDisplayType, MinionComponent,
     StrEffectComponent,
 };
-use crate::consts::{JobId, MonsterId};
+use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::effect::StrEffectId;
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
@@ -30,7 +29,7 @@ use crate::systems::console_system::{
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::{Sex, SystemVariables};
-use crate::{CharActionIndex, CollisionGroup, ElapsedTime, PhysicEngine};
+use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Point2};
 use nalgebra::{Point3, Vector2};
 use rand::Rng;
@@ -53,12 +52,9 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
     }
 }
 
-pub(super) fn cmd_set_class() -> CommandDefinition {
-    let outlook_names = JobId::iter()
-        .map(|it| format!("{:?}", it))
-        .collect::<Vec<_>>();
+pub(super) fn cmd_set_outlook() -> CommandDefinition {
     CommandDefinition {
-        name: "set_class".to_string(),
+        name: "set_outlook".to_string(),
         arguments: vec![
             ("class_name", CommandParamType::String, true),
             ("[username]", CommandParamType::String, false),
@@ -68,7 +64,10 @@ pub(super) fn cmd_set_class() -> CommandDefinition {
                 if index == 0 {
                     Some(
                         [
-                            JobId::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
+                            PLAYABLE_CHAR_SPRITES
+                                .iter()
+                                .map(|it| (*it).to_string())
+                                .collect::<Vec<_>>(),
                             MonsterId::iter()
                                 .map(|it| it.to_string())
                                 .collect::<Vec<_>>(),
@@ -94,30 +93,11 @@ pub(super) fn cmd_set_class() -> CommandDefinition {
                     .write_storage::<CharacterStateComponent>()
                     .get_mut(target_char_id.0)
                 {
-                    let job_id = JobId::from_str(job_name);
-                    if let Ok(job_id) = job_id {
-                        target_char.outlook = match target_char.outlook {
-                            CharOutlook::Player {
-                                job_id: _old_job_id,
-                                head_index,
-                                sex,
-                            } => CharOutlook::Player {
-                                job_id,
-                                head_index,
-                                sex,
-                            },
-                            CharOutlook::Monster(_) => CharOutlook::Player {
-                                job_id,
-                                head_index: 0,
-                                sex: Sex::Male,
-                            },
-                        };
-                        Ok(())
-                    } else if let Ok(monster_id) = MonsterId::from_str(job_name) {
-                        target_char.outlook = CharOutlook::Monster(monster_id);
+                    if let Some(outlook) = get_outlook(job_name, Some(&target_char.outlook)) {
+                        target_char.outlook = outlook;
                         Ok(())
                     } else {
-                        Err("Invalid JobId/MonsterId".to_owned())
+                        return Err("Invalid JobId/MonsterId".to_owned());
                     }
                 } else {
                     Err(format!(
@@ -132,22 +112,46 @@ pub(super) fn cmd_set_class() -> CommandDefinition {
     }
 }
 
+fn get_outlook(name: &str, current_outlook: Option<&CharOutlook>) -> Option<CharOutlook> {
+    if let Ok(job_sprite_id) = JobSpriteId::from_str(name) {
+        Some(match current_outlook {
+            Some(CharOutlook::Player {
+                job_sprite_id: _old_job_sprite_id,
+                head_index,
+                sex,
+            }) => CharOutlook::Player {
+                job_sprite_id,
+                head_index: *head_index,
+                sex: *sex,
+            },
+            _ => CharOutlook::Player {
+                job_sprite_id,
+                head_index: 0,
+                sex: Sex::Male,
+            },
+        })
+    } else if let Ok(monster_id) = MonsterId::from_str(name) {
+        Some(CharOutlook::Monster(monster_id))
+    } else {
+        None
+    }
+}
+
 pub(super) fn cmd_list_entities() -> CommandDefinition {
     CommandDefinition {
         name: "list_entities".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
         action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
-            let mut entities = HashMap::with_capacity(32);
-            entities.insert("all", 0);
-            entities.insert("left_team", 0);
-            entities.insert("right_team", 0);
-            entities.insert("merc_melee", 0);
-            entities.insert("merc_range", 0);
-            entities.insert("baphomet", 0);
-            entities.insert("poring", 0);
-            entities.insert("npc", 0);
-            entities.insert("player", 0);
+            let mut entities = HashMap::<String, u32>::with_capacity(32);
+            entities.insert("all".to_owned(), 0);
+            entities.insert("left_team".to_owned(), 0);
+            entities.insert("right_team".to_owned(), 0);
+            entities.insert("npc".to_owned(), 0);
+            entities.insert("player".to_owned(), 0);
+            for job_id in JobId::iter() {
+                entities.insert(job_id.to_string(), 0);
+            }
             for (entity_id, char_state) in (
                 &ecs_world.entities(),
                 &ecs_world.read_storage::<CharacterStateComponent>(),
@@ -160,23 +164,8 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
                 } else {
                     *entities.get_mut("right_team").unwrap() += 1;
                 }
-                if let CharOutlook::Player {
-                    job_id: JobId::SWORDMAN,
-                    ..
-                } = char_state.outlook
-                {
-                    *entities.get_mut("merc_melee").unwrap() += 1;
-                } else if let CharOutlook::Player {
-                    job_id: JobId::ARCHER,
-                    ..
-                } = char_state.outlook
-                {
-                    *entities.get_mut("merc_range").unwrap() += 1;
-                } else if let CharOutlook::Monster(MonsterId::Baphomet) = char_state.outlook {
-                    *entities.get_mut("baphomet").unwrap() += 1;
-                } else if let CharOutlook::Monster(MonsterId::Poring) = char_state.outlook {
-                    *entities.get_mut("poring").unwrap() += 1;
-                }
+                *entities.get_mut(&char_state.job_id.to_string()).unwrap() += 1;
+
                 if ecs_world
                     .read_storage::<HumanInputComponent>()
                     .get(entity_id)
@@ -206,23 +195,21 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
 pub(super) fn cmd_kill_all() -> CommandDefinition {
     CommandDefinition {
         name: "kill_all".to_string(),
-        arguments: vec![("type", CommandParamType::String, true)],
+        arguments: vec![("[type=all]", CommandParamType::String, false)],
         autocompletion: BasicAutocompletionProvider::new(|index| match index {
-            0 => Some(vec![
-                "all".to_owned(),
-                "left_team".to_owned(),
-                "right_team".to_owned(),
-                "merc_melee".to_owned(),
-                "merc_range".to_owned(),
-                "baphomet".to_owned(),
-                "poring".to_owned(),
-                "npc".to_owned(),
-                "player".to_owned(),
-            ]),
+            0 => Some(
+                [
+                    vec!["all".to_owned(), "npc".to_owned(), "player".to_owned()],
+                    MonsterId::iter()
+                        .map(|it| it.to_string())
+                        .collect::<Vec<_>>(),
+                ]
+                .concat(),
+            ),
             _ => None,
         }),
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let type_name = args.as_str(0).unwrap();
+            let type_name = args.as_str(0).unwrap_or("all");
             let mut entity_ids = Vec::with_capacity(32);
             for (entity_id, char_state) in (
                 &ecs_world.entities(),
@@ -235,34 +222,6 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                     "all" => true,
                     "left_team" => char_state.team == Team::Left,
                     "right_team" => char_state.team == Team::Right,
-                    "merc_melee" => match char_state.outlook {
-                        CharOutlook::Player {
-                            job_id: JobId::SWORDMAN,
-                            ..
-                        } => true,
-                        _ => false,
-                    },
-                    "merc_range" => match char_state.outlook {
-                        CharOutlook::Player {
-                            job_id: JobId::ARCHER,
-                            ..
-                        } => true,
-                        _ => false,
-                    },
-                    "baphomet" => {
-                        if let CharOutlook::Monster(MonsterId::Baphomet) = char_state.outlook {
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    "poring" => {
-                        if let CharOutlook::Monster(MonsterId::Poring) = char_state.outlook {
-                            true
-                        } else {
-                            false
-                        }
-                    }
                     "npc" => ecs_world
                         .read_storage::<HumanInputComponent>()
                         .get(entity_id.0)
@@ -271,7 +230,13 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                         .read_storage::<HumanInputComponent>()
                         .get(entity_id.0)
                         .is_some(),
-                    _ => false,
+                    _ => {
+                        if let Ok(job_id) = JobId::from_str(type_name) {
+                            char_state.job_id == job_id
+                        } else {
+                            false
+                        }
+                    }
                 };
                 if need_delete && entity_id != self_char_id {
                     entity_ids.push(entity_id);
@@ -297,15 +262,30 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             ("type", CommandParamType::String, true),
             ("team", CommandParamType::String, true),
             ("[count:1]", CommandParamType::Int, false),
+            ("[x]", CommandParamType::Int, false),
+            ("[y]", CommandParamType::Int, false),
+            ("[outlook]", CommandParamType::String, false),
         ],
         autocompletion: BasicAutocompletionProvider::new(|index| match index {
             0 => Some(vec![
-                "merc_melee".to_owned(),
-                "merc_range".to_owned(),
-                "baphomet".to_owned(),
-                "poring".to_owned(),
+                "minion_melee".to_owned(),
+                "minion_ranged".to_owned(),
+                "dummy_enemy".to_owned(),
+                "dummy_ally".to_owned(),
             ]),
             1 => Some(vec!["left".to_owned(), "right".to_owned()]),
+            2 => Some(
+                [
+                    PLAYABLE_CHAR_SPRITES
+                        .iter()
+                        .map(|it| it.to_string())
+                        .collect::<Vec<_>>(),
+                    MonsterId::iter()
+                        .map(|it| it.to_string())
+                        .collect::<Vec<_>>(),
+                ]
+                .concat(),
+            ),
             _ => None,
         }),
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
@@ -315,8 +295,9 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                 _ => Team::Right,
             };
             let count = args.as_int(2).unwrap_or(1);
-            for _ in 0..count {
-                let pos = {
+            let pos = match (args.as_int(3), args.as_int(4)) {
+                (Some(x), Some(y)) => p3!(x, 0.5, y),
+                _ => {
                     let map_render_data =
                         &ecs_world.read_resource::<SystemVariables>().map_render_data;
                     let hero_pos = {
@@ -338,27 +319,27 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                         }
                     };
                     p3!(x, 0.5, -y)
-                };
+                }
+            };
+            let outlook = args
+                .as_str(5)
+                .and_then(|outlook| get_outlook(outlook, None));
+
+            for _ in 0..count {
                 let pos2d = p3_to_p2(&pos);
-                let mut rng = rand::thread_rng();
                 match type_name {
-                    "baphomet" | "poring" => {
-                        let char_entity_id = create_monster(
+                    "minion_melee" | "minion_ranged" => {
+                        let job_id = if type_name == "minion_melee" {
+                            JobId::MeleeMinion
+                        } else {
+                            JobId::RangedMinion
+                        };
+                        let char_entity_id = create_random_char_minion(
                             ecs_world,
                             pos2d,
-                            match type_name {
-                                "baphomet" => MonsterId::Baphomet,
-                                "poring" => MonsterId::Poring,
-                                _ => MonsterId::Poring,
-                            },
-                            rng.gen_range(1, 3),
                             team,
-                            CharType::Mercenary,
-                            CollisionGroup::Player,
-                            &[
-                                CollisionGroup::NonPlayer,
-                                CollisionGroup::NonCollidablePlayer,
-                            ],
+                            job_id,
+                            outlook.clone(),
                         );
                         ecs_world
                             .create_entity()
@@ -366,20 +347,15 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             .with(MinionComponent { fountain_up: false })
                             .build();
                     }
-                    _ => {
-                        let job_id = if type_name == "merc_melee" {
-                            JobId::SWORDMAN
-                        } else {
-                            JobId::ARCHER
-                        };
-                        let char_entity_id =
-                            create_random_char_minion(ecs_world, pos2d, team, job_id);
-                        ecs_world
-                            .create_entity()
-                            .with(ControllerComponent::new(char_entity_id))
-                            .with(MinionComponent { fountain_up: false })
-                            .build();
+                    "dummy_enemy" => {
+                        let _char_entity_id =
+                            create_dummy(ecs_world, pos2d, JobId::TargetDummy, outlook.clone());
                     }
+                    "dummy_ally" => {
+                        let _char_entity_id =
+                            create_dummy(ecs_world, pos2d, JobId::HealingDummy, outlook.clone());
+                    }
+                    _ => {}
                 }
             }
 
@@ -388,56 +364,47 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
     }
 }
 
-pub fn create_monster(
-    ecs_world: &mut specs::world::World,
+fn create_dummy(
+    ecs_world: &mut World,
     pos2d: Point2<f32>,
-    monster_id: MonsterId,
-    radius: i32,
-    team: Team,
-    typ: CharType,
-    collision_group: CollisionGroup,
-    blacklist_coll_groups: &[CollisionGroup],
+    job_id: JobId,
+    outlook: Option<CharOutlook>,
 ) -> CharEntityId {
-    let entity_id = {
-        let entity_id = CharEntityId(ecs_world.create_entity().build());
-        let physics_component = {
-            let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-            create_physics_component(
-                physics_world,
-                pos2d.coords,
-                ComponentRadius(radius),
-                entity_id,
-                collision_group,
-                blacklist_coll_groups,
-            )
-        };
-        ecs_world.write_storage().insert(
-            entity_id.0,
-            CharacterStateComponent::new(
-                "monster".to_owned(),
-                typ,
-                CharOutlook::Monster(monster_id),
-                team,
-                &ecs_world.read_resource::<SystemVariables>().dev_configs,
-                ComponentRadius(radius),
-                physics_component,
-            ),
-        );
-        ecs_world.write_storage().insert(
-            entity_id.0,
-            SpriteRenderDescriptorComponent {
-                action_index: CharActionIndex::Idle as usize,
-                animation_started: ElapsedTime(0.0),
-                animation_ends_at: ElapsedTime(0.0),
-                forced_duration: None,
-                direction: 0,
-                fps_multiplier: 1.0,
-            },
-        );
-        ecs_world.write_storage().insert(entity_id.0, NpcComponent);
-        entity_id
-    };
-    return entity_id;
+    let entity_id = CharEntityId(ecs_world.create_entity().build());
+    //    ecs_world
+    //        .read_resource::<LazyUpdate>()
+    //        .insert(entity_id.0, NpcComponent);
+    attach_char_components(
+        if job_id == JobId::HealingDummy {
+            "Healing Dummy".to_owned()
+        } else {
+            "Target Dummy".to_owned()
+        },
+        entity_id,
+        &ecs_world.read_resource::<LazyUpdate>(),
+        &mut ecs_world.write_resource::<PhysicEngine>(),
+        pos2d,
+        outlook.unwrap_or(if job_id == JobId::HealingDummy {
+            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
+        } else {
+            CharOutlook::Monster(MonsterId::Barricade)
+        }),
+        job_id,
+        1,
+        if job_id == JobId::HealingDummy {
+            Team::AllyForAll
+        } else {
+            Team::EnemyForAll
+        },
+        CharType::Player,
+        CollisionGroup::Player,
+        &[
+            CollisionGroup::NonPlayer,
+            CollisionGroup::NonCollidablePlayer,
+        ],
+        &ecs_world.read_resource::<SystemVariables>().dev_configs,
+    );
+    entity_id
 }
 
 fn create_random_char_minion(
@@ -445,6 +412,7 @@ fn create_random_char_minion(
     pos2d: Point2<f32>,
     team: Team,
     job_id: JobId,
+    outlook: Option<CharOutlook>,
 ) -> CharEntityId {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
@@ -469,9 +437,16 @@ fn create_random_char_minion(
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
-        sex,
+        outlook.unwrap_or(CharOutlook::Player {
+            sex,
+            job_sprite_id: if job_id == JobId::MeleeMinion {
+                JobSpriteId::SWORDMAN
+            } else {
+                JobSpriteId::ARCHER
+            },
+            head_index: rng.gen::<usize>() % head_count,
+        }),
         job_id,
-        rng.gen::<usize>() % head_count,
         1,
         team,
         CharType::Minion,
@@ -582,6 +557,22 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
                     ),
                 );
             }
+            Ok(())
+        }),
+    }
+}
+
+pub(super) fn cmd_clear() -> CommandDefinition {
+    CommandDefinition {
+        name: "clear".to_string(),
+        arguments: vec![],
+        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
+            ecs_world
+                .write_storage::<ConsoleComponent>()
+                .get_mut(self_controller_id.0)
+                .unwrap()
+                .clear();
             Ok(())
         }),
     }
@@ -777,6 +768,7 @@ fn create_status_payload(
                 started: now,
                 until: now.add_seconds(time as f32 / 1000.0),
                 damage: value.max(1) as u32,
+                spread_count: 0,
             },
         ))),
         "poison" => Ok(ApplyStatusComponentPayload::from_main_status(

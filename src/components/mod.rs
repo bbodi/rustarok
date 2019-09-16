@@ -217,6 +217,7 @@ pub struct AreaAttackComponent {
     pub area_isom: Isometry2<f32>,
     pub source_entity_id: CharEntityId,
     pub typ: AttackType,
+    pub except: Option<CharEntityId>,
 }
 
 #[derive(Debug)]

@@ -5,6 +5,7 @@ use crate::video::GlTexture;
 use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::ByteWriter;
 use std::collections::HashMap;
+use std::path::Path;
 
 pub struct StrFile {
     pub max_key: u32,
@@ -128,7 +129,9 @@ impl StrFile {
                     .map(|_i| {
                         let texture_name = buf.string(128);
                         if !texture_names_to_index.contains_key(&texture_name) {
-                            let path = format!("data\\texture\\effect\\{}", texture_name);
+                            let effect_file = format!("data\\texture\\effect\\{}.str", str_name);
+                            let root = Path::new(&effect_file).parent().unwrap();
+                            let path = format!("{}\\{}", root.to_str().unwrap(), texture_name);
                             let surface = asset_loader.load_sdl_surface(&path);
                             let surface = surface.unwrap_or_else(|e| {
                                 log::warn!(

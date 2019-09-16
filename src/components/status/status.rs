@@ -1,6 +1,6 @@
 use crate::components::char::{
     ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
-    CharOutlook, CharType, CharacterStateComponent, Percentage,
+    CharacterStateComponent, Percentage,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
@@ -24,6 +24,7 @@ use strum_macros::EnumCount;
 pub enum StatusStackingResult {
     DontAddTheNewStatus,
     AddTheNewStatus,
+    Replace,
 }
 
 pub trait Status: Any {
@@ -143,6 +144,19 @@ impl Statuses {
         return allow;
     }
 
+    pub fn can_cast(&self) -> bool {
+        let mut allow = true;
+        for status in self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            allow &= status.as_ref().unwrap().lock().unwrap().can_target_cast();
+        }
+        return allow;
+    }
+
     pub fn can_be_controlled(&self) -> bool {
         let mut allow = true;
         for status in self
@@ -257,66 +271,42 @@ impl Statuses {
         }
     }
 
-    pub fn get_base_attributes(
-        typ: &CharType,
-        outlook: &CharOutlook,
-        configs: &DevConfig,
-    ) -> CharAttributes {
-        return match typ {
-            CharType::Player => match outlook {
-                CharOutlook::Player { job_id, .. } => match job_id {
-                    JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
-                    _ => configs.stats.player.crusader.attributes.clone(),
-                },
-                CharOutlook::Monster(_) => CharAttributes {
-                    walking_speed: Percentage(100),
-                    attack_range: Percentage(100),
-                    attack_speed: Percentage(100),
-                    attack_damage: 76,
-                    armor: Percentage(10),
-                    healing: Percentage(100),
-                    hp_regen: Percentage(100),
-                    max_hp: 2000,
-                    mana_regen: Percentage(100),
-                },
+    pub fn get_base_attributes(job_id: JobId, configs: &DevConfig) -> CharAttributes {
+        return match job_id {
+            JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
+            JobId::RangedMinion => configs.stats.minion.ranged.clone(),
+            JobId::HealingDummy => CharAttributes {
+                walking_speed: Percentage(0),
+                attack_range: Percentage(0),
+                attack_speed: Percentage(0),
+                attack_damage: 0,
+                armor: Percentage(0),
+                healing: Percentage(100),
+                hp_regen: Percentage(0),
+                max_hp: 1_000_000,
+                mana_regen: Percentage(0),
             },
-            CharType::Minion => match outlook {
-                CharOutlook::Player { job_id, .. } => match job_id {
-                    JobId::ARCHER => configs.stats.minion.ranged.clone(),
-                    _ => configs.stats.minion.melee.clone(),
-                },
-                CharOutlook::Monster(_) => CharAttributes {
-                    walking_speed: Percentage(100),
-                    attack_range: Percentage(100),
-                    attack_speed: Percentage(100),
-                    attack_damage: 76,
-                    armor: Percentage(10),
-                    healing: Percentage(100),
-                    hp_regen: Percentage(100),
-                    max_hp: 2000,
-                    mana_regen: Percentage(100),
-                },
+            JobId::TargetDummy => CharAttributes {
+                walking_speed: Percentage(0),
+                attack_range: Percentage(0),
+                attack_speed: Percentage(0),
+                attack_damage: 0,
+                armor: Percentage(0),
+                healing: Percentage(100),
+                hp_regen: Percentage(0),
+                max_hp: 1_000_000,
+                mana_regen: Percentage(0),
             },
-            CharType::Boss => CharAttributes {
+            JobId::MeleeMinion => configs.stats.minion.melee.clone(),
+            _ => CharAttributes {
                 walking_speed: Percentage(100),
                 attack_range: Percentage(100),
                 attack_speed: Percentage(100),
-                attack_damage: 200,
+                attack_damage: 76,
                 armor: Percentage(10),
                 healing: Percentage(100),
                 hp_regen: Percentage(100),
-                max_hp: 100_000,
-                mana_regen: Percentage(100),
-            },
-            CharType::Mercenary => CharAttributes {
-                walking_speed: Percentage(130),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(200),
-                attack_damage: 300,
-                armor: Percentage(20),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
-                max_hp: 3000,
+                max_hp: 2000,
                 mana_regen: Percentage(100),
             },
         };

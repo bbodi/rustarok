@@ -8,5 +8,6 @@ quick_startup = false
 grf_paths = [
   "d:\\Games\\TalonRO\\rdata.grf",
   "d:\\Games\\TalonRO\\sdata.grf",
-  "d:\\Games\\TalonRO\\tdata.grf"
+  "d:\\Games\\TalonRO\\tdata.grf",
+  "d:\\Games\\TalonRO\\gepard.grf",
 ]

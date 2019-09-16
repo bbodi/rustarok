@@ -1,6 +1,11 @@
 
-sleep_ms = 0
+sleep_ms = 5
 minions_enabled = false
+# aka quick cast, Normal, OnKeyRelease, OnKeyPress
+cast_mode = "OnKeyPress"
+# right gate: 250.0, -200.0
+start_pos_x = 238
+start_pos_y = -65
 
 [network]
     send_render_data_every_nth_frame = 1
@@ -24,9 +29,10 @@ minions_enabled = false
         cast_delay = 3.0
         casting_range = 12
         damage = 2000
+        secondary_damage = 1000
         moving_speed = 9
         ball_size = 2
-        splash_radius = 1.0
+        splash_radius = 3.0
 
     [skills.heal]
         casting_time = 0.0
@@ -83,11 +89,20 @@ minions_enabled = false
     [skills.assa_blade_dash]
         casting_time = 0.0
         cast_delay = 0.0
-        casting_range = 6
+        casting_range = 8
         width = 3
         duration_seconds = 1.0
         first_damage = 100
         second_damage = 200
+
+    [skills.assa_phase_prism]
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 7.8
+        width = 1
+        duration_seconds = 1.0
+        swap_duration_unit_per_second = 0.08
+        damage = 100
 
 [stats]
     [stats.minion]

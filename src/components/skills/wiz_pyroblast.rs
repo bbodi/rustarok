@@ -1,4 +1,4 @@
-use nalgebra::Vector2;
+use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, Entity, LazyUpdate, ReadStorage};
 
 use crate::components::char::{
@@ -9,7 +9,9 @@ use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
-use crate::components::{AttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, AttackComponent, AttackType, DamageDisplayType, StrEffectComponent,
+};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -86,8 +88,9 @@ impl SkillDef for WizPyroBlastSkill {
                 .horizontal_texture_3d()
                 .pos(&target_char.pos())
                 .rotation_rad(3.14 * casting_percentage)
-                .scale(
+                .fix_size(
                     (system_vars.dev_configs.skills.wiz_pyroblast.splash_radius
+                        * 2.0
                         * casting_percentage)
                         .max(0.5),
                 )
@@ -168,18 +171,28 @@ impl SkillManifestation for PyroBlastManifest {
             let target_pos = target_char.pos();
             let dir_vector = target_pos - self.pos;
             let distance = dir_vector.magnitude();
+            let configs = &system_vars.dev_configs.skills.wiz_pyroblast;
             if distance > 2.0 {
                 let dir_vector = dir_vector.normalize();
-                self.pos = self.pos
-                    + (dir_vector
-                        * system_vars.dt.0
-                        * system_vars.dev_configs.skills.wiz_pyroblast.moving_speed);
+                self.pos = self.pos + (dir_vector * system_vars.dt.0 * configs.moving_speed);
             } else {
                 updater.remove::<SkillManifestationComponent>(self_entity_id);
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
                     dst_entity: self.target_entity_id,
-                    typ: AttackType::SpellDamage(2000, DamageDisplayType::SingleNumber),
+                    typ: AttackType::SpellDamage(configs.damage, DamageDisplayType::SingleNumber),
+                });
+                let area_shape = Box::new(ncollide2d::shape::Ball::new(configs.splash_radius));
+                let area_isom = Isometry2::new(target_pos, 0.0);
+                system_vars.area_attacks.push(AreaAttackComponent {
+                    area_shape,
+                    area_isom,
+                    source_entity_id: self.caster_entity_id,
+                    typ: AttackType::SpellDamage(
+                        configs.secondary_damage,
+                        DamageDisplayType::SingleNumber,
+                    ),
+                    except: Some(self.target_entity_id),
                 });
                 updater.insert(
                     entities.create(),
@@ -255,7 +268,7 @@ impl Status for PyroBlastTargetStatus {
             .horizontal_texture_3d()
             .pos(&char_state.pos())
             .rotation_rad(system_vars.time.0 % 6.28)
-            .scale(system_vars.dev_configs.skills.wiz_pyroblast.splash_radius)
+            .fix_size(system_vars.dev_configs.skills.wiz_pyroblast.splash_radius * 2.0)
             .add(&system_vars.assets.sprites.magic_target);
     }
 

@@ -39,7 +39,7 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
 use crate::components::char::{
-    CharActionIndex, CharType, CharacterStateComponent, NpcComponent, Team,
+    CharActionIndex, CharOutlook, CharType, CharacterStateComponent, NpcComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CastMode, CharEntityId, ControllerComponent, ControllerEntityId,
@@ -47,7 +47,7 @@ use crate::components::controller::{
 };
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
-use crate::consts::JobId;
+use crate::consts::{JobId, JobSpriteId};
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
@@ -251,7 +251,16 @@ fn main() {
             .read_resource::<SystemVariables>()
             .matrices
             .projection,
-        Point2::new(250.0, -200.0),
+        Point2::new(
+            ecs_world
+                .read_resource::<SystemVariables>()
+                .dev_configs
+                .start_pos_x,
+            ecs_world
+                .read_resource::<SystemVariables>()
+                .dev_configs
+                .start_pos_y,
+        ),
         Sex::Male,
         JobId::CRUSADER,
         1,
@@ -286,6 +295,10 @@ fn main() {
             "spawn_area armor 70 2 3 2000 10000 265 -213",
             "spawn_area armor -30 2 3 2000 10000 270 -213",
             "spawn_area heal 50 2 3 500 0 273 -213",
+            "spawn_entity dummy_enemy left 1 217 -66",
+            "spawn_entity dummy_enemy left 1 219 -66",
+            "spawn_entity dummy_enemy left 1 221 -66",
+            "spawn_entity dummy_ally left 1 219 -71",
         ] {
             execute_console_command(
                 command,
@@ -484,6 +497,10 @@ fn reload_configs_if_changed(
     match runtime_conf_watcher_rx.try_recv() {
         Ok(_event) => {
             if let Ok(new_config) = DevConfig::new() {
+                for input in (&mut ecs_world.write_storage::<HumanInputComponent>()).join() {
+                    input.cast_mode = new_config.cast_mode
+                }
+
                 ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
                 for char_state in (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
                 {
@@ -491,6 +508,7 @@ fn reload_configs_if_changed(
                         &ecs_world.write_resource::<SystemVariables>().dev_configs,
                     );
                 }
+
                 log::info!("Configs has been reloaded");
             } else {
                 log::warn!("Config error");
@@ -687,23 +705,6 @@ fn imgui_frame(
 
                 {
                     let controller = storage.get_mut(desktop_client_entity.0).unwrap();
-                    let mut cast_mode = match controller.cast_mode {
-                        CastMode::Normal => 0,
-                        CastMode::OnKeyPress => 1,
-                        CastMode::OnKeyRelease => 2,
-                    };
-                    if ui.combo(
-                        im_str!("quick_cast"),
-                        &mut cast_mode,
-                        &[im_str!("Off"), im_str!("On"), im_str!("On Release")],
-                        10,
-                    ) {
-                        controller.cast_mode = match cast_mode {
-                            0 => CastMode::Normal,
-                            1 => CastMode::OnKeyPress,
-                            _ => CastMode::OnKeyRelease,
-                        };
-                    }
                     ui.text(im_str!(
                         "Mouse world pos: {}, {}",
                         controller.mouse_world_pos.x,
@@ -804,10 +805,10 @@ fn create_random_char_minion(
         Sex::Female
     };
 
-    let job_id = if rng.gen::<usize>() % 2 == 0 {
-        JobId::SWORDMAN
+    let (job_id, job_sprite_id) = if rng.gen::<usize>() % 2 == 0 {
+        (JobId::SWORDMAN, JobSpriteId::SWORDMAN)
     } else {
-        JobId::ARCHER
+        (JobId::ARCHER, JobSpriteId::ARCHER)
     };
     let head_count = ecs_world
         .read_resource::<SystemVariables>()
@@ -825,9 +826,12 @@ fn create_random_char_minion(
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
-        sex,
+        CharOutlook::Player {
+            sex,
+            job_sprite_id,
+            head_index: rng.gen::<usize>() % head_count,
+        },
         job_id,
-        rng.gen::<usize>() % head_count,
         1,
         team,
         CharType::Minion,
