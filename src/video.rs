@@ -340,7 +340,7 @@ impl VertexArray {
         }
     }
 
-    pub fn bind_dynamic<T>(&mut self, gl: &Gl, vertices: &Vec<T>) -> VertexArrayBind {
+    pub fn bind_dynamic<T>(&mut self, gl: &Gl, vertices: &[T]) -> VertexArrayBind {
         unsafe {
             gl.BindVertexArray(self.buffers.vertex_array_id);
             gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, self.buffers.buffer_id);

@@ -14,13 +14,14 @@ use crate::components::status::absorb_shield::AbsorbStatus;
 use crate::components::status::attrib_mod::ArmorModifierStatus;
 use crate::components::status::heal_area::HealApplierArea;
 use crate::components::status::status::{
-    ApplyStatusComponent, ApplyStatusComponentPayload, MainStatuses,
+    ApplyStatusComponent, ApplyStatusComponentPayload, PoisonStatus,
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
     AttackComponent, AttackType, BrowserClient, DamageDisplayType, MinionComponent,
     StrEffectComponent,
 };
+use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::effect::StrEffectId;
 use crate::systems::console_system::{
@@ -402,7 +403,7 @@ fn create_dummy(
             CollisionGroup::NonPlayer,
             CollisionGroup::NonCollidablePlayer,
         ],
-        &ecs_world.read_resource::<SystemVariables>().dev_configs,
+        &ecs_world.read_resource::<DevConfig>(),
     );
     entity_id
 }
@@ -457,7 +458,7 @@ fn create_random_char_minion(
             CollisionGroup::StaticModel,
             CollisionGroup::NonCollidablePlayer,
         ],
-        &ecs_world.read_resource::<SystemVariables>().dev_configs,
+        &ecs_world.read_resource::<DevConfig>(),
     );
     entity_id
 }
@@ -688,13 +689,13 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
             let x = args.as_int(6).map(|it| it as f32);
             let y = args.as_int(7).map(|it| it as f32);
 
-            let pos = {
-                let hero_pos = {
+            let (pos, caster_team) = {
+                let (hero_pos, team) = {
                     let storage = ecs_world.read_storage::<CharacterStateComponent>();
                     let char_state = storage.get(self_char_id.0).unwrap();
-                    char_state.pos()
+                    (char_state.pos(), char_state.team)
                 };
-                v2!(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y))
+                (v2!(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
             };
             let area_status_id = ecs_world.create_entity().build();
             ecs_world
@@ -730,8 +731,15 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                 Box::new(StatusApplierArea::new(
                                     name.to_owned(),
                                     move |now| {
-                                        create_status_payload(&name, self_char_id, now, time, value)
-                                            .unwrap()
+                                        create_status_payload(
+                                            &name,
+                                            self_char_id,
+                                            now,
+                                            time,
+                                            value,
+                                            caster_team,
+                                        )
+                                        .unwrap()
                                     },
                                     &pos,
                                     Vector2::new(width, height),
@@ -750,30 +758,35 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
 fn create_status_payload(
     name: &str,
-    self_controller_id: CharEntityId,
+    self_char_id: CharEntityId,
     now: ElapsedTime,
     time: i32,
     value: i32,
+    caster_team: Team,
 ) -> Result<ApplyStatusComponentPayload, String> {
-    dbg!(name);
-    dbg!(time);
-    dbg!(value);
     match name {
         "absorb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            AbsorbStatus::new(self_controller_id, now, time as f32 / 1000.0),
+            AbsorbStatus::new(self_char_id, now, time as f32 / 1000.0),
         ))),
         "firebomb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             FireBombStatus {
-                caster_entity_id: self_controller_id,
+                caster_entity_id: self_char_id,
                 started: now,
                 until: now.add_seconds(time as f32 / 1000.0),
                 damage: value.max(1) as u32,
                 spread_count: 0,
+                caster_team,
             },
         ))),
-        "poison" => Ok(ApplyStatusComponentPayload::from_main_status(
-            MainStatuses::Poison(value.max(1) as u32),
-        )),
+        "poison" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
+            PoisonStatus {
+                poison_caster_entity_id: self_char_id,
+                started: now,
+                until: now.add_seconds(time as f32 / 1000.0),
+                next_damage_at: now,
+                damage: value.max(1) as u32,
+            },
+        ))),
         "armor" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
             ArmorModifierStatus::new(now, Percentage(value)),
         ))),
@@ -818,10 +831,15 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
             if let Some(entity_id) = entity_id {
                 let mut system_vars = ecs_world.write_resource::<SystemVariables>();
                 let now = system_vars.time;
+                let team = ecs_world
+                    .read_storage::<CharacterStateComponent>()
+                    .get(self_char_id.0)
+                    .unwrap()
+                    .team;
                 system_vars.apply_statuses.push(ApplyStatusComponent {
                     source_entity_id: self_char_id,
                     target_entity_id: entity_id,
-                    status: create_status_payload(status_name, entity_id, now, time, value)?,
+                    status: create_status_payload(status_name, entity_id, now, time, value, team)?,
                 });
                 Ok(())
             } else {

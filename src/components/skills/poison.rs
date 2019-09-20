@@ -1,13 +1,13 @@
 use nalgebra::Vector2;
-use specs::{Entities, LazyUpdate};
+use specs::LazyUpdate;
 
-use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::char::ActionPlayMode;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
-use crate::components::status::status::{ApplyStatusComponent, MainStatuses};
+use crate::components::status::status::{ApplyStatusComponent, PoisonStatus};
 use crate::components::StrEffectComponent;
+use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::SystemVariables;
 
 pub struct PosionSkill;
@@ -22,31 +22,39 @@ impl SkillDef for PosionSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
+        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+        let entities = &ecs_world.entities();
+        let updater = ecs_world.read_resource::<LazyUpdate>();
+        let now = system_vars.time;
         updater.insert(
             entities.create(),
             StrEffectComponent {
                 effect_id: StrEffectType::Poison.into(),
                 pos: skill_pos.unwrap(),
-                start_time: system_vars.time,
-                die_at: Some(system_vars.time.add_seconds(0.7)),
+                start_time: now,
+                die_at: Some(now.add_seconds(0.7)),
                 play_mode: ActionPlayMode::Repeat,
             },
         );
+        let configs = &ecs_world.read_resource::<DevConfig>().skills.poison;
         system_vars
             .apply_statuses
-            .push(ApplyStatusComponent::from_main_status(
+            .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,
                 target_entity.unwrap(),
-                MainStatuses::Poison(system_vars.dev_configs.skills.poison.damage),
+                Box::new(PoisonStatus {
+                    poison_caster_entity_id: caster_entity_id,
+                    started: now,
+                    until: now.add_seconds(configs.duration_seconds),
+                    next_damage_at: now,
+                    damage: configs.damage,
+                }),
             ));
         None
     }

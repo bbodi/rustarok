@@ -8,7 +8,7 @@ use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
-    create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, EffectFrameCacheKey,
+    create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, create_3d_rot_matrix, EffectFrameCacheKey,
     RenderCommandCollector, TextureSize, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
@@ -664,16 +664,16 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .params
                             .model_mat
                             .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader.params.rot_mat.set(
+                            gl,
+                            &create_3d_rot_matrix(&(Vector3::z(), command.rot_radian)),
+                        );
                         shader.params.color.set(gl, &command.color);
                         shader.params.offset.set(
                             gl,
                             &[
-                                command.offset[0] as f32
-                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.scale,
-                                command.offset[1] as f32
-                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.scale,
+                                command.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                                command.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
                             ],
                         );
 
@@ -707,6 +707,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .params
                             .model_mat
                             .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader.params.rot_mat.set(gl, &Matrix4::identity());
                         shader.params.color.set(gl, &command.color);
 
                         self.create_number_vertex_array(&system_vars.gl, command.value)
@@ -965,7 +966,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     ]);
                 }
                 self.points_vao
-                    .bind_dynamic(&system_vars.gl, &self.points_buffer)
+                    .bind_dynamic(&system_vars.gl, self.points_buffer.as_slice())
                     .draw(&system_vars.gl)
             }
 
@@ -1039,6 +1040,10 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let matrix =
                         create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
                     shader.params.model_mat.set(gl, &matrix);
+                    shader
+                        .params
+                        .z
+                        .set(gl, 0.01 * command.layer as usize as f32);
                     shader
                         .params
                         .size

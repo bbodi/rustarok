@@ -2,7 +2,6 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
-use crate::configs::DevConfig;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -93,7 +92,6 @@ where
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {

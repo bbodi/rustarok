@@ -3,9 +3,8 @@ use specs::prelude::*;
 use crate::common::v2_to_p2;
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, NpcComponent};
 use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::skills::skill::FinishCast;
 use crate::components::status::death_status::DeathStatus;
-use crate::components::{AttackComponent, AttackType, DamageDisplayType};
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
@@ -106,24 +105,14 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         } else {
                             casting_info.target_area_pos
                         };
-                        let manifestation = casting_info.skill.get_definition().finish_cast(
-                            char_entity_id,
-                            char_comp,
+                        system_vars.just_finished_skill_casts.push(FinishCast {
+                            skill: casting_info.skill,
+                            caster_pos: char_pos,
+                            caster_entity_id: char_entity_id,
                             skill_pos,
-                            &casting_info.char_to_skill_dir_when_casted,
-                            casting_info.target_entity,
-                            &mut physics_world,
-                            &mut system_vars,
-                            &entities,
-                            &mut updater,
-                        );
-                        if let Some(manifestation) = manifestation {
-                            let skill_entity_id = entities.create();
-                            updater.insert(
-                                skill_entity_id,
-                                SkillManifestationComponent::new(skill_entity_id, manifestation),
-                            );
-                        }
+                            char_to_skill_dir: casting_info.char_to_skill_dir_when_casted,
+                            target_entity: casting_info.target_entity,
+                        });
 
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                     }
@@ -131,16 +120,18 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 CharState::Attacking {
                     target,
                     damage_occurs_at,
+                    basic_attack,
                 } => {
                     if damage_occurs_at.has_already_passed(now) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
-                        system_vars.attacks.push(AttackComponent {
-                            src_entity: char_entity_id,
-                            dst_entity: target,
-                            typ: AttackType::Basic(
-                                char_comp.calculated_attribs().attack_damage as u32,
-                                DamageDisplayType::SingleNumber,
-                            ),
+                        let target_pos = char_positions[&target];
+                        system_vars.just_finished_skill_casts.push(FinishCast {
+                            skill: basic_attack,
+                            caster_entity_id: char_entity_id,
+                            caster_pos: char_pos,
+                            skill_pos: Some(target_pos),
+                            char_to_skill_dir: (target_pos - char_comp.pos()).normalize(),
+                            target_entity: Some(target),
                         });
                     }
                 }
@@ -167,6 +158,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                     let new_state = CharState::Attacking {
                                         damage_occurs_at,
                                         target: *target_entity,
+                                        basic_attack: char_comp.basic_attack,
                                     };
                                     char_comp.set_state(
                                         new_state,

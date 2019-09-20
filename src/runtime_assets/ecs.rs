@@ -1,5 +1,6 @@
 use crate::components::char::{
-    CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
+    CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent, TurretComponent,
+    TurretControllerComponent,
 };
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
 use crate::components::skills::skill::SkillManifestationComponent;
@@ -15,6 +16,8 @@ pub fn create_ecs_world() -> World {
     let mut ecs_world = specs::World::new();
     ecs_world.register::<BrowserClient>();
     ecs_world.register::<NpcComponent>();
+    ecs_world.register::<TurretComponent>();
+    ecs_world.register::<TurretControllerComponent>();
     ecs_world.register::<HumanInputComponent>();
     ecs_world.register::<RenderCommandCollector>();
     ecs_world.register::<AudioCommandCollectorComponent>();

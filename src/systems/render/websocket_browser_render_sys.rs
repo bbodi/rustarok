@@ -1,4 +1,5 @@
 use crate::components::BrowserClient;
+use crate::configs::DevConfig;
 use crate::effect::StrEffectId;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand, PartialCircle2dRenderCommand,
@@ -9,6 +10,7 @@ use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
 use nalgebra::{Matrix3, Matrix4, Vector2};
 use specs::prelude::*;
+use std::collections::VecDeque;
 
 pub struct WebSocketBrowserRenderSystem {
     send_buffer: Vec<u8>,
@@ -28,21 +30,21 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
         specs::WriteStorage<'a, BrowserClient>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, DevConfig>,
     );
 
     fn run(
         &mut self,
-        (render_commands_storage, mut browser_client_storage, mut system_benchmark, system_vars): Self::SystemData,
+        (
+            render_commands_storage,
+            mut browser_client_storage,
+            mut system_benchmark,
+            system_vars,
+            dev_configs,
+        ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("WebSocketBrowserRenderSystem");
-        if system_vars.tick
-            % system_vars
-                .dev_configs
-                .network
-                .send_render_data_every_nth_frame
-                .max(1)
-            != 0
-        {
+        if system_vars.tick % dev_configs.network.send_render_data_every_nth_frame.max(1) != 0 {
             return;
         }
 
@@ -124,7 +126,7 @@ impl WebSocketBrowserRenderSystem {
 
     fn send_2d_rectangle_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<Rectangle2dRenderCommand>,
+        render_commands: &VecDeque<Rectangle2dRenderCommand>,
     ) {
         send_buffer
             .write_u32::<LittleEndian>(render_commands.len() as u32)

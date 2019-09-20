@@ -1,5 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
+use crate::configs::DevConfig;
 use crate::systems::console_commands::{
     cmd_add_status, cmd_clear, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_get_server_fps,
     cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect,
@@ -992,6 +993,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
         specs::WriteStorage<'a, ConsoleComponent>,
         specs::WriteStorage<'a, RenderCommandCollector>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, DevConfig>,
     );
 
     fn run(
@@ -1001,6 +1003,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
             mut console_storage,
             mut render_collector_storage,
             system_vars,
+            dev_configs,
         ): Self::SystemData,
     ) {
         for (input, render_commands, console) in (
@@ -1011,7 +1014,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
             .join()
         {
             let now = system_vars.time;
-            let console_color = system_vars.dev_configs.console.color;
+            let console_color = dev_configs.console.color;
             let console_height = (VIDEO_HEIGHT / 3) as i32;
             let repeat_time = 0.1;
             if !input.is_console_open {

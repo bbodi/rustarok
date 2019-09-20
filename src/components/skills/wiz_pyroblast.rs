@@ -1,5 +1,5 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate, ReadStorage};
+use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::components::char::{
     ActionPlayMode, CastingSkillData, CharacterStateComponent, SpriteRenderDescriptorComponent,
@@ -12,7 +12,7 @@ use crate::components::status::status::{ApplyStatusComponent, Status, StatusNatu
 use crate::components::{
     AreaAttackComponent, AttackComponent, AttackType, DamageDisplayType, StrEffectComponent,
 };
-use crate::configs::DevConfig;
+use crate::configs::{DevConfig, SkillConfigPyroBlastInner};
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -33,29 +33,37 @@ impl SkillDef for WizPyroBlastSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
+        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+        let configs = ecs_world
+            .read_resource::<DevConfig>()
+            .skills
+            .wiz_pyroblast
+            .inner
+            .clone();
+
         system_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,
                 target_entity.unwrap(),
-                Box::new(PyroBlastTargetStatus { caster_entity_id }),
+                Box::new(PyroBlastTargetStatus {
+                    caster_entity_id,
+                    splash_radius: configs.splash_radius,
+                }),
             ));
         Some(Box::new(PyroBlastManifest::new(
             caster_entity_id,
-            caster.pos(),
+            caster_pos,
             target_entity.unwrap(),
             system_vars.time,
-            system_vars.dev_configs.skills.wiz_pyroblast.damage,
-            physics_world,
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+            configs,
         )))
     }
 
@@ -68,6 +76,7 @@ impl SkillDef for WizPyroBlastSkill {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &SystemVariables,
+        dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
     ) {
@@ -89,7 +98,7 @@ impl SkillDef for WizPyroBlastSkill {
                 .pos(&target_char.pos())
                 .rotation_rad(3.14 * casting_percentage)
                 .fix_size(
-                    (system_vars.dev_configs.skills.wiz_pyroblast.splash_radius
+                    (dev_configs.skills.wiz_pyroblast.inner.splash_radius
                         * 2.0
                         * casting_percentage)
                         .max(0.5),
@@ -100,14 +109,7 @@ impl SkillDef for WizPyroBlastSkill {
             action_index: 16,
             animation_started: casting_state.cast_started,
             animation_ends_at: ElapsedTime(0.0),
-            forced_duration: Some(
-                system_vars
-                    .dev_configs
-                    .skills
-                    .wiz_pyroblast
-                    .attributes
-                    .casting_time,
-            ),
+            forced_duration: Some(dev_configs.skills.wiz_pyroblast.attributes.casting_time),
             direction: 0,
             fps_multiplier: 1.0,
         };
@@ -115,11 +117,10 @@ impl SkillDef for WizPyroBlastSkill {
             system_vars.time,
             &anim_descr,
             &system_vars.assets.sprites.effect_sprites.plasma,
-            0.0,
             &(char_pos + casting_state.char_to_skill_dir_when_casted),
             [0, 0],
             false,
-            system_vars.dev_configs.skills.wiz_pyroblast.ball_size * casting_percentage,
+            dev_configs.skills.wiz_pyroblast.inner.ball_size * casting_percentage,
             ActionPlayMode::Reverse,
             &COLOR_WHITE,
             render_commands,
@@ -130,10 +131,10 @@ impl SkillDef for WizPyroBlastSkill {
 pub struct PyroBlastManifest {
     pub caster_entity_id: CharEntityId,
     pub pos: WorldCoords,
-    pub damage: u32,
     pub target_last_pos: WorldCoords,
     pub target_entity_id: CharEntityId,
     pub created_at: ElapsedTime,
+    pub configs: SkillConfigPyroBlastInner,
 }
 
 impl PyroBlastManifest {
@@ -142,8 +143,8 @@ impl PyroBlastManifest {
         pos: WorldCoords,
         target_entity_id: CharEntityId,
         created_at: ElapsedTime,
-        damage: u32,
         physics_world: &mut PhysicEngine,
+        configs: SkillConfigPyroBlastInner,
     ) -> PyroBlastManifest {
         PyroBlastManifest {
             caster_entity_id,
@@ -151,7 +152,7 @@ impl PyroBlastManifest {
             target_last_pos: Vector2::new(0.0, 0.0),
             target_entity_id,
             created_at,
-            damage,
+            configs,
         }
     }
 }
@@ -171,25 +172,27 @@ impl SkillManifestation for PyroBlastManifest {
             let target_pos = target_char.pos();
             let dir_vector = target_pos - self.pos;
             let distance = dir_vector.magnitude();
-            let configs = &system_vars.dev_configs.skills.wiz_pyroblast;
             if distance > 2.0 {
                 let dir_vector = dir_vector.normalize();
-                self.pos = self.pos + (dir_vector * system_vars.dt.0 * configs.moving_speed);
+                self.pos = self.pos + (dir_vector * system_vars.dt.0 * self.configs.moving_speed);
             } else {
                 updater.remove::<SkillManifestationComponent>(self_entity_id);
                 system_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
                     dst_entity: self.target_entity_id,
-                    typ: AttackType::SpellDamage(configs.damage, DamageDisplayType::SingleNumber),
+                    typ: AttackType::SpellDamage(
+                        self.configs.damage,
+                        DamageDisplayType::SingleNumber,
+                    ),
                 });
-                let area_shape = Box::new(ncollide2d::shape::Ball::new(configs.splash_radius));
+                let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
                 let area_isom = Isometry2::new(target_pos, 0.0);
                 system_vars.area_attacks.push(AreaAttackComponent {
                     area_shape,
                     area_isom,
                     source_entity_id: self.caster_entity_id,
                     typ: AttackType::SpellDamage(
-                        configs.secondary_damage,
+                        self.configs.secondary_damage,
                         DamageDisplayType::SingleNumber,
                     ),
                     except: Some(self.target_entity_id),
@@ -199,7 +202,7 @@ impl SkillManifestation for PyroBlastManifest {
                     StrEffectComponent {
                         effect_id: StrEffectType::Explosion.into(),
                         pos: target_pos,
-                        start_time: system_vars.time.add_seconds(0.0),
+                        start_time: system_vars.time,
                         die_at: None,
                         play_mode: ActionPlayMode::Once,
                     },
@@ -220,7 +223,6 @@ impl SkillManifestation for PyroBlastManifest {
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,
-        configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
@@ -236,11 +238,10 @@ impl SkillManifestation for PyroBlastManifest {
             now,
             &anim_descr,
             &assets.sprites.effect_sprites.plasma,
-            0.0,
             &self.pos,
             [0, 0],
             false,
-            configs.skills.wiz_pyroblast.ball_size,
+            self.configs.ball_size,
             ActionPlayMode::Repeat,
             &COLOR_WHITE,
             render_commands,
@@ -251,10 +252,11 @@ impl SkillManifestation for PyroBlastManifest {
 #[derive(Clone)]
 pub struct PyroBlastTargetStatus {
     pub caster_entity_id: CharEntityId,
+    pub splash_radius: f32,
 }
 
 impl Status for PyroBlastTargetStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -268,7 +270,7 @@ impl Status for PyroBlastTargetStatus {
             .horizontal_texture_3d()
             .pos(&char_state.pos())
             .rotation_rad(system_vars.time.0 % 6.28)
-            .fix_size(system_vars.dev_configs.skills.wiz_pyroblast.splash_radius * 2.0)
+            .fix_size(self.splash_radius * 2.0)
             .add(&system_vars.assets.sprites.magic_target);
     }
 

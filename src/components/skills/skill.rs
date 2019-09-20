@@ -23,6 +23,12 @@ use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
 
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
 use crate::components::skills::assa_phase_prism::ASSA_PHASE_PRISM_SKILL;
+use crate::components::skills::basic_attack::BASIC_ATTACK_SKILL;
+use crate::components::skills::basic_ranged_attack::BASIC_RANGED_ATTACK_SKILL;
+use crate::components::skills::gaz_turret::{
+    GAZ_DESTROY_TURRET_SKILL, GAZ_TURRET_SKILL, GAZ_TURRET_TARGET_SKILL,
+};
+use crate::components::skills::gaz_xplod_charge::GAZ_XPLODIUM_CHARGE_SKILL;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -50,7 +56,6 @@ pub trait SkillManifestation {
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
-        configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     );
@@ -101,12 +106,11 @@ impl SkillManifestationComponent {
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
-        configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let skill = self.skill.lock().unwrap();
-        skill.render(now, tick, assets, configs, render_commands, audio_commands);
+        skill.render(now, tick, assets, render_commands, audio_commands);
     }
 }
 
@@ -114,19 +118,25 @@ unsafe impl Sync for SkillManifestationComponent {}
 
 unsafe impl Send for SkillManifestationComponent {}
 
+pub struct FinishCast {
+    pub skill: Skills,
+    pub caster_entity_id: CharEntityId,
+    pub caster_pos: WorldCoords,
+    pub skill_pos: Option<WorldCoords>,
+    pub char_to_skill_dir: Vector2<f32>,
+    pub target_entity: Option<CharEntityId>,
+}
+
 pub trait SkillDef {
     fn get_icon_path(&self) -> &'static str;
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
-        skill_pos: Option<Vector2<f32>>,
+        caster_pos: WorldCoords,
+        skill_pos: Option<WorldCoords>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>>;
 
     fn get_skill_target_type(&self) -> SkillTargetType;
@@ -135,6 +145,7 @@ pub trait SkillDef {
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
         system_vars: &SystemVariables,
+        dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
     ) {
@@ -152,7 +163,7 @@ pub trait SkillDef {
                 &target_area_pos,
                 &casting_state.char_to_skill_dir_when_casted,
                 render_commands,
-                &system_vars.dev_configs,
+                dev_configs,
             );
         } else if let Some(target_entity) = casting_state.target_entity {
             if let Some(target_char) = char_storage.get(target_entity.0) {
@@ -177,6 +188,8 @@ pub trait SkillDef {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
+    BasicAttack,
+    BasicRangedAttack,
     FireWall,
     BrutalTestSkill,
     Lightning,
@@ -189,6 +202,10 @@ pub enum Skills {
     WizPyroBlast,
     AssaBladeDash,
     AssaPhasePrism,
+    GazXplodiumCharge,
+    GazTurret,
+    GazDestroyTurret,
+    GazTurretTarget,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -215,6 +232,12 @@ impl Skills {
             Skills::AbsorbShield => ABSORB_SHIELD_SKILL,
             Skills::AssaBladeDash => ASSA_BLADE_DASH_SKILL,
             Skills::AssaPhasePrism => ASSA_PHASE_PRISM_SKILL,
+            Skills::GazXplodiumCharge => GAZ_XPLODIUM_CHARGE_SKILL,
+            Skills::BasicAttack => BASIC_ATTACK_SKILL,
+            Skills::BasicRangedAttack => BASIC_RANGED_ATTACK_SKILL,
+            Skills::GazTurret => GAZ_TURRET_SKILL,
+            Skills::GazDestroyTurret => GAZ_DESTROY_TURRET_SKILL,
+            Skills::GazTurretTarget => GAZ_TURRET_TARGET_SKILL,
         }
     }
 
@@ -242,6 +265,17 @@ impl Skills {
             Skills::AbsorbShield => &configs.skills.absorb_shield.attributes,
             Skills::AssaBladeDash => &configs.skills.assa_blade_dash.attributes,
             Skills::AssaPhasePrism => &configs.skills.assa_phase_prism.attributes,
+            Skills::GazXplodiumCharge => &configs.skills.gaz_xplodium_charge.attributes,
+            Skills::BasicAttack => panic!(),
+            Skills::BasicRangedAttack => panic!(),
+            Skills::GazTurret => &configs.skills.gaz_turret.attributes,
+            Skills::GazDestroyTurret => &configs.skills.gaz_destroy_turret,
+            Skills::GazTurretTarget => &SkillCastingAttributes {
+                casting_time: ElapsedTime(0.0),
+                cast_delay: ElapsedTime(0.0),
+                casting_range: 999_999_999.0,
+                width: None,
+            },
         }
     }
 

@@ -52,6 +52,10 @@ pub fn v2_to_v3(input: &Vector2<f32>) -> Vector3<f32> {
     Vector3::new(input.x, 0.0, input.y)
 }
 
+pub fn v3_to_v2(input: &Vector3<f32>) -> Vector2<f32> {
+    Vector2::new(input.x, input.z)
+}
+
 pub fn v2_to_p2(input: &Vector2<f32>) -> Point2<f32> {
     Point2::new(input.x, input.y)
 }

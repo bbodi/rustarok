@@ -1,5 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::cam::Camera;
+use crate::common::v2_to_v3;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
     NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
@@ -13,6 +14,7 @@ use crate::components::{
     BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
     StrEffectComponent,
 };
+use crate::configs::DevConfig;
 use crate::cursor::CURSOR_TARGET;
 use crate::effect::StrEffectId;
 use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
@@ -55,6 +57,7 @@ impl RenderDesktopClientSystem {
         audio_commands: &mut AudioCommandCollectorComponent,
         physics_world: &specs::ReadExpect<'a, PhysicEngine>,
         system_vars: &SystemVariables,
+        dev_configs: &DevConfig,
         char_state_storage: &specs::ReadStorage<'a, CharacterStateComponent>,
         entities: &specs::Entities<'a>,
         sprite_storage: &specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
@@ -72,7 +75,8 @@ impl RenderDesktopClientSystem {
                 &camera,
                 controller,
                 render_commands,
-                &system_vars,
+                system_vars,
+                dev_configs,
                 char_state_storage,
                 entities,
                 sprite_storage,
@@ -123,10 +127,8 @@ impl RenderDesktopClientSystem {
                     let char_pos = controller.controlled_char.pos();
                     if let Some((_skill_key, skill)) = controller.controller.select_skill_target {
                         let skill_def = skill.get_definition();
-                        let skill_cast_attr = skill.get_cast_attributes(
-                            &system_vars.dev_configs,
-                            controller.controlled_char,
-                        );
+                        let skill_cast_attr =
+                            skill.get_cast_attributes(&dev_configs, controller.controlled_char);
                         let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
                             &char_pos,
                             &input.mouse_world_pos,
@@ -152,7 +154,7 @@ impl RenderDesktopClientSystem {
                                     &skill_3d_pos,
                                     &dir_vector,
                                     render_commands,
-                                    &system_vars.dev_configs,
+                                    &dev_configs,
                                 );
                             }
                         } else {
@@ -190,7 +192,6 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &cursor_anim_descr,
                                 &system_vars.assets.sprites.cursors,
-                                camera.yaw,
                                 &pos,
                                 [0, 0],
                                 false,
@@ -210,7 +211,6 @@ impl RenderDesktopClientSystem {
                 system_vars.time,
                 system_vars.tick,
                 &system_vars.assets,
-                &system_vars.dev_configs,
                 render_commands,
                 audio_commands,
             );
@@ -313,6 +313,7 @@ impl RenderDesktopClientSystem {
         controller: &mut Option<ControllerAndControlled>,
         render_commands: &mut RenderCommandCollector,
         system_vars: &SystemVariables,
+        dev_configs: &DevConfig,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
@@ -379,8 +380,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 body_sprite,
-                                camera.yaw,
-                                &pos,
+                                &v2_to_v3(&pos),
                                 [0, 0],
                                 true,
                                 1.2,
@@ -393,8 +393,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 head_res,
-                                camera.yaw,
-                                &pos,
+                                &v2_to_v3(&pos),
                                 body_pos_offset,
                                 false,
                                 1.2,
@@ -409,8 +408,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         body_sprite,
-                        camera.yaw,
-                        &pos,
+                        &v2_to_v3(&pos),
                         [0, 0],
                         true,
                         1.0,
@@ -431,8 +429,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         head_res,
-                        camera.yaw,
-                        &pos,
+                        &v2_to_v3(&pos),
                         body_pos_offset,
                         false,
                         1.0,
@@ -504,8 +501,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 body_res,
-                                camera.yaw,
-                                &pos,
+                                &v2_to_v3(&pos),
                                 [0, 0],
                                 true,
                                 1.2,
@@ -519,8 +515,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         body_res,
-                        camera.yaw,
-                        &pos,
+                        &v2_to_v3(&pos),
                         [0, 0],
                         true,
                         1.0,
@@ -569,6 +564,7 @@ impl RenderDesktopClientSystem {
                     &char_state.pos(),
                     &casting_info,
                     system_vars,
+                    dev_configs,
                     render_commands,
                     &char_state_storage,
                 );
@@ -594,6 +590,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadStorage<'a, CharacterStateComponent>,
         specs::WriteStorage<'a, ControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
         specs::WriteExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, DevConfig>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         specs::ReadStorage<'a, StrEffectComponent>,
@@ -618,6 +615,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             char_state_storage,
             mut controller_storage,
             mut system_vars,
+            dev_configs,
             mut system_benchmark,
             skill_storage,
             str_effect_storage,
@@ -679,6 +677,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &mut audio_commands,
                     &physics_world,
                     &mut system_vars,
+                    &dev_configs,
                     &char_state_storage,
                     &entities,
                     &sprite_storage,
@@ -728,6 +727,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &char_state_storage,
                     &npc_storage,
                     &entities,
+                    &camera.camera.pos(),
                 );
             }
         }
@@ -738,8 +738,7 @@ pub fn render_single_layer_action<'a>(
     now: ElapsedTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
-    camera_yaw: f32,
-    pos: &Vector2<f32>,
+    pos: &Vector3<f32>,
     pos_offset: [i32; 2],
     is_main: bool,
     size_multiplier: f32,
@@ -748,7 +747,7 @@ pub fn render_single_layer_action<'a>(
     render_commands: &'a mut RenderCommandCollector,
 ) -> [i32; 2] {
     let idx = {
-        let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
+        let cam_dir = (((render_commands.yaw / 45.0) + 0.5) as usize) % 8;
         animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
     };
 
@@ -784,6 +783,7 @@ pub fn render_single_layer_action<'a>(
             ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % frame_count,
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
             ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
+            ActionPlayMode::FixFrame(frame_i) => frame_i,
         }
     };
     let frame = &action.frames[frame_index];
@@ -794,11 +794,9 @@ pub fn render_single_layer_action<'a>(
 
     let layer = &frame.layers[0];
 
-    let offset = if !frame.positions.is_empty() && !is_main {
-        [
-            pos_offset[0] - frame.positions[0][0],
-            pos_offset[1] - frame.positions[0][1],
-        ]
+    let offset = if !is_main {
+        let positions = frame.positions.get(0).unwrap_or(&[0, 0]);
+        [pos_offset[0] - positions[0], pos_offset[1] - positions[1]]
     } else {
         [0, 0]
     };
@@ -815,8 +813,9 @@ pub fn render_single_layer_action<'a>(
     let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
     render_commands
         .sprite_3d()
-        .pos_2d(&pos)
+        .pos(&pos)
         .scale(layer.scale[0] * size_multiplier)
+        .rot_radian((-layer.angle as f32).to_radians())
         .offset(offset)
         .color(&color)
         .flip_vertically(layer.is_mirror)
@@ -836,7 +835,6 @@ pub fn render_action(
     now: ElapsedTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
-    camera_yaw: f32,
     pos: &Vector2<f32>,
     pos_offset: [i32; 2],
     is_main: bool,
@@ -846,7 +844,7 @@ pub fn render_action(
     render_commands: &mut RenderCommandCollector,
 ) -> [i32; 2] {
     let idx = {
-        let cam_dir = (((camera_yaw / 45.0) + 0.5) as usize) % 8;
+        let cam_dir = (((render_commands.yaw / 45.0) + 0.5) as usize) % 8;
         animation.action_index + (animation.direction + DIRECTION_TABLE[cam_dir]) % 8
     };
 
@@ -882,6 +880,7 @@ pub fn render_action(
             ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % frame_count,
             ActionPlayMode::Reverse => (frame_count - 1) - (real_index % frame_count),
             ActionPlayMode::PlayThenHold => real_index.min(frame_count - 1),
+            ActionPlayMode::FixFrame(frame_i) => frame_i,
         }
     };
     let frame = &action.frames[frame_index];
@@ -891,11 +890,10 @@ pub fn render_action(
             continue;
         }
 
-        let offset = if !frame.positions.is_empty() && !is_main {
-            [
-                pos_offset[0] - frame.positions[0][0],
-                pos_offset[1] - frame.positions[0][1],
-            ]
+        let offset = if !is_main {
+            // TODO: check if there is any sprite whose frame.positions is not empty
+            let positions = frame.positions.get(0).unwrap_or(&[0, 0]);
+            [pos_offset[0] + positions[0], pos_offset[1] + positions[1]]
         } else {
             [0, 0]
         };
@@ -914,6 +912,7 @@ pub fn render_action(
             .sprite_3d()
             .pos_2d(&pos)
             .scale(layer.scale[0] * size_multiplier)
+            .rot_radian((-layer.angle as f32).to_radians())
             .offset(offset)
             .color(&color)
             .flip_vertically(layer.is_mirror)
@@ -1425,6 +1424,7 @@ impl RenderDesktopClientSystem {
             ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % max_key,
             ActionPlayMode::PlayThenHold => real_index.min(max_key - 1),
             ActionPlayMode::Reverse => (max_key - 1) - (real_index % max_key),
+            ActionPlayMode::FixFrame(frame_i) => frame_i as i32,
         };
 
         render_commands.add_effect_command2(world_pos, effect_id, key_index);

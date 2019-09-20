@@ -1,13 +1,12 @@
 use nalgebra::Vector2;
-use specs::{Entities, LazyUpdate};
+use specs::LazyUpdate;
 
-use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::char::ActionPlayMode;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{ApplyStatusComponent, MainStatuses};
 use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::SystemVariables;
 
 pub struct MountingSkill;
@@ -22,15 +21,28 @@ impl SkillDef for MountingSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
+        {
+            let entities = &ecs_world.entities();
+            let mut updater = ecs_world.read_resource::<LazyUpdate>();
+            let now = ecs_world.read_resource::<SystemVariables>().time;
+            updater.insert(
+                entities.create(),
+                StrEffectComponent {
+                    effect_id: StrEffectType::Concentration.into(),
+                    pos: caster_pos,
+                    start_time: now,
+                    die_at: Some(now.add_seconds(0.7)),
+                    play_mode: ActionPlayMode::PlayThenHold,
+                },
+            );
+        }
+        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
         system_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_main_status(
@@ -38,16 +50,6 @@ impl SkillDef for MountingSkill {
                 caster_entity_id,
                 MainStatuses::Mounted,
             ));
-        updater.insert(
-            entities.create(),
-            StrEffectComponent {
-                effect_id: StrEffectType::Concentration.into(),
-                pos: caster.pos(),
-                start_time: system_vars.time,
-                die_at: Some(system_vars.time.add_seconds(0.7)),
-                play_mode: ActionPlayMode::PlayThenHold,
-            },
-        );
         None
     }
 

@@ -1,5 +1,5 @@
 
-sleep_ms = 5
+sleep_ms = 0
 minions_enabled = false
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
 cast_mode = "OnKeyPress"
@@ -68,6 +68,7 @@ start_pos_y = -65
         casting_time = 0.0
         cast_delay = 2.0
         casting_range = 10.0
+        duration_seconds = 10.0
 
     [skills.cure]
         casting_time = 0.0
@@ -103,6 +104,35 @@ start_pos_y = -65
         duration_seconds = 1.0
         swap_duration_unit_per_second = 0.08
         damage = 100
+    [skills.gaz_xplodium_charge]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 9.5
+        missile_travel_duration_seconds = 1.0
+        detonation_duration = 2.5
+        stun_duration_seconds = 3.0
+        damage = 233
+        explosion_area = 3.0
+    [skills.gaz_turret]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 2.0
+        [skills.gaz_turret.turret]
+            # Percentages
+            walking_speed = 0
+            attack_range = 700
+            attack_speed = 100
+            armor = 0
+            healing =  0
+            hp_regen = 0
+            mana_regen = 0
+            # normal values
+            attack_damage = 62
+            max_hp = 593
+    [skills.gaz_destroy_turret]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 7.0
 
 [stats]
     [stats.minion]
@@ -136,8 +166,21 @@ start_pos_y = -65
         [stats.player.crusader]
             # Percentages
             walking_speed = 100
-            attack_range = 100
+            attack_range = 650
             attack_speed = 130
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            mounted_speedup = 30
+            # normal values
+            attack_damage = 120
+            max_hp = 50_000
+        [stats.player.gunslinger]
+            # Percentages
+            walking_speed = 100
+            attack_range = 650
+            attack_speed = 133
             armor = 0
             healing =  100
             hp_regen = 100

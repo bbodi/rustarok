@@ -4,7 +4,7 @@ use crate::components::controller::{
     SkillKey, WorldCoords,
 };
 use crate::components::skills::skill::Skills;
-use crate::components::status::status::Statuses;
+use crate::components::status::status::{StatusNature, Statuses};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
@@ -229,6 +229,7 @@ pub enum CharState {
     Attacking {
         target: CharEntityId,
         damage_occurs_at: ElapsedTime,
+        basic_attack: Skills,
     },
     ReceivingDamage,
     Freeze,
@@ -750,6 +751,14 @@ pub enum Team {
 }
 
 impl Team {
+    pub fn is_compatible(&self, nature: StatusNature, other_team: Team) -> bool {
+        match nature {
+            StatusNature::Harmful => self.can_attack(other_team),
+            StatusNature::Supportive => self.can_support(other_team),
+            StatusNature::Neutral => true,
+        }
+    }
+
     pub fn is_ally_to(&self, other_team: Team) -> bool {
         match self {
             Team::Left => match other_team {
@@ -805,6 +814,20 @@ impl Team {
     }
 }
 
+pub struct TurretControllerComponent;
+impl Component for TurretControllerComponent {
+    type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
+}
+
+pub struct TurretComponent {
+    pub owner_entity_id: CharEntityId,
+    pub preferred_target: Option<CharEntityId>,
+}
+
+impl Component for TurretComponent {
+    type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
+}
+
 pub struct NpcComponent;
 
 impl Component for NpcComponent {
@@ -814,6 +837,7 @@ impl Component for NpcComponent {
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pub name: String, // characters also has names so it is possible to follow them with a camera
+    pub basic_attack: Skills,
     pos: WorldCoords,
     pub team: Team,
     pub target: Option<EntityTarget>,
@@ -886,6 +910,11 @@ impl CharacterStateComponent {
         let base_attributes = Statuses::get_base_attributes(job_id, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
+            basic_attack: match job_id {
+                JobId::GUNSLINGER => Skills::BasicRangedAttack,
+                JobId::RangedMinion => Skills::BasicRangedAttack,
+                _ => Skills::BasicRangedAttack,
+            },
             job_id,
             name,
             pos: v2!(0, 0),
@@ -940,7 +969,10 @@ impl CharacterStateComponent {
         updater: &mut specs::Write<LazyUpdate>,
         phyisics_world: &mut PhysicEngine,
     ) {
-        let bit_indices_of_changed_statuses = self.statuses.update(
+        // TODO: refactor this
+        //                 a hack so statuses and self can be mut at the same time
+        let mut mut_statuses = std::mem::replace(&mut self.statuses, Statuses::new());
+        let bit_indices_of_changed_statuses = mut_statuses.update(
             self_char_id,
             self,
             phyisics_world,
@@ -948,6 +980,7 @@ impl CharacterStateComponent {
             entities,
             updater,
         );
+        std::mem::replace(&mut self.statuses, mut_statuses);
         if bit_indices_of_changed_statuses > 0 {
             self.statuses
                 .remove_statuses(bit_indices_of_changed_statuses);
@@ -1068,7 +1101,8 @@ pub enum ActionPlayMode {
     Repeat,
     PlayThenHold,
     Once,
-    Reverse, // FixFrame(12)
+    Reverse,
+    FixFrame(usize),
 }
 
 #[derive(Component)]

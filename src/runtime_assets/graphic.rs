@@ -37,6 +37,23 @@ pub fn load_sprites(
             cursors: asset_loader
                 .load_spr_and_act(gl, "data\\sprite\\cursors", asset_database)
                 .unwrap(),
+            ginseng_bullet: asset_loader
+                .load_spr_and_act(
+                    gl,
+                    "data\\sprite\\¸ó½ºÅÍ\\ginseng_bullet",
+                    asset_database,
+                )
+                .unwrap(),
+            stun: asset_loader
+                .load_spr_and_act(
+                    gl,
+                    "data\\sprite\\ÀÌÆÑÆ®\\status-stun",
+                    asset_database,
+                )
+                .unwrap(),
+            timefont: asset_loader
+                .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\timefont", asset_database)
+                .unwrap(),
             numbers: GlTexture::from_file(gl, "assets\\damage.bmp", asset_database),
             magic_target: asset_loader
                 .load_texture(
@@ -259,13 +276,12 @@ pub fn load_skill_icons(
 ) -> HashMap<Skills, GlTexture> {
     let mut skill_icons = HashMap::new();
     for skill in Skills::iter() {
+        let def = skill.get_definition();
+        if def.get_icon_path().is_empty() {
+            continue;
+        }
         let skill_icon = asset_loader
-            .load_texture(
-                gl,
-                skill.get_definition().get_icon_path(),
-                MyGlEnum::NEAREST,
-                asset_database,
-            )
+            .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_database)
             .unwrap();
         skill_icons.insert(skill, skill_icon);
     }

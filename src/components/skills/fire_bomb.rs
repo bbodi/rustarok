@@ -1,14 +1,15 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, LazyUpdate};
+use specs::LazyUpdate;
 
-use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateResult,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -28,28 +29,37 @@ impl SkillDef for FireBombSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        system_vars
-            .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                target_entity.unwrap(),
-                Box::new(FireBombStatus {
+        if let Some(caster) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(caster_entity_id.0)
+        {
+            let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+            let now = system_vars.time;
+            system_vars
+                .apply_statuses
+                .push(ApplyStatusComponent::from_secondary_status(
                     caster_entity_id,
-                    started: system_vars.time,
-                    until: system_vars.time.add_seconds(2.0),
-                    damage: system_vars.dev_configs.skills.firebomb.damage,
-                    spread_count: 0,
-                }),
-            ));
+                    target_entity.unwrap(),
+                    Box::new(FireBombStatus {
+                        caster_entity_id,
+                        started: now,
+                        until: now.add_seconds(2.0),
+                        damage: ecs_world
+                            .read_resource::<DevConfig>()
+                            .skills
+                            .firebomb
+                            .damage,
+                        spread_count: 0,
+                        caster_team: caster.team,
+                    }),
+                ));
+        }
         None
     }
 
@@ -61,6 +71,7 @@ impl SkillDef for FireBombSkill {
 #[derive(Clone)]
 pub struct FireBombStatus {
     pub caster_entity_id: CharEntityId,
+    pub caster_team: Team,
     pub damage: u32,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
@@ -68,7 +79,7 @@ pub struct FireBombStatus {
 }
 
 impl Status for FireBombStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -102,12 +113,15 @@ impl Status for FireBombStatus {
                                 started: system_vars.time,
                                 until: system_vars.time.add_seconds(2.0),
                                 damage: self.damage,
-                                spread_count: 1,
+                                spread_count: self.spread_count + 1,
+                                caster_team: self.caster_team,
                             },
                         )),
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
                         except: Some(self_char_id),
+                        nature: StatusNature::Harmful,
+                        caster_team: self.caster_team,
                     });
             }
             let effect_comp = StrEffectComponent {

@@ -21,6 +21,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, DevConfig>,
         specs::WriteExpect<'a, SystemFrameDurations>,
     );
 
@@ -32,6 +33,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
             mut sprite_storage,
             mut controller_storage,
             system_vars,
+            dev_configs,
             mut system_benchmark,
         ): Self::SystemData,
     ) {
@@ -63,7 +65,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                         NextActionApplierSystem::try_cast_skill(
                             skill,
                             now,
-                            &system_vars.dev_configs,
+                            &dev_configs,
                             char_state,
                             &mouse_world_pos,
                             &controller.entities_below_cursor,

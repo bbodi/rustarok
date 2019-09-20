@@ -35,12 +35,8 @@ impl AbsorbStatus {
 }
 
 impl Status for AbsorbStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
-    }
-
-    fn get_render_size(&self) -> f32 {
-        1.0
     }
 
     fn update(
@@ -112,7 +108,7 @@ impl Status for AbsorbStatus {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         // I think it should be overwritten only when the caster_entity_id is the same
         // otherwise other players should get the healed credits for their armors
         //        let other_absorb = unsafe { Statuses::hack_cast::<AbsorbStatus>(&other) };

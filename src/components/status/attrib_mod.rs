@@ -26,7 +26,7 @@ impl ArmorModifierStatus {
 }
 
 impl Status for ArmorModifierStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 

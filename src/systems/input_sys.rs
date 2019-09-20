@@ -398,7 +398,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
-            let mouse_world_pos = InputConsumerSystem::picking_2d_3d(
+            let mouse_world_pos = InputConsumerSystem::project_screen_pos_to_world_pos(
                 input.last_mouse_x,
                 input.last_mouse_y,
                 &camera.camera.pos(),
@@ -419,8 +419,14 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         input.assign_skill(SkillKey::Q, Skills::WizPyroBlast);
                         input.assign_skill(SkillKey::W, Skills::AssaBladeDash);
                         input.assign_skill(SkillKey::E, Skills::AssaPhasePrism);
+                        input.assign_skill(SkillKey::R, Skills::GazXplodiumCharge);
                     }
                     Some(Skills::WizPyroBlast) => {
+                        input.assign_skill(SkillKey::Q, Skills::GazTurret);
+                        input.assign_skill(SkillKey::D, Skills::GazDestroyTurret);
+                        input.assign_skill(SkillKey::Num1, Skills::GazTurretTarget);
+                    }
+                    Some(Skills::GazTurret) => {
                         input.assign_skill(SkillKey::Q, Skills::FireWall);
                         input.assign_skill(SkillKey::W, Skills::AbsorbShield);
                         input.assign_skill(SkillKey::E, Skills::Heal);
@@ -447,7 +453,7 @@ impl InputConsumerSystem {
         }
     }
 
-    pub fn picking_2d_3d(
+    pub fn project_screen_pos_to_world_pos(
         x2d: u16,
         y2d: u16,
         camera_pos: &Point3<f32>,

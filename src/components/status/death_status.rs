@@ -20,7 +20,7 @@ impl DeathStatus {
 }
 
 impl Status for DeathStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -53,7 +53,7 @@ impl Status for DeathStatus {
         false
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 }

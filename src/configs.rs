@@ -41,6 +41,7 @@ pub struct DevConfigStatsPlayerJob {
 #[derive(Debug, Deserialize)]
 pub struct DevConfigStatsPlayer {
     pub crusader: DevConfigStatsPlayerJob,
+    pub gunslinger: DevConfigStatsPlayerJob,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,13 +78,19 @@ pub struct SkillConfigFireWall {
     pub attributes: SkillCastingAttributes,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct SkillConfigPyroBlast {
+#[derive(Debug, Deserialize, Clone)]
+pub struct SkillConfigPyroBlastInner {
     pub moving_speed: f32,
     pub damage: u32,
     pub secondary_damage: u32,
     pub ball_size: f32,
     pub splash_radius: f32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SkillConfigPyroBlast {
+    #[serde(flatten)]
+    pub inner: SkillConfigPyroBlastInner,
     #[serde(flatten)]
     pub attributes: SkillCastingAttributes,
 }
@@ -115,6 +122,7 @@ pub struct PoisonSkillConfig {
     #[serde(flatten)]
     pub attributes: SkillCastingAttributes,
     pub damage: u32,
+    pub duration_seconds: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,7 +139,7 @@ pub struct AbsorbShieldSkillConfig {
     pub duration_seconds: f32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AssaBladeDashSkillConfig {
     #[serde(flatten)]
     pub attributes: SkillCastingAttributes,
@@ -149,6 +157,30 @@ pub struct AssaPhasePrismSkillConfig {
     pub damage: u32,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct GazXplodiumChargeSkillConfigInner {
+    pub missile_travel_duration_seconds: f32,
+    pub detonation_duration: f32,
+    pub damage: u32,
+    pub stun_duration_seconds: f32,
+    pub explosion_area: f32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GazXplodiumChargeSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    #[serde(flatten)]
+    pub inner: GazXplodiumChargeSkillConfigInner,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GazTurretSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub turret: CharAttributes,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SkillsConfig {
     pub firewall: SkillConfigFireWall,
@@ -164,6 +196,9 @@ pub struct SkillsConfig {
     pub absorb_shield: AbsorbShieldSkillConfig,
     pub assa_blade_dash: AssaBladeDashSkillConfig,
     pub assa_phase_prism: AssaPhasePrismSkillConfig,
+    pub gaz_xplodium_charge: GazXplodiumChargeSkillConfig,
+    pub gaz_turret: GazTurretSkillConfig,
+    pub gaz_destroy_turret: SkillCastingAttributes,
 }
 
 impl DevConfig {

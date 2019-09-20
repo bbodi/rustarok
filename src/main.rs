@@ -38,13 +38,11 @@ use specs::Join;
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
-use crate::components::char::{
-    CharActionIndex, CharOutlook, CharType, CharacterStateComponent, NpcComponent, Team,
-};
+use crate::components::char::{CharOutlook, CharType, CharacterStateComponent, NpcComponent, Team};
 use crate::components::controller::{
-    CameraComponent, CastMode, CharEntityId, ControllerComponent, ControllerEntityId,
-    HumanInputComponent,
+    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
+use crate::components::skills::skill::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
@@ -75,6 +73,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
+use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, SystemFrameDurations, SystemVariables,
 };
@@ -195,6 +194,7 @@ fn main() {
                 &["input_handler", "browser_input_processor"],
             )
             .with(MinionAiSystem, "minion_ai_sys", &[])
+            .with(TurretAiSystem, "turret_ai_sys", &[])
             .with(
                 NextActionApplierSystem,
                 "char_control",
@@ -229,6 +229,7 @@ fn main() {
             .build()
     };
     ecs_world.add_resource(system_vars);
+    ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
 
     ecs_world.add_resource(asset_database);
@@ -252,21 +253,15 @@ fn main() {
             .matrices
             .projection,
         Point2::new(
-            ecs_world
-                .read_resource::<SystemVariables>()
-                .dev_configs
-                .start_pos_x,
-            ecs_world
-                .read_resource::<SystemVariables>()
-                .dev_configs
-                .start_pos_y,
+            ecs_world.read_resource::<DevConfig>().start_pos_x,
+            ecs_world.read_resource::<DevConfig>().start_pos_y,
         ),
         Sex::Male,
         JobId::CRUSADER,
         1,
         1,
         Team::Right,
-        &ecs_world.read_resource::<SystemVariables>().dev_configs,
+        &ecs_world.read_resource::<DevConfig>(),
     );
     ecs_world
         .read_resource::<LazyUpdate>()
@@ -330,6 +325,7 @@ fn main() {
             desktop_client_char,
             desktop_client_controller,
         );
+        execute_finished_skill_castings(&mut ecs_world);
         ecs_world.maintain();
 
         let (new_map, show_cursor) = imgui_frame(
@@ -367,10 +363,7 @@ fn main() {
         video.gl_swap_window();
 
         std::thread::sleep(Duration::from_millis(
-            ecs_world
-                .read_resource::<SystemVariables>()
-                .dev_configs
-                .sleep_ms,
+            ecs_world.read_resource::<DevConfig>().sleep_ms,
         ));
         let now = std::time::SystemTime::now();
         let now_ms = get_current_ms(now);
@@ -405,10 +398,7 @@ fn main() {
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
         if next_minion_spawn.has_already_passed(now)
-            && ecs_world
-                .read_resource::<SystemVariables>()
-                .dev_configs
-                .minions_enabled
+            && ecs_world.read_resource::<DevConfig>().minions_enabled
         {
             next_minion_spawn = now.add_seconds(2.0);
             spawn_minions(&mut ecs_world)
@@ -421,7 +411,7 @@ fn main() {
 
 fn update_desktop_inputs(
     video: &mut Video,
-    ecs_world: &mut World,
+    ecs_world: &mut specs::world::World,
     desktop_client_controller: ControllerEntityId,
 ) -> bool {
     let mut storage = ecs_world.write_storage::<HumanInputComponent>();
@@ -447,7 +437,7 @@ pub fn get_current_ms(now: SystemTime) -> u64 {
         .as_millis() as u64
 }
 
-fn send_ping_packets(ecs_world: &mut World) -> () {
+fn send_ping_packets(ecs_world: &mut specs::world::World) -> () {
     let now_ms = get_current_ms(SystemTime::now());
     let data = now_ms.to_le_bytes();
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
@@ -459,7 +449,7 @@ fn send_ping_packets(ecs_world: &mut World) -> () {
     }
 }
 
-fn spawn_minions(ecs_world: &mut World) -> () {
+fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
         let char_entity_id = create_random_char_minion(
             ecs_world,
@@ -492,7 +482,7 @@ fn spawn_minions(ecs_world: &mut World) -> () {
 
 fn reload_configs_if_changed(
     runtime_conf_watcher_rx: &crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
-    ecs_world: &mut World,
+    ecs_world: &mut specs::world::World,
 ) {
     match runtime_conf_watcher_rx.try_recv() {
         Ok(_event) => {
@@ -501,12 +491,10 @@ fn reload_configs_if_changed(
                     input.cast_mode = new_config.cast_mode
                 }
 
-                ecs_world.write_resource::<SystemVariables>().dev_configs = new_config;
+                *ecs_world.write_resource::<DevConfig>() = new_config;
                 for char_state in (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
                 {
-                    char_state.update_base_attributes(
-                        &ecs_world.write_resource::<SystemVariables>().dev_configs,
-                    );
+                    char_state.update_base_attributes(&ecs_world.write_resource::<DevConfig>());
                 }
 
                 log::info!("Configs has been reloaded");
@@ -521,14 +509,14 @@ fn reload_configs_if_changed(
 fn execute_console_command(
     command: &str,
     command_defs: &HashMap<String, CommandDefinition>,
-    ecs_world: &mut World,
+    ecs_world: &mut specs::world::World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
 ) {
     {
         let args = CommandArguments::new(command);
         let command_def = &command_defs[args.get_command_name().unwrap()];
-        let result = (command_def.action)(
+        let _result = (command_def.action)(
             desktop_client_controller,
             desktop_client_char,
             &args,
@@ -537,32 +525,57 @@ fn execute_console_command(
     }
 }
 
+fn execute_finished_skill_castings(ecs_world: &mut specs::world::World) {
+    // TODO: avoid allocating new vec
+    let finished_casts = std::mem::replace(
+        &mut ecs_world
+            .write_resource::<SystemVariables>()
+            .just_finished_skill_casts,
+        Vec::with_capacity(128),
+    );
+    for finished_cast in &finished_casts {
+        let manifestation = finished_cast.skill.get_definition().finish_cast(
+            finished_cast.caster_entity_id,
+            finished_cast.caster_pos,
+            finished_cast.skill_pos,
+            &finished_cast.char_to_skill_dir,
+            finished_cast.target_entity,
+            ecs_world,
+        );
+        if let Some(manifestation) = manifestation {
+            let skill_entity_id = ecs_world.create_entity().build();
+            ecs_world.read_resource::<LazyUpdate>().insert(
+                skill_entity_id,
+                SkillManifestationComponent::new(skill_entity_id, manifestation),
+            );
+        }
+    }
+}
+
 fn run_console_commands(
     command_defs: &HashMap<String, CommandDefinition>,
-    ecs_world: &mut World,
+    ecs_world: &mut specs::world::World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
 ) {
-    {
-        let console_args = {
-            let mut storage = ecs_world.write_storage::<ConsoleComponent>();
-            let console = storage.get_mut(desktop_client_controller.0).unwrap();
-            std::mem::replace(&mut console.command_to_execute, None)
-        };
-        if let Some(args) = console_args {
-            let command_def = &command_defs[args.get_command_name().unwrap()];
-            if let Err(e) = (command_def.action)(
-                desktop_client_controller,
-                desktop_client_char,
-                &args,
-                ecs_world,
-            ) {
-                ecs_world
-                    .write_storage::<ConsoleComponent>()
-                    .get_mut(desktop_client_controller.0)
-                    .unwrap()
-                    .error(&e);
-            }
+    let console_args = {
+        let mut storage = ecs_world.write_storage::<ConsoleComponent>();
+        let console = storage.get_mut(desktop_client_controller.0).unwrap();
+        std::mem::replace(&mut console.command_to_execute, None)
+    };
+    if let Some(args) = console_args {
+        let command_def = &command_defs[args.get_command_name().unwrap()];
+        if let Err(e) = (command_def.action)(
+            desktop_client_controller,
+            desktop_client_char,
+            &args,
+            ecs_world,
+        ) {
+            ecs_world
+                .write_storage::<ConsoleComponent>()
+                .get_mut(desktop_client_controller.0)
+                .unwrap()
+                .error(&e);
         }
     }
 }
@@ -794,7 +807,7 @@ fn imgui_frame(
 }
 
 fn create_random_char_minion(
-    ecs_world: &mut World,
+    ecs_world: &mut specs::world::World,
     pos2d: Point2<f32>,
     team: Team,
 ) -> CharEntityId {
@@ -842,7 +855,7 @@ fn create_random_char_minion(
             CollisionGroup::StaticModel,
             CollisionGroup::NonCollidablePlayer,
         ],
-        &ecs_world.read_resource::<SystemVariables>().dev_configs,
+        &ecs_world.read_resource::<DevConfig>(),
     );
     entity_id
 }

@@ -1,5 +1,5 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::ElapsedTime;
 use crate::components::char::CharacterStateComponent;
@@ -30,26 +30,26 @@ impl SkillDef for AssaPhasePrismSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
+        let system_vars = ecs_world.read_resource::<SystemVariables>();
+        let configs = &ecs_world
+            .read_resource::<DevConfig>()
+            .skills
+            .assa_phase_prism;
         Some(Box::new(AssaPhasePrismSkillManifestation::new(
             caster_entity_id,
-            caster.pos(),
+            caster_pos,
             *char_to_skill_dir,
-            physics_world,
+            &mut ecs_world.write_resource::<PhysicEngine>(),
             system_vars.time,
-            system_vars
-                .dev_configs
-                .skills
-                .assa_phase_prism
-                .duration_seconds,
+            configs.duration_seconds,
+            configs.attributes.casting_range,
+            configs.swap_duration_unit_per_second,
         )))
     }
 
@@ -66,6 +66,8 @@ struct AssaPhasePrismSkillManifestation {
     collider_handle: DefaultColliderHandle,
     started_at: ElapsedTime,
     ends_at: ElapsedTime,
+    casting_range: f32,
+    swap_duration_unit_per_second: f32,
 }
 
 impl AssaPhasePrismSkillManifestation {
@@ -76,6 +78,8 @@ impl AssaPhasePrismSkillManifestation {
         physics_world: &mut PhysicEngine,
         now: ElapsedTime,
         duration: f32,
+        casting_range: f32,
+        swap_duration_unit_per_second: f32,
     ) -> AssaPhasePrismSkillManifestation {
         let collider_handle = physics_world.add_cuboid_skill_area(pos, 0.0, v2!(1, 1));
         AssaPhasePrismSkillManifestation {
@@ -86,6 +90,8 @@ impl AssaPhasePrismSkillManifestation {
             caster_id,
             dir,
             collider_handle,
+            casting_range,
+            swap_duration_unit_per_second,
         }
     }
 }
@@ -111,15 +117,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
             let duration_percentage = system_vars
                 .time
                 .percentage_between(self.started_at, self.ends_at);
-            self.pos = self.start_pos
-                + self.dir
-                    * (system_vars
-                        .dev_configs
-                        .skills
-                        .assa_phase_prism
-                        .attributes
-                        .casting_range
-                        * duration_percentage);
+            self.pos = self.start_pos + self.dir * (self.casting_range * duration_percentage);
             if let Some(collider) = physics_world.colliders.get_mut(self_collider_handle) {
                 collider.set_position(Isometry2::translation(self.pos.x, self.pos.y));
             }
@@ -141,17 +139,13 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                         char_storage.get(self.caster_id.0),
                         char_storage.get(target_char_entity_id.0),
                     ) {
-                        //                        if target_char.team == self.team {
-                        //                            continue;
-                        //                        }
                         physics_world.colliders.remove(self_collider_handle);
                         updater.remove::<SkillManifestationComponent>(self_entity_id);
-                        let configs = &system_vars.dev_configs.skills.assa_phase_prism;
                         let distance = (target.pos() - caster.pos()).magnitude();
                         // add status to the caster
-                        let ends_at = system_vars.time.add_seconds(
-                            (distance * configs.swap_duration_unit_per_second).max(0.5),
-                        );
+                        let ends_at = system_vars
+                            .time
+                            .add_seconds((distance * self.swap_duration_unit_per_second).max(0.5));
                         system_vars.apply_statuses.push(
                             ApplyStatusComponent::from_secondary_status(
                                 self.caster_id,
@@ -198,7 +192,6 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
         _now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
@@ -220,7 +213,7 @@ pub struct AssaPhasePrismStatus {
 }
 
 impl Status for AssaPhasePrismStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -229,7 +222,7 @@ impl Status for AssaPhasePrismStatus {
     }
 
     fn can_target_cast(&self) -> bool {
-        true
+        false
     }
 
     fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
@@ -262,7 +255,7 @@ impl Status for AssaPhasePrismStatus {
         }
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::Replace
     }
 

@@ -1,8 +1,8 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
@@ -26,21 +26,19 @@ impl SkillDef for LightningSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
+        let system_vars = ecs_world.read_resource::<SystemVariables>();
         Some(Box::new(LightningManifest::new(
             caster_entity_id,
             &skill_pos.unwrap(),
             char_to_skill_dir,
             system_vars.time,
-            entities,
+            &ecs_world.entities(),
         )))
     }
 
@@ -207,7 +205,6 @@ impl SkillManifestation for LightningManifest {
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {

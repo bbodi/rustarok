@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
@@ -34,35 +34,45 @@ impl SkillDef for FireWallSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
-            angle_in_rad
+        if let Some(caster) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(caster_entity_id.0)
+        {
+            let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+            let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+                angle_in_rad
+            } else {
+                -angle_in_rad
+            };
+            let system_vars = ecs_world.read_resource::<SystemVariables>();
+            let entities = &ecs_world.entities();
+            let mut updater = ecs_world.write_resource::<LazyUpdate>();
+            let configs = ecs_world.read_resource::<DevConfig>();
+            Some(Box::new(PushBackWallSkill::new(
+                caster_entity_id,
+                caster.team,
+                configs.skills.firewall.damage,
+                configs.skills.firewall.pushback_force,
+                configs.skills.firewall.force_duration_seconds,
+                &mut ecs_world.write_resource::<PhysicEngine>(),
+                &skill_pos.unwrap(),
+                angle_in_rad,
+                system_vars.time,
+                system_vars.tick,
+                entities,
+                &mut updater,
+                configs.skills.firewall.duration_seconds,
+                configs.skills.firewall.width,
+            )))
         } else {
-            -angle_in_rad
-        };
-        Some(Box::new(PushBackWallSkill::new(
-            caster_entity_id,
-            caster.team,
-            system_vars.dev_configs.skills.firewall.damage,
-            physics_world,
-            &skill_pos.unwrap(),
-            angle_in_rad,
-            system_vars.time,
-            system_vars.tick,
-            entities,
-            updater,
-            system_vars.dev_configs.skills.firewall.duration_seconds,
-            system_vars.dev_configs.skills.firewall.width,
-        )))
+            None
+        }
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -100,6 +110,8 @@ pub struct PushBackWallSkill {
     born_tick: u64,
     team: Team,
     damage: u32,
+    pushback_force: f32,
+    force_duration_seconds: f32,
 }
 
 impl PushBackWallSkill {
@@ -107,13 +119,15 @@ impl PushBackWallSkill {
         caster_entity_id: CharEntityId,
         team: Team,
         damage: u32,
+        pushback_force: f32,
+        force_duration_seconds: f32,
         physics_world: &mut PhysicEngine,
         skill_center: &Vector2<f32>,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,
         tick: u64,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         duration_seconds: f32,
         width: u16,
     ) -> PushBackWallSkill {
@@ -154,6 +168,8 @@ impl PushBackWallSkill {
             born_tick: tick,
             team,
             damage,
+            pushback_force,
+            force_duration_seconds,
         }
     }
 }
@@ -209,31 +225,20 @@ impl SkillManifestation for PushBackWallSkill {
                             src_entity: self.caster_entity_id,
                             dst_entity: target_char_entity_id,
                             typ: AttackType::SpellDamage(
-                                system_vars.dev_configs.skills.firewall.damage,
+                                self.damage,
                                 DamageDisplayType::SingleNumber,
                             ),
                         });
                         system_vars.pushes.push(ApplyForceComponent {
                             src_entity: self.caster_entity_id,
                             dst_entity: target_char_entity_id,
-                            force: push_dir
-                                * system_vars.dev_configs.skills.firewall.pushback_force,
+                            force: push_dir * self.pushback_force,
                             body_handle: char_collider.body(),
-                            duration: system_vars
-                                .dev_configs
-                                .skills
-                                .firewall
-                                .force_duration_seconds,
+                            duration: self.force_duration_seconds,
                         });
                         self.cannot_damage_until.insert(
                             target_char_entity_id,
-                            now.add_seconds(
-                                system_vars
-                                    .dev_configs
-                                    .skills
-                                    .firewall
-                                    .force_duration_seconds,
-                            ),
+                            now.add_seconds(self.force_duration_seconds),
                         );
                     }
                 }
@@ -246,7 +251,6 @@ impl SkillManifestation for PushBackWallSkill {
         _now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {

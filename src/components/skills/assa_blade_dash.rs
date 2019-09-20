@@ -1,7 +1,7 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, LazyUpdate};
+use specs::LazyUpdate;
 
-use crate::common::ElapsedTime;
+use crate::common::{v2_to_v3, ElapsedTime};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharOutlook, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
@@ -12,6 +12,7 @@ use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType};
+use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
@@ -29,45 +30,56 @@ impl SkillDef for AssaBladeDashSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         // allow to go through anything
-        caster.set_noncollidable(physics_world);
+        if let Some(caster) = ecs_world
+            .write_storage::<CharacterStateComponent>()
+            .get_mut(caster_entity_id.0)
+        {
+            caster.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
 
-        let angle = char_to_skill_dir.angle(&Vector2::y());
-        let angle = if char_to_skill_dir.x > 0.0 {
-            angle
-        } else {
-            -angle
-        };
-        let configs = &system_vars.dev_configs.skills.assa_blade_dash;
-        system_vars
-            .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                caster_entity_id,
-                Box::new(AssaBladeDashStatus {
+            let angle = char_to_skill_dir.angle(&Vector2::y());
+            let angle = if char_to_skill_dir.x > 0.0 {
+                angle
+            } else {
+                -angle
+            };
+
+            let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+            let configs = ecs_world
+                .read_resource::<DevConfig>()
+                .skills
+                .assa_blade_dash
+                .clone();
+            let now = system_vars.time;
+            system_vars
+                .apply_statuses
+                .push(ApplyStatusComponent::from_secondary_status(
                     caster_entity_id,
-                    started_at: system_vars.time,
-                    ends_at: system_vars.time.add_seconds(configs.duration_seconds),
-                    start_pos: caster.pos(),
-                    center: caster.pos()
-                        + char_to_skill_dir * (configs.attributes.casting_range / 2.0),
-                    rot_radian: angle,
-                    vector: char_to_skill_dir * configs.attributes.casting_range,
-                    shadow1_pos: Vector2::zeros(),
-                    shadow2_pos: Vector2::zeros(),
-                    forward_damage_done: false,
-                    backward_damage_done: false,
-                }),
-            ));
+                    caster_entity_id,
+                    Box::new(AssaBladeDashStatus {
+                        caster_entity_id,
+                        started_at: now,
+                        ends_at: now.add_seconds(configs.duration_seconds),
+                        start_pos: caster.pos(),
+                        center: caster.pos()
+                            + char_to_skill_dir * (configs.attributes.casting_range / 2.0),
+                        rot_radian: angle,
+                        vector: char_to_skill_dir * configs.attributes.casting_range,
+                        shadow1_pos: Vector2::zeros(),
+                        shadow2_pos: Vector2::zeros(),
+                        forward_damage_done: false,
+                        backward_damage_done: false,
+                        half_duration: configs.duration_seconds / 2.0,
+                        configs,
+                    }),
+                ));
+        }
         None
     }
 
@@ -84,15 +96,17 @@ pub struct AssaBladeDashStatus {
     pub start_pos: WorldCoords,
     pub center: WorldCoords,
     pub rot_radian: f32,
+    pub half_duration: f32,
     pub vector: WorldCoords,
     pub shadow1_pos: WorldCoords,
     pub shadow2_pos: WorldCoords,
     pub forward_damage_done: bool,
     pub backward_damage_done: bool,
+    pub configs: AssaBladeDashSkillConfig,
 }
 
 impl Status for AssaBladeDashStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -118,7 +132,6 @@ impl Status for AssaBladeDashStatus {
         updater: &mut specs::Write<LazyUpdate>,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
-            let configs = &system_vars.dev_configs.skills.assa_blade_dash;
             if self.ends_at.has_already_passed(system_vars.time) {
                 char_state.set_collidable(physics_world);
                 StatusUpdateResult::RemoveIt
@@ -145,14 +158,14 @@ impl Status for AssaBladeDashStatus {
                     system_vars.area_attacks.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
-                                configs.attributes.width.unwrap_or(1.0),
-                                configs.attributes.casting_range,
+                                self.configs.attributes.width.unwrap_or(1.0),
+                                self.configs.attributes.casting_range,
                             ) / 2.0,
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
                         typ: AttackType::Basic(
-                            configs.first_damage,
+                            self.configs.first_damage,
                             DamageDisplayType::SingleNumber,
                         ),
                         except: None,
@@ -162,14 +175,14 @@ impl Status for AssaBladeDashStatus {
                     system_vars.area_attacks.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
-                                configs.attributes.width.unwrap_or(1.0),
-                                configs.attributes.casting_range,
+                                self.configs.attributes.width.unwrap_or(1.0),
+                                self.configs.attributes.casting_range,
                             ) / 2.0,
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
                         typ: AttackType::Basic(
-                            configs.second_damage,
+                            self.configs.second_damage,
                             DamageDisplayType::SingleNumber,
                         ),
                         except: None,
@@ -192,12 +205,6 @@ impl Status for AssaBladeDashStatus {
         let duration_percentage = system_vars
             .time
             .percentage_between(self.started_at, self.ends_at);
-        let half_duration = system_vars
-            .dev_configs
-            .skills
-            .assa_blade_dash
-            .duration_seconds
-            / 2.0;
         match char_state.outlook {
             CharOutlook::Player {
                 job_sprite_id,
@@ -222,7 +229,7 @@ impl Status for AssaBladeDashStatus {
                             action_index: CharActionIndex::Attacking1 as usize,
                             animation_started: self.started_at.add_seconds(*time_offset),
                             animation_ends_at: ElapsedTime(0.0),
-                            forced_duration: Some(ElapsedTime(half_duration)),
+                            forced_duration: Some(ElapsedTime(self.half_duration)),
                             direction: char_state.dir(),
                             fps_multiplier: 1.0,
                         }
@@ -231,9 +238,9 @@ impl Status for AssaBladeDashStatus {
                             action_index: CharActionIndex::Attacking1 as usize,
                             animation_started: self
                                 .started_at
-                                .add_seconds(half_duration + *time_offset),
+                                .add_seconds(self.half_duration + *time_offset),
                             animation_ends_at: ElapsedTime(0.0),
-                            forced_duration: Some(ElapsedTime(half_duration)),
+                            forced_duration: Some(ElapsedTime(self.half_duration)),
                             direction: (char_state.dir() + 4) % 8,
                             fps_multiplier: 1.0,
                         }
@@ -242,8 +249,7 @@ impl Status for AssaBladeDashStatus {
                         system_vars.time,
                         &anim_descr,
                         body_sprite,
-                        render_commands.yaw,
-                        &pos,
+                        &v2_to_v3(pos),
                         [0, 0],
                         true,
                         1.0,
@@ -256,8 +262,7 @@ impl Status for AssaBladeDashStatus {
                         system_vars.time,
                         &anim_descr,
                         head_res,
-                        render_commands.yaw,
-                        &pos,
+                        &v2_to_v3(pos),
                         offset,
                         false,
                         1.0,
@@ -276,7 +281,7 @@ impl Status for AssaBladeDashStatus {
         }
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 

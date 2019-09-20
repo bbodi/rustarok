@@ -1,4 +1,4 @@
-use nalgebra::Vector2;
+use nalgebra::{Point3, Vector2};
 
 use crate::components::char::{
     CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
@@ -6,6 +6,7 @@ use crate::components::char::{
 use crate::components::controller::{
     CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
 };
+use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -21,7 +22,7 @@ impl RenderUI {
     }
 
     pub fn run(
-        &self,
+        &mut self,
         self_char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         controller: &ControllerComponent,
@@ -30,6 +31,7 @@ impl RenderUI {
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
+        camera_pos: &Point3<f32>,
     ) {
         // Draw casting bar
         match self_char_state.state() {
@@ -63,13 +65,21 @@ impl RenderUI {
             _ => {}
         }
 
-        // draw skill bar
-        RenderUI::draw_skill_bar(
+        let main_skill_bar_top = RenderUI::draw_main_skill_bar(
             self_char_state,
             input,
             controller,
             render_commands,
             &system_vars,
+        );
+
+        RenderUI::draw_secondary_skill_bar(
+            self_char_state,
+            input,
+            controller,
+            render_commands,
+            &system_vars,
+            main_skill_bar_top,
         );
 
         // render targeting skill name
@@ -81,13 +91,14 @@ impl RenderUI {
             &system_vars,
         );
 
-        RenderUI::draw_minimap(
+        self.draw_minimap(
             self_char_state,
             render_commands,
             system_vars,
             char_state_storage,
             npc_storage,
             entities,
+            camera_pos,
         );
 
         render_action_2d(
@@ -103,12 +114,14 @@ impl RenderUI {
     }
 
     fn draw_minimap(
+        &mut self,
         self_char_state: &CharacterStateComponent,
         render_commands: &mut RenderCommandCollector,
         system_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
+        camera_pos: &Point3<f32>,
     ) {
         // prontera minimaps has empty spaces: left 52, right 45 pixels
         // 6 pixel padding on left and bottom, 7 on top and right
@@ -202,6 +215,45 @@ impl RenderUI {
                     .add();
             }
         }
+
+        // draw camera rectangle
+        let right_top = InputConsumerSystem::project_screen_pos_to_world_pos(
+            VIDEO_WIDTH as u16,
+            0,
+            camera_pos,
+            &system_vars.matrices.projection,
+            &render_commands.view_matrix,
+        );
+        let left_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
+            0,
+            VIDEO_HEIGHT as u16,
+            camera_pos,
+            &system_vars.matrices.projection,
+            &render_commands.view_matrix,
+        );
+        let right_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
+            VIDEO_WIDTH as u16,
+            VIDEO_HEIGHT as u16,
+            camera_pos,
+            &system_vars.matrices.projection,
+            &render_commands.view_matrix,
+        );
+
+        let h = right_bottom.y - right_top.y;
+        let letf_bottom_y = (system_vars.map_render_data.gnd.height * 2) as f32 + left_bottom.y;
+        render_commands
+            .rectangle_2d()
+            .screen_pos(
+                minimap_x + (left_bottom.x * real_to_map_scale_w) as i32,
+                minimap_y + ((letf_bottom_y - h) * real_to_map_scale_h) as i32,
+            )
+            .size(
+                ((right_bottom.x - left_bottom.x) * real_to_map_scale_w) as u16,
+                (h * real_to_map_scale_h) as u16,
+            )
+            .color(&[0, 0, 255, 75])
+            .layer(UiLayer2d::MinimapVisibleRegionRectangle)
+            .add()
     }
 
     fn draw_targeting_skill_name(
@@ -236,21 +288,128 @@ impl RenderUI {
         }
     }
 
-    fn draw_skill_bar(
+    const SINGLE_MAIN_ICON_SIZE: i32 = 48;
+
+    fn draw_secondary_skill_bar(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
         controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollector,
         system_vars: &SystemVariables,
+        main_skill_bar_top: i32,
     ) {
-        let single_icon_size = 48;
+        let single_icon_size = 32;
+        let inner_border = 2;
+        let outer_border = 3;
+        let space = 2;
+
+        let main_keys = [SkillKey::Num1, SkillKey::Num2, SkillKey::Num3];
+        let count = main_keys.len() as i32;
+        let skill_bar_width = (outer_border * 2)
+            + count * single_icon_size
+            + inner_border * count * 2
+            + (count - 1) * space;
+        let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
+        let y = main_skill_bar_top - single_icon_size - inner_border * 2 - outer_border * 2;
+
+        let mut x = start_x + outer_border;
+        for skill_key in main_keys.iter() {
+            if let Some(skill) = input.get_skill_for_key(*skill_key) {
+                // inner border
+                let not_castable = char_state
+                    .skill_cast_allowed_at
+                    .get(&skill)
+                    .unwrap_or(&ElapsedTime(0.0))
+                    .has_not_passed_yet(system_vars.time);
+                let border_color = if not_castable {
+                    [179, 179, 179, 255] // grey
+                } else {
+                    controller
+                        .select_skill_target
+                        .filter(|it| it.0 == *skill_key)
+                        .map(|_it| [0, 255, 0, 255])
+                        .unwrap_or([0, 0, 0, 255])
+                };
+                render_commands
+                    .rectangle_2d()
+                    .screen_pos(x, y + outer_border)
+                    .size(
+                        (single_icon_size + inner_border * 2) as u16,
+                        (single_icon_size + inner_border * 2) as u16,
+                    )
+                    .color(&border_color)
+                    .layer(UiLayer2d::SkillBar)
+                    .add();
+
+                x += inner_border;
+                let icon_y = y + outer_border + inner_border;
+                // blueish background
+                render_commands
+                    .rectangle_2d()
+                    .screen_pos(x, icon_y)
+                    .size(single_icon_size as u16, single_icon_size as u16)
+                    .color(
+                        &(if not_castable {
+                            [233, 76, 76, 255] // red if not castable
+                        } else {
+                            [28, 64, 122, 255]
+                        }),
+                    )
+                    .layer(UiLayer2d::SkillBar)
+                    .add();
+
+                render_commands
+                    .sprite_2d()
+                    .screen_pos(x, icon_y)
+                    .scale((single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32 * 2.0))
+                    .layer(UiLayer2d::SkillBarIcon)
+                    .add(&system_vars.assets.skill_icons[&skill]);
+
+                let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
+                let center_x = -2 + x + single_icon_size - skill_key_texture.width;
+                let center_y = -2 + icon_y + single_icon_size - skill_key_texture.height;
+                render_commands
+                    .sprite_2d()
+                    .screen_pos(center_x, center_y)
+                    .color_rgb(if not_castable {
+                        &[239, 76, 76]
+                    } else {
+                        &[255, 255, 255]
+                    })
+                    .layer(UiLayer2d::SkillBarKey)
+                    .add(skill_key_texture);
+                x += single_icon_size + inner_border + space;
+            }
+        }
+    }
+
+    fn draw_main_skill_bar(
+        char_state: &CharacterStateComponent,
+        input: &HumanInputComponent,
+        controller: &ControllerComponent,
+        render_commands: &mut RenderCommandCollector,
+        system_vars: &SystemVariables,
+    ) -> i32 {
+        let single_icon_size = RenderUI::SINGLE_MAIN_ICON_SIZE;
         let inner_border = 3;
         let outer_border = 6;
         let space = 4;
-        let skill_bar_width =
-            (outer_border * 2) + 4 * single_icon_size + inner_border * 4 * 2 + 3 * space;
+
+        let main_keys = [
+            SkillKey::Q,
+            SkillKey::W,
+            SkillKey::E,
+            SkillKey::R,
+            SkillKey::D,
+        ];
+        let count = main_keys.len() as i32;
+        let skill_bar_width = (outer_border * 2)
+            + count * single_icon_size
+            + inner_border * count * 2
+            + (count - 1) * space;
         let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
         let y = VIDEO_HEIGHT as i32 - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
+
         // blueish background
         render_commands
             .rectangle_2d()
@@ -263,7 +422,7 @@ impl RenderUI {
             .layer(UiLayer2d::SkillBar)
             .add();
         let mut x = start_x + outer_border;
-        for skill_key in [SkillKey::Q, SkillKey::W, SkillKey::E, SkillKey::R].iter() {
+        for skill_key in main_keys.iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
                 let not_castable = char_state
@@ -322,10 +481,16 @@ impl RenderUI {
                     .sprite_2d()
                     .screen_pos(center_x, center_y)
                     .layer(UiLayer2d::SkillBarKey)
+                    .color_rgb(if not_castable {
+                        &[239, 76, 76]
+                    } else {
+                        &[255, 255, 255]
+                    })
                     .add(skill_key_texture);
                 x += single_icon_size + inner_border + space;
             }
         }
+        return y;
     }
 }
 

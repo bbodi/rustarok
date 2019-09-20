@@ -1,6 +1,6 @@
 use crate::components::char::{
     ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
-    CharacterStateComponent, Percentage,
+    CharacterStateComponent, Percentage, Team,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
@@ -14,13 +14,13 @@ use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use specs::LazyUpdate;
+use specs::{Entities, LazyUpdate};
 use std::any::{Any, TypeId};
 use std::collections::HashSet;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
 use strum_macros::EnumCount;
 
+#[derive(Debug)]
 pub enum StatusStackingResult {
     DontAddTheNewStatus,
     AddTheNewStatus,
@@ -28,7 +28,17 @@ pub enum StatusStackingResult {
 }
 
 pub trait Status: Any {
-    fn dupl(&self) -> Box<dyn Status>;
+    fn dupl(&self) -> Box<dyn Status + Send>;
+
+    fn on_apply(
+        &mut self,
+        self_entity_id: CharEntityId,
+        target_char: &mut CharacterStateComponent,
+        entities: &Entities,
+        updater: &mut specs::Write<LazyUpdate>,
+        system_vars: &SystemVariables,
+    ) {
+    }
 
     fn can_target_move(&self) -> bool {
         true
@@ -84,7 +94,7 @@ pub trait Status: Any {
         None
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::AddTheNewStatus
     }
 
@@ -95,15 +105,11 @@ pub trait Status: Any {
 #[derive(Debug, EnumCount, Clone, Copy)]
 pub enum MainStatuses {
     Mounted,
-    Stun,
-    Poison(u32),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum MainStatusesIndex {
     Mounted,
-    Stun,
-    Poison,
 }
 
 #[derive(Clone)]
@@ -113,7 +119,7 @@ struct MountedStatus {
 
 const STATUS_ARRAY_SIZE: usize = 32;
 pub struct Statuses {
-    statuses: [Option<Arc<Mutex<Box<dyn Status>>>>; STATUS_ARRAY_SIZE],
+    statuses: [Option<Box<dyn Status>>; STATUS_ARRAY_SIZE],
     first_free_index: usize,
     cached_modifier_collector: CharAttributeModifierCollector,
 }
@@ -139,7 +145,7 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            allow &= status.as_ref().unwrap().lock().unwrap().can_target_move();
+            allow &= status.as_ref().unwrap().can_target_move();
         }
         return allow;
     }
@@ -152,7 +158,7 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            allow &= status.as_ref().unwrap().lock().unwrap().can_target_cast();
+            allow &= status.as_ref().unwrap().can_target_cast();
         }
         return allow;
     }
@@ -165,12 +171,7 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            allow &= status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .can_target_be_controlled();
+            allow &= status.as_ref().unwrap().can_target_be_controlled();
         }
         return allow;
     }
@@ -183,7 +184,7 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            allow &= status.as_ref().unwrap().lock().unwrap().allow_push(push);
+            allow &= status.as_ref().unwrap().allow_push(push);
         }
         return allow;
     }
@@ -195,18 +196,13 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            outcome = status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .affect_incoming_damage(outcome);
+            outcome = status.as_mut().unwrap().affect_incoming_damage(outcome);
         }
         return outcome;
     }
 
     pub fn update(
-        &self,
+        &mut self,
         self_char_id: CharEntityId,
         char_state: &CharacterStateComponent,
         physics_world: &mut PhysicEngine,
@@ -217,12 +213,12 @@ impl Statuses {
         let mut changed: u32 = 0;
         for (i, status) in self
             .statuses
-            .iter()
+            .iter_mut()
             .enumerate()
             .take(self.first_free_index)
             .filter(|(i, it)| it.is_some())
         {
-            let result = status.as_ref().unwrap().lock().unwrap().update(
+            let result = status.as_mut().unwrap().update(
                 self_char_id,
                 char_state,
                 physics_world,
@@ -262,10 +258,10 @@ impl Statuses {
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let guard = status.as_ref().unwrap().lock().unwrap();
-            let type_id = guard.deref().as_ref().type_id();
+            let boxx = status.as_ref().unwrap();
+            let type_id = boxx.deref().type_id();
             if !already_rendered.contains(&type_id) {
-                guard.render(char_pos, system_vars, render_commands);
+                boxx.render(char_pos, system_vars, render_commands);
                 already_rendered.insert(type_id);
             }
         }
@@ -274,6 +270,7 @@ impl Statuses {
     pub fn get_base_attributes(job_id: JobId, configs: &DevConfig) -> CharAttributes {
         return match job_id {
             JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
+            JobId::GUNSLINGER => configs.stats.player.gunslinger.attributes.clone(),
             JobId::RangedMinion => configs.stats.minion.ranged.clone(),
             JobId::HealingDummy => CharAttributes {
                 walking_speed: Percentage(0),
@@ -298,6 +295,7 @@ impl Statuses {
                 mana_regen: Percentage(0),
             },
             JobId::MeleeMinion => configs.stats.minion.melee.clone(),
+            JobId::Turret => configs.skills.gaz_turret.turret.clone(),
             _ => CharAttributes {
                 walking_speed: Percentage(100),
                 attack_range: Percentage(100),
@@ -323,8 +321,6 @@ impl Statuses {
             status
                 .as_ref()
                 .unwrap()
-                .lock()
-                .unwrap()
                 .calc_attribs(&mut self.cached_modifier_collector);
         }
         return &self.cached_modifier_collector;
@@ -338,12 +334,7 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            let status_color = status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .get_render_color(now);
+            let status_color = status.as_ref().unwrap().get_render_color(now);
             for i in 0..4 {
                 ret[i] = (ret[i] as u32 * status_color[i] as u32 / 255) as u8;
             }
@@ -359,12 +350,8 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            let rem: Option<(ElapsedTime, f32)> = status
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .get_status_completion_percent(now);
+            let rem: Option<(ElapsedTime, f32)> =
+                status.as_ref().unwrap().get_status_completion_percent(now);
             ret = if let Some((status_ends_at, _status_remaining_time)) = rem {
                 if let Some((current_ends_at, _current_rem_time)) = ret {
                     if current_ends_at.has_not_passed_yet(status_ends_at) {
@@ -386,38 +373,49 @@ impl Statuses {
         self.statuses[MainStatusesIndex::Mounted as usize].is_some()
     }
 
-    pub fn is_stunned(&self) -> bool {
-        self.statuses[MainStatusesIndex::Stun as usize].is_some()
-    }
-
     pub fn switch_mounted(&mut self, mounted_speedup: Percentage) {
         let is_mounted = self.statuses[MainStatusesIndex::Mounted as usize].is_some();
-        let value: Option<Arc<Mutex<Box<dyn Status>>>> = if !is_mounted {
-            Some(Arc::new(Mutex::new(Box::new(MountedStatus {
+        let value: Option<Box<dyn Status>> = if !is_mounted {
+            Some(Box::new(MountedStatus {
                 speedup: mounted_speedup,
-            }))))
+            }))
         } else {
             None
         };
         self.statuses[MainStatusesIndex::Mounted as usize] = value;
     }
 
-    pub fn add(&mut self, status: Box<dyn Status>) {
+    pub fn add(&mut self, new_status: Box<dyn Status>) {
         if self.first_free_index >= STATUS_ARRAY_SIZE {
             log::error!("There is no more space for new Status!");
             return;
         }
-        self.statuses[self.first_free_index] = Some(Arc::new(Mutex::new(status)));
-        self.first_free_index += 1;
-    }
-
-    pub fn ugly_add(&mut self, status: Arc<Mutex<Box<dyn Status>>>) {
-        if self.first_free_index >= STATUS_ARRAY_SIZE {
-            log::error!("There is no more space for new Status!");
-            return;
+        let type_id = new_status.as_ref().type_id();
+        let (current_index, stack_type) = self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .enumerate()
+            .find(|(i, current_status)| {
+                current_status
+                    .as_ref()
+                    .map(|current_status| type_id == current_status.as_ref().type_id())
+                    .unwrap_or(false)
+            })
+            .map(|(i, current_status)| (i, current_status.as_ref().unwrap().stack(&new_status)))
+            .unwrap_or((0, StatusStackingResult::AddTheNewStatus));
+        match dbg!(stack_type) {
+            StatusStackingResult::Replace => {
+                self.statuses[current_index] = Some(new_status);
+            }
+            StatusStackingResult::AddTheNewStatus => {
+                self.statuses[self.first_free_index] = Some(new_status);
+                self.first_free_index += 1;
+            }
+            StatusStackingResult::DontAddTheNewStatus => {
+                return;
+            }
         }
-        self.statuses[self.first_free_index] = Some(status);
-        self.first_free_index += 1;
     }
 
     pub fn remove_all(&mut self) {
@@ -435,9 +433,7 @@ impl Statuses {
         for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
             let should_remove = arc_status
                 .as_ref()
-                .map(|it| {
-                    let guard = it.lock().unwrap();
-                    let boxx: &Box<dyn Status> = &guard;
+                .map(|boxx| {
                     let type_id = boxx.as_ref().type_id();
                     type_id == removing_type_id
                         && unsafe { predicate(Statuses::trait_to_struct(boxx)) }
@@ -453,7 +449,7 @@ impl Statuses {
         for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
             let should_remove = arc_status
                 .as_ref()
-                .map(|it| it.lock().unwrap().typ() == status_type)
+                .map(|it| it.typ() == status_type)
                 .unwrap_or(false);
             if should_remove {
                 *arc_status = None;
@@ -475,8 +471,7 @@ impl Statuses {
     {
         let requested_type_id = TypeId::of::<T>();
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let guard = status.as_ref().unwrap().lock().unwrap();
-            let boxx: &Box<dyn Status> = &guard;
+            let boxx: &Box<dyn Status> = &status.as_ref().unwrap();
             let type_id = boxx.as_ref().type_id();
             if requested_type_id == type_id {
                 let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
@@ -484,37 +479,6 @@ impl Statuses {
             }
         }
         return None;
-    }
-
-    pub fn add_poison(
-        &mut self,
-        poison_caster_entity_id: CharEntityId,
-        dmg: u32,
-        started: ElapsedTime,
-        until: ElapsedTime,
-    ) {
-        let new_until = {
-            let status = &self.statuses[MainStatusesIndex::Poison as usize];
-            if let Some(current_poison) = status {
-                let boxx: &Box<dyn Status> = &*current_poison.lock().unwrap();
-                unsafe {
-                    Statuses::trait_to_struct::<PoisonStatus>(boxx)
-                        .until
-                        .max(until)
-                }
-            } else {
-                until
-            }
-        };
-
-        self.statuses[MainStatusesIndex::Poison as usize] =
-            Some(Arc::new(Mutex::new(Box::new(PoisonStatus {
-                poison_caster_entity_id,
-                started,
-                until: new_until,
-                next_damage_at: started.add_seconds(1.0),
-                damage: dmg,
-            }))));
     }
 }
 
@@ -524,7 +488,7 @@ pub enum StatusUpdateResult {
 }
 
 impl Status for MountedStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
 
@@ -537,7 +501,7 @@ impl Status for MountedStatus {
         );
     }
 
-    fn stack(&self, _other: Box<dyn Status>) -> StatusStackingResult {
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
         StatusStackingResult::DontAddTheNewStatus
     }
 
@@ -556,12 +520,8 @@ pub struct PoisonStatus {
 }
 
 impl Status for PoisonStatus {
-    fn dupl(&self) -> Box<dyn Status> {
+    fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Harmful
     }
 
     fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
@@ -611,11 +571,19 @@ impl Status for PoisonStatus {
     fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
+
+    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
+        StatusStackingResult::Replace
+    }
+
+    fn typ(&self) -> StatusNature {
+        StatusNature::Harmful
+    }
 }
 
 pub enum ApplyStatusComponentPayload {
     MainStatus(MainStatuses),
-    SecondaryStatus(Arc<Mutex<Box<dyn Status>>>),
+    SecondaryStatus(Box<dyn Status + Send>),
 }
 
 impl ApplyStatusComponentPayload {
@@ -623,8 +591,8 @@ impl ApplyStatusComponentPayload {
         ApplyStatusComponentPayload::MainStatus(m)
     }
 
-    pub fn from_secondary(status: Box<dyn Status>) -> ApplyStatusComponentPayload {
-        ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(status)))
+    pub fn from_secondary(status: Box<dyn Status + Send>) -> ApplyStatusComponentPayload {
+        ApplyStatusComponentPayload::SecondaryStatus(status)
     }
 }
 
@@ -635,10 +603,8 @@ impl Clone for ApplyStatusComponentPayload {
                 ApplyStatusComponentPayload::MainStatus(*m)
             }
             ApplyStatusComponentPayload::SecondaryStatus(arc) => {
-                let boxed_status_clone = arc.lock().unwrap().dupl();
-                ApplyStatusComponentPayload::SecondaryStatus(Arc::new(Mutex::new(
-                    boxed_status_clone,
-                )))
+                let boxed_status_clone = arc.dupl();
+                ApplyStatusComponentPayload::SecondaryStatus(boxed_status_clone)
             }
         }
     }
@@ -656,6 +622,8 @@ pub struct ApplyStatusInAreaComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
     pub except: Option<CharEntityId>,
+    pub nature: StatusNature,
+    pub caster_team: Team,
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -700,7 +668,7 @@ impl ApplyStatusComponent {
     pub fn from_secondary_status(
         source_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
-        status: Box<dyn Status>,
+        status: Box<dyn Status + Send>,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
             source_entity_id,

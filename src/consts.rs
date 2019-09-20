@@ -13,6 +13,7 @@ pub enum MonsterId {
     Poring,
     Barricade,
     GEFFEN_MAGE_6,
+    Dimik,
 }
 
 #[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -35,6 +36,7 @@ pub enum JobId {
     HealingDummy,
     MeleeMinion,
     RangedMinion,
+    Turret,
 }
 
 pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 13] = [

@@ -51,7 +51,7 @@ impl Camera {
 
     pub fn update_visible_z_range(&mut self, projection: &Matrix4<f32>) {
         let view = self.create_view_matrix();
-        let center = InputConsumerSystem::picking_2d_3d(
+        let center = InputConsumerSystem::project_screen_pos_to_world_pos(
             0,
             (VIDEO_HEIGHT / 2) as u16,
             &self.pos(),
@@ -59,8 +59,15 @@ impl Camera {
             &view,
         );
         self.visible_z_range = (self.pos.z - center.y).abs();
-        self.top_z_world_coord_offset =
-            self.pos.z - InputConsumerSystem::picking_2d_3d(0, 0, &self.pos(), projection, &view).y;
+        self.top_z_world_coord_offset = self.pos.z
+            - InputConsumerSystem::project_screen_pos_to_world_pos(
+                0,
+                0,
+                &self.pos(),
+                projection,
+                &view,
+            )
+            .y;
     }
 
     pub fn rotate(&mut self, pitch: f32, yaw: f32) {

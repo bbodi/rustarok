@@ -4,7 +4,7 @@ use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{GlNativeTextureId, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 pub fn create_2d_pos_rot_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f32> {
     let mut matrix = Matrix4::<f32>::identity();
@@ -30,6 +30,16 @@ pub fn create_3d_pos_rot_matrix(
     return matrix * rotation;
 }
 
+pub fn create_3d_rot_matrix(rotation_rad: &(Vector3<f32>, f32)) -> Matrix4<f32> {
+    let mut matrix = Matrix4::<f32>::identity();
+    let rotation = Rotation3::from_axis_angle(
+        &nalgebra::Unit::new_normalize(rotation_rad.0),
+        rotation_rad.1,
+    )
+    .to_homogeneous();
+    return matrix * rotation;
+}
+
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub struct EffectFrameCacheKey {
     pub effect_id: StrEffectId,
@@ -42,7 +52,7 @@ pub struct RenderCommandCollector {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
-    pub(super) rectangle_2d_commands: Vec<Rectangle2dRenderCommand>,
+    pub(super) rectangle_2d_commands: VecDeque<Rectangle2dRenderCommand>,
     pub(super) point_2d_commands: Vec<Point2dRenderCommand>,
     pub(super) text_2d_commands: Vec<Text2dRenderCommand>,
     pub(super) circle_3d_commands: Vec<Circle3dRenderCommand>,
@@ -52,8 +62,8 @@ pub struct RenderCommandCollector {
     pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Vector2<f32>>>,
     pub(super) effect_commands2: Vec<(StrEffectId, i32, Vector2<f32>)>,
-    pub(super) view_matrix: Matrix4<f32>,
-    pub(super) normal_matrix: Matrix3<f32>,
+    pub view_matrix: Matrix4<f32>,
+    pub normal_matrix: Matrix3<f32>,
     pub yaw: f32,
 }
 
@@ -64,7 +74,7 @@ impl<'a> RenderCommandCollector {
             texture_2d_commands: Vec::with_capacity(128),
             text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
-            rectangle_2d_commands: Vec::with_capacity(128),
+            rectangle_2d_commands: VecDeque::with_capacity(128),
             point_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
             sprite_3d_commands: Vec::with_capacity(128),
@@ -227,16 +237,29 @@ impl<'a> Rectangle2dCommandBuilder<'a> {
     }
 
     pub fn add(&mut self) {
-        self.collector
-            .rectangle_2d_commands
-            .push(Rectangle2dRenderCommand {
-                color: self.color,
-                width: self.width,
-                height: self.height,
-                screen_pos: self.screen_pos,
-                layer: self.layer,
-                rotation_rad: self.rotation_rad,
-            });
+        if self.color[3] < 255 {
+            self.collector
+                .rectangle_2d_commands
+                .push_front(Rectangle2dRenderCommand {
+                    color: self.color,
+                    width: self.width,
+                    height: self.height,
+                    screen_pos: self.screen_pos,
+                    layer: self.layer,
+                    rotation_rad: self.rotation_rad,
+                });
+        } else {
+            self.collector
+                .rectangle_2d_commands
+                .push_back(Rectangle2dRenderCommand {
+                    color: self.color,
+                    width: self.width,
+                    height: self.height,
+                    screen_pos: self.screen_pos,
+                    layer: self.layer,
+                    rotation_rad: self.rotation_rad,
+                });
+        }
     }
 
     pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Rectangle2dCommandBuilder {
@@ -417,6 +440,7 @@ pub enum UiLayer2d {
     Minimap,
     MinimapSimpleEntities,
     MinimapImportantEntities,
+    MinimapVisibleRegionRectangle,
     SelectingTargetSkillName,
     Console,
     ConsoleTexts,
@@ -875,6 +899,7 @@ pub struct Sprite3dRenderCommand {
     pub color: [u8; 4],
     pub scale: f32,
     pub pos: Vector3<f32>,
+    pub rot_radian: f32,
     pub texture: GlNativeTextureId,
     pub offset: [i16; 2],
     pub texture_width: u16,
@@ -936,6 +961,7 @@ pub struct Sprite3dRenderCommandBuilder<'a> {
     collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
     pos: Vector3<f32>,
+    rot_radian: f32,
     offset: [i16; 2],
     scale: f32,
     flip_vertically: bool,
@@ -950,7 +976,13 @@ impl<'a> Sprite3dRenderCommandBuilder<'a> {
             offset: [0, 0],
             scale: 1.0,
             flip_vertically: false,
+            rot_radian: 0.0,
         }
+    }
+
+    pub fn rot_radian(&mut self, rot_radian: f32) -> &'a mut Sprite3dRenderCommandBuilder {
+        self.rot_radian = rot_radian;
+        self
     }
 
     pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Sprite3dRenderCommandBuilder {
@@ -1011,6 +1043,7 @@ impl<'a> Sprite3dRenderCommandBuilder<'a> {
             texture_width: texture.width as u16,
             texture_height: texture.height as u16,
             pos: self.pos,
+            rot_radian: self.rot_radian,
         };
         self.collector.sprite_3d_commands.push(command);
     }

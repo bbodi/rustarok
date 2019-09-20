@@ -206,6 +206,7 @@ impl HorizTexture3dShaderParameters {
 pub struct Sprite3dShaderParameters {
     pub projection_mat: ShaderParam4x4fv,
     pub model_mat: ShaderParam4x4fv,
+    pub rot_mat: ShaderParam4x4fv,
     pub view_mat: ShaderParam4x4fv,
     pub color: ShaderParam4ubv,
     pub size: ShaderParam2fv,
@@ -218,6 +219,7 @@ impl Sprite3dShaderParameters {
         Sprite3dShaderParameters {
             projection_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "projection")),
             model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
+            rot_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "rot_mat")),
             view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
             size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
@@ -333,6 +335,7 @@ impl StrEffect3dShaderParameters {
 pub struct Trimesh2dShaderParameters {
     pub projection_mat: ShaderParam4x4fv,
     pub model_mat: ShaderParam4x4fv,
+    pub z: ShaderParam1f,
     pub color: ShaderParam4ubv,
     pub size: ShaderParam2fv,
 }
@@ -344,6 +347,7 @@ impl Trimesh2dShaderParameters {
             model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
             size: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
+            z: ShaderParam1f(Shader::get_location(gl, program_id, "z")),
         }
     }
 }

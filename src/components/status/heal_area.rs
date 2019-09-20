@@ -2,7 +2,6 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
 use crate::components::{AttackComponent, AttackType};
-use crate::configs::DevConfig;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -88,7 +87,6 @@ impl SkillManifestation for HealApplierArea {
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {

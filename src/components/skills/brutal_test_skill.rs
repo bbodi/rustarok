@@ -1,9 +1,9 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoords};
 use crate::components::skills::skill::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
@@ -29,14 +29,11 @@ impl SkillDef for BrutalTestSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster: &CharacterStateComponent,
+        caster_pos: WorldCoords,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
-        physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
-        entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
         let angle_in_rad = if char_to_skill_dir.x > 0.0 {
@@ -44,14 +41,20 @@ impl SkillDef for BrutalTestSkill {
         } else {
             -angle_in_rad
         };
+        let entities = &ecs_world.entities();
+        let mut updater = ecs_world.write_resource::<LazyUpdate>();
         Some(Box::new(BrutalSkillManifest::new(
             caster_entity_id,
             &skill_pos.unwrap(),
             angle_in_rad,
-            system_vars.dev_configs.skills.brutal_test_skill.damage,
-            system_vars.time,
+            ecs_world
+                .read_resource::<DevConfig>()
+                .skills
+                .brutal_test_skill
+                .damage,
+            ecs_world.read_resource::<SystemVariables>().time,
             entities,
-            updater,
+            &mut updater,
         )))
     }
 
@@ -101,7 +104,7 @@ impl BrutalSkillManifest {
         damage: u32,
         system_time: ElapsedTime,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> BrutalSkillManifest {
         let effect_ids = (0..11 * 11)
             .map(|i| {
@@ -183,7 +186,6 @@ impl SkillManifestation for BrutalSkillManifest {
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,
-        _configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {

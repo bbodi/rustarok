@@ -1,11 +1,10 @@
 use crate::asset::str::StrFile;
 use crate::asset::AssetLoader;
-use crate::components::skills::skill::Skills;
+use crate::components::skills::skill::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
-use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::my_gl::Gl;
 use crate::runtime_assets::audio::Sounds;
@@ -34,6 +33,7 @@ pub mod render;
 pub mod render_sys;
 pub mod skill_sys;
 pub mod sound_sys;
+pub mod turret_ai_sys;
 pub mod ui;
 
 pub struct EffectSprites {
@@ -54,6 +54,9 @@ pub struct Sprites {
     pub numbers: GlTexture,
     pub magic_target: GlTexture,
     pub fire_particle: GlTexture,
+    pub ginseng_bullet: SpriteResource,
+    pub stun: SpriteResource,
+    pub timefont: SpriteResource,
     pub character_sprites: HashMap<JobSpriteId, [SpriteResource; 2]>,
     pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],
@@ -104,9 +107,9 @@ pub struct SystemVariables {
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
+    pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
-    pub dev_configs: DevConfig,
     pub str_effects: Vec<StrFile>,
 }
 
@@ -134,7 +137,6 @@ impl SystemVariables {
                 sounds,
             },
             asset_loader,
-            dev_configs: DevConfig::new().unwrap(),
             tick: 1,
             dt: DeltaTime(0.0),
             time: ElapsedTime(0.0),
@@ -144,6 +146,7 @@ impl SystemVariables {
             area_attacks: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
+            just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
             str_effects,

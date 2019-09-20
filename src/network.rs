@@ -2,6 +2,7 @@ use crate::asset::database::AssetDatabase;
 use crate::components::char::{attach_human_player_components, Team};
 use crate::components::controller::{CameraComponent, CharEntityId, ControllerEntityId};
 use crate::components::BrowserClient;
+use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -212,21 +213,15 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
                                 projection_mat,
                                 Point2::new(
-                                    ecs_world
-                                        .read_resource::<SystemVariables>()
-                                        .dev_configs
-                                        .start_pos_x,
-                                    ecs_world
-                                        .read_resource::<SystemVariables>()
-                                        .dev_configs
-                                        .start_pos_y,
+                                    ecs_world.read_resource::<DevConfig>().start_pos_x,
+                                    ecs_world.read_resource::<DevConfig>().start_pos_y,
                                 ),
                                 Sex::Male,
                                 JobId::CRUSADER,
                                 2,
                                 1,
                                 Team::Right,
-                                &ecs_world.read_resource::<SystemVariables>().dev_configs,
+                                &ecs_world.read_resource::<DevConfig>(),
                             );
                         }
                     } else {

@@ -75,6 +75,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
         specs::WriteExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, DevConfig>,
         specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::Write<'a, LazyUpdate>,
@@ -86,6 +87,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             entities,
             mut char_state_storage,
             mut system_vars,
+            dev_configs,
             mut physics_world,
             mut system_benchmark,
             mut updater,
@@ -218,8 +220,10 @@ impl<'a> specs::System<'a> for AttackSystem {
         AttackSystem::add_new_statuses(
             status_changes,
             &mut char_state_storage,
-            system_vars.time,
-            &system_vars.dev_configs,
+            &system_vars,
+            &dev_configs,
+            &entities,
+            &mut updater,
         );
 
         let status_changes =
@@ -321,12 +325,15 @@ impl AttackCalculation {
         area_status: &ApplyStatusInAreaComponent,
     ) -> Vec<ApplyStatusComponent> {
         let mut result_statuses = vec![];
-        for (target_entity_id, char_state) in (entities, char_storage).join() {
+        for (target_entity_id, target_char) in (entities, char_storage).join() {
             let target_entity_id = CharEntityId(target_entity_id);
             if area_status
                 .except
                 .map(|it| it == target_entity_id)
                 .unwrap_or(false)
+                || !target_char
+                    .team
+                    .is_compatible(area_status.nature, area_status.caster_team)
             {
                 continue;
             }
@@ -335,7 +342,7 @@ impl AttackCalculation {
             let coll_result = ncollide2d::query::proximity(
                 &area_status.area_isom,
                 &*area_status.area_shape,
-                &Isometry2::new(char_state.pos(), 0.0),
+                &Isometry2::new(target_char.pos(), 0.0),
                 &ncollide2d::shape::Ball::new(1.0),
                 0.0,
             );
@@ -543,8 +550,10 @@ impl AttackSystem {
     fn add_new_statuses(
         status_changes: Vec<ApplyStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
-        now: ElapsedTime,
-        configs: &DevConfig,
+        system_vars: &SystemVariables,
+        dev_configs: &DevConfig,
+        entities: &Entities,
+        updater: &mut specs::Write<LazyUpdate>,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
@@ -552,6 +561,7 @@ impl AttackSystem {
                 if target_char.hp <= 0 {
                     continue;
                 }
+                let target_entity_id = status_change.target_entity_id;
                 match status_change.status {
                     ApplyStatusComponentPayload::MainStatus(status_name) => {
                         log::debug!(
@@ -562,28 +572,26 @@ impl AttackSystem {
                         match status_name {
                             MainStatuses::Mounted => {
                                 let mounted_speedup =
-                                    AttackSystem::calc_mounted_speedup(target_char, configs);
+                                    AttackSystem::calc_mounted_speedup(target_char, &dev_configs);
                                 target_char.statuses.switch_mounted(mounted_speedup);
-                            }
-                            MainStatuses::Stun => {}
-                            MainStatuses::Poison(dmg) => {
-                                target_char.statuses.add_poison(
-                                    status_change.source_entity_id,
-                                    dmg,
-                                    now,
-                                    now.add_seconds(15.0),
-                                );
                             }
                         }
                     }
-                    ApplyStatusComponentPayload::SecondaryStatus(box_status) => {
-                        target_char.statuses.ugly_add(box_status);
+                    ApplyStatusComponentPayload::SecondaryStatus(mut box_status) => {
+                        box_status.on_apply(
+                            status_change.target_entity_id,
+                            target_char,
+                            entities,
+                            updater,
+                            system_vars,
+                        );
+                        target_char.statuses.add(box_status);
                     }
                 }
                 target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status added. Attributes({:?}): bonuses: {:?}, current: {:?}",
-                    status_change.target_entity_id,
+                    target_entity_id,
                     target_char.attrib_bonuses(),
                     target_char.calculated_attribs()
                 );
