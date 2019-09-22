@@ -31,6 +31,7 @@ actix-rt = "0.2.4"
 actix-files = "0.1.4"
 crossbeam-channel = "0.3.8"
 notify = "=5.0.0-pre.1"
+vek = "0.9.9"
 
 [dependencies.specs]
 version = "0.14.3"

@@ -8,6 +8,7 @@ use crate::components::{
     BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
 };
 use crate::systems::console_system::ConsoleComponent;
+use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use specs::World;
@@ -18,6 +19,7 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<NpcComponent>();
     ecs_world.register::<TurretComponent>();
     ecs_world.register::<TurretControllerComponent>();
+    ecs_world.register::<FalconComponent>();
     ecs_world.register::<HumanInputComponent>();
     ecs_world.register::<RenderCommandCollector>();
     ecs_world.register::<AudioCommandCollectorComponent>();

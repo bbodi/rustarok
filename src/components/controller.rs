@@ -7,6 +7,7 @@ use sdl2::keyboard::Scancode;
 use serde::Deserialize;
 use specs::prelude::*;
 use std::collections::HashMap;
+use strum_macros::Display;
 use strum_macros::EnumIter;
 
 #[derive(Default)]
@@ -35,7 +36,7 @@ impl KeyState {
 pub type ScreenCoords = Vector2<u16>;
 pub type WorldCoords = Vector2<f32>;
 
-#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Debug, Hash)]
+#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash)]
 pub enum SkillKey {
     Q,
     W,
@@ -43,8 +44,11 @@ pub enum SkillKey {
     R,
     D,
     Y,
+    #[strum(serialize = "1")]
     Num1,
+    #[strum(serialize = "2")]
     Num2,
+    #[strum(serialize = "3")]
     Num3,
 }
 

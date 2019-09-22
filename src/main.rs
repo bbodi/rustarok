@@ -21,6 +21,7 @@ extern crate specs_derive;
 extern crate strum;
 extern crate strum_macros;
 extern crate sublime_fuzzy;
+extern crate vek;
 extern crate websocket;
 
 use std::collections::HashMap;
@@ -29,7 +30,7 @@ use std::time::{Duration, SystemTime};
 
 use imgui::{ImString, ImVec2};
 use log::LevelFilter;
-use nalgebra::{Matrix4, Point2};
+use nalgebra::{Matrix4, Point2, Vector2};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -38,7 +39,10 @@ use specs::Join;
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
-use crate::components::char::{CharOutlook, CharType, CharacterStateComponent, NpcComponent, Team};
+use crate::components::char::{
+    CharActionIndex, CharOutlook, CharType, CharacterStateComponent, NpcComponent,
+    SpriteRenderDescriptorComponent, Team,
+};
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
@@ -62,12 +66,14 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
+use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent, FalconState};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
+use crate::systems::render::falcon_render_sys::FalconRenderSys;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
@@ -195,6 +201,7 @@ fn main() {
             )
             .with(MinionAiSystem, "minion_ai_sys", &[])
             .with(TurretAiSystem, "turret_ai_sys", &[])
+            .with(FalconAiSystem, "falcon_ai_sys", &[])
             .with(
                 NextActionApplierSystem,
                 "char_control",
@@ -218,6 +225,7 @@ fn main() {
             .with(AttackSystem, "attack_sys", &["collision_collector"])
             .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
             .with_thread_local(RenderDesktopClientSystem::new())
+            .with_thread_local(FalconRenderSys)
             .with_thread_local(opengl_render_sys)
             .with_thread_local(WebSocketBrowserRenderSystem::new());
         if let Some(sound_system) = maybe_sound_system {
@@ -266,6 +274,28 @@ fn main() {
     ecs_world
         .read_resource::<LazyUpdate>()
         .insert(desktop_client_controller.0, ConsoleComponent::new());
+
+    // add falcon to it
+    let start_x = ecs_world.read_resource::<DevConfig>().start_pos_x;
+    let start_y = ecs_world.read_resource::<DevConfig>().start_pos_y;
+    let falcon_id = ecs_world
+        .create_entity()
+        .with(FalconComponent {
+            owner_entity_id: desktop_client_char,
+            state: FalconState::Follow,
+            pos: Vector2::new(start_x, start_y),
+            acceleration: 0.0,
+        })
+        .with(SpriteRenderDescriptorComponent {
+            action_index: CharActionIndex::Idle as usize,
+            fps_multiplier: 1.0,
+            animation_started: ElapsedTime(0.0),
+            forced_duration: None,
+            direction: 0,
+            animation_ends_at: ElapsedTime(0.0),
+        })
+        .build();
+
     ecs_world.maintain();
 
     let mut next_second: SystemTime = std::time::SystemTime::now()

@@ -361,7 +361,7 @@ impl RenderUI {
                 render_commands
                     .sprite_2d()
                     .screen_pos(x, icon_y)
-                    .scale((single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32 * 2.0))
+                    .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32 * 2.0)
                     .layer(UiLayer2d::SkillBarIcon)
                     .add(&system_vars.assets.skill_icons[&skill]);
 
@@ -376,6 +376,7 @@ impl RenderUI {
                     } else {
                         &[255, 255, 255]
                     })
+                    .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32)
                     .layer(UiLayer2d::SkillBarKey)
                     .add(skill_key_texture);
                 x += single_icon_size + inner_border + space;
@@ -410,17 +411,6 @@ impl RenderUI {
         let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
         let y = VIDEO_HEIGHT as i32 - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
 
-        // blueish background
-        render_commands
-            .rectangle_2d()
-            .screen_pos(start_x, y)
-            .size(
-                skill_bar_width as u16,
-                (single_icon_size + (outer_border * 2 + inner_border * 2)) as u16,
-            )
-            .color(&[28, 64, 122, 255])
-            .layer(UiLayer2d::SkillBar)
-            .add();
         let mut x = start_x + outer_border;
         for skill_key in main_keys.iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {

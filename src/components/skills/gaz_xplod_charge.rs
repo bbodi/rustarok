@@ -22,6 +22,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
+use vek::QuadraticBezier3;
 
 pub struct GazXplodiumChargeSkill;
 
@@ -69,6 +70,7 @@ struct GazXplodiumChargeSkillManifestation {
     caster_id: CharEntityId,
     started_at: ElapsedTime,
     configs: GazXplodiumChargeSkillConfigInner,
+    bezier: QuadraticBezier3<f32>,
 }
 
 impl GazXplodiumChargeSkillManifestation {
@@ -80,6 +82,7 @@ impl GazXplodiumChargeSkillManifestation {
         now: ElapsedTime,
         configs: GazXplodiumChargeSkillConfigInner,
     ) -> GazXplodiumChargeSkillManifestation {
+        let ctrl = v2_to_v3(&(start_pos - (end_pos - start_pos))) + v3!(0, 20.0, 0);
         GazXplodiumChargeSkillManifestation {
             start_pos,
             end_pos,
@@ -88,6 +91,11 @@ impl GazXplodiumChargeSkillManifestation {
             caster_id,
             current_target_pos: v2_to_v3(&end_pos),
             configs,
+            bezier: QuadraticBezier3 {
+                start: vek::Vec3::new(start_pos.x, 0.0, start_pos.y),
+                ctrl: vek::Vec3::new(ctrl.x, ctrl.y, ctrl.z),
+                end: vek::Vec3::new(end_pos.x, 0.0, end_pos.y),
+            },
         }
     }
 }
@@ -111,11 +119,8 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .add_seconds(self.configs.missile_travel_duration_seconds),
         );
         if travel_duration_percentage < 1.0 {
-            let dir = v3_to_v2(&self.current_target_pos) - self.start_pos;
-            self.current_pos = v2_to_v3(&(self.start_pos + dir * travel_duration_percentage));
-            let increase_height = (travel_duration_percentage + 0.5).min(1.0) * 10.0;
-            let decrease_height = (travel_duration_percentage - 0.5).max(0.0) * 20.0;
-            self.current_pos.y = increase_height - decrease_height;
+            let pos = self.bezier.evaluate(travel_duration_percentage);
+            self.current_pos = v3!(pos.x, pos.y, pos.z);
         } else {
             let end_time = self
                 .started_at
@@ -243,6 +248,13 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 &[255, 255, 255, 255],
                 render_commands,
             );
+
+            // render clock
+            render_commands
+                .sprite_3d()
+                .pos_2d(&self.end_pos)
+                .y(1.0)
+                .add(&assets.sprites.clock);
 
             // render area
             render_commands

@@ -38,7 +38,7 @@ impl SkillDef for GazTurretSkill {
         {
             let entities = &ecs_world.entities();
             let updater = ecs_world.read_resource::<LazyUpdate>();
-            let mut system_vars = ecs_world.read_resource::<SystemVariables>();
+            let system_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
             attach_char_components(
@@ -54,7 +54,7 @@ impl SkillDef for GazTurretSkill {
                 CharType::Minion,
                 CollisionGroup::NonPlayer,
                 &[
-                    //CollisionGroup::NonPlayer,
+                    CollisionGroup::NonPlayer,
                     CollisionGroup::Player,
                     CollisionGroup::StaticModel,
                     CollisionGroup::NonCollidablePlayer,

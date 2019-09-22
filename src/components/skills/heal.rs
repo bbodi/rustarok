@@ -28,7 +28,7 @@ impl SkillDef for HealSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         let target_entity_id = target_entity.unwrap();
         let entities = &ecs_world.entities();
-        let mut updater = ecs_world.read_resource::<LazyUpdate>();
+        let updater = ecs_world.read_resource::<LazyUpdate>();
         let mut system_vars = ecs_world.write_resource::<SystemVariables>();
         let entity = entities.create();
         updater.insert(

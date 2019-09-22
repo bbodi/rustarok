@@ -827,12 +827,13 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                 let bind = cached_frame.pos_vao.bind(&system_vars.gl);
                                 for pos in commands {
                                     let mut matrix = cached_frame.rotation_matrix.clone();
-                                    let m = matrix.as_mut_slice();
+                                    matrix.append_translation_mut(&v2_to_v3(&pos));
+                                    //                                    let m = matrix.as_mut_slice();
                                     // ignore rotation for now
-                                    m[12] = pos.x;
-                                    m[13] = 0.0;
-                                    m[14] = pos.y;
-                                    m[15] = 1.0;
+                                    //                                    m[12] = pos.x;
+                                    //                                    m[13] = 0.0;
+                                    //                                    m[14] = pos.y;
+                                    //                                    m[15] = 1.0;
                                     shader.params.model_mat.set(gl, &matrix);
                                     bind.draw(&system_vars.gl);
                                 }

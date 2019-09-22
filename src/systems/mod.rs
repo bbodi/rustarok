@@ -23,6 +23,7 @@ pub mod camera_system;
 pub mod char_state_sys;
 pub mod console_commands;
 pub mod console_system;
+pub mod falcon_ai_sys;
 pub mod frame_end_system;
 pub mod input_sys;
 pub mod input_to_next_action;
@@ -54,7 +55,9 @@ pub struct Sprites {
     pub numbers: GlTexture,
     pub magic_target: GlTexture,
     pub fire_particle: GlTexture,
+    pub clock: GlTexture,
     pub ginseng_bullet: SpriteResource,
+    pub falcon: SpriteResource,
     pub stun: SpriteResource,
     pub timefont: SpriteResource,
     pub character_sprites: HashMap<JobSpriteId, [SpriteResource; 2]>,

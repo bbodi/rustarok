@@ -29,7 +29,7 @@ impl SkillDef for MountingSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         {
             let entities = &ecs_world.entities();
-            let mut updater = ecs_world.read_resource::<LazyUpdate>();
+            let updater = ecs_world.read_resource::<LazyUpdate>();
             let now = ecs_world.read_resource::<SystemVariables>().time;
             updater.insert(
                 entities.create(),

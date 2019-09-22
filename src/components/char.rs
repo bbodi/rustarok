@@ -819,13 +819,10 @@ impl Component for TurretControllerComponent {
     type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
 }
 
+#[derive(Component)]
 pub struct TurretComponent {
     pub owner_entity_id: CharEntityId,
     pub preferred_target: Option<CharEntityId>,
-}
-
-impl Component for TurretComponent {
-    type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
 }
 
 pub struct NpcComponent;

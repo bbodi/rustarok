@@ -13,6 +13,7 @@ use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use sdl2::ttf::Sdl2TtfContext;
 use std::collections::HashMap;
+use std::string::ToString;
 use strum::IntoEnumIterator;
 
 pub struct Texts {
@@ -44,6 +45,9 @@ pub fn load_sprites(
                     asset_database,
                 )
                 .unwrap(),
+            falcon: asset_loader
+                .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\¸Å", asset_database)
+                .unwrap(),
             stun: asset_loader
                 .load_spr_and_act(
                     gl,
@@ -67,6 +71,14 @@ pub fn load_sprites(
                 .load_texture(
                     gl,
                     "data\\texture\\effect\\fireparticle.tga",
+                    MyGlEnum::NEAREST,
+                    asset_database,
+                )
+                .unwrap(),
+            clock: asset_loader
+                .load_texture(
+                    gl,
+                    "data\\texture\\effect\\blast_mine##clock.bmp",
                     MyGlEnum::NEAREST,
                     asset_database,
                 )
@@ -399,7 +411,7 @@ pub fn load_texts(
             gl,
             &skill_key_font,
             &skill_key_font_bold_outline,
-            &format!("{:?}", skill_key),
+            &skill_key.to_string(),
             asset_database,
         );
         texts.skill_key_texts.insert(skill_key, texture);

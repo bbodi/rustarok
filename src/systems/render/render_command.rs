@@ -31,7 +31,7 @@ pub fn create_3d_pos_rot_matrix(
 }
 
 pub fn create_3d_rot_matrix(rotation_rad: &(Vector3<f32>, f32)) -> Matrix4<f32> {
-    let mut matrix = Matrix4::<f32>::identity();
+    let matrix = Matrix4::<f32>::identity();
     let rotation = Rotation3::from_axis_angle(
         &nalgebra::Unit::new_normalize(rotation_rad.0),
         rotation_rad.1,
