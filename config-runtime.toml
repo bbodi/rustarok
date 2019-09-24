@@ -2,7 +2,7 @@
 sleep_ms = 0
 minions_enabled = false
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
-cast_mode = "OnKeyPress"
+cast_mode = "Normal"
 # right gate: 250.0, -200.0
 start_pos_x = 238
 start_pos_y = -65
@@ -104,6 +104,13 @@ start_pos_y = -65
         duration_seconds = 1.0
         swap_duration_unit_per_second = 0.08
         damage = 100
+    [skills.falcon_carry]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 17.8
+        width = 1
+        carry_ally_duration = 2.0
+        carry_owner_duration = 4.0
     [skills.gaz_xplodium_charge]
         casting_time = 0.0
         cast_delay = 0.0
@@ -172,7 +179,7 @@ start_pos_y = -65
             healing =  100
             hp_regen = 100
             mana_regen = 100
-            mounted_speedup = 30
+            mounted_speedup = 130
             # normal values
             attack_damage = 120
             max_hp = 50_000

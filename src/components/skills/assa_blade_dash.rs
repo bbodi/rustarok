@@ -1,5 +1,5 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::LazyUpdate;
+use specs::{Entities, LazyUpdate};
 
 use crate::common::{v2_to_v3, ElapsedTime};
 use crate::components::char::{
@@ -36,13 +36,10 @@ impl SkillDef for AssaBladeDashSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        // allow to go through anything
         if let Some(caster) = ecs_world
             .write_storage::<CharacterStateComponent>()
             .get_mut(caster_entity_id.0)
         {
-            caster.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
-
             let angle = char_to_skill_dir.angle(&Vector2::y());
             let angle = if char_to_skill_dir.x > 0.0 {
                 angle
@@ -108,6 +105,19 @@ pub struct AssaBladeDashStatus {
 impl Status for AssaBladeDashStatus {
     fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
+    }
+
+    fn on_apply(
+        &mut self,
+        self_entity_id: CharEntityId,
+        target_char: &mut CharacterStateComponent,
+        entities: &Entities,
+        updater: &mut LazyUpdate,
+        system_vars: &SystemVariables,
+        physic_world: &mut PhysicEngine,
+    ) {
+        // allow to go through anything
+        target_char.set_noncollidable(physic_world);
     }
 
     fn can_target_move(&self) -> bool {

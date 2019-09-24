@@ -831,11 +831,27 @@ impl Component for NpcComponent {
     type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
 }
 
+//fn can_target_move(&self) -> bool {
+//    false
+//}
+//
+//fn can_target_be_controlled(&self) -> bool {
+//    true
+//}
+//
+//fn can_target_cast(&self) -> bool {
+//    false
+//}
+//fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+//    Some((self.until, now.percentage_between(self.started, self.until)))
+//}
+
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pub name: String, // characters also has names so it is possible to follow them with a camera
     pub basic_attack: Skills,
     pos: WorldCoords,
+    y: f32,
     pub team: Team,
     pub target: Option<EntityTarget>,
     pub typ: CharType,
@@ -915,6 +931,7 @@ impl CharacterStateComponent {
             job_id,
             name,
             pos: v2!(0, 0),
+            y: 0.0,
             team,
             typ,
             outlook,
@@ -995,8 +1012,16 @@ impl CharacterStateComponent {
         self.pos = pos;
     }
 
+    pub fn set_y(&mut self, y: f32) {
+        self.y = y;
+    }
+
     pub fn pos(&self) -> WorldCoords {
         self.pos
+    }
+
+    pub fn get_y(&self) -> f32 {
+        self.y
     }
 
     pub fn state_has_changed(&mut self) -> bool {

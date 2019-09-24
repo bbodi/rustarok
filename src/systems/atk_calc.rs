@@ -224,6 +224,7 @@ impl<'a> specs::System<'a> for AttackSystem {
             &dev_configs,
             &entities,
             &mut updater,
+            &mut physics_world,
         );
 
         let status_changes =
@@ -553,7 +554,8 @@ impl AttackSystem {
         system_vars: &SystemVariables,
         dev_configs: &DevConfig,
         entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
+        physic_world: &mut PhysicEngine,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
@@ -584,6 +586,7 @@ impl AttackSystem {
                             entities,
                             updater,
                             system_vars,
+                            physic_world,
                         );
                         target_char.statuses.add(box_status);
                     }

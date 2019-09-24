@@ -30,7 +30,7 @@ use std::time::{Duration, SystemTime};
 
 use imgui::{ImString, ImVec2};
 use log::LevelFilter;
-use nalgebra::{Matrix4, Point2, Vector2};
+use nalgebra::{Matrix4, Point2, Vector2, Vector3};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -47,6 +47,7 @@ use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
 use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::status::stun::StunStatusSystem;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
@@ -66,7 +67,9 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
-use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent, FalconState};
+use crate::systems::falcon_ai_sys::{
+    FalconAiSystem, FalconComponent, FalconState, FALCON_FLY_HEIGHT,
+};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -202,6 +205,19 @@ fn main() {
             .with(MinionAiSystem, "minion_ai_sys", &[])
             .with(TurretAiSystem, "turret_ai_sys", &[])
             .with(FalconAiSystem, "falcon_ai_sys", &[])
+            //////////////////////////////////////
+            // statuses
+            /////////////////////////////////////
+            //            .with(
+            //                CharStatusCleanerSysem,
+            //                "CharStatusCleanerSysem",
+            //                &["input_handler"],
+            //            )
+            /////////////////////////////////////
+            //            .with(StunStatusSystem, "StunStatusSystem", &["input_handler"])
+            /////////////////////////////////////
+            // statuses end
+            /////////////////////////////////////
             .with(
                 NextActionApplierSystem,
                 "char_control",
@@ -280,12 +296,7 @@ fn main() {
     let start_y = ecs_world.read_resource::<DevConfig>().start_pos_y;
     let falcon_id = ecs_world
         .create_entity()
-        .with(FalconComponent {
-            owner_entity_id: desktop_client_char,
-            state: FalconState::Follow,
-            pos: Vector2::new(start_x, start_y),
-            acceleration: 0.0,
-        })
+        .with(FalconComponent::new(desktop_client_char, start_x, start_y))
         .with(SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             fps_multiplier: 1.0,

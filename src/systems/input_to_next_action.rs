@@ -38,9 +38,10 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             (&entities, &input_storage, &mut controller_storage).join()
         {
             // TODO: it can happen that this unwrap panics if browser clients disconnects
-            let self_char_comp = char_state_storage
+            let self_char_team = char_state_storage
                 .get(controller.controlled_entity.0)
-                .unwrap();
+                .unwrap()
+                .team;
 
             let just_pressed_skill_key = SkillKey::iter()
                 .filter(|key| input.is_key_just_pressed(key.scancode()))
@@ -54,7 +55,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 .pop();
 
             controller.calc_entities_below_cursor(
-                self_char_comp.team,
+                self_char_team,
                 input.last_mouse_x,
                 input.last_mouse_y,
             );
@@ -67,7 +68,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 system_vars.time,
                 controller,
                 &char_state_storage,
-                self_char_comp.team,
+                self_char_team,
             );
             controller.cursor_anim_descr.action_index = cursor_frame.1;
             controller.cursor_color = cursor_color;

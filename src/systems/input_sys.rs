@@ -425,6 +425,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         input.assign_skill(SkillKey::Q, Skills::GazTurret);
                         input.assign_skill(SkillKey::D, Skills::GazDestroyTurret);
                         input.assign_skill(SkillKey::Num1, Skills::GazTurretTarget);
+                        input.assign_skill(SkillKey::Num2, Skills::FalconCarry);
                     }
                     Some(Skills::GazTurret) => {
                         input.assign_skill(SkillKey::Q, Skills::FireWall);

@@ -379,6 +379,23 @@ impl RenderUI {
                     .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32)
                     .layer(UiLayer2d::SkillBarKey)
                     .add(skill_key_texture);
+
+                if input.mouse_pos().x > x as u16
+                    && input.mouse_pos().x < (x + single_icon_size) as u16
+                {
+                    if input.mouse_pos().y > y as u16
+                        && input.mouse_pos().y < (y + single_icon_size) as u16
+                    {
+                        let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+                        render_commands
+                            .sprite_2d()
+                            .color(&[255, 255, 255, 255])
+                            .screen_pos(input.last_mouse_x as i32, input.last_mouse_y as i32)
+                            .layer(UiLayer2d::HoveringSkillBarName)
+                            .add(texture);
+                    }
+                }
+
                 x += single_icon_size + inner_border + space;
             }
         }
@@ -477,6 +494,23 @@ impl RenderUI {
                         &[255, 255, 255]
                     })
                     .add(skill_key_texture);
+
+                if input.mouse_pos().x > x as u16
+                    && input.mouse_pos().x < (x + single_icon_size) as u16
+                {
+                    if input.mouse_pos().y > y as u16
+                        && input.mouse_pos().y < (y + single_icon_size) as u16
+                    {
+                        let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+                        render_commands
+                            .sprite_2d()
+                            .color(&[255, 255, 255, 255])
+                            .screen_pos(input.last_mouse_x as i32, input.last_mouse_y as i32)
+                            .layer(UiLayer2d::HoveringSkillBarName)
+                            .add(texture);
+                    }
+                }
+
                 x += single_icon_size + inner_border + space;
             }
         }

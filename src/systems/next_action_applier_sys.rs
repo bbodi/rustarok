@@ -82,9 +82,10 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         for (char_id, char_comp, sprite) in
             (&entities, &mut char_state_storage, &mut sprite_storage).join()
         {
-            if char_comp.statuses.can_be_controlled() == false {
-                continue;
-            }
+            // it was removed due to a bug in falcon carry
+            //            if char_comp.statuses.can_be_controlled() == false {
+            //                continue;
+            //            }
             let sprite: &mut SpriteRenderDescriptorComponent = sprite;
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end

@@ -7,6 +7,7 @@ pub mod basic_attack;
 pub mod basic_ranged_attack;
 pub mod brutal_test_skill;
 pub mod cure;
+pub mod falcon_carry;
 pub mod fire_bomb;
 pub mod firewall;
 pub mod gaz_turret;

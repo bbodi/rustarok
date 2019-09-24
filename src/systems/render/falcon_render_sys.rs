@@ -7,7 +7,6 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use nalgebra::Vector3;
 use specs::prelude::*;
 
 pub struct FalconRenderSys;
@@ -47,7 +46,7 @@ impl<'a> specs::System<'a> for FalconRenderSys {
                     system_vars.time,
                     &animated_sprite,
                     &system_vars.assets.sprites.falcon,
-                    &Vector3::new(falcon.pos.x, 5.0, falcon.pos.y),
+                    &falcon.pos,
                     [0, 0],
                     true,
                     1.0,

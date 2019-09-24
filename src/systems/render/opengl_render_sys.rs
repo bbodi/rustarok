@@ -756,7 +756,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     );
 
                     let model_matrix = create_3d_pos_rot_matrix(
-                        &v2_to_v3(&command.pos),
+                        &Vector3::new(command.pos.x, 0.2, command.pos.y),
                         &(Vector3::y(), command.rotation_rad),
                     );
 

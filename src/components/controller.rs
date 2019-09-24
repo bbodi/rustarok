@@ -68,7 +68,7 @@ impl SkillKey {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PlayerIntention {
     MoveTowardsMouse(WorldCoords),
     /// Move to the coordination, or if an enemy stands there, attack her.

@@ -12,13 +12,68 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_action;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
+use specs::prelude::*;
 use specs::{Entities, LazyUpdate};
 
-#[derive(Clone)]
+#[derive(Clone, Component)]
 pub struct StunStatus {
     pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
     pub until: ElapsedTime,
+}
+
+pub struct StunStatusSystem;
+
+impl<'a> specs::System<'a> for StunStatusSystem {
+    type SystemData = (
+        specs::Entities<'a>,
+        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::ReadStorage<'a, StunStatus>,
+        specs::WriteExpect<'a, SystemVariables>,
+        specs::WriteExpect<'a, RenderCommandCollector>,
+        specs::ReadExpect<'a, LazyUpdate>,
+    );
+
+    fn run(
+        &mut self,
+        (
+            entities,
+            mut char_storage,
+            stun_status_storage,
+            mut system_vars,
+            mut global_renderer,
+            updater,
+        ): Self::SystemData,
+    ) {
+        for (status_id, stun_status, char_state) in
+            (&entities, &stun_status_storage, &mut char_storage).join()
+        {
+            if stun_status.until.has_already_passed(system_vars.time) {
+                updater.remove::<StunStatus>(status_id);
+            } else {
+                let anim = SpriteRenderDescriptorComponent {
+                    action_index: CharActionIndex::Idle as usize,
+                    animation_started: stun_status.started,
+                    animation_ends_at: ElapsedTime(0.0),
+                    forced_duration: None,
+                    direction: 0,
+                    fps_multiplier: 1.0,
+                };
+                render_action(
+                    system_vars.time,
+                    &anim,
+                    &system_vars.assets.sprites.stun,
+                    &char_state.pos(),
+                    [0, -100],
+                    false,
+                    1.0,
+                    ActionPlayMode::Repeat,
+                    &[255, 255, 255, 255],
+                    &mut global_renderer,
+                );
+            }
+        }
+    }
 }
 
 impl StunStatus {
@@ -41,8 +96,9 @@ impl Status for StunStatus {
         self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
+        physic_world: &mut PhysicEngine,
     ) {
         target_char.set_state(CharState::StandBy, target_char.dir());
         let entity = entities.create();

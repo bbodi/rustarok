@@ -39,7 +39,7 @@ pub enum JobId {
     Turret,
 }
 
-pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 13] = [
+pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 14] = [
     JobSpriteId::CRUSADER,
     JobSpriteId::SWORDMAN,
     JobSpriteId::ARCHER,
@@ -53,6 +53,7 @@ pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 13] = [
     JobSpriteId::PRIEST,
     JobSpriteId::MONK,
     JobSpriteId::GUNSLINGER,
+    JobSpriteId::HUNTER,
 ];
 
 #[derive(EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash)]

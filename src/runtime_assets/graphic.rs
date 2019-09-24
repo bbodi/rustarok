@@ -292,9 +292,13 @@ pub fn load_skill_icons(
         if def.get_icon_path().is_empty() {
             continue;
         }
-        let skill_icon = asset_loader
-            .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_database)
-            .unwrap();
+        let skill_icon = asset_database
+            .get_texture(gl, &def.get_icon_path())
+            .unwrap_or_else(|| {
+                asset_loader
+                    .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_database)
+                    .unwrap()
+            });
         skill_icons.insert(skill, skill_icon);
     }
     return skill_icons;

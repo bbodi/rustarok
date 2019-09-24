@@ -35,8 +35,9 @@ pub trait Status: Any {
         self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
+        physic_world: &mut PhysicEngine,
     ) {
     }
 

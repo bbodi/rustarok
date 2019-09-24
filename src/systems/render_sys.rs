@@ -1,6 +1,5 @@
 use crate::asset::database::AssetDatabase;
 use crate::cam::Camera;
-use crate::common::v2_to_v3;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
     NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
@@ -326,10 +325,12 @@ impl RenderDesktopClientSystem {
             // for autocompletion
             let char_state: &CharacterStateComponent = char_state;
 
-            let pos = char_state.pos();
-            if !camera.camera.is_visible(pos) {
+            let pos_2d = char_state.pos();
+            if !camera.camera.is_visible(pos_2d) {
                 continue;
             }
+
+            let pos_3d = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
 
             let color = char_state.statuses.calc_render_color(system_vars.time);
             match char_state.outlook {
@@ -380,7 +381,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 body_sprite,
-                                &v2_to_v3(&pos),
+                                &pos_3d,
                                 [0, 0],
                                 true,
                                 1.2,
@@ -393,7 +394,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 head_res,
-                                &v2_to_v3(&pos),
+                                &pos_3d,
                                 body_pos_offset,
                                 false,
                                 1.2,
@@ -408,7 +409,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         body_sprite,
-                        &v2_to_v3(&pos),
+                        &pos_3d,
                         [0, 0],
                         true,
                         1.0,
@@ -429,7 +430,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         head_res,
-                        &v2_to_v3(&pos),
+                        &pos_3d,
                         body_pos_offset,
                         false,
                         1.0,
@@ -501,7 +502,7 @@ impl RenderDesktopClientSystem {
                                 system_vars.time,
                                 &animated_sprite,
                                 body_res,
-                                &v2_to_v3(&pos),
+                                &pos_3d,
                                 [0, 0],
                                 true,
                                 1.2,
@@ -515,7 +516,7 @@ impl RenderDesktopClientSystem {
                         system_vars.time,
                         &animated_sprite,
                         body_res,
-                        &v2_to_v3(&pos),
+                        &pos_3d,
                         [0, 0],
                         true,
                         1.0,

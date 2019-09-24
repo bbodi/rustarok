@@ -437,6 +437,7 @@ pub enum UiLayer2d {
     SkillBar,
     SkillBarIcon,
     SkillBarKey,
+    HoveringSkillBarName,
     Minimap,
     MinimapSimpleEntities,
     MinimapImportantEntities,
@@ -926,14 +927,28 @@ impl Sprite3dRenderCommand {
         let mut bottom_left = Vector4::new(-0.5 * width, -0.5 * height, 0.0, 1.0);
         bottom_left.x += offset_in_3d_space[0] as f32;
         bottom_left.y -= offset_in_3d_space[1] as f32;
+        if bottom_left.y.is_nan() || self.pos.y.is_nan() {
+            dbg!(bottom_left);
+            dbg!(width);
+            dbg!(height);
+            dbg!(self.offset);
+            dbg!(self.scale);
+            dbg!(self.pos);
+        }
 
         let mut model_view = view * Matrix4::new_translation(&self.pos);
         Sprite3dRenderCommand::set_spherical_billboard(&mut model_view);
         fn sh(v: Vector4<f32>) -> [i32; 2] {
             let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
+            let s2 = (v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32;
+            if s2.is_nan() {
+                dbg!(v[1]);
+                dbg!(v);
+                dbg!(s);
+            }
             [
                 ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
-                VIDEO_HEIGHT as i32 - ((v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32) as i32,
+                VIDEO_HEIGHT as i32 - s2 as i32,
             ]
         }
         let bottom_left = sh(projection * model_view * bottom_left);

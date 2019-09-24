@@ -157,6 +157,14 @@ pub struct AssaPhasePrismSkillConfig {
     pub damage: u32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FalconCarry {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub carry_ally_duration: f32,
+    pub carry_owner_duration: f32,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct GazXplodiumChargeSkillConfigInner {
     pub missile_travel_duration_seconds: f32,
@@ -196,6 +204,7 @@ pub struct SkillsConfig {
     pub absorb_shield: AbsorbShieldSkillConfig,
     pub assa_blade_dash: AssaBladeDashSkillConfig,
     pub assa_phase_prism: AssaPhasePrismSkillConfig,
+    pub falcon_carry: FalconCarry,
     pub gaz_xplodium_charge: GazXplodiumChargeSkillConfig,
     pub gaz_turret: GazTurretSkillConfig,
     pub gaz_destroy_turret: SkillCastingAttributes,
