@@ -3,7 +3,7 @@ use crate::components::char::{
     CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoords,
+    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoord,
 };
 use crate::components::skills::falcon_carry::FalconCarryStatus;
 use crate::components::status::status::ApplyStatusComponent;
@@ -18,6 +18,12 @@ pub struct FalconAiSystem;
 
 pub enum FalconState {
     Follow,
+    Attack {
+        started_at: ElapsedTime,
+        ends_at: ElapsedTime,
+        start_pos: Vector3<f32>,
+        end_pos: Vector3<f32>,
+    },
     CarryOwner {
         owner_controller_id: ControllerEntityId,
         started_at: ElapsedTime,
@@ -62,14 +68,14 @@ impl FalconComponent {
     pub fn carry_owner(
         &mut self,
         owner_controller_id: ControllerEntityId,
-        target_pos: &WorldCoords,
+        target_pos: &WorldCoord,
         now: ElapsedTime,
         duration: f32,
-        sprite: &mut SpriteRenderDescriptorComponent,
+        falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
         match self.state {
-            FalconState::CarryOwner { .. } | FalconState::CarryAlly { .. } => return,
-            _ => {}
+            FalconState::Follow { .. } => {}
+            _ => return,
         }
         self.state = FalconState::CarryOwner {
             owner_controller_id,
@@ -78,22 +84,22 @@ impl FalconComponent {
             target_is_caught: false,
             start_pos: self.pos,
         };
-        sprite.action_index = CharActionIndex::Walking as usize;
-        sprite.direction =
+        falcon_sprite.action_index = CharActionIndex::Walking as usize;
+        falcon_sprite.direction =
             NextActionApplierSystem::determine_dir(&target_pos, &v3_to_v2(&self.pos));
     }
 
     pub fn carry_ally(
         &mut self,
         target_entity: CharEntityId,
-        target_pos: &WorldCoords,
+        target_pos: &WorldCoord,
         now: ElapsedTime,
         duration: f32,
-        sprite: &mut SpriteRenderDescriptorComponent,
+        falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
         match self.state {
-            FalconState::CarryOwner { .. } | FalconState::CarryAlly { .. } => return,
-            _ => {}
+            FalconState::Follow { .. } => {}
+            _ => return,
         }
         self.state = FalconState::CarryAlly {
             target_id: target_entity,
@@ -103,15 +109,39 @@ impl FalconComponent {
             target_is_caught: false,
             end_pos: Vector2::zeros(),
         };
-        sprite.action_index = CharActionIndex::Walking as usize;
-        sprite.direction =
+        falcon_sprite.action_index = CharActionIndex::Walking as usize;
+        falcon_sprite.direction =
             NextActionApplierSystem::determine_dir(&target_pos, &v3_to_v2(&self.pos));
+    }
+
+    pub fn set_state_to_attack(
+        &mut self,
+        now: ElapsedTime,
+        duration: f32,
+        start_pos: WorldCoord,
+        end_pos: WorldCoord,
+        falcon_sprite: &mut SpriteRenderDescriptorComponent,
+    ) {
+        match self.state {
+            FalconState::Follow { .. } => {}
+            _ => return,
+        }
+        self.pos = Vector3::new(start_pos.x, FALCON_FLY_HEIGHT, start_pos.y);
+        self.state = FalconState::Attack {
+            started_at: now,
+            ends_at: now.add_seconds(duration),
+            start_pos: self.pos,
+            end_pos: Vector3::new(end_pos.x, 0.5, end_pos.y),
+        };
+        falcon_sprite.action_index = CharActionIndex::Walking as usize;
+        falcon_sprite.direction = NextActionApplierSystem::determine_dir(&end_pos, &start_pos);
     }
 }
 
 impl FalconAiSystem {}
 
 pub const FALCON_FLY_HEIGHT: f32 = 5.0;
+pub const FALCON_LOWERED_HEIGHT: f32 = 2.0;
 
 impl<'a> specs::System<'a> for FalconAiSystem {
     type SystemData = (
@@ -186,7 +216,9 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     if pick_duration <= 1.0 {
                         if let Some(target) = char_storage.get(falcon.owner_entity_id.0) {
                             let target_pos = target.pos();
-                            let line = Vector3::new(target_pos.x, 2.0, target_pos.y) - start_pos;
+                            let line =
+                                Vector3::new(target_pos.x, FALCON_LOWERED_HEIGHT, target_pos.y)
+                                    - start_pos;
                             falcon.pos = start_pos + line * pick_duration;
                         } else {
                             entities.delete(falcon_id);
@@ -296,7 +328,9 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     if duration_percentage <= 0.3 {
                         if let Some(target) = char_storage.get(target_id.0) {
                             let target_pos = target.pos();
-                            let line = Vector3::new(target_pos.x, 2.0, target_pos.y) - start_pos;
+                            let line =
+                                Vector3::new(target_pos.x, FALCON_LOWERED_HEIGHT, target_pos.y)
+                                    - start_pos;
                             let duration_percentage = duration_percentage / 0.3;
                             falcon.pos = start_pos + line * duration_percentage;
                         } else {
@@ -315,7 +349,11 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                                 falcon.bezier = QuadraticBezier3 {
                                     start: vek::Vec3::new(falcon.pos.x, falcon.pos.y, falcon.pos.z),
                                     ctrl,
-                                    end: vek::Vec3::new(end_pos.x, 2.0, end_pos.y),
+                                    end: vek::Vec3::new(
+                                        end_pos.x,
+                                        FALCON_LOWERED_HEIGHT,
+                                        end_pos.y,
+                                    ),
                                 };
                                 system_vars.apply_statuses.push(
                                     ApplyStatusComponent::from_secondary_status(
@@ -361,6 +399,22 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                         if let Some(target) = char_storage.get_mut(target_id.0) {
                             target.set_y(0.0);
                         }
+                        falcon.state = FalconState::Follow;
+                        sprite.action_index = CharActionIndex::Idle as usize;
+                    }
+                }
+                FalconState::Attack {
+                    started_at,
+                    ends_at,
+                    start_pos,
+                    end_pos,
+                } => {
+                    let duration_percentage =
+                        system_vars.time.percentage_between(started_at, ends_at);
+                    if duration_percentage <= 1.0 {
+                        let line = end_pos - start_pos;
+                        falcon.pos = start_pos + line * duration_percentage;
+                    } else {
                         falcon.state = FalconState::Follow;
                         sprite.action_index = CharActionIndex::Idle as usize;
                     }

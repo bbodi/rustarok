@@ -1,7 +1,7 @@
 use nalgebra::Vector2;
 
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::absorb_shield::AbsorbStatus;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::configs::DevConfig;
@@ -19,7 +19,7 @@ impl SkillDef for AbsorbShieldSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,

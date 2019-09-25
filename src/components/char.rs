@@ -1,9 +1,9 @@
 use crate::asset::SpriteResource;
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
-    SkillKey, WorldCoords,
+    SkillKey, WorldCoord,
 };
-use crate::components::skills::skill::Skills;
+use crate::components::skills::skills::Skills;
 use crate::components::status::status::{StatusNature, Statuses};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId};
@@ -332,7 +332,7 @@ impl SpriteBoundingRect {
 #[derive(Debug, Clone)]
 pub enum EntityTarget {
     OtherEntity(CharEntityId),
-    Pos(WorldCoords),
+    Pos(WorldCoord),
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
@@ -850,7 +850,7 @@ impl Component for NpcComponent {
 pub struct CharacterStateComponent {
     pub name: String, // characters also has names so it is possible to follow them with a camera
     pub basic_attack: Skills,
-    pos: WorldCoords,
+    pos: WorldCoord,
     y: f32,
     pub team: Team,
     pub target: Option<EntityTarget>,
@@ -980,7 +980,7 @@ impl CharacterStateComponent {
         self_char_id: CharEntityId,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         phyisics_world: &mut PhysicEngine,
     ) {
         // TODO: refactor this
@@ -1008,7 +1008,7 @@ impl CharacterStateComponent {
         }
     }
 
-    pub fn set_pos_dont_use_it(&mut self, pos: WorldCoords) {
+    pub fn set_pos_dont_use_it(&mut self, pos: WorldCoord) {
         self.pos = pos;
     }
 
@@ -1016,7 +1016,7 @@ impl CharacterStateComponent {
         self.y = y;
     }
 
-    pub fn pos(&self) -> WorldCoords {
+    pub fn pos(&self) -> WorldCoord {
         self.pos
     }
 

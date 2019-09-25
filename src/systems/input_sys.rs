@@ -1,9 +1,9 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
     CameraComponent, CameraMode, ControllerEntityId, HumanInputComponent, PlayerIntention,
-    SkillKey, WorldCoords,
+    SkillKey, WorldCoord,
 };
-use crate::components::skills::skill::{SkillTargetType, Skills};
+use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
@@ -426,6 +426,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         input.assign_skill(SkillKey::D, Skills::GazDestroyTurret);
                         input.assign_skill(SkillKey::Num1, Skills::GazTurretTarget);
                         input.assign_skill(SkillKey::Num2, Skills::FalconCarry);
+                        input.assign_skill(SkillKey::Num3, Skills::FalconAttack);
                     }
                     Some(Skills::GazTurret) => {
                         input.assign_skill(SkillKey::Q, Skills::FireWall);
@@ -443,7 +444,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 impl InputConsumerSystem {
     pub fn target_selection_or_casting(
         skill: Skills,
-        mouse_pos: WorldCoords,
+        mouse_pos: WorldCoord,
     ) -> Option<PlayerIntention> {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_definition().get_skill_target_type() == SkillTargetType::NoTarget {
@@ -460,7 +461,7 @@ impl InputConsumerSystem {
         camera_pos: &Point3<f32>,
         projection: &Matrix4<f32>,
         view: &Matrix4<f32>,
-    ) -> WorldCoords {
+    ) -> WorldCoord {
         let screen_point = Point2::new(x2d as f32, y2d as f32);
 
         let ray_clip = Vector4::new(

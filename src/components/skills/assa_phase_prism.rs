@@ -3,9 +3,9 @@ use specs::{Entity, LazyUpdate};
 
 use crate::common::ElapsedTime;
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
-use crate::components::skills::skill::{
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{
@@ -30,7 +30,7 @@ impl SkillDef for AssaPhasePrismSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -59,8 +59,8 @@ impl SkillDef for AssaPhasePrismSkill {
 }
 
 struct AssaPhasePrismSkillManifestation {
-    start_pos: WorldCoords,
-    pos: WorldCoords,
+    start_pos: WorldCoord,
+    pos: WorldCoord,
     caster_id: CharEntityId,
     dir: Vector2<f32>,
     collider_handle: DefaultColliderHandle,
@@ -73,7 +73,7 @@ struct AssaPhasePrismSkillManifestation {
 impl AssaPhasePrismSkillManifestation {
     fn new(
         caster_id: CharEntityId,
-        pos: WorldCoords,
+        pos: WorldCoord,
         dir: Vector2<f32>,
         physics_world: &mut PhysicEngine,
         now: ElapsedTime,
@@ -81,7 +81,8 @@ impl AssaPhasePrismSkillManifestation {
         casting_range: f32,
         swap_duration_unit_per_second: f32,
     ) -> AssaPhasePrismSkillManifestation {
-        let collider_handle = physics_world.add_cuboid_skill_area(pos, 0.0, v2!(1, 1));
+        let (collider_handle, _body_handle) =
+            physics_world.add_cuboid_skill_area(pos, 0.0, v2!(1, 1));
         AssaPhasePrismSkillManifestation {
             start_pos: pos,
             started_at: now,
@@ -105,7 +106,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
         _entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         let now = system_vars.time;
         let self_collider_handle = self.collider_handle;
@@ -208,8 +209,8 @@ pub struct AssaPhasePrismStatus {
     pub caster_entity_id: CharEntityId,
     pub started_at: ElapsedTime,
     pub ends_at: ElapsedTime,
-    pub start_pos: WorldCoords,
-    pub vector: WorldCoords,
+    pub start_pos: WorldCoord,
+    pub vector: WorldCoord,
 }
 
 impl Status for AssaPhasePrismStatus {
@@ -236,7 +237,7 @@ impl Status for AssaPhasePrismStatus {
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
             if self.ends_at.has_already_passed(system_vars.time) {

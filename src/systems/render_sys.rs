@@ -6,9 +6,9 @@ use crate::components::char::{
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
-    HumanInputComponent, PlayerIntention, SkillKey, WorldCoords,
+    HumanInputComponent, PlayerIntention, SkillKey, WorldCoord,
 };
-use crate::components::skills::skill::{SkillManifestationComponent, SkillTargetType, Skills};
+use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
     BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
     StrEffectComponent,
@@ -167,8 +167,8 @@ impl RenderDesktopClientSystem {
                                 .rotation_rad(angle)
                                 .color(&[0, 255, 0, 255])
                                 .size(
-                                    skill_cast_attr.width.unwrap_or(1.0) as u16,
-                                    skill_cast_attr.casting_range as u16,
+                                    skill_cast_attr.width.unwrap_or(1.0),
+                                    skill_cast_attr.casting_range,
                                 )
                                 .add();
                         }
@@ -1405,7 +1405,7 @@ impl RenderDesktopClientSystem {
     pub fn render_str<E>(
         effect: E,
         start_time: ElapsedTime,
-        world_pos: &WorldCoords,
+        world_pos: &WorldCoord,
         system_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,

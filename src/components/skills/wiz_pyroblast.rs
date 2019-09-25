@@ -4,8 +4,8 @@ use specs::{Entity, LazyUpdate, ReadStorage};
 use crate::components::char::{
     ActionPlayMode, CastingSkillData, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
@@ -33,7 +33,7 @@ impl SkillDef for WizPyroBlastSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -130,8 +130,8 @@ impl SkillDef for WizPyroBlastSkill {
 
 pub struct PyroBlastManifest {
     pub caster_entity_id: CharEntityId,
-    pub pos: WorldCoords,
-    pub target_last_pos: WorldCoords,
+    pub pos: WorldCoord,
+    pub target_last_pos: WorldCoord,
     pub target_entity_id: CharEntityId,
     pub created_at: ElapsedTime,
     pub configs: SkillConfigPyroBlastInner,
@@ -140,7 +140,7 @@ pub struct PyroBlastManifest {
 impl PyroBlastManifest {
     pub fn new(
         caster_entity_id: CharEntityId,
-        pos: WorldCoords,
+        pos: WorldCoord,
         target_entity_id: CharEntityId,
         created_at: ElapsedTime,
         physics_world: &mut PhysicEngine,
@@ -166,7 +166,7 @@ impl SkillManifestation for PyroBlastManifest {
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         if let Some(target_char) = char_storage.get_mut(self.target_entity_id.0) {
             let target_pos = target_char.pos();

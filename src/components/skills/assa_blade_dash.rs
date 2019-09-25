@@ -6,8 +6,8 @@ use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharOutlook, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
@@ -30,7 +30,7 @@ impl SkillDef for AssaBladeDashSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -90,13 +90,13 @@ pub struct AssaBladeDashStatus {
     pub caster_entity_id: CharEntityId,
     pub started_at: ElapsedTime,
     pub ends_at: ElapsedTime,
-    pub start_pos: WorldCoords,
-    pub center: WorldCoords,
+    pub start_pos: WorldCoord,
+    pub center: WorldCoord,
     pub rot_radian: f32,
     pub half_duration: f32,
-    pub vector: WorldCoords,
-    pub shadow1_pos: WorldCoords,
-    pub shadow2_pos: WorldCoords,
+    pub vector: WorldCoord,
+    pub shadow1_pos: WorldCoord,
+    pub shadow2_pos: WorldCoord,
     pub forward_damage_done: bool,
     pub backward_damage_done: bool,
     pub configs: AssaBladeDashSkillConfig,
@@ -139,7 +139,7 @@ impl Status for AssaBladeDashStatus {
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
             if self.ends_at.has_already_passed(system_vars.time) {

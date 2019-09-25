@@ -1,6 +1,6 @@
 use crate::asset::str::StrFile;
 use crate::asset::AssetLoader;
-use crate::components::skills::skill::{FinishCast, Skills};
+use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };

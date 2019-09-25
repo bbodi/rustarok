@@ -6,8 +6,8 @@ use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
@@ -34,7 +34,7 @@ impl SkillDef for FireWallSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -89,7 +89,7 @@ impl SkillDef for FireWallSkill {
     ) {
         Skills::render_casting_box(
             is_castable,
-            &Vector2::new(configs.skills.firewall.width, 1),
+            &Vector2::new(configs.skills.firewall.width as f32, 1.0),
             skill_pos,
             char_to_skill_dir,
             render_commands,
@@ -98,14 +98,14 @@ impl SkillDef for FireWallSkill {
 }
 
 pub struct PushBackWallSkill {
-    pub caster_entity_id: CharEntityId,
-    pub collider_handle: DefaultColliderHandle,
-    pub effect_ids: Vec<Entity>,
-    pub extents: Vector2<u16>,
-    pub pos: Vector2<f32>,
-    pub rot_angle_in_rad: f32,
-    pub created_at: ElapsedTime,
-    pub die_at: ElapsedTime,
+    caster_entity_id: CharEntityId,
+    collider_handle: DefaultColliderHandle,
+    effect_ids: Vec<Entity>,
+    extents: Vector2<u16>,
+    pos: Vector2<f32>,
+    rot_angle_in_rad: f32,
+    created_at: ElapsedTime,
+    die_at: ElapsedTime,
     cannot_damage_until: HashMap<CharEntityId, ElapsedTime>,
     born_tick: u64,
     team: Team,
@@ -152,7 +152,7 @@ impl PushBackWallSkill {
             .collect();
 
         let extents = Vector2::new(3, 1);
-        let collider_handle =
+        let (collider_handle, _body_handle) =
             physics_world.add_cuboid_skill_area(*skill_center, rot_angle_in_rad, v2!(3, 1));
 
         PushBackWallSkill {
@@ -183,7 +183,7 @@ impl SkillManifestation for PushBackWallSkill {
         _entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         let now = system_vars.time;
         let self_collider_handle = self.collider_handle;
@@ -262,7 +262,7 @@ impl SkillManifestation for PushBackWallSkill {
             .pos_2d(&self.pos)
             .rotation_rad(self.rot_angle_in_rad)
             .color(&[0, 255, 0, 255])
-            .size(self.extents.x, self.extents.y)
+            .size(self.extents.x as f32, self.extents.y as f32)
             .add();
     }
 }

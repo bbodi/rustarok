@@ -30,7 +30,7 @@ use std::time::{Duration, SystemTime};
 
 use imgui::{ImString, ImVec2};
 use log::LevelFilter;
-use nalgebra::{Matrix4, Point2, Vector2, Vector3};
+use nalgebra::{Matrix4, Point2};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -46,8 +46,7 @@ use crate::components::char::{
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
-use crate::components::skills::skill::SkillManifestationComponent;
-use crate::components::status::stun::StunStatusSystem;
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};

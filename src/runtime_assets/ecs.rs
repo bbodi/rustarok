@@ -3,7 +3,7 @@ use crate::components::char::{
     TurretControllerComponent,
 };
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
-use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{
     BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
 };

@@ -1,6 +1,6 @@
 use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
-use crate::components::skills::skill::Skills;
+use crate::components::skills::skills::Skills;
 use crate::ElapsedTime;
 use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
@@ -34,7 +34,7 @@ impl KeyState {
 }
 
 pub type ScreenCoords = Vector2<u16>;
-pub type WorldCoords = Vector2<f32>;
+pub type WorldCoord = Vector2<f32>;
 
 #[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash)]
 pub enum SkillKey {
@@ -70,14 +70,14 @@ impl SkillKey {
 
 #[derive(Clone, Debug)]
 pub enum PlayerIntention {
-    MoveTowardsMouse(WorldCoords),
+    MoveTowardsMouse(WorldCoord),
     /// Move to the coordination, or if an enemy stands there, attack her.
-    MoveTo(WorldCoords),
+    MoveTo(WorldCoord),
     Attack(CharEntityId),
     /// Move to the coordination, attack any enemy on the way.
-    AttackTowards(WorldCoords),
+    AttackTowards(WorldCoord),
     /// bool = is self cast
-    Casting(Skills, bool, WorldCoords),
+    Casting(Skills, bool, WorldCoord),
 }
 
 #[derive(PartialEq, Eq, Debug, Deserialize, Clone, Copy)]
@@ -271,7 +271,7 @@ pub struct HumanInputComponent {
     pub last_mouse_y: u16,
     pub delta_mouse_x: i32,
     pub delta_mouse_y: i32,
-    pub mouse_world_pos: WorldCoords,
+    pub mouse_world_pos: WorldCoord,
 }
 
 impl Drop for HumanInputComponent {

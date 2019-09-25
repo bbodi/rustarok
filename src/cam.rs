@@ -1,4 +1,4 @@
-use crate::components::controller::WorldCoords;
+use crate::components::controller::WorldCoord;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::video::VIDEO_HEIGHT;
 use nalgebra::{Matrix4, Point3, Vector3};
@@ -28,7 +28,7 @@ impl Camera {
         }
     }
 
-    pub fn is_visible(&self, pos: WorldCoords) -> bool {
+    pub fn is_visible(&self, pos: WorldCoord) -> bool {
         return (pos.x >= self.pos.x - 40.0 && pos.x <= self.pos.x + 40.0)
             && (pos.y >= self.pos.z - self.top_z_world_coord_offset && pos.y <= self.pos.z + 5.0);
     }

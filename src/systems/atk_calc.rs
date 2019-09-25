@@ -1,6 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::char::Percentage;
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
@@ -245,7 +245,7 @@ impl AttackCalculation {
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
         now: ElapsedTime,
         entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         assets: &AssetResources,
     ) {
         let attacked_entity_state = char_state_storage.get_mut(attacked_entity.0).unwrap();
@@ -419,12 +419,12 @@ impl AttackCalculation {
 
     pub fn make_sound(
         entities: &Entities,
-        pos: WorldCoords,
+        pos: WorldCoord,
         target_entity_id: CharEntityId,
         outcome: &AttackOutcome,
         attack_type: AttackType,
         now: ElapsedTime,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         sounds: &Sounds,
     ) {
         match outcome {
@@ -506,7 +506,7 @@ impl AttackCalculation {
     pub fn add_flying_damage_entity(
         outcome: &AttackOutcome,
         entities: &Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
         src_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
         char_pos: &Vector2<f32>,

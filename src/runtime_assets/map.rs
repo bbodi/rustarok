@@ -13,8 +13,8 @@ use ncollide2d::shape::ShapeHandle;
 use nphysics2d::force_generator::DefaultForceGeneratorSet;
 use nphysics2d::joint::DefaultJointConstraintSet;
 use nphysics2d::object::{
-    BodyPartHandle, ColliderDesc, DefaultBodySet, DefaultColliderHandle, DefaultColliderSet,
-    RigidBodyDesc,
+    BodyPartHandle, ColliderDesc, DefaultBodyHandle, DefaultBodySet, DefaultColliderHandle,
+    DefaultColliderSet, RigidBodyDesc,
 };
 use nphysics2d::solver::SignoriniModel;
 use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
@@ -588,7 +588,7 @@ impl PhysicEngine {
         pos: Vector2<f32>,
         rot_angle_in_rad: f32,
         extent: Vector2<f32>,
-    ) -> DefaultColliderHandle {
+    ) -> (DefaultColliderHandle, DefaultBodyHandle) {
         let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(extent / 2.0));
         let body_handle = self.bodies.insert(
             RigidBodyDesc::new()
@@ -596,7 +596,7 @@ impl PhysicEngine {
                 .gravity_enabled(false)
                 .build(),
         );
-        return self.colliders.insert(
+        let coll_handle = self.colliders.insert(
             ColliderDesc::new(cuboid)
                 .translation(pos)
                 .rotation(rot_angle_in_rad.to_degrees())
@@ -611,5 +611,6 @@ impl PhysicEngine {
                 .sensor(true)
                 .build(BodyPartHandle(body_handle, 0)),
         );
+        return (coll_handle, body_handle);
     }
 }

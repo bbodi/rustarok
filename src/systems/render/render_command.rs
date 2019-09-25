@@ -638,8 +638,8 @@ pub struct Rectangle3dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) pos: Vector3<f32>,
     pub(super) rotation_rad: f32,
-    pub(super) width: u16,
-    pub(super) height: u16,
+    pub(super) width: f32,
+    pub(super) height: f32,
 }
 
 pub struct Rectangle3dRenderCommandBuilder<'a> {
@@ -647,8 +647,8 @@ pub struct Rectangle3dRenderCommandBuilder<'a> {
     color: [u8; 4],
     pos: Vector3<f32>,
     rotation_rad: f32,
-    width: u16,
-    height: u16,
+    width: f32,
+    height: f32,
 }
 
 impl<'a> Rectangle3dRenderCommandBuilder<'a> {
@@ -658,8 +658,8 @@ impl<'a> Rectangle3dRenderCommandBuilder<'a> {
             color: [255, 255, 255, 255],
             pos: Vector3::zeros(),
             rotation_rad: 0.0,
-            width: 0,
-            height: 0,
+            width: 0.0,
+            height: 0.0,
         }
     }
 
@@ -696,7 +696,7 @@ impl<'a> Rectangle3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn size(&mut self, w: u16, h: u16) -> &'a mut Rectangle3dRenderCommandBuilder {
+    pub fn size(&mut self, w: f32, h: f32) -> &'a mut Rectangle3dRenderCommandBuilder {
         self.width = w;
         self.height = h;
         self

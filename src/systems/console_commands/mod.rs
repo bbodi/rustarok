@@ -9,7 +9,7 @@ use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
 use crate::components::skills::fire_bomb::FireBombStatus;
-use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::status::absorb_shield::AbsorbStatus;
 use crate::components::status::attrib_mod::ArmorModifierStatus;
 use crate::components::status::heal_area::HealApplierArea;

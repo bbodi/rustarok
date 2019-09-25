@@ -2,8 +2,8 @@ use specs::prelude::*;
 
 use crate::common::v2_to_p2;
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, NpcComponent};
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::FinishCast;
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::FinishCast;
 use crate::components::status::death_status::DeathStatus;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
@@ -43,7 +43,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
-        let mut char_positions = HashMap::<CharEntityId, WorldCoords>::new();
+        let mut char_positions = HashMap::<CharEntityId, WorldCoord>::new();
         for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
             let char_entity_id = CharEntityId(char_entity_id);
             char_positions.insert(char_entity_id, char_comp.pos());

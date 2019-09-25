@@ -3,8 +3,8 @@ use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
@@ -29,7 +29,7 @@ impl SkillDef for BrutalTestSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -86,7 +86,7 @@ impl SkillDef for BrutalTestSkill {
 pub struct BrutalSkillManifest {
     pub caster_entity_id: CharEntityId,
     pub effect_ids: Vec<Entity>,
-    pub extents: Vector2<u16>,
+    pub extents: Vector2<f32>,
     pub half_extents: Vector2<f32>,
     pub pos: Vector2<f32>,
     pub rot_angle_in_rad: f32,
@@ -140,7 +140,7 @@ impl BrutalSkillManifest {
             effect_ids,
             rot_angle_in_rad,
             pos: *skill_center,
-            extents: Vector2::new(10, 10),
+            extents: Vector2::new(10.0, 10.0),
             half_extents: v2!(5.0, 5.0),
             created_at: system_time.clone(),
             die_at: system_time.add_seconds(30.0),
@@ -159,7 +159,7 @@ impl SkillManifestation for BrutalSkillManifest {
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         if self.die_at.has_already_passed(system_vars.time) {
             updater.remove::<SkillManifestationComponent>(self_entity_id);

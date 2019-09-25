@@ -1,7 +1,7 @@
 use crate::components::char::CharAttributes;
 use crate::components::char::Percentage;
 use crate::components::controller::CastMode;
-use crate::components::skills::skill::SkillCastingAttributes;
+use crate::components::skills::skills::SkillCastingAttributes;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -105,8 +105,8 @@ pub struct SkillConfigHeal {
 #[derive(Debug, Deserialize)]
 pub struct SkillConfigBrutalTestSkill {
     pub damage: u32,
-    pub width: u16,
-    pub height: u16,
+    pub width: f32,
+    pub height: f32,
     #[serde(flatten)]
     pub attributes: SkillCastingAttributes,
 }
@@ -165,6 +165,16 @@ pub struct FalconCarry {
     pub carry_owner_duration: f32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct FalconAttack {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub damage: u32,
+    pub slow: Percentage,
+    pub duration_in_seconds: f32,
+    pub slow_duration: f32,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct GazXplodiumChargeSkillConfigInner {
     pub missile_travel_duration_seconds: f32,
@@ -205,6 +215,7 @@ pub struct SkillsConfig {
     pub assa_blade_dash: AssaBladeDashSkillConfig,
     pub assa_phase_prism: AssaPhasePrismSkillConfig,
     pub falcon_carry: FalconCarry,
+    pub falcon_attack: FalconAttack,
     pub gaz_xplodium_charge: GazXplodiumChargeSkillConfig,
     pub gaz_turret: GazTurretSkillConfig,
     pub gaz_destroy_turret: SkillCastingAttributes,

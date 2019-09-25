@@ -1,7 +1,7 @@
 use specs::prelude::*;
 
 use crate::components::char::CharacterStateComponent;
-use crate::components::skills::skill::SkillManifestationComponent;
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 

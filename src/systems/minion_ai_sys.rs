@@ -1,7 +1,7 @@
 use crate::common::v2_to_p2;
 use crate::components::char::{CharacterStateComponent, EntityTarget, Team};
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoords,
+    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoord,
 };
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
@@ -24,7 +24,7 @@ impl MinionAiSystem {
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
-        center: &WorldCoords,
+        center: &WorldCoord,
         radius: f32,
         self_team: Team,
         except: CharEntityId,

@@ -2,7 +2,7 @@ use crate::components::char::{CharacterStateComponent, Team};
 use crate::components::controller::{
     CastMode, ControllerComponent, HumanInputComponent, PlayerIntention, SkillKey,
 };
-use crate::components::skills::skill::SkillTargetType;
+use crate::components::skills::skills::SkillTargetType;
 use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};

@@ -30,10 +30,6 @@ impl Status for ArmorModifierStatus {
         Box::new(self.clone())
     }
 
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive // depends
-    }
-
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         modifiers.change_armor(
             CharAttributeModifier::AddPercentage(self.modifier),
@@ -49,12 +45,71 @@ impl Status for ArmorModifierStatus {
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
         }
+    }
+
+    fn typ(&self) -> StatusNature {
+        StatusNature::Supportive // depends
+    }
+}
+
+#[derive(Clone)]
+pub struct WalkingSpeedModifierStatus {
+    pub started: ElapsedTime,
+    pub until: ElapsedTime,
+    pub modifier: Percentage,
+}
+
+impl WalkingSpeedModifierStatus {
+    pub fn new(
+        now: ElapsedTime,
+        modifier: Percentage,
+        duration: f32,
+    ) -> WalkingSpeedModifierStatus {
+        WalkingSpeedModifierStatus {
+            started: now,
+            until: now.add_seconds(duration),
+            modifier,
+        }
+    }
+}
+
+impl Status for WalkingSpeedModifierStatus {
+    fn dupl(&self) -> Box<dyn Status + Send> {
+        Box::new(self.clone())
+    }
+
+    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+        modifiers.change_walking_speed(
+            CharAttributeModifier::AddPercentage(self.modifier),
+            self.started,
+            self.until,
+        );
+    }
+
+    fn update(
+        &mut self,
+        _self_char_id: CharEntityId,
+        _char_state: &CharacterStateComponent,
+        _physics_world: &mut PhysicEngine,
+        system_vars: &mut SystemVariables,
+        _entities: &specs::Entities,
+        _updater: &mut LazyUpdate,
+    ) -> StatusUpdateResult {
+        if self.until.has_already_passed(system_vars.time) {
+            StatusUpdateResult::RemoveIt
+        } else {
+            StatusUpdateResult::KeepIt
+        }
+    }
+
+    fn typ(&self) -> StatusNature {
+        StatusNature::Supportive // depends
     }
 }

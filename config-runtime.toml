@@ -111,6 +111,15 @@ start_pos_y = -65
         width = 1
         carry_ally_duration = 2.0
         carry_owner_duration = 4.0
+    [skills.falcon_attack]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 10.5
+        width = 1.25
+        damage = 200
+        duration_in_seconds = 0.4
+        slow = -30.0
+        slow_duration = 2.0
     [skills.gaz_xplodium_charge]
         casting_time = 0.0
         cast_delay = 0.0

@@ -70,7 +70,7 @@ pub trait Status: Any {
         _phyisic_world: &mut PhysicEngine,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
     }
@@ -209,7 +209,7 @@ impl Statuses {
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> u32 {
         let mut changed: u32 = 0;
         for (i, status) in self
@@ -536,7 +536,7 @@ impl Status for PoisonStatus {
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt

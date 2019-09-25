@@ -2,8 +2,8 @@ use nalgebra::{Isometry2, Vector2};
 use specs::{Entity, LazyUpdate};
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
@@ -26,7 +26,7 @@ impl SkillDef for LightningSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -110,7 +110,7 @@ impl SkillManifestation for LightningManifest {
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         if self
             .created_at

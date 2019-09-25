@@ -6,9 +6,9 @@ use crate::components::char::{
     CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, WorldCoords,
+    CharEntityId, ControllerComponent, ControllerEntityId, WorldCoord,
 };
-use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
@@ -32,7 +32,7 @@ impl SkillDef for FalconCarrySkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -56,38 +56,38 @@ impl SkillDef for FalconCarrySkill {
             )
                 .join()
             {
-                let falcon: &mut FalconComponent = falcon;
-                if falcon.owner_entity_id == caster_entity_id {
-                    if target_entity == caster_entity_id {
-                        // falcon.state = FalconState::CarryOwner
-                        for (entity_id, controller) in (
-                            &ecs_world.entities(),
-                            &ecs_world.read_storage::<ControllerComponent>(),
-                        )
-                            .join()
-                        {
-                            if controller.controlled_entity == falcon.owner_entity_id {
-                                falcon.carry_owner(
-                                    ControllerEntityId(entity_id),
-                                    &target_pos,
-                                    system_vars.time,
-                                    configs.carry_owner_duration,
-                                    sprite,
-                                );
-                                break;
-                            }
-                        }
-                    } else {
-                        falcon.carry_ally(
-                            target_entity,
-                            &target_pos,
-                            system_vars.time,
-                            configs.carry_ally_duration,
-                            sprite,
-                        );
-                    };
-                    break;
+                if falcon.owner_entity_id != caster_entity_id {
+                    continue;
                 }
+                if target_entity == caster_entity_id {
+                    // falcon.state = FalconState::CarryOwner
+                    for (entity_id, controller) in (
+                        &ecs_world.entities(),
+                        &ecs_world.read_storage::<ControllerComponent>(),
+                    )
+                        .join()
+                    {
+                        if controller.controlled_entity == falcon.owner_entity_id {
+                            falcon.carry_owner(
+                                ControllerEntityId(entity_id),
+                                &target_pos,
+                                system_vars.time,
+                                configs.carry_owner_duration,
+                                sprite,
+                            );
+                            break;
+                        }
+                    }
+                } else {
+                    falcon.carry_ally(
+                        target_entity,
+                        &target_pos,
+                        system_vars.time,
+                        configs.carry_ally_duration,
+                        sprite,
+                    );
+                };
+                break;
             }
         }
         None
@@ -103,7 +103,7 @@ pub struct FalconCarryStatus {
     pub started_at: ElapsedTime,
     pub ends_at: ElapsedTime,
     pub carry_owner: bool,
-    pub end_pos: WorldCoords,
+    pub end_pos: WorldCoord,
 }
 
 impl Status for FalconCarryStatus {
@@ -143,7 +143,7 @@ impl Status for FalconCarryStatus {
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.ends_at.has_already_passed(system_vars.time) {
             char_state.set_collidable(physics_world);

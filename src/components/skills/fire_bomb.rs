@@ -2,8 +2,8 @@ use nalgebra::{Isometry2, Vector2};
 use specs::LazyUpdate;
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateResult,
@@ -29,7 +29,7 @@ impl SkillDef for FireBombSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -90,7 +90,7 @@ impl Status for FireBombStatus {
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(system_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));

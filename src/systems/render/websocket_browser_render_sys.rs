@@ -334,11 +334,12 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_f32::<LittleEndian>(command.rotation_rad)
                 .unwrap();
+            // TODO: it was u16, change frontend
             send_buffer
-                .write_u16::<LittleEndian>(command.width)
+                .write_f32::<LittleEndian>(command.width)
                 .unwrap();
             send_buffer
-                .write_u16::<LittleEndian>(command.height)
+                .write_f32::<LittleEndian>(command.height)
                 .unwrap();
         }
     }

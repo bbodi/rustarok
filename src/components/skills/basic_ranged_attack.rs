@@ -4,8 +4,8 @@ use specs::{Entity, LazyUpdate};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 
@@ -30,7 +30,7 @@ impl SkillDef for BasicRangedAttackSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -61,9 +61,9 @@ impl SkillDef for BasicRangedAttackSkill {
 
 struct BasicRangeAttackBullet {
     attack_speed: f32,
-    start_pos: WorldCoords,
-    target_pos: WorldCoords,
-    current_pos: WorldCoords,
+    start_pos: WorldCoord,
+    target_pos: WorldCoord,
+    current_pos: WorldCoord,
     caster_id: CharEntityId,
     target_id: CharEntityId,
     started_at: ElapsedTime,
@@ -73,10 +73,10 @@ struct BasicRangeAttackBullet {
 impl BasicRangeAttackBullet {
     fn new(
         attack_speed: f32,
-        start_pos: WorldCoords,
+        start_pos: WorldCoord,
         caster_id: CharEntityId,
         target_id: CharEntityId,
-        target_pos: WorldCoords,
+        target_pos: WorldCoord,
         now: ElapsedTime,
     ) -> BasicRangeAttackBullet {
         let duration_between_attacks = 1.0 / (attack_speed);
@@ -102,7 +102,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         let now = system_vars.time;
 

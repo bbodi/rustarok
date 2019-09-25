@@ -5,8 +5,8 @@ use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoords};
-use crate::components::skills::skill::{
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{
@@ -36,7 +36,7 @@ impl SkillDef for GazXplodiumChargeSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -63,8 +63,8 @@ impl SkillDef for GazXplodiumChargeSkill {
 }
 
 struct GazXplodiumChargeSkillManifestation {
-    start_pos: WorldCoords,
-    end_pos: WorldCoords,
+    start_pos: WorldCoord,
+    end_pos: WorldCoord,
     current_pos: Vector3<f32>,
     current_target_pos: Vector3<f32>,
     caster_id: CharEntityId,
@@ -76,8 +76,8 @@ struct GazXplodiumChargeSkillManifestation {
 impl GazXplodiumChargeSkillManifestation {
     fn new(
         caster_id: CharEntityId,
-        start_pos: WorldCoords,
-        end_pos: WorldCoords,
+        start_pos: WorldCoord,
+        end_pos: WorldCoord,
         physics_world: &mut PhysicEngine,
         now: ElapsedTime,
         configs: GazXplodiumChargeSkillConfigInner,
@@ -109,7 +109,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         let now = system_vars.time;
 

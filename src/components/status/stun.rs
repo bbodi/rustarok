@@ -132,7 +132,7 @@ impl Status for StunStatus {
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
-        _updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(system_vars.time) {
             StatusUpdateResult::RemoveIt

@@ -3,9 +3,9 @@ use crate::components::char::{
     TurretComponent, TurretControllerComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, WorldCoords,
+    CharEntityId, ControllerComponent, ControllerEntityId, WorldCoord,
 };
-use crate::components::skills::skill::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
@@ -26,7 +26,7 @@ impl SkillDef for GazTurretSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -92,7 +92,7 @@ impl SkillDef for GazDestroyTurretSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
@@ -135,7 +135,7 @@ impl SkillDef for GazTurretTargetSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
+        caster_pos: WorldCoord,
         skill_pos: Option<Vector2<f32>>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,

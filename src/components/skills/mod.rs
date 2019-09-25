@@ -1,5 +1,5 @@
 #[macro_use]
-pub mod skill;
+pub mod skills;
 pub mod absorb_shield;
 pub mod assa_blade_dash;
 pub mod assa_phase_prism;
@@ -7,6 +7,7 @@ pub mod basic_attack;
 pub mod basic_ranged_attack;
 pub mod brutal_test_skill;
 pub mod cure;
+pub mod falcon_attack;
 pub mod falcon_carry;
 pub mod fire_bomb;
 pub mod firewall;

@@ -3,7 +3,7 @@ use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::measure_time;
 use crate::components::char::CharActionIndex;
 use crate::components::controller::SkillKey;
-use crate::components::skills::skill::Skills;
+use crate::components::skills::skills::Skills;
 use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::systems::console_commands::STATUS_NAMES;

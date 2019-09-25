@@ -1,6 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
-use crate::components::skills::skill::{SkillManifestation, WorldCollisions};
+use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
@@ -35,7 +35,7 @@ where
         caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
-        let collider_handle =
+        let (collider_handle, _body_handle) =
             physics_world.add_cuboid_skill_area(*skill_center, 0.0, v2!(size.x, size.y));
         StatusApplierArea {
             collider_handle,
@@ -61,7 +61,7 @@ where
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        _updater: &mut specs::Write<LazyUpdate>,
+        _updater: &mut LazyUpdate,
     ) {
         if self.next_action_at.has_already_passed(system_vars.time) {
             let self_collider_handle = self.collider_handle;
@@ -99,7 +99,7 @@ where
             .rectangle_3d()
             .pos_2d(&self.pos)
             .color(&[0, 255, 0, 255])
-            .size(self.extents.x, self.extents.y)
+            .size(self.extents.x as f32, self.extents.y as f32)
             .add();
 
         render_commands

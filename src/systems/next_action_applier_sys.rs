@@ -3,9 +3,9 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoords,
+    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoord,
 };
-use crate::components::skills::skill::{SkillTargetType, Skills};
+use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::configs::DevConfig;
 use crate::systems::render_sys::DIRECTION_TABLE;
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -155,7 +155,7 @@ impl NextActionApplierSystem {
         now: ElapsedTime,
         configs: &DevConfig,
         char_state: &mut CharacterStateComponent,
-        mouse_world_pos: &WorldCoords,
+        mouse_world_pos: &WorldCoord,
         entities_below_cursor: &EntitiesBelowCursor,
         self_char_id: CharEntityId,
         is_self_cast: bool,
@@ -238,7 +238,7 @@ impl NextActionApplierSystem {
         }
     }
 
-    pub fn determine_dir(&target_pos: &WorldCoords, pos: &WorldCoords) -> usize {
+    pub fn determine_dir(&target_pos: &WorldCoord, pos: &WorldCoord) -> usize {
         let dir_vec = target_pos - pos;
         // "- 90.0"
         // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,

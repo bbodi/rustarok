@@ -9,7 +9,7 @@ use strum_macros::EnumIter;
 
 use crate::common::v2_to_v3;
 use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent};
-use crate::components::controller::{CharEntityId, WorldCoords};
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
 use crate::components::skills::cure::CURE_SKILL;
@@ -25,6 +25,7 @@ use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
 use crate::components::skills::assa_phase_prism::ASSA_PHASE_PRISM_SKILL;
 use crate::components::skills::basic_attack::BASIC_ATTACK_SKILL;
 use crate::components::skills::basic_ranged_attack::BASIC_RANGED_ATTACK_SKILL;
+use crate::components::skills::falcon_attack::FALCON_ATTACK_SKILL;
 use crate::components::skills::falcon_carry::FALCON_CARRY_SKILL;
 use crate::components::skills::gaz_turret::{
     GAZ_DESTROY_TURRET_SKILL, GAZ_TURRET_SKILL, GAZ_TURRET_TARGET_SKILL,
@@ -49,7 +50,7 @@ pub trait SkillManifestation {
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     );
 
     fn render(
@@ -88,7 +89,7 @@ impl SkillManifestationComponent {
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
-        updater: &mut specs::Write<LazyUpdate>,
+        updater: &mut LazyUpdate,
     ) {
         let mut skill = self.skill.lock().unwrap();
         skill.update(
@@ -122,8 +123,8 @@ unsafe impl Send for SkillManifestationComponent {}
 pub struct FinishCast {
     pub skill: Skills,
     pub caster_entity_id: CharEntityId,
-    pub caster_pos: WorldCoords,
-    pub skill_pos: Option<WorldCoords>,
+    pub caster_pos: WorldCoord,
+    pub skill_pos: Option<WorldCoord>,
     pub char_to_skill_dir: Vector2<f32>,
     pub target_entity: Option<CharEntityId>,
 }
@@ -133,8 +134,8 @@ pub trait SkillDef {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoords,
-        skill_pos: Option<WorldCoords>,
+        caster_pos: WorldCoord,
+        skill_pos: Option<WorldCoord>,
         char_to_skill_dir: &Vector2<f32>,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
@@ -208,6 +209,7 @@ pub enum Skills {
     GazDestroyTurret,
     GazTurretTarget,
     FalconCarry,
+    FalconAttack,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -241,6 +243,7 @@ impl Skills {
             Skills::GazDestroyTurret => GAZ_DESTROY_TURRET_SKILL,
             Skills::GazTurretTarget => GAZ_TURRET_TARGET_SKILL,
             Skills::FalconCarry => FALCON_CARRY_SKILL,
+            Skills::FalconAttack => FALCON_ATTACK_SKILL,
         }
     }
 
@@ -280,6 +283,7 @@ impl Skills {
                 width: None,
             },
             Skills::FalconCarry => &configs.skills.falcon_carry.attributes,
+            Skills::FalconAttack => &configs.skills.falcon_attack.attributes,
         }
     }
 
@@ -293,7 +297,7 @@ impl Skills {
 
     pub fn limit_vector_into_range(
         char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoords,
+        mouse_pos: &WorldCoord,
         range: f32,
     ) -> (Vector2<f32>, Vector2<f32>) {
         let dir2d = mouse_pos - char_pos;
@@ -304,7 +308,7 @@ impl Skills {
 
     pub fn render_casting_box(
         is_castable: bool,
-        casting_area_size: &Vector2<u16>,
+        casting_area_size: &Vector2<f32>,
         skill_pos: &Vector2<f32>,
         char_to_skill_dir: &Vector2<f32>,
         render_commands: &mut RenderCommandCollector,
