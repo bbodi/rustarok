@@ -17,4 +17,5 @@ pub mod heal;
 pub mod lightning;
 pub mod mounting;
 pub mod poison;
+pub mod sanctuary;
 pub mod wiz_pyroblast;

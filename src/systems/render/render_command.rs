@@ -51,6 +51,7 @@ pub struct EffectFrameCacheKey {
 pub struct RenderCommandCollector {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
+    pub(super) trimesh_3d_commands: [Vec<Trimesh3dRenderCommand>; 2],
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
     pub(super) rectangle_2d_commands: VecDeque<Rectangle2dRenderCommand>,
     pub(super) point_2d_commands: Vec<Point2dRenderCommand>,
@@ -74,6 +75,7 @@ impl<'a> RenderCommandCollector {
             texture_2d_commands: Vec::with_capacity(128),
             text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
+            trimesh_3d_commands: [Vec::with_capacity(128), Vec::with_capacity(128)],
             rectangle_2d_commands: VecDeque::with_capacity(128),
             point_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
@@ -105,6 +107,9 @@ impl<'a> RenderCommandCollector {
         self.texture_2d_commands.clear();
         self.text_2d_commands.clear();
         self.rectangle_3d_commands.clear();
+        for commands in &mut self.trimesh_3d_commands {
+            commands.clear();
+        }
         self.rectangle_2d_commands.clear();
         self.point_2d_commands.clear();
         self.circle_3d_commands.clear();
@@ -131,6 +136,10 @@ impl<'a> RenderCommandCollector {
 
     pub fn circle_3d(&'a mut self) -> Circle3dRenderCommandBuilder {
         Circle3dRenderCommandBuilder::new(self)
+    }
+
+    pub fn trimesh3d(&'a mut self) -> Trimesh3dRenderCommandBuilder {
+        Trimesh3dRenderCommandBuilder::new(self)
     }
 
     pub fn rectangle_3d(&'a mut self) -> Rectangle3dRenderCommandBuilder {
@@ -632,6 +641,50 @@ pub enum Font {
     NormalBold,
     Big,
     BigBold,
+}
+
+pub enum Trimesh3dType {
+    Sanctuary,
+    Cylinder,
+}
+
+pub struct Trimesh3dRenderCommand {
+    pub(super) pos: Vector3<f32>,
+}
+
+pub struct Trimesh3dRenderCommandBuilder<'a> {
+    collector: &'a mut RenderCommandCollector,
+    pos: Vector3<f32>,
+}
+
+impl<'a> Trimesh3dRenderCommandBuilder<'a> {
+    fn new(collector: &mut RenderCommandCollector) -> Trimesh3dRenderCommandBuilder {
+        Trimesh3dRenderCommandBuilder {
+            collector,
+            pos: Vector3::zeros(),
+        }
+    }
+
+    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.pos.x = pos.x;
+        self.pos.z = pos.y;
+        self
+    }
+
+    pub fn pos(&mut self, pos: &Vector3<f32>) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.pos = *pos;
+        self
+    }
+
+    pub fn y(&mut self, y: f32) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.pos.y = y;
+        self
+    }
+
+    pub fn add(&'a mut self, typ: Trimesh3dType) {
+        self.collector.trimesh_3d_commands[typ as usize]
+            .push(Trimesh3dRenderCommand { pos: self.pos });
+    }
 }
 
 pub struct Rectangle3dRenderCommand {

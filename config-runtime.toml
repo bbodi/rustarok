@@ -149,6 +149,13 @@ start_pos_y = -65
         casting_time = 0.0
         cast_delay = 0.0
         casting_range = 7.0
+    [skills.sanctuary]
+        casting_time = 0.0
+        cast_delay = 1.0
+        casting_range = 17.8
+        heal = 200
+        heal_freq_seconds = 1
+        duration = 5.0
 
 [stats]
     [stats.minion]

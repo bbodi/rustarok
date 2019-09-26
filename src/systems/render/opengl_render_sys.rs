@@ -52,6 +52,7 @@ pub struct OpenGlRenderSystem<'a, 'b> {
     centered_rectangle_vao: VertexArray,
     circle_vao: VertexArray,
     points_vao: VertexArray,
+    vaos: [VertexArray; 2],
     points_buffer: Vec<[f32; 7]>,
     // damage rendering
     single_digit_u_coord: f32,
@@ -244,6 +245,116 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 single_digit_u_coord * 8.0,
                 single_digit_u_coord * 9.0,
             ],
+            vaos: {
+                // 221, 252, 221, 100
+                let single_cube: Vec<[f32; 4]> = vec![
+                    // Front
+                    [-0.5, 0.5, 0.5, 0.0],
+                    [-0.5, -0.5, 0.5, 0.7],
+                    [0.5, 0.5, 0.5, 0.0],
+                    [0.5, 0.5, 0.5, 0.0],
+                    [-0.5, -0.5, 0.5, 0.7],
+                    [0.5, -0.5, 0.5, 0.7],
+                    // Right
+                    [0.5, 0.5, 0.5, 0.0],
+                    [0.5, -0.5, 0.5, 0.7],
+                    [0.5, 0.5, -0.5, 0.0],
+                    [0.5, 0.5, -0.5, 0.0],
+                    [0.5, -0.5, 0.5, 0.7],
+                    [0.5, -0.5, -0.5, 0.7],
+                    // Back
+                    [0.5, 0.5, -0.5, 0.0],
+                    [0.5, -0.5, -0.5, 0.7],
+                    [-0.5, 0.5, -0.5, 0.0],
+                    [-0.5, 0.5, -0.5, 0.0],
+                    [0.5, -0.5, -0.5, 0.7],
+                    [-0.5, -0.5, -0.5, 0.7],
+                    // Let
+                    [-0.5, 0.5, -0.5, 0.0],
+                    [-0.5, -0.5, -0.5, 0.7],
+                    [-0.5, 0.5, 0.5, 0.0],
+                    [-0.5, 0.5, 0.5, 0.0],
+                    [-0.5, -0.5, -0.5, 0.7],
+                    [-0.5, -0.5, 0.5, 0.7],
+                    // Top
+                    //                    [-0.5, 0.5, -0.5, 0.0],
+                    //                    [-0.5, 0.5, 0.5, 0.0],
+                    //                    [0.5, 0.5, -0.5, 0.0],
+                    //                    [0.5, 0.5, -0.5, 0.0],
+                    //                    [-0.5, 0.5, 0.5, 0.0],
+                    //                    [0.5, 0.5, 0.5, 0.0],
+                    // Bottom
+                    [-0.5, -0.5, 0.5, 0.3],
+                    [-0.5, -0.5, -0.5, 0.3],
+                    [0.5, -0.5, 0.5, 0.3],
+                    [0.5, -0.5, 0.5, 0.3],
+                    [-0.5, -0.5, -0.5, 0.3],
+                    [0.5, -0.5, -0.5, 0.3],
+                ];
+                fn translate(vec: &Vec<[f32; 4]>, x: f32, z: f32) -> Vec<[f32; 4]> {
+                    vec.iter()
+                        .map(|v| [v[0] + x, v[1], v[2] + z, v[3]])
+                        .collect()
+                };
+                let cubes = [
+                    translate(&single_cube, -1.0, -2.0),
+                    translate(&single_cube, 0.0, -2.0),
+                    translate(&single_cube, 1.0, -2.0),
+                    //
+                    translate(&single_cube, -2.0, -1.0),
+                    translate(&single_cube, -1.0, -1.0),
+                    translate(&single_cube, 0.0, -1.0),
+                    translate(&single_cube, 1.0, -1.0),
+                    translate(&single_cube, 2.0, -1.0),
+                    //
+                    translate(&single_cube, -2.0, 0.0),
+                    translate(&single_cube, -1.0, 0.0),
+                    translate(&single_cube, 0.0, 0.0),
+                    translate(&single_cube, 1.0, 0.0),
+                    translate(&single_cube, 2.0, 0.0),
+                    //
+                    translate(&single_cube, -2.0, 1.0),
+                    translate(&single_cube, -1.0, 1.0),
+                    translate(&single_cube, 0.0, 1.0),
+                    translate(&single_cube, 1.0, 1.0),
+                    translate(&single_cube, 2.0, 1.0),
+                    //
+                    translate(&single_cube, -1.0, 2.0),
+                    translate(&single_cube, 0.0, 2.0),
+                    translate(&single_cube, 1.0, 2.0),
+                ]
+                .concat();
+                let cubes: Vec<[f32; 7]> = cubes
+                    .iter()
+                    .map(|v| {
+                        [
+                            v[0] * 1.0,
+                            (v[1] + 0.5) * 2.0,
+                            v[2] * 1.0,
+                            0.86,
+                            0.99,
+                            0.86,
+                            v[3],
+                        ]
+                    })
+                    .collect();
+                let sanctuary_vao = VertexArray::new_static(
+                    &gl,
+                    MyGlEnum::TRIANGLES,
+                    cubes,
+                    vec![
+                        VertexAttribDefinition {
+                            number_of_components: 3,
+                            offset_of_first_element: 0,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 4,
+                            offset_of_first_element: 3,
+                        },
+                    ],
+                );
+                [sanctuary_vao.clone(), sanctuary_vao]
+            },
             centered_rectangle_vao: {
                 let bottom_left = v3!(-0.5, 0.0, -0.5);
                 let top_left = v3!(-0.5, 0.0, 0.5);
@@ -574,7 +685,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             }
 
             {
-                let shader = system_vars.assets.shaders.trimesh_shader.gl_use(gl);
+                let shader = system_vars.assets.shaders.rect3d_shader.gl_use(gl);
                 shader
                     .params
                     .projection_mat
@@ -915,6 +1026,35 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         }
                     }
                 }
+            }
+
+            {
+                let shader = system_vars.assets.shaders.trimesh3d_shader.gl_use(gl);
+                shader
+                    .params
+                    .projection_mat
+                    .set(gl, &system_vars.matrices.projection);
+                shader.params.view_mat.set(gl, &render_commands.view_matrix);
+                unsafe {
+                    //                    gl.Disable(MyGlEnum::DEPTH_TEST);
+                }
+                /////////////////////////////////
+                // 3D Trimesh
+                /////////////////////////////////
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
+
+                for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
+                    let vao_bind = self.vaos[i].bind(&system_vars.gl);
+                    for command in commands {
+                        let mut matrix = Matrix4::<f32>::identity();
+                        matrix.prepend_translation_mut(&command.pos);
+                        shader.params.model_mat.set(gl, &matrix);
+                        vao_bind.draw(&system_vars.gl);
+                    }
+                }
+            }
+            unsafe {
+                gl.Enable(MyGlEnum::DEPTH_TEST);
             }
 
             /////////////////////////////////

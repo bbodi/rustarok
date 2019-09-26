@@ -31,6 +31,7 @@ use crate::components::skills::gaz_turret::{
     GAZ_DESTROY_TURRET_SKILL, GAZ_TURRET_SKILL, GAZ_TURRET_TARGET_SKILL,
 };
 use crate::components::skills::gaz_xplod_charge::GAZ_XPLODIUM_CHARGE_SKILL;
+use crate::components::skills::sanctuary::SANCTUARY_SKILL;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -210,6 +211,7 @@ pub enum Skills {
     GazTurretTarget,
     FalconCarry,
     FalconAttack,
+    Sanctuary,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -244,6 +246,7 @@ impl Skills {
             Skills::GazTurretTarget => GAZ_TURRET_TARGET_SKILL,
             Skills::FalconCarry => FALCON_CARRY_SKILL,
             Skills::FalconAttack => FALCON_ATTACK_SKILL,
+            Skills::Sanctuary => SANCTUARY_SKILL,
         }
     }
 
@@ -284,6 +287,7 @@ impl Skills {
             },
             Skills::FalconCarry => &configs.skills.falcon_carry.attributes,
             Skills::FalconAttack => &configs.skills.falcon_attack.attributes,
+            Skills::Sanctuary => &configs.skills.sanctuary.attributes,
         }
     }
 

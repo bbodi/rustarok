@@ -293,7 +293,7 @@ fn main() {
     // add falcon to it
     let start_x = ecs_world.read_resource::<DevConfig>().start_pos_x;
     let start_y = ecs_world.read_resource::<DevConfig>().start_pos_y;
-    let falcon_id = ecs_world
+    let _falcon_id = ecs_world
         .create_entity()
         .with(FalconComponent::new(desktop_client_char, start_x, start_y))
         .with(SpriteRenderDescriptorComponent {

@@ -112,6 +112,15 @@ pub struct SkillConfigBrutalTestSkill {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SkillConfigSanctuarySkill {
+    pub heal: u32,
+    pub heal_freq_seconds: f32,
+    pub duration: f32,
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct LightningSkillConfig {
     #[serde(flatten)]
     pub attributes: SkillCastingAttributes,
@@ -219,6 +228,7 @@ pub struct SkillsConfig {
     pub gaz_xplodium_charge: GazXplodiumChargeSkillConfig,
     pub gaz_turret: GazTurretSkillConfig,
     pub gaz_destroy_turret: SkillCastingAttributes,
+    pub sanctuary: SkillConfigSanctuarySkill,
 }
 
 impl DevConfig {
