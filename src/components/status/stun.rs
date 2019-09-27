@@ -40,7 +40,7 @@ impl<'a> specs::System<'a> for StunStatusSystem {
             entities,
             mut char_storage,
             stun_status_storage,
-            mut system_vars,
+            system_vars,
             mut global_renderer,
             updater,
         ): Self::SystemData,
@@ -128,7 +128,7 @@ impl Status for StunStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        _char_state: &CharacterStateComponent,
+        _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

@@ -21,6 +21,7 @@ pub enum JobId {
     CRUSADER,
     SWORDMAN,
     ARCHER,
+    HUNTER,
     ASSASSIN,
     ROGUE,
     KNIGHT,

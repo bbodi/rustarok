@@ -183,7 +183,6 @@ impl NextActionApplierSystem {
                 }
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor.get_friend(),
                 SkillTargetType::OnlyEnemy => entities_below_cursor.get_enemy(),
-                SkillTargetType::OnlySelf => panic!(), /* NoTarget should have been casted already */
             };
             (*mouse_world_pos, target_entity)
         };

@@ -41,7 +41,7 @@ impl Status for ArmorModifierStatus {
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
-        _char_state: &CharacterStateComponent,
+        _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -96,7 +96,7 @@ impl Status for WalkingSpeedModifierStatus {
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
-        _char_state: &CharacterStateComponent,
+        _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

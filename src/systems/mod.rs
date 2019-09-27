@@ -57,6 +57,8 @@ pub struct Sprites {
     pub fire_particle: GlTexture,
     pub clock: GlTexture,
     pub ginseng_bullet: SpriteResource,
+    pub exoskeleton: SpriteResource,
+    pub arrow: SpriteResource,
     pub falcon: SpriteResource,
     pub stun: SpriteResource,
     pub timefont: SpriteResource,

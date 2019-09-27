@@ -24,17 +24,33 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, centered_sprite_vertex_buffer)
         gl.enableVertexAttribArray(sprite_gl_program.a_pos)
         gl.enableVertexAttribArray(sprite_gl_program.a_uv)
-        gl.vertexAttribPointer(sprite_gl_program.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
-        gl.vertexAttribPointer(sprite_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 2 * 4)
+        gl.vertexAttribPointer(sprite_gl_program.a_pos,
+                               2,
+                               WebGLRenderingContext.FLOAT,
+                               false,
+                               4 * 4,
+                               0)
+        gl.vertexAttribPointer(sprite_gl_program.a_uv,
+                               2,
+                               WebGLRenderingContext.FLOAT,
+                               false,
+                               4 * 4,
+                               2 * 4)
 
         gl.uniformMatrix4fv(sprite_gl_program.view_mat, false, VIEW_MATRIX)
         for (command in sprite_render_commands) {
             gl.uniform4fv(sprite_gl_program.color, command.color)
-            val matrix = Matrix()
-            matrix.set_translation(command.x, command.y, command.z)
-            gl.uniformMatrix4fv(sprite_gl_program.model_mat, false, matrix.buffer)
+
+            gl.uniformMatrix4fv(sprite_gl_program.model_mat,
+                                false,
+                                Matrix().set_translation(command.x, command.y, command.z).buffer)
+            gl.uniformMatrix4fv(sprite_gl_program.rot_mat,
+                                false,
+                                Matrix().rotate_around_z_mut(command.rot_radian).buffer)
             gl.uniform2fv(sprite_gl_program.offset, command.offset)
-            val texture = get_or_load_server_texture(command.server_texture_id, WebGLRenderingContext.NEAREST)
+            val texture =
+                    get_or_load_server_texture(command.server_texture_id,
+                                               WebGLRenderingContext.NEAREST)
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
             val w = if (command.is_vertically_flipped) -texture.w else texture.w
             gl.uniform2fv(sprite_gl_program.size,
@@ -64,8 +80,18 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
             gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
             gl.enableVertexAttribArray(sprite_gl_program.a_pos)
             gl.enableVertexAttribArray(sprite_gl_program.a_uv)
-            gl.vertexAttribPointer(sprite_gl_program.a_pos, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 0)
-            gl.vertexAttribPointer(sprite_gl_program.a_uv, 2, WebGLRenderingContext.FLOAT, false, 4 * 4, 2 * 4)
+            gl.vertexAttribPointer(sprite_gl_program.a_pos,
+                                   2,
+                                   WebGLRenderingContext.FLOAT,
+                                   false,
+                                   4 * 4,
+                                   0)
+            gl.vertexAttribPointer(sprite_gl_program.a_uv,
+                                   2,
+                                   WebGLRenderingContext.FLOAT,
+                                   false,
+                                   4 * 4,
+                                   2 * 4)
 
             gl.drawArrays(WebGLRenderingContext.TRIANGLES, 0, vertex_count)
 
@@ -74,7 +100,8 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         gl.enable(WebGLRenderingContext.DEPTH_TEST)
     }
 
-    private fun create_number_vertex_array(gl: WebGL2RenderingContext, value: Int): Pair<WebGLBuffer, Int> {
+    private fun create_number_vertex_array(gl: WebGL2RenderingContext,
+                                           value: Int): Pair<WebGLBuffer, Int> {
         val digits = value.toString()
         var width = 0.0f
         val vertices = Float32Array(digits.length * 6 * 4)
@@ -82,12 +109,30 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
         for (digit in digits) {
             val digit = digit.toInt() - 48
             vertices.set(arrayOf(
-                    width - 0.5f, 0.5f, this.texture_u_coords[digit], 0.0f,
-                    width + 0.5f, 0.5f, this.texture_u_coords[digit] + this.single_digit_u_coord, 0.0f,
-                    width - 0.5f, -0.5f, this.texture_u_coords[digit], 1.0f,
-                    width + 0.5f, 0.5f, this.texture_u_coords[digit] + this.single_digit_u_coord, 0.0f,
-                    width - 0.5f, -0.5f, this.texture_u_coords[digit], 1.0f,
-                    width + 0.5f, -0.5f, this.texture_u_coords[digit] + this.single_digit_u_coord, 1.0f
+                    width - 0.5f,
+                    0.5f,
+                    this.texture_u_coords[digit],
+                    0.0f,
+                    width + 0.5f,
+                    0.5f,
+                    this.texture_u_coords[digit] + this.single_digit_u_coord,
+                    0.0f,
+                    width - 0.5f,
+                    -0.5f,
+                    this.texture_u_coords[digit],
+                    1.0f,
+                    width + 0.5f,
+                    0.5f,
+                    this.texture_u_coords[digit] + this.single_digit_u_coord,
+                    0.0f,
+                    width - 0.5f,
+                    -0.5f,
+                    this.texture_u_coords[digit],
+                    1.0f,
+                    width + 0.5f,
+                    -0.5f,
+                    this.texture_u_coords[digit] + this.single_digit_u_coord,
+                    1.0f
             ), offset)
 
             offset += 6 * 4
@@ -110,6 +155,7 @@ layout (location = 1) in vec2 aTexCoord;
 
 uniform mat4 view;
 uniform mat4 model;
+uniform mat4 rot_mat;
 uniform mat4 projection;
 uniform vec2 size;
 uniform vec2 offset;
@@ -125,19 +171,12 @@ void main() {
     model_view[0][1] = 0.0;
     model_view[0][2] = 0.0;
 
-//    if (spherical == 1) {
-        // Second colunm.
-        model_view[1][0] = 0.0;
-        model_view[1][1] = 1.0;
-        model_view[1][2] = 0.0;
-//    }
+// Spherical billboard
+    model_view[0].xyz = vec3( 1.0, 0.0, 0.0 );
+    model_view[1].xyz = vec3( 0.0, 1.0, 0.0 );
+    model_view[2].xyz = vec3( 0.0, 0.0, 1.0 );
 
-    // Thrid colunm.
-    model_view[2][0] = 0.0;
-    model_view[2][1] = 0.0;
-    model_view[2][2] = 1.0;
-
-    gl_Position = projection * model_view * pos;
+    gl_Position = projection * model_view * (rot_mat * pos);
     tex_coord = aTexCoord;
 }""")
             gl.compileShader(this)
@@ -206,6 +245,7 @@ void main() {
                             texture = gl.getUniformLocation(program, "model_texture")!!,
                             size = gl.getUniformLocation(program, "size")!!,
                             model_mat = gl.getUniformLocation(program, "model")!!,
+                            rot_mat = gl.getUniformLocation(program, "rot_mat")!!,
                             color = gl.getUniformLocation(program, "color")!!,
                             a_pos = gl.getAttribLocation(program, "Position"),
                             a_uv = gl.getAttribLocation(program, "aTexCoord"),
@@ -218,6 +258,7 @@ void main() {
                                     val texture: WebGLUniformLocation,
                                     val size: WebGLUniformLocation,
                                     val model_mat: WebGLUniformLocation,
+                                    val rot_mat: WebGLUniformLocation,
                                     val color: WebGLUniformLocation,
                                     val offset: WebGLUniformLocation,
                                     val a_pos: Int,

@@ -6,7 +6,7 @@ use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::SystemVariables;
 use specs::prelude::*;
 
 pub struct FalconRenderSys;
@@ -16,9 +16,8 @@ impl<'a> specs::System<'a> for FalconRenderSys {
         specs::Entities<'a>,
         specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
         specs::ReadStorage<'a, FalconComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, DevConfig>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadStorage<'a, CameraComponent>,
         specs::WriteStorage<'a, RenderCommandCollector>,
         specs::WriteStorage<'a, AudioCommandCollectorComponent>,
@@ -31,9 +30,8 @@ impl<'a> specs::System<'a> for FalconRenderSys {
             entities,
             sprite_storage,
             falcon_storage,
-            mut system_vars,
+            system_vars,
             dev_configs,
-            mut system_benchmark,
             camera_storage,
             mut render_commands_storage,
             mut audio_commands_storage,

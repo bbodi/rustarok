@@ -2,6 +2,7 @@ extern crate rand;
 
 use crate::components::char::ActionPlayMode;
 use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
@@ -196,9 +197,9 @@ pub enum DamageDisplayType {
     Combo(u8),
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum AttackType {
-    Basic(u32, DamageDisplayType),
+    Basic(u32, DamageDisplayType, WeaponType),
     SpellDamage(u32, DamageDisplayType),
     Heal(u32),
     Poison(u32),

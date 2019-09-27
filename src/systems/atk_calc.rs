@@ -1,6 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::char::Percentage;
 use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::basic_attack::WeaponType;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
     RemoveStatusComponent, RemoveStatusComponentPayload,
@@ -382,7 +383,7 @@ impl AttackCalculation {
                 };
                 dst_outcomes.push(outcome);
             }
-            AttackType::Basic(base_dmg, _damage_render_type) => {
+            AttackType::Basic(base_dmg, _damage_render_type, _weapon_type) => {
                 let atk = dbg!(base_dmg);
                 let atk = dbg!(dst.calculated_attribs().armor).subtract_me_from(atk as i32);
                 dbg!(atk);
@@ -430,13 +431,17 @@ impl AttackCalculation {
         match outcome {
             AttackOutcome::Heal(_val) => {}
             AttackOutcome::Damage(_val) => match attack_type {
-                AttackType::Basic(_, _damage_render_type) => {
+                AttackType::Basic(_, _damage_render_type, weapon_type) => {
                     let entity = entities.create();
                     updater.insert(
                         entity,
                         SoundEffectComponent {
                             target_entity_id,
-                            sound_id: sounds.attack,
+                            sound_id: match weapon_type {
+                                WeaponType::Sword => sounds.attack,
+                                WeaponType::Arrow => sounds.arrow_hit,
+                                WeaponType::SilverBullet => sounds.gun_attack,
+                            },
                             pos,
                             start_time: now,
                         },

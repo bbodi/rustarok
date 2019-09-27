@@ -163,6 +163,7 @@ sealed class RenderCommand {
                         val z: Float,
                         val color: Float32Array,
                         val scale: Float,
+                        val rot_radian: Float,
                         val offset: Float32Array,
                         val is_vertically_flipped: Boolean) : RenderCommand()
 
@@ -656,6 +657,7 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
         val color = reader.next_color4_u8()
         val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
                                           reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
+        val rot_radian = reader.next_f32()
         val x = reader.next_f32()
         val y = reader.next_f32()
         val z = reader.next_f32()
@@ -668,6 +670,7 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
                 y = y,
                 z = z,
                 scale = scale,
+                rot_radian = rot_radian,
                 server_texture_id = server_texture_id,
                 is_vertically_flipped = is_vertically_flipped))
     }

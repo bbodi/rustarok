@@ -49,10 +49,11 @@ class Matrix {
         return out
     }
 
-    fun set_translation(x: Float, y: Float, z: Float) {
+    fun set_translation(x: Float, y: Float, z: Float): Matrix {
         this[12] = x
         this[13] = y
         this[14] = z
+        return this
     }
 
     fun transponse_mut() {
@@ -98,7 +99,7 @@ class Matrix {
         return out
     }
 
-    fun rotate_around_y_mut(rad: Float) {
+    fun rotate_around_y_mut(rad: Float): Matrix {
         val s = kotlin.math.sin(rad)
         val c = kotlin.math.cos(rad)
         val a00 = this[0]
@@ -119,9 +120,10 @@ class Matrix {
         this[9] = a01 * s + a21 * c
         this[10] = a02 * s + a22 * c
         this[11] = a03 * s + a23 * c
+        return this
     }
 
-    fun rotate_around_z_mut(rad: Float) {
+    fun rotate_around_z_mut(rad: Float): Matrix {
         val s = kotlin.math.sin(rad)
         val c = kotlin.math.cos(rad)
         val a00 = this[0]
@@ -142,6 +144,7 @@ class Matrix {
         this[5] = a11 * c - a01 * s
         this[6] = a12 * c - a02 * s
         this[7] = a13 * c - a03 * s
+        return this
     }
 
 

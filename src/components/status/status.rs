@@ -1,3 +1,4 @@
+use crate::asset::SpriteResource;
 use crate::components::char::{
     ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
     CharacterStateComponent, Percentage, Team,
@@ -11,7 +12,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::SystemVariables;
+use crate::systems::{Sex, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entities, LazyUpdate};
@@ -29,6 +30,15 @@ pub enum StatusStackingResult {
 
 pub trait Status: Any {
     fn dupl(&self) -> Box<dyn Status + Send>;
+
+    fn get_body_sprite<'a>(
+        &self,
+        system_vars: &'a SystemVariables,
+        job_id: JobId,
+        sex: Sex,
+    ) -> Option<&'a SpriteResource> {
+        None
+    }
 
     fn on_apply(
         &mut self,
@@ -66,7 +76,7 @@ pub trait Status: Any {
     fn update(
         &mut self,
         _self_char_id: CharEntityId,
-        _char_pos: &CharacterStateComponent,
+        _target_char: &mut CharacterStateComponent,
         _phyisic_world: &mut PhysicEngine,
         _system_vars: &mut SystemVariables,
         _entities: &specs::Entities,
@@ -205,7 +215,7 @@ impl Statuses {
     pub fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_state: &CharacterStateComponent,
+        char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -272,6 +282,7 @@ impl Statuses {
         return match job_id {
             JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
             JobId::GUNSLINGER => configs.stats.player.gunslinger.attributes.clone(),
+            JobId::HUNTER => configs.stats.player.hunter.attributes.clone(),
             JobId::RangedMinion => configs.stats.minion.ranged.clone(),
             JobId::HealingDummy => CharAttributes {
                 walking_speed: Percentage(0),
@@ -325,6 +336,27 @@ impl Statuses {
                 .calc_attribs(&mut self.cached_modifier_collector);
         }
         return &self.cached_modifier_collector;
+    }
+
+    pub fn calc_body_sprite<'a>(
+        &self,
+        system_vars: &'a SystemVariables,
+        job_id: JobId,
+        sex: Sex,
+    ) -> Option<&'a SpriteResource> {
+        let mut ret = None;
+        for status in &mut self
+            .statuses
+            .iter()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            ret = status
+                .as_ref()
+                .unwrap()
+                .get_body_sprite(system_vars, job_id, sex);
+        }
+        return ret;
     }
 
     pub fn calc_render_color(&self, now: ElapsedTime) -> [u8; 4] {
@@ -493,6 +525,19 @@ impl Status for MountedStatus {
         Box::new(self.clone())
     }
 
+    fn get_body_sprite<'a>(
+        &self,
+        system_vars: &'a SystemVariables,
+        job_id: JobId,
+        sex: Sex,
+    ) -> Option<&'a SpriteResource> {
+        let sprites = &system_vars.assets.sprites;
+        sprites
+            .mounted_character_sprites
+            .get(&job_id)
+            .and_then(|it| it.get(sex as usize))
+    }
+
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         // it is applied directly on the base moving speed, since it is called first
         modifiers.change_walking_speed(
@@ -532,7 +577,7 @@ impl Status for PoisonStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        _char_state: &CharacterStateComponent,
+        _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         _entities: &specs::Entities,

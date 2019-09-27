@@ -86,7 +86,7 @@ impl Status for FireBombStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_state: &CharacterStateComponent,
+        char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,

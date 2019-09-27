@@ -7,6 +7,7 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
@@ -135,7 +136,7 @@ impl Status for AssaBladeDashStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_state: &CharacterStateComponent,
+        char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,
@@ -177,6 +178,7 @@ impl Status for AssaBladeDashStatus {
                         typ: AttackType::Basic(
                             self.configs.first_damage,
                             DamageDisplayType::SingleNumber,
+                            WeaponType::Sword,
                         ),
                         except: None,
                     });
@@ -194,6 +196,7 @@ impl Status for AssaBladeDashStatus {
                         typ: AttackType::Basic(
                             self.configs.second_damage,
                             DamageDisplayType::SingleNumber,
+                            WeaponType::Sword,
                         ),
                         except: None,
                     });

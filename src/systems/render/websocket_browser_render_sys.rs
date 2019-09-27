@@ -325,6 +325,9 @@ impl WebSocketBrowserRenderSystem {
                 send_buffer.write_i16::<LittleEndian>(*v).unwrap();
             }
             send_buffer
+                .write_f32::<LittleEndian>(command.rot_radian)
+                .unwrap();
+            send_buffer
                 .write_f32::<LittleEndian>(command.pos.x)
                 .unwrap();
             send_buffer

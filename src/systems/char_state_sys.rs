@@ -3,7 +3,7 @@ use specs::prelude::*;
 use crate::common::v2_to_p2;
 use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, NpcComponent};
 use crate::components::controller::{CharEntityId, WorldCoord};
-use crate::components::skills::skills::FinishCast;
+use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
@@ -125,14 +125,20 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     if damage_occurs_at.has_already_passed(now) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                         let target_pos = char_positions[&target];
-                        system_vars.just_finished_skill_casts.push(FinishCast {
-                            skill: basic_attack,
-                            caster_entity_id: char_entity_id,
-                            caster_pos: char_pos,
-                            skill_pos: Some(target_pos),
-                            char_to_skill_dir: (target_pos - char_comp.pos()).normalize(),
-                            target_entity: Some(target),
-                        });
+                        if let Some(manifestation) = basic_attack.finish_attack(
+                            char_comp.calculated_attribs(),
+                            char_entity_id,
+                            char_pos,
+                            target_pos,
+                            target,
+                            &mut system_vars,
+                        ) {
+                            let skill_manifest_id = entities.create();
+                            updater.insert(
+                                skill_manifest_id,
+                                SkillManifestationComponent::new(skill_manifest_id, manifestation),
+                            );
+                        }
                     }
                 }
                 _ => {}
@@ -158,7 +164,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                     let new_state = CharState::Attacking {
                                         damage_occurs_at,
                                         target: *target_entity,
-                                        basic_attack: char_comp.basic_attack,
+                                        basic_attack: char_comp.basic_attack.clone(),
                                     };
                                     char_comp.set_state(
                                         new_state,

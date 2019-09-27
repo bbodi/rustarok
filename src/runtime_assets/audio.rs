@@ -3,6 +3,9 @@ use crate::systems::sound_sys::{SoundChunkStore, SoundId, SoundSystem, DUMMY_SOU
 
 pub struct Sounds {
     pub attack: SoundId,
+    pub arrow_hit: SoundId,
+    pub arrow_attack: SoundId,
+    pub gun_attack: SoundId,
     pub stun: SoundId,
     pub heal: SoundId,
     pub firewall: SoundId,
@@ -23,6 +26,9 @@ pub fn init_audio_and_load_sounds(
             None,
             Sounds {
                 attack: DUMMY_SOUND_ID,
+                arrow_hit: DUMMY_SOUND_ID,
+                arrow_attack: DUMMY_SOUND_ID,
+                gun_attack: DUMMY_SOUND_ID,
                 stun: DUMMY_SOUND_ID,
                 heal: DUMMY_SOUND_ID,
                 firewall: DUMMY_SOUND_ID,
@@ -53,6 +59,15 @@ fn load_sounds(asset_loader: &AssetLoader, chunk_store: &mut SoundChunkStore) ->
     let sounds = Sounds {
         attack: chunk_store
             .load_wav("data\\wav\\_novice_attack.wav", asset_loader)
+            .unwrap(),
+        arrow_hit: chunk_store
+            .load_wav("data\\wav\\_archer_hit.wav", asset_loader)
+            .unwrap(),
+        arrow_attack: chunk_store
+            .load_wav("data\\wav\\attack_bow.wav", asset_loader)
+            .unwrap(),
+        gun_attack: chunk_store
+            .load_wav("data\\wav\\gunfire.wav", asset_loader)
             .unwrap(),
         stun: chunk_store
             .load_wav("data\\wav\\_stun.wav", asset_loader)

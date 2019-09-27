@@ -1,14 +1,15 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, create_physics_component, ActionPlayMode, CharActionIndex, CharOutlook,
-    CharState, CharType, CharacterStateComponent, ComponentRadius, NpcComponent,
-    SpriteRenderDescriptorComponent,
+    attach_char_components, attach_human_player_components, create_physics_component,
+    ActionPlayMode, CharActionIndex, CharOutlook, CharState, CharType, CharacterStateComponent,
+    ComponentRadius, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
+use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::status::absorb_shield::AbsorbStatus;
@@ -52,6 +53,77 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
         _input_storage: &specs::ReadStorage<HumanInputComponent>,
     ) -> Option<Vec<String>> {
         Some(self.effect_names.clone())
+    }
+}
+
+pub(super) fn cmd_set_job() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_job".to_string(),
+        arguments: vec![
+            ("class_name", CommandParamType::String, true),
+            ("[username]", CommandParamType::String, false),
+        ],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            move |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(JobId::iter().map(|it| it.to_string()).collect::<Vec<_>>())
+                } else {
+                    Some(username_completor(input_storage))
+                }
+            },
+        ),
+        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+            let job_name = args.as_str(0).unwrap();
+            let username = args.as_str(1);
+
+            let target_char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+            let target_controller_id = if let Some(username) = username {
+                ConsoleSystem::get_user_id_by_name(ecs_world, username)
+            } else {
+                Some(self_controller_id)
+            };
+            if let Some(target_char_id) = target_char_id {
+                if let Some(target_char) = ecs_world
+                    .write_storage::<CharacterStateComponent>()
+                    .get_mut(target_char_id.0)
+                {
+                    if let Ok(job_id) = JobId::from_str(job_name) {
+                        attach_human_player_components(
+                            &target_char.name,
+                            target_char_id,
+                            target_controller_id.unwrap(),
+                            &ecs_world.read_resource::<LazyUpdate>(),
+                            &mut ecs_world.write_resource::<PhysicEngine>(),
+                            ecs_world
+                                .read_resource::<SystemVariables>()
+                                .matrices
+                                .projection,
+                            Point2::new(target_char.pos().x, target_char.pos().y),
+                            Sex::Male,
+                            job_id,
+                            1,
+                            1,
+                            target_char.team,
+                            &ecs_world.read_resource::<DevConfig>(),
+                        );
+                        Ok(())
+                    } else {
+                        return Err("Invalid JobId".to_owned());
+                    }
+                } else {
+                    Err(format!(
+                        "The character component does not exist: {:?}",
+                        target_char_id
+                    ))
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
     }
 }
 
@@ -721,6 +793,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                 AttackType::Basic(
                                     value.max(0) as u32,
                                     DamageDisplayType::SingleNumber,
+                                    WeaponType::Sword,
                                 ),
                                 &pos,
                                 Vector2::new(width, height),

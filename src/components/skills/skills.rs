@@ -23,10 +23,9 @@ use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
 
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
 use crate::components::skills::assa_phase_prism::ASSA_PHASE_PRISM_SKILL;
-use crate::components::skills::basic_attack::BASIC_ATTACK_SKILL;
-use crate::components::skills::basic_ranged_attack::BASIC_RANGED_ATTACK_SKILL;
 use crate::components::skills::falcon_attack::FALCON_ATTACK_SKILL;
 use crate::components::skills::falcon_carry::FALCON_CARRY_SKILL;
+use crate::components::skills::gaz_exo_skel::EXO_SKELETON_SKILL;
 use crate::components::skills::gaz_turret::{
     GAZ_DESTROY_TURRET_SKILL, GAZ_TURRET_SKILL, GAZ_TURRET_TARGET_SKILL,
 };
@@ -191,8 +190,6 @@ pub trait SkillDef {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
-    BasicAttack,
-    BasicRangedAttack,
     FireWall,
     BrutalTestSkill,
     Lightning,
@@ -212,6 +209,7 @@ pub enum Skills {
     FalconCarry,
     FalconAttack,
     Sanctuary,
+    ExoSkeleton,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -239,14 +237,13 @@ impl Skills {
             Skills::AssaBladeDash => ASSA_BLADE_DASH_SKILL,
             Skills::AssaPhasePrism => ASSA_PHASE_PRISM_SKILL,
             Skills::GazXplodiumCharge => GAZ_XPLODIUM_CHARGE_SKILL,
-            Skills::BasicAttack => BASIC_ATTACK_SKILL,
-            Skills::BasicRangedAttack => BASIC_RANGED_ATTACK_SKILL,
             Skills::GazTurret => GAZ_TURRET_SKILL,
             Skills::GazDestroyTurret => GAZ_DESTROY_TURRET_SKILL,
             Skills::GazTurretTarget => GAZ_TURRET_TARGET_SKILL,
             Skills::FalconCarry => FALCON_CARRY_SKILL,
             Skills::FalconAttack => FALCON_ATTACK_SKILL,
             Skills::Sanctuary => SANCTUARY_SKILL,
+            Skills::ExoSkeleton => EXO_SKELETON_SKILL,
         }
     }
 
@@ -275,8 +272,6 @@ impl Skills {
             Skills::AssaBladeDash => &configs.skills.assa_blade_dash.attributes,
             Skills::AssaPhasePrism => &configs.skills.assa_phase_prism.attributes,
             Skills::GazXplodiumCharge => &configs.skills.gaz_xplodium_charge.attributes,
-            Skills::BasicAttack => panic!(),
-            Skills::BasicRangedAttack => panic!(),
             Skills::GazTurret => &configs.skills.gaz_turret.attributes,
             Skills::GazDestroyTurret => &configs.skills.gaz_destroy_turret,
             Skills::GazTurretTarget => &SkillCastingAttributes {
@@ -288,6 +283,7 @@ impl Skills {
             Skills::FalconCarry => &configs.skills.falcon_carry.attributes,
             Skills::FalconAttack => &configs.skills.falcon_attack.attributes,
             Skills::Sanctuary => &configs.skills.sanctuary.attributes,
+            Skills::ExoSkeleton => &configs.skills.exoskeleton.attributes,
         }
     }
 
@@ -364,7 +360,6 @@ impl Skills {
             SkillTargetType::OnlyEnemy => {
                 target_entity.is_some() && skill_casting_range >= target_distance
             }
-            SkillTargetType::OnlySelf => target_entity.map(|it| it == caster_id).unwrap_or(false),
         }
     }
 }
@@ -379,5 +374,4 @@ pub enum SkillTargetType {
     OnlyAllyButNoSelf,
     OnlyAllyAndSelf,
     OnlyEnemy,
-    OnlySelf,
 }

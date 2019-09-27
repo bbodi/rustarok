@@ -25,11 +25,11 @@ start_pos_y = -65
         width = 3
 
     [skills.wiz_pyroblast]
-        casting_time = 5.0
+        casting_time = 3.0
         cast_delay = 3.0
         casting_range = 12
-        damage = 2000
-        secondary_damage = 1000
+        damage = 10000
+        secondary_damage = 5000
         moving_speed = 9
         ball_size = 2
         splash_radius = 3.0
@@ -156,6 +156,16 @@ start_pos_y = -65
         heal = 200
         heal_freq_seconds = 1
         duration = 5.0
+    [skills.exoskeleton]
+        casting_time = 0.0
+        cast_delay = 1.0
+        casting_range = 0.0
+        armor = 40
+        attack_damage = 20
+        attack_range = 600
+        walking_speed = 30
+        attack_speed = 200
+        duration_seconds = 15.0
 
 [stats]
     [stats.minion]
@@ -189,7 +199,7 @@ start_pos_y = -65
         [stats.player.crusader]
             # Percentages
             walking_speed = 100
-            attack_range = 650
+            attack_range = 125
             attack_speed = 130
             armor = 0
             healing =  100
@@ -212,3 +222,16 @@ start_pos_y = -65
             # normal values
             attack_damage = 120
             max_hp = 50_000
+        [stats.player.hunter]
+           # Percentages
+           walking_speed = 100
+           attack_range = 650
+           attack_speed = 133
+           armor = 0
+           healing =  100
+           hp_regen = 100
+           mana_regen = 100
+           mounted_speedup = 30
+           # normal values
+           attack_damage = 120
+           max_hp = 50_000

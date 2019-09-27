@@ -3,6 +3,7 @@ use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
     SkillKey, WorldCoord,
 };
+use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::{StatusNature, Statuses};
 use crate::configs::DevConfig;
@@ -86,7 +87,12 @@ pub fn attach_human_player_components(
                 JobId::MONK => JobSpriteId::MONK,
                 JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
                 JobId::ROGUE => JobSpriteId::ROGUE,
-                _ => panic!(),
+                JobId::HUNTER => JobSpriteId::HUNTER,
+                JobId::TargetDummy => panic!(),
+                JobId::HealingDummy => panic!(),
+                JobId::MeleeMinion => panic!(),
+                JobId::RangedMinion => panic!(),
+                JobId::Turret => panic!(),
             },
             head_index,
         },
@@ -229,7 +235,7 @@ pub enum CharState {
     Attacking {
         target: CharEntityId,
         damage_occurs_at: ElapsedTime,
-        basic_attack: Skills,
+        basic_attack: BasicAttack,
     },
     ReceivingDamage,
     Freeze,
@@ -292,7 +298,7 @@ impl CharState {
             (CharState::Sitting, false) => CharActionIndex::Sitting as usize,
             (CharState::PickingItem, false) => CharActionIndex::PickingItem as usize,
             (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
-            (CharState::Attacking { .. }, false) => CharActionIndex::Attacking1 as usize,
+            (CharState::Attacking { .. }, false) => CharActionIndex::Attacking3 as usize,
             (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
             (CharState::Freeze, false) => CharActionIndex::Freeze1 as usize,
             (CharState::Dead, false) => CharActionIndex::Dead as usize,
@@ -697,17 +703,76 @@ impl CharAttributeModifierCollector {
         }
     }
 
+    pub fn change_attack_damage(
+        &mut self,
+        modifier: CharAttributeModifier,
+        started: ElapsedTime,
+        until: ElapsedTime,
+    ) {
+        CharAttributeModifierCollector::set_durations(
+            started,
+            until,
+            &mut self.durations.attack_damage_bonus_started_at,
+            &mut self.durations.attack_damage_bonus_ends_at,
+        );
+        self.attack_damage.push(modifier);
+    }
+
+    pub fn change_attack_speed(
+        &mut self,
+        modifier: CharAttributeModifier,
+        started: ElapsedTime,
+        until: ElapsedTime,
+    ) {
+        CharAttributeModifierCollector::set_durations(
+            started,
+            until,
+            &mut self.durations.attack_speed_bonus_started_at,
+            &mut self.durations.attack_speed_bonus_ends_at,
+        );
+        self.attack_speed.push(modifier);
+    }
+
     pub fn change_armor(
         &mut self,
         modifier: CharAttributeModifier,
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
-        if self.durations.armor_bonus_ends_at.has_not_passed_yet(until) {
-            self.durations.armor_bonus_ends_at = until;
-            self.durations.armor_bonus_started_at = started;
-        }
+        CharAttributeModifierCollector::set_durations(
+            started,
+            until,
+            &mut self.durations.armor_bonus_started_at,
+            &mut self.durations.armor_bonus_ends_at,
+        );
         self.armor.push(modifier);
+    }
+
+    fn set_durations(
+        new_started_at: ElapsedTime,
+        new_ends_at: ElapsedTime,
+        current_started_at: &mut ElapsedTime,
+        current_ends_at: &mut ElapsedTime,
+    ) {
+        if current_ends_at.has_not_passed_yet(new_ends_at) {
+            *current_ends_at = new_ends_at;
+            *current_started_at = new_started_at;
+        }
+    }
+
+    pub fn change_attack_range(
+        &mut self,
+        modifier: CharAttributeModifier,
+        started: ElapsedTime,
+        until: ElapsedTime,
+    ) {
+        CharAttributeModifierCollector::set_durations(
+            started,
+            until,
+            &mut self.durations.attack_range_bonus_started_at,
+            &mut self.durations.attack_range_bonus_ends_at,
+        );
+        self.attack_range.push(modifier);
     }
 
     pub fn change_walking_speed(
@@ -716,14 +781,12 @@ impl CharAttributeModifierCollector {
         started: ElapsedTime,
         until: ElapsedTime,
     ) {
-        if self
-            .durations
-            .walking_speed_bonus_ends_at
-            .has_not_passed_yet(until)
-        {
-            self.durations.walking_speed_bonus_ends_at = until;
-            self.durations.walking_speed_bonus_started_at = started;
-        }
+        CharAttributeModifierCollector::set_durations(
+            started,
+            until,
+            &mut self.durations.walking_speed_bonus_started_at,
+            &mut self.durations.walking_speed_bonus_ends_at,
+        );
         self.walking_speed.push(modifier);
     }
 
@@ -849,7 +912,7 @@ impl Component for NpcComponent {
 #[derive(Component)]
 pub struct CharacterStateComponent {
     pub name: String, // characters also has names so it is possible to follow them with a camera
-    pub basic_attack: Skills,
+    pub basic_attack: BasicAttack,
     pos: WorldCoord,
     y: f32,
     pub team: Team,
@@ -924,9 +987,19 @@ impl CharacterStateComponent {
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
             basic_attack: match job_id {
-                JobId::GUNSLINGER => Skills::BasicRangedAttack,
-                JobId::RangedMinion => Skills::BasicRangedAttack,
-                _ => Skills::BasicRangedAttack,
+                JobId::GUNSLINGER => BasicAttack::Ranged {
+                    bullet_type: WeaponType::SilverBullet,
+                },
+                JobId::RangedMinion => BasicAttack::Ranged {
+                    bullet_type: WeaponType::Arrow,
+                },
+                JobId::HUNTER => BasicAttack::Ranged {
+                    bullet_type: WeaponType::Arrow,
+                },
+                JobId::Turret => BasicAttack::Ranged {
+                    bullet_type: WeaponType::SilverBullet,
+                },
+                _ => BasicAttack::Melee,
             },
             job_id,
             name,

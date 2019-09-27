@@ -42,6 +42,7 @@ pub struct DevConfigStatsPlayerJob {
 pub struct DevConfigStatsPlayer {
     pub crusader: DevConfigStatsPlayerJob,
     pub gunslinger: DevConfigStatsPlayerJob,
+    pub hunter: DevConfigStatsPlayerJob,
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,6 +149,18 @@ pub struct AbsorbShieldSkillConfig {
     pub duration_seconds: f32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ExoSkeletonSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub duration_seconds: f32,
+    pub armor: Percentage,
+    pub attack_damage: Percentage,
+    pub attack_range: Percentage,
+    pub walking_speed: Percentage,
+    pub attack_speed: Percentage,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct AssaBladeDashSkillConfig {
     #[serde(flatten)]
@@ -221,6 +234,7 @@ pub struct SkillsConfig {
     pub poison: PoisonSkillConfig,
     pub firebomb: FireBombSkillConfig,
     pub absorb_shield: AbsorbShieldSkillConfig,
+    pub exoskeleton: ExoSkeletonSkillConfig,
     pub assa_blade_dash: AssaBladeDashSkillConfig,
     pub assa_phase_prism: AssaPhasePrismSkillConfig,
     pub falcon_carry: FalconCarry,

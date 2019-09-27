@@ -34,16 +34,31 @@ pub fn load_sprites(
 ) -> Sprites {
     let (elapsed, sprites) = measure_time(|| {
         let job_sprite_name_table = job_name_table();
+        let mut exoskeleton = asset_loader
+            .load_spr_and_act(
+                gl,
+                "data\\sprite\\ÀÎ°£Á·\\¸öÅë\\³²\\¸¶µµ±â¾î_³²",
+                asset_database,
+            )
+            .unwrap();
+        // for Idle action, character sprites contains head rotating animations, we don't need them
+        exoskeleton
+            .action
+            .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
         Sprites {
             cursors: asset_loader
                 .load_spr_and_act(gl, "data\\sprite\\cursors", asset_database)
                 .unwrap(),
+            exoskeleton,
             ginseng_bullet: asset_loader
                 .load_spr_and_act(
                     gl,
                     "data\\sprite\\¸ó½ºÅÍ\\ginseng_bullet",
                     asset_database,
                 )
+                .unwrap(),
+            arrow: asset_loader
+                .load_spr_and_act(gl, "data\\sprite\\npc\\skel_archer_arrow", asset_database)
                 .unwrap(),
             falcon: asset_loader
                 .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\¸Å", asset_database)

@@ -42,7 +42,7 @@ impl SkillDef for FalconCarrySkill {
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
         let target_entity = target_entity.unwrap();
         let target_pos = {
-            let mut char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
             if let Some(target) = char_storage.get(target_entity.0) {
                 target.pos()
             } else {
@@ -139,7 +139,7 @@ impl Status for FalconCarryStatus {
     fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_state: &CharacterStateComponent,
+        char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         system_vars: &mut SystemVariables,
         entities: &specs::Entities,

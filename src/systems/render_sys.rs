@@ -287,10 +287,6 @@ impl RenderDesktopClientSystem {
                     .get_enemy()
                     .map(|it| it == rendering_entity_id)
                     .unwrap_or(false),
-                SkillTargetType::OnlySelf => entities_below_cursor
-                    .get_friend()
-                    .map(|it| it == followed_char_id)
-                    .unwrap_or(false),
             }
         } else {
             let ret = entities_below_cursor
@@ -339,20 +335,27 @@ impl RenderDesktopClientSystem {
                     head_index,
                     sex,
                 } => {
-                    let body_sprite = if char_state.statuses.is_mounted() {
-                        let sprites = &system_vars.assets.sprites;
-                        &sprites
-                            .mounted_character_sprites
-                            .get(&char_state.job_id)
-                            .and_then(|it| it.get(sex as usize))
-                            .unwrap_or_else(|| {
-                                let sprites = &system_vars.assets.sprites.character_sprites;
-                                &sprites[&job_sprite_id][sex as usize]
-                            })
-                    } else {
-                        let sprites = &system_vars.assets.sprites.character_sprites;
-                        &sprites[&job_sprite_id][sex as usize]
-                    };
+                    //                    let body_sprite = if char_state.statuses.is_mounted() {
+                    //                        let sprites = &system_vars.assets.sprites;
+                    //                        &sprites
+                    //                            .mounted_character_sprites
+                    //                            .get(&char_state.job_id)
+                    //                            .and_then(|it| it.get(sex as usize))
+                    //                            .unwrap_or_else(|| {
+                    //                                let sprites = &system_vars.assets.sprites.character_sprites;
+                    //                                &sprites[&job_sprite_id][sex as usize]
+                    //                            })
+                    //                    } else {
+                    //                        let sprites = &system_vars.assets.sprites.character_sprites;
+                    //                        &sprites[&job_sprite_id][sex as usize]
+                    //                    };
+                    let body_sprite = char_state
+                        .statuses
+                        .calc_body_sprite(system_vars, char_state.job_id, sex)
+                        .unwrap_or(
+                            &system_vars.assets.sprites.character_sprites[&job_sprite_id]
+                                [sex as usize],
+                        );
                     let play_mode = if char_state.state().is_dead() {
                         ActionPlayMode::PlayThenHold
                     } else {
