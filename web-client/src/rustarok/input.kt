@@ -144,8 +144,10 @@ pub struct Mod: u16 {
         e.stopPropagation()
 
         packet_write_i8(InputPacket.MouseMove.ordinal + 1)
-        packet_write_i16(e.asDynamic().layerX)
-        packet_write_i16(e.asDynamic().layerY)
+        mouse_x = e.asDynamic().layerX
+        mouse_y = e.asDynamic().layerY
+        packet_write_i16(mouse_x)
+        packet_write_i16(mouse_y)
     }
 
     fun code_to_sdl_scancode(code: String): Int {

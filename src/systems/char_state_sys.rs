@@ -213,9 +213,11 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 if char_comp.can_move(now) {
                     // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the attack)
                     let dir = (target_pos - char_comp.pos()).normalize();
-                    let speed = dir
-                        * char_comp.calculated_attribs().walking_speed.as_f32()
-                        * (600.0 * system_vars.dt.0);
+                    let speed =
+                        dir * char_comp.calculated_attribs().walking_speed.as_f32() * (60.0 * 0.1);
+                    //                    let speed = dir
+                    //                        * char_comp.calculated_attribs().walking_speed.as_f32()
+                    //                        * (600.0 * system_vars.dt.0);
                     let force = speed;
                     let body = physics_world
                         .bodies

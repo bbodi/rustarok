@@ -2,10 +2,10 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
 use crate::configs::DevConfig;
 use crate::systems::console_commands::{
-    cmd_add_status, cmd_clear, cmd_control_char, cmd_follow_char, cmd_get_pos, cmd_get_server_fps,
-    cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_resurrect,
-    cmd_set_damping, cmd_set_mass, cmd_set_outlook, cmd_set_pos, cmd_set_server_fps, cmd_set_team,
-    cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
+    cmd_add_falcon, cmd_add_status, cmd_clear, cmd_control_char, cmd_follow_char, cmd_get_pos,
+    cmd_get_server_fps, cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players,
+    cmd_remove_falcon, cmd_resurrect, cmd_set_damping, cmd_set_mass, cmd_set_outlook, cmd_set_pos,
+    cmd_set_server_fps, cmd_set_team, cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
@@ -681,6 +681,8 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_set_server_fps());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_server_fps());
         ConsoleSystem::add_command(&mut command_defs, cmd_clear());
+        ConsoleSystem::add_command(&mut command_defs, cmd_add_falcon());
+        ConsoleSystem::add_command(&mut command_defs, cmd_remove_falcon());
 
         return command_defs;
     }

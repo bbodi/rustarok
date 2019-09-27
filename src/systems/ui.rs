@@ -32,6 +32,7 @@ impl RenderUI {
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
         camera_pos: &Point3<f32>,
+        is_browser: bool,
     ) {
         // Draw casting bar
         match self_char_state.state() {
@@ -101,16 +102,18 @@ impl RenderUI {
             camera_pos,
         );
 
-        render_action_2d(
-            &system_vars,
-            &controller.cursor_anim_descr,
-            &system_vars.assets.sprites.cursors,
-            &Vector2::new(input.last_mouse_x as i32, input.last_mouse_y as i32),
-            &controller.cursor_color,
-            render_commands,
-            UiLayer2d::Cursor,
-            1.0,
-        );
+        if !is_browser {
+            render_action_2d(
+                &system_vars,
+                &controller.cursor_anim_descr,
+                &system_vars.assets.sprites.cursors,
+                &Vector2::new(input.last_mouse_x as i32, input.last_mouse_y as i32),
+                &controller.cursor_color,
+                render_commands,
+                UiLayer2d::Cursor,
+                1.0,
+            );
+        }
     }
 
     fn draw_minimap(

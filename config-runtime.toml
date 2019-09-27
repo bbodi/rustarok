@@ -25,7 +25,7 @@ start_pos_y = -65
         width = 3
 
     [skills.wiz_pyroblast]
-        casting_time = 1.0
+        casting_time = 5.0
         cast_delay = 3.0
         casting_range = 12
         damage = 2000

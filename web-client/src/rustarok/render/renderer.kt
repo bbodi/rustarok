@@ -20,9 +20,10 @@ class Renderer(gl: WebGL2RenderingContext) {
     val ground_renderer = GroundRenderer(gl)
     val texture_2d_renderer = Texture2dRenderer(gl)
     val effect_3d_renderer = Effect3dRenderer(gl)
-    val trimesh_2d_renderer = Trimesh2dRenderer(gl)
+    val rectangle_2d_renderer = Rectangle2dRenderer(gl)
     val model_renderer = ModelRenderer(gl)
     val sprite_3d_renderer = Sprite3dRenderer(gl)
+    val horizontal_texture_renderer = HorizontalTextureRenderer(gl)
 
 
     val sprite_render_commands = arrayListOf<RenderCommand.Sprite3D>()
@@ -35,6 +36,9 @@ class Renderer(gl: WebGL2RenderingContext) {
     val texture2d_render_commands = arrayListOf<RenderCommand.Texture2D>()
     val model3d_render_commands = arrayListOf<RenderCommand.Model3D>()
 
+    val horizontal_texture_3d_commands = arrayListOf<RenderCommand.HorizontalTexture3D>()
+    val trimesh_3d_commands = arrayOf(arrayListOf<RenderCommand.Trimesh3D>())
+
     fun clear() {
         sprite_render_commands.clear()
         number_render_commands.clear()
@@ -45,6 +49,8 @@ class Renderer(gl: WebGL2RenderingContext) {
         partial_circle2d_render_commands.clear()
         effect3d_render_commands.clear()
         rectangle2d_render_commands.clear()
+        horizontal_texture_3d_commands.clear()
+        trimesh_3d_commands.forEach { it.clear() }
     }
 
     fun render(gl: WebGL2RenderingContext) {
@@ -57,13 +63,27 @@ class Renderer(gl: WebGL2RenderingContext) {
 
         effect_3d_renderer.render_effects(gl, effect3d_render_commands, effects)
 
-        model_renderer.render_models(gl, model3d_render_commands, ground_render_command, models, model_instances)
+        model_renderer.render_models(gl,
+                                     model3d_render_commands,
+                                     ground_render_command,
+                                     models,
+                                     model_instances)
 
-        trimesh_3d_renderer.render_circles(gl, circle3d_render_commands)
-        trimesh_3d_renderer.render_rectangles(gl, rectangle3d_render_commands)
+        trimesh_3d_renderer.render_all_trimeshes(
+                gl,
+                circle3d_render_commands,
+                rectangle3d_render_commands,
+                trimesh_3d_commands[0]
+        );
 
-        trimesh_2d_renderer.render_partial_circles(gl, partial_circle2d_render_commands)
-        trimesh_2d_renderer.render_rectangles(gl, rectangle2d_render_commands, sprite_vertex_buffer)
+        horizontal_texture_renderer.render(gl,
+                                           horizontal_texture_3d_commands,
+                                           centered_sprite_vertex_buffer)
+
+        rectangle_2d_renderer.render_partial_circles(gl, partial_circle2d_render_commands)
+        rectangle_2d_renderer.render_rectangles(gl,
+                                                rectangle2d_render_commands,
+                                                sprite_vertex_buffer)
 
         texture_2d_renderer.render_texture_2d(gl, texture2d_render_commands, sprite_vertex_buffer)
     }

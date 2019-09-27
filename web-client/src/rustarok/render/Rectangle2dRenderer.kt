@@ -3,7 +3,7 @@ package rustarok.render
 import org.khronos.webgl.*
 import rustarok.*
 
-class Trimesh2dRenderer(gl: WebGL2RenderingContext) {
+class Rectangle2dRenderer(gl: WebGL2RenderingContext) {
 
     private val trimesh_2d_shader = load_shader(gl)
     private val circle_buffers = create_partial_circle_vertex_buffers(gl)

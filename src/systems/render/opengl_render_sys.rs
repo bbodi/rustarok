@@ -9,7 +9,7 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
     create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, create_3d_rot_matrix, EffectFrameCacheKey,
-    RenderCommandCollector, TextureSize, UiLayer2d,
+    RenderCommandCollector, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -246,7 +246,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 single_digit_u_coord * 9.0,
             ],
             vaos: {
-                // 221, 252, 221, 100
                 let single_cube: Vec<[f32; 4]> = vec![
                     // Front
                     [-0.5, 0.5, 0.5, 0.0],
@@ -356,18 +355,24 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 [sanctuary_vao.clone(), sanctuary_vao]
             },
             centered_rectangle_vao: {
-                let bottom_left = v3!(-0.5, 0.0, -0.5);
-                let top_left = v3!(-0.5, 0.0, 0.5);
-                let top_right = v3!(0.5, 0.0, 0.5);
-                let bottom_right = v3!(0.5, 0.0, -0.5);
+                let bottom_left: [f32; 7] = [-0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0];
+                let top_left: [f32; 7] = [-0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0];
+                let top_right: [f32; 7] = [0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0];
+                let bottom_right: [f32; 7] = [0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0];
                 VertexArray::new_static(
                     &gl,
                     MyGlEnum::LINE_LOOP,
                     vec![bottom_left, top_left, top_right, bottom_right],
-                    vec![VertexAttribDefinition {
-                        number_of_components: 3,
-                        offset_of_first_element: 0,
-                    }],
+                    vec![
+                        VertexAttribDefinition {
+                            number_of_components: 3,
+                            offset_of_first_element: 0,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 4,
+                            offset_of_first_element: 3,
+                        },
+                    ],
                 )
             },
             points_buffer: Vec::with_capacity(128),
@@ -388,19 +393,25 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             ),
             circle_vao: {
                 let capsule_mesh = ncollide2d::procedural::circle(&1.0, 32);
-                let coords: Vec<[f32; 3]> = capsule_mesh
+                let coords: Vec<[f32; 7]> = capsule_mesh
                     .coords()
                     .iter()
-                    .map(|it| [it.x, 0.0, it.y])
+                    .map(|it| [it.x, 0.0, it.y, 1.0, 1.0, 1.0, 1.0])
                     .collect();
                 VertexArray::new_static(
                     &gl,
                     MyGlEnum::LINE_LOOP,
                     coords,
-                    vec![VertexAttribDefinition {
-                        number_of_components: 3,
-                        offset_of_first_element: 0,
-                    }],
+                    vec![
+                        VertexAttribDefinition {
+                            number_of_components: 3,
+                            offset_of_first_element: 0,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 4,
+                            offset_of_first_element: 3,
+                        },
+                    ],
                 )
             },
             str_effect_cache,
@@ -685,58 +696,6 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             }
 
             {
-                let shader = system_vars.assets.shaders.rect3d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                /////////////////////////////////
-                // 3D Rectangle
-                /////////////////////////////////
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
-                    let centered_rectangle_vao_bind =
-                        self.centered_rectangle_vao.bind(&system_vars.gl);
-                    for command in &render_commands.rectangle_3d_commands {
-                        shader.params.color.set(gl, &command.color);
-                        let mat = create_3d_pos_rot_matrix(
-                            &command.pos,
-                            &(Vector3::y(), command.rotation_rad),
-                        );
-                        shader.params.model_mat.set(gl, &mat);
-                        shader
-                            .params
-                            .scale
-                            .set(gl, &[command.width as f32, command.height as f32]);
-                        centered_rectangle_vao_bind.draw(&system_vars.gl);
-                    }
-                }
-
-                /////////////////////////////////
-                // 3D Circles
-                /////////////////////////////////
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
-                    let vao_bind = self.circle_vao.bind(&system_vars.gl);
-                    for command in &render_commands.circle_3d_commands {
-                        shader.params.color.set(gl, &command.color);
-                        shader
-                            .params
-                            .model_mat
-                            .set(gl, &Matrix4::new_translation(&command.pos));
-                        shader
-                            .params
-                            .scale
-                            .set(gl, &[command.radius * 2.0, command.radius * 2.0]);
-                        vao_bind.draw(&system_vars.gl);
-                    }
-                }
-            }
-
-            {
                 let shader = system_vars.assets.shaders.sprite_shader.gl_use(gl);
                 shader
                     .params
@@ -852,19 +811,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .centered_sprite_vertex_array
                     .bind(&system_vars.gl);
                 for command in &render_commands.horizontal_texture_3d_commands {
-                    shader.params.size.set(
-                        gl,
-                        &match command.size {
-                            TextureSize::Scale(w, h, scale) => {
-                                // todo: store only scaled w and h
-                                [
-                                    w as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * scale,
-                                    h as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * scale,
-                                ]
-                            }
-                            TextureSize::FixSize(size) => [size, size],
-                        },
-                    );
+                    shader.params.size.set(gl, &[command.w, command.h]);
 
                     let model_matrix = create_3d_pos_rot_matrix(
                         &Vector3::new(command.pos.x, 0.2, command.pos.y),
@@ -1035,26 +982,66 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .projection_mat
                     .set(gl, &system_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                unsafe {
-                    //                    gl.Disable(MyGlEnum::DEPTH_TEST);
-                }
-                /////////////////////////////////
-                // 3D Trimesh
-                /////////////////////////////////
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
 
-                for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
-                    let vao_bind = self.vaos[i].bind(&system_vars.gl);
-                    for command in commands {
-                        let mut matrix = Matrix4::<f32>::identity();
-                        matrix.prepend_translation_mut(&command.pos);
-                        shader.params.model_mat.set(gl, &matrix);
+                {
+                    /////////////////////////////////
+                    // 3D Trimesh
+                    /////////////////////////////////
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
+
+                    shader.params.scale.set(gl, &[1.0, 1.0, 1.0]);
+                    shader.params.color.set_f32(gl, &[1.0, 1.0, 1.0, 1.0]);
+                    for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
+                        let vao_bind = self.vaos[i].bind(&system_vars.gl);
+                        for command in commands {
+                            let mut matrix = Matrix4::<f32>::identity();
+                            matrix.prepend_translation_mut(&command.pos);
+                            shader.params.model_mat.set(gl, &matrix);
+                            vao_bind.draw(&system_vars.gl);
+                        }
+                    }
+                }
+                {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
+                    let centered_rectangle_vao_bind =
+                        self.centered_rectangle_vao.bind(&system_vars.gl);
+                    for command in &render_commands.rectangle_3d_commands {
+                        shader.params.color.set(gl, &command.color);
+                        let mat = create_3d_pos_rot_matrix(
+                            &command.pos,
+                            &(Vector3::y(), command.rotation_rad),
+                        );
+                        shader.params.model_mat.set(gl, &mat);
+                        shader
+                            .params
+                            .scale
+                            .set(gl, &[command.width as f32, 1.0, command.height as f32]);
+                        centered_rectangle_vao_bind.draw(&system_vars.gl);
+                    }
+                }
+
+                /////////////////////////////////
+                // 3D Circles
+                /////////////////////////////////
+                {
+                    let _stopwatch =
+                        system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
+                    let vao_bind = self.circle_vao.bind(&system_vars.gl);
+                    for command in &render_commands.circle_3d_commands {
+                        shader.params.color.set(gl, &command.color);
+                        shader
+                            .params
+                            .model_mat
+                            .set(gl, &Matrix4::new_translation(&command.pos));
+                        shader
+                            .params
+                            .scale
+                            .set(gl, &[command.radius * 2.0, 1.0, command.radius * 2.0]);
                         vao_bind.draw(&system_vars.gl);
                     }
                 }
-            }
-            unsafe {
-                gl.Enable(MyGlEnum::DEPTH_TEST);
             }
 
             /////////////////////////////////

@@ -12,7 +12,6 @@ pub struct Shaders {
     pub horiz_texture_shader: ShaderProgram<HorizTexture3dShaderParameters>,
     pub str_effect_shader: ShaderProgram<StrEffect3dShaderParameters>,
     pub sprite2d_shader: ShaderProgram<Texture2dShaderParameters>,
-    pub rect3d_shader: ShaderProgram<Rect3dShaderParameters>,
     pub trimesh3d_shader: ShaderProgram<Trimesh3dShaderParameters>,
     pub trimesh2d_shader: ShaderProgram<Trimesh2dShaderParameters>,
     pub point2d_shader: ShaderProgram<Point2dShaderParameters>,
@@ -98,17 +97,6 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
             |program_id| Texture2dShaderParameters::new(gl, program_id),
         )
         .unwrap(),
-        rect3d_shader: ShaderProgram::from_shaders(
-            gl,
-            &[
-                Shader::from_source(gl, include_str!("rect3d.vert"), MyGlEnum::VERTEX_SHADER)
-                    .unwrap(),
-                Shader::from_source(gl, include_str!("rect3d.frag"), MyGlEnum::FRAGMENT_SHADER)
-                    .unwrap(),
-            ],
-            |program_id| Rect3dShaderParameters::new(gl, program_id),
-        )
-        .unwrap(),
         trimesh3d_shader: ShaderProgram::from_shaders(
             gl,
             &[
@@ -153,30 +141,12 @@ pub fn load_shaders(gl: &Gl) -> Shaders {
     }
 }
 
-pub struct Rect3dShaderParameters {
-    pub projection_mat: ShaderParam4x4fv,
-    pub model_mat: ShaderParam4x4fv,
-    pub view_mat: ShaderParam4x4fv,
-    pub color: ShaderParam4ubv,
-    pub scale: ShaderParam2fv,
-}
-
-impl Rect3dShaderParameters {
-    pub fn new(gl: &Gl, program_id: c_uint) -> Rect3dShaderParameters {
-        Rect3dShaderParameters {
-            projection_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "projection")),
-            model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
-            view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
-            color: ShaderParam4ubv(Shader::get_location(gl, program_id, "color")),
-            scale: ShaderParam2fv(Shader::get_location(gl, program_id, "size")),
-        }
-    }
-}
-
 pub struct Trimesh3dShaderParameters {
     pub projection_mat: ShaderParam4x4fv,
     pub model_mat: ShaderParam4x4fv,
     pub view_mat: ShaderParam4x4fv,
+    pub color: ShaderParam4ubv,
+    pub scale: ShaderParam3fv,
 }
 
 impl Trimesh3dShaderParameters {
@@ -185,6 +155,8 @@ impl Trimesh3dShaderParameters {
             projection_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "projection")),
             model_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "model")),
             view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
+            color: ShaderParam4ubv(Shader::get_location(gl, program_id, "global_color")),
+            scale: ShaderParam3fv(Shader::get_location(gl, program_id, "scale")),
         }
     }
 }

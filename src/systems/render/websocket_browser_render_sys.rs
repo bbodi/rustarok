@@ -2,9 +2,10 @@ use crate::components::BrowserClient;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectId;
 use crate::systems::render::render_command::{
-    Circle3dRenderCommand, ModelRenderCommand, Number3dRenderCommand, PartialCircle2dRenderCommand,
-    Rectangle2dRenderCommand, Rectangle3dRenderCommand, RenderCommandCollector,
-    Sprite3dRenderCommand, Text2dRenderCommand, Texture2dRenderCommand,
+    Circle3dRenderCommand, HorizontalTexture3dRenderCommand, ModelRenderCommand,
+    Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle2dRenderCommand,
+    Rectangle3dRenderCommand, RenderCommandCollector, Sprite3dRenderCommand, Text2dRenderCommand,
+    Texture2dRenderCommand, Trimesh3dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -108,6 +109,16 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             WebSocketBrowserRenderSystem::send_3d_model_commands(
                 &mut self.send_buffer,
                 &render_commands.model_commands,
+            );
+
+            WebSocketBrowserRenderSystem::send_horizontal_texture_3d_commands(
+                &mut self.send_buffer,
+                &render_commands.horizontal_texture_3d_commands,
+            );
+
+            WebSocketBrowserRenderSystem::send_trimesh_3d_commands(
+                &mut self.send_buffer,
+                &render_commands.trimesh_3d_commands,
             );
 
             browser.send_message(&self.send_buffer);
@@ -218,6 +229,53 @@ impl WebSocketBrowserRenderSystem {
             let packed_int: u32 =
                 ((command.is_transparent as u32) << 31) | command.model_instance_index as u32;
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
+        }
+    }
+
+    fn send_horizontal_texture_3d_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &Vec<HorizontalTexture3dRenderCommand>,
+    ) {
+        send_buffer
+            .write_u32::<LittleEndian>(render_commands.len() as u32)
+            .unwrap();
+        for command in render_commands {
+            for v in &command.color {
+                send_buffer.write_u8(*v).unwrap();
+            }
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.x)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.rotation_rad)
+                .unwrap();
+            send_buffer
+                .write_u32::<LittleEndian>(command.texture.0 as u32)
+                .unwrap();
+            send_buffer.write_f32::<LittleEndian>(command.w).unwrap();
+            send_buffer.write_f32::<LittleEndian>(command.h).unwrap();
+        }
+    }
+
+    fn send_trimesh_3d_commands(
+        send_buffer: &mut Vec<u8>,
+        render_commands: &[Vec<Trimesh3dRenderCommand>; 2],
+    ) {
+        let sizes = (render_commands[1].len() << 16) | render_commands[0].len();
+        send_buffer.write_u32::<LittleEndian>(sizes as u32).unwrap();
+        for command in &render_commands[0] {
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.x)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.y)
+                .unwrap();
+            send_buffer
+                .write_f32::<LittleEndian>(command.pos.z)
+                .unwrap();
         }
     }
 
@@ -334,7 +392,6 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_f32::<LittleEndian>(command.rotation_rad)
                 .unwrap();
-            // TODO: it was u16, change frontend
             send_buffer
                 .write_f32::<LittleEndian>(command.width)
                 .unwrap();

@@ -851,7 +851,9 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
 #[derive(Debug)]
 pub struct HorizontalTexture3dRenderCommand {
     pub color: [u8; 4],
-    pub size: TextureSize,
+    //    pub size: TextureSize,
+    pub w: f32,
+    pub h: f32,
     pub pos: Vector2<f32>,
     pub rotation_rad: f32,
     pub texture: GlNativeTextureId,
@@ -932,14 +934,23 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
     }
 
     pub fn add(&'a mut self, texture: &GlTexture) {
+        let (w, h) = match self.size {
+            TextureSizeSetting::Scale(scale) => (
+                (texture.width as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                (texture.height as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+            ),
+            TextureSizeSetting::FixSize(size) => (size, size),
+        };
         let command = HorizontalTexture3dRenderCommand {
             color: self.color,
-            size: match self.size {
-                TextureSizeSetting::Scale(scale) => {
-                    TextureSize::Scale(texture.width as u16, texture.height as u16, scale)
-                }
-                TextureSizeSetting::FixSize(size) => TextureSize::FixSize(size),
-            },
+            w,
+            h,
+            //            size: match self.size {
+            //                TextureSizeSetting::Scale(scale) => {
+            //                    TextureSize::Scale(texture.width as u16, texture.height as u16, scale)
+            //                }
+            //                TextureSizeSetting::FixSize(size) => TextureSize::FixSize(size),
+            //            },
             texture: texture.id(),
             pos: self.pos,
             rotation_rad: self.rotation_rad,

@@ -606,6 +606,16 @@ impl ShaderParam4ubv {
             );
         }
     }
+
+    pub fn set_f32(&self, gl: &Gl, vector: &[f32; 4]) {
+        unsafe {
+            gl.Uniform4fv(
+                self.0,
+                1, // count
+                vector.as_ptr() as *const f32,
+            );
+        }
+    }
 }
 
 pub struct ShaderParam2fv(pub c_int);

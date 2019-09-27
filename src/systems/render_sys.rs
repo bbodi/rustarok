@@ -644,7 +644,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 .join()
         };
         for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
-            let entity_id = ControllerEntityId(entity_id);
+            let controller_id = ControllerEntityId(entity_id);
 
             let mut controller_and_controlled: Option<ControllerAndControlled> = camera
                 .followed_controller
@@ -657,7 +657,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     }
                 });
 
-            let render_only_chars = if let Some(browser) = browser_storage.get(entity_id.0) {
+            let render_only_chars = if let Some(browser) = browser_storage.get(controller_id.0) {
                 if browser.next_send_at.has_not_passed_yet(system_vars.time) {
                     // commands won't be sent to the client in this frame, so render only characters
                     // for getting their bounding rects
@@ -707,7 +707,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     .as_ref()
                     .map(|it| it.controller.controlled_entity)
                     .unwrap_or(
-                        CharEntityId(entity_id.0), // entity_id is the controller id, so no character will match with it, ~dummy value
+                        CharEntityId(controller_id.0), // controller_id is the controller id, so no character will match with it, ~dummy value
                     ),
                 controller_and_controlled
                     .as_ref()
@@ -729,6 +729,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &npc_storage,
                     &entities,
                     &camera.camera.pos(),
+                    browser_storage.get(controller_id.0).is_some(),
                 );
             }
         }

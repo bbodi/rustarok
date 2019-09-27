@@ -281,8 +281,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                         if distance > 2.0 {
                             let falcon_pos_2d = v3_to_v2(&falcon.pos);
                             let dir_3d = (diff_v).normalize();
-                            falcon.acceleration =
-                                (falcon.acceleration + system_vars.dt.0 * 0.05).min(0.03 * 2.0);
+                            falcon.acceleration = 8.57 * system_vars.dt.0;
                             falcon.pos += dir_3d * falcon.acceleration;
                             sprite.direction = NextActionApplierSystem::determine_dir(
                                 &v3_to_v2(&target_pos),

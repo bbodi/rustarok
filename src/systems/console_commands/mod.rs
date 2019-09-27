@@ -1,8 +1,9 @@
 use crate::asset::gat::CellType;
 use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, create_physics_component, ActionPlayMode, CharOutlook, CharState,
-    CharType, CharacterStateComponent, ComponentRadius, NpcComponent,
+    attach_char_components, create_physics_component, ActionPlayMode, CharActionIndex, CharOutlook,
+    CharState, CharType, CharacterStateComponent, ComponentRadius, NpcComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
@@ -29,6 +30,7 @@ use crate::systems::console_system::{
     BasicAutocompletionProvider, CommandDefinition, CommandParamType, ConsoleComponent,
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
+use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::{Isometry2, Point2};
@@ -1298,6 +1300,103 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
                     Ok(())
                 } else {
                     Err("No rigid body was found for this user".to_owned())
+                }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_add_falcon() -> CommandDefinition {
+    CommandDefinition {
+        name: "add_falcon".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(0);
+
+            let char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(char_id) = char_id {
+                let pos = ecs_world
+                    .read_storage::<CharacterStateComponent>()
+                    .get(char_id.0)
+                    .map(|it| it.pos())
+                    .unwrap();
+
+                let _falcon_id = ecs_world
+                    .create_entity()
+                    .with(FalconComponent::new(char_id, pos.x, pos.y))
+                    .with(SpriteRenderDescriptorComponent {
+                        action_index: CharActionIndex::Idle as usize,
+                        fps_multiplier: 1.0,
+                        animation_started: ElapsedTime(0.0),
+                        forced_duration: None,
+                        direction: 0,
+                        animation_ends_at: ElapsedTime(0.0),
+                    })
+                    .build();
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_remove_falcon() -> CommandDefinition {
+    CommandDefinition {
+        name: "remove_falcon".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(0);
+
+            let char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(char_id) = char_id {
+                let mut delete_falcon_id = None;
+                for (falcon_id, falcon) in (
+                    &ecs_world.entities(),
+                    &ecs_world.read_storage::<FalconComponent>(),
+                )
+                    .join()
+                {
+                    if falcon.owner_entity_id == char_id {
+                        delete_falcon_id = Some(falcon_id);
+                        break;
+                    }
+                }
+                if let Some(falcon_id) = delete_falcon_id {
+                    ecs_world.delete_entity(falcon_id);
+                    return Ok(());
+                } else {
+                    Err("The user does not have a falcon".to_owned())
                 }
             } else {
                 Err("The user was not found".to_owned())

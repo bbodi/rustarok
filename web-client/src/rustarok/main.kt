@@ -91,6 +91,8 @@ class StrKeyFrame(
         val texture_index: Int
 )
 
+val COLOR_WHITE = Float32Array(arrayOf(1f, 1f, 1f, 1f))
+
 class StrLayer(val key_frames: Array<StrKeyFrame>)
 
 class StrFile(
@@ -194,6 +196,20 @@ sealed class RenderCommand {
                            val color: Float32Array,
                            val w: Float,
                            val h: Float) : RenderCommand()
+
+    data class Trimesh3D(val x: Float,
+                         val y: Float,
+                         val z: Float
+    ) : RenderCommand()
+
+    data class HorizontalTexture3D(val x: Float,
+                                   val z: Float,
+                                   val color: Float32Array,
+                                   val rotation_rad: Float,
+                                   val w: Float,
+                                   val h: Float,
+                                   val server_texture_id: Int
+    ) : RenderCommand()
 
     data class Circle3D(val x: Float,
                         val y: Float,
@@ -718,6 +734,47 @@ private fun parse_circle3d_render_commands(reader: BufferReader, renderer: Rende
     }
 }
 
+private fun parse_horizontal_texture_3d_commands(reader: BufferReader, renderer: Renderer) {
+    for (i in 0 until reader.next_u32()) {
+        val color = reader.next_color4_u8()
+        val x = reader.next_f32()
+        val z = reader.next_f32()
+        val rotation_rad = reader.next_f32()
+        val texture_index = reader.next_u32()
+        val w = reader.next_f32()
+        val h = reader.next_f32()
+
+        renderer.horizontal_texture_3d_commands.add(RenderCommand.HorizontalTexture3D(
+                color = color,
+                x = x,
+                z = z,
+                rotation_rad = rotation_rad,
+                server_texture_id = texture_index,
+                w = w,
+                h = h
+        ))
+    }
+}
+
+private fun parse_trimesh_3d_commands(reader: BufferReader, renderer: Renderer) {
+    val (cylinders, sanctuaries) = reader.next_packed_int16_int16();
+    for (i in 0 until cylinders) {
+        renderer.trimesh_3d_commands[1].add(RenderCommand.Trimesh3D(
+                x = reader.next_f32(),
+                y = reader.next_f32(),
+                z = reader.next_f32()
+        ))
+    }
+    for (i in 0 until sanctuaries) {
+        renderer.trimesh_3d_commands[0].add(RenderCommand.Trimesh3D(
+                x = reader.next_f32(),
+                y = reader.next_f32(),
+                z = reader.next_f32()
+        ))
+    }
+}
+
+
 private fun parse_rectangle3d_render_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
@@ -725,16 +782,16 @@ private fun parse_rectangle3d_render_commands(reader: BufferReader, renderer: Re
         val y = reader.next_f32()
         val z = reader.next_f32()
         val rotation_rad = reader.next_f32()
-        val w = reader.next_u16()
-        val h = reader.next_u16()
+        val w = reader.next_f32()
+        val h = reader.next_f32()
         renderer.rectangle3d_render_commands.add(RenderCommand.Rectangle3D(
                 color = color,
                 x = x,
                 y = y,
                 z = z,
                 rotation_rad = rotation_rad,
-                w = w.toFloat(),
-                h = h.toFloat()
+                w = w,
+                h = h
         ))
     }
 }
@@ -825,6 +882,9 @@ private fun process_welcome_msg(result: dynamic): Job {
     }
 }
 
+var mouse_x = 0
+var mouse_y = 0
+
 fun start_frame(socket: WebSocket, renderer: Renderer) {
     console.log("start_frame")
 
@@ -891,6 +951,19 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
             parse_number_render_commands(reader, renderer)
             parse_effect_3d_render_commands(reader, renderer)
             parse_model3d_render_commands(reader, renderer)
+            parse_horizontal_texture_3d_commands(reader, renderer)
+            parse_trimesh_3d_commands(reader, renderer)
+
+//            renderer.texture2d_render_commands.add(RenderCommand.Texture2D(
+//                    color = COLOR_WHITE,
+//                    offset = arrayOf(0, 0),
+//                    rotation_rad = 0f,
+//                    x = mouse_x.toFloat(),
+//                    y = mouse_y.toFloat(),
+//                    server_texture_id = server_texture_id,
+//                    scale = 1f,
+//                    layer = 100
+//            ))
         }
     }
 }
@@ -1016,6 +1089,13 @@ class BufferReader(val buffer: ArrayBuffer) {
         val in24 = packed_int.shl(8).ushr(8)
         val in8 = packed_int.ushr(24)
         return in8 to in24
+    }
+
+    fun next_packed_int16_int16(): Pair<Int, Int> {
+        val packed_int = next_u32()
+        val lower16 = packed_int.shl(16).ushr(16)
+        val upper16 = packed_int.ushr(16)
+        return upper16 to lower16
     }
 
 
