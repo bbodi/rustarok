@@ -190,6 +190,7 @@ pub trait SkillDef {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
 pub enum Skills {
+    AttackMove,
     FireWall,
     BrutalTestSkill,
     Lightning,
@@ -244,6 +245,7 @@ impl Skills {
             Skills::FalconAttack => FALCON_ATTACK_SKILL,
             Skills::Sanctuary => SANCTUARY_SKILL,
             Skills::ExoSkeleton => EXO_SKELETON_SKILL,
+            Skills::AttackMove => panic!(),
         }
     }
 
@@ -284,6 +286,12 @@ impl Skills {
             Skills::FalconAttack => &configs.skills.falcon_attack.attributes,
             Skills::Sanctuary => &configs.skills.sanctuary.attributes,
             Skills::ExoSkeleton => &configs.skills.exoskeleton.attributes,
+            Skills::AttackMove => &SkillCastingAttributes {
+                casting_time: ElapsedTime(0.0),
+                cast_delay: ElapsedTime(0.0),
+                casting_range: 200_000_000.0,
+                width: None,
+            },
         }
     }
 

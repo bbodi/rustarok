@@ -110,6 +110,8 @@ pub fn attach_human_player_components(
 
     let mut human_player = HumanInputComponent::new(username);
     human_player.cast_mode = dev_configs.cast_mode;
+    human_player.assign_skill(SkillKey::A, Skills::AttackMove);
+
     human_player.assign_skill(SkillKey::Q, Skills::FireWall);
     human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
     human_player.assign_skill(SkillKey::E, Skills::Heal);
@@ -339,6 +341,7 @@ impl SpriteBoundingRect {
 pub enum EntityTarget {
     OtherEntity(CharEntityId),
     Pos(WorldCoord),
+    PosWhileAttacking(WorldCoord, Option<CharEntityId>),
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;

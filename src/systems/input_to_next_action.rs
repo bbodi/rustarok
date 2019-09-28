@@ -2,7 +2,7 @@ use crate::components::char::{CharacterStateComponent, Team};
 use crate::components::controller::{
     CastMode, ControllerComponent, HumanInputComponent, PlayerIntention, SkillKey,
 };
-use crate::components::skills::skills::SkillTargetType;
+use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -81,65 +81,69 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             controller.next_action = if let Some((casting_skill_key, skill)) =
                 controller.select_skill_target
             {
-                match input.cast_mode {
-                    CastMode::Normal => {
-                        if input.left_mouse_released {
-                            log::debug!("Player wants to cast {:?}", skill);
-                            controller.select_skill_target = None;
-                            Some(PlayerIntention::Casting(
-                                skill,
-                                false,
-                                input.mouse_world_pos,
-                            ))
-                        } else if input.right_mouse_pressed {
-                            controller.select_skill_target = None;
-                            None
-                        } else if let Some((skill_key, skill)) =
-                            just_pressed_skill_key.and_then(|skill_key| {
-                                input
-                                    .get_skill_for_key(skill_key)
-                                    .map(|skill| (skill_key, skill))
-                            })
-                        {
-                            log::debug!("Player select target for casting {:?}", skill);
-                            let shhh = InputConsumerSystem::target_selection_or_casting(
-                                skill,
-                                input.mouse_world_pos,
-                            );
-                            if let Some(s) = shhh {
-                                Some(s)
-                            } else {
-                                if !input.is_console_open {
-                                    controller.select_skill_target = Some((skill_key, skill));
-                                }
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    CastMode::OnKeyRelease => {
-                        if input.is_key_just_released(casting_skill_key.scancode()) {
-                            log::debug!("Player wants to cast {:?}", skill);
-                            controller.select_skill_target = None;
-                            Some(
-                                PlayerIntention::Casting(
-                                    input.get_skill_for_key(casting_skill_key)
-                                        .expect("'is_casting_selection' must be Some only if the casting skill is valid! "),
+                if skill == Skills::AttackMove {
+                    Some(PlayerIntention::AttackTowards(input.mouse_world_pos))
+                } else {
+                    match input.cast_mode {
+                        CastMode::Normal => {
+                            if input.left_mouse_released {
+                                log::debug!("Player wants to cast {:?}", skill);
+                                controller.select_skill_target = None;
+                                Some(PlayerIntention::Casting(
+                                    skill,
                                     false,
                                     input.mouse_world_pos,
+                                ))
+                            } else if input.right_mouse_pressed {
+                                controller.select_skill_target = None;
+                                None
+                            } else if let Some((skill_key, skill)) = just_pressed_skill_key
+                                .and_then(|skill_key| {
+                                    input
+                                        .get_skill_for_key(skill_key)
+                                        .map(|skill| (skill_key, skill))
+                                })
+                            {
+                                log::debug!("Player select target for casting {:?}", skill);
+                                let shhh = InputConsumerSystem::target_selection_or_casting(
+                                    skill,
+                                    input.mouse_world_pos,
+                                );
+                                if let Some(s) = shhh {
+                                    Some(s)
+                                } else {
+                                    if !input.is_console_open {
+                                        controller.select_skill_target = Some((skill_key, skill));
+                                    }
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        CastMode::OnKeyRelease => {
+                            if input.is_key_just_released(casting_skill_key.scancode()) {
+                                log::debug!("Player wants to cast {:?}", skill);
+                                controller.select_skill_target = None;
+                                Some(
+                                    PlayerIntention::Casting(
+                                        input.get_skill_for_key(casting_skill_key)
+                                            .expect("'is_casting_selection' must be Some only if the casting skill is valid! "),
+                                        false,
+                                        input.mouse_world_pos,
+                                    )
                                 )
-                            )
-                        } else if input.right_mouse_pressed {
-                            controller.select_skill_target = None;
-                            None
-                        } else {
+                            } else if input.right_mouse_pressed {
+                                controller.select_skill_target = None;
+                                None
+                            } else {
+                                None
+                            }
+                        }
+                        CastMode::OnKeyPress => {
+                            // not possible to get into this state while OnKeyPress is active
                             None
                         }
-                    }
-                    CastMode::OnKeyPress => {
-                        // not possible to get into this state while OnKeyPress is active
-                        None
                     }
                 }
             } else if let Some((skill_key, skill)) = just_pressed_skill_key.and_then(|skill_key| {

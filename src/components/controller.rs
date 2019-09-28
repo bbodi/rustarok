@@ -38,6 +38,7 @@ pub type WorldCoord = Vector2<f32>;
 
 #[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash)]
 pub enum SkillKey {
+    A,
     Q,
     W,
     E,
@@ -64,6 +65,7 @@ impl SkillKey {
             SkillKey::Num1 => Scancode::Num1,
             SkillKey::Num2 => Scancode::Num2,
             SkillKey::Num3 => Scancode::Num3,
+            SkillKey::A => Scancode::A,
         }
     }
 }

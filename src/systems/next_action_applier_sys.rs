@@ -60,7 +60,10 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                         char_state.target = Some(EntityTarget::Pos(pos));
                         false
                     }
-                    Some(PlayerIntention::AttackTowards(_)) => false,
+                    Some(PlayerIntention::AttackTowards(pos)) => {
+                        char_state.target = Some(EntityTarget::PosWhileAttacking(pos, None));
+                        false
+                    }
                     Some(PlayerIntention::Casting(skill, is_self_cast, mouse_world_pos)) => {
                         NextActionApplierSystem::try_cast_skill(
                             skill,

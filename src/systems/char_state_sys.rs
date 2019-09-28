@@ -1,7 +1,9 @@
 use specs::prelude::*;
 
 use crate::common::v2_to_p2;
-use crate::components::char::{CharState, CharacterStateComponent, EntityTarget, NpcComponent};
+use crate::components::char::{
+    CharState, CharacterStateComponent, EntityTarget, NpcComponent, Team,
+};
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
@@ -43,17 +45,20 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
-        let mut char_positions = HashMap::<CharEntityId, WorldCoord>::new();
-        for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
-            let char_entity_id = CharEntityId(char_entity_id);
-            char_positions.insert(char_entity_id, char_comp.pos());
-        }
+        let all_char_data = {
+            let mut char_positions = HashMap::<CharEntityId, (WorldCoord, Team)>::new();
+            for (char_entity_id, char_comp) in (&entities, &char_state_storage).join() {
+                if char_comp.state().is_dead() {
+                    continue;
+                }
+                let char_entity_id = CharEntityId(char_entity_id);
+                char_positions.insert(char_entity_id, (char_comp.pos(), char_comp.team));
+            }
+            char_positions
+        };
 
         for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
             let char_entity_id = CharEntityId(char_entity_id);
-            // for autocompletion...
-            let char_comp: &mut CharacterStateComponent = char_comp;
-
             // pakold külön componensbe augy a dolgokat, hogy innen be tudjam álltiani a
             // target et None-ra ha az halott, meg a fenti position hack se kelllejn
             let is_dead = *char_comp.state() == CharState::Dead;
@@ -99,9 +104,9 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         log::debug!("Skill cast has finished: {:?}", casting_info.skill);
                         let skill_pos = if let Some(target_entity) = casting_info
                             .target_entity
-                            .and_then(|it| char_positions.get(&it))
+                            .and_then(|it| all_char_data.get(&it))
                         {
-                            Some(target_entity.clone())
+                            Some(target_entity.0.clone())
                         } else {
                             casting_info.target_area_pos
                         };
@@ -124,7 +129,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 } => {
                     if damage_occurs_at.has_already_passed(now) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
-                        let target_pos = char_positions[&target];
+                        let target_pos = all_char_data[&target].0;
                         if let Some(manifestation) = basic_attack.finish_attack(
                             char_comp.calculated_attribs(),
                             char_entity_id,
@@ -145,67 +150,55 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             }
 
             if char_comp.can_move(now) {
-                if let Some(target) = &char_comp.target {
-                    if let EntityTarget::OtherEntity(target_entity) = target {
-                        let target_pos = char_positions.get(target_entity);
-                        if let Some(target_pos) = target_pos {
-                            let distance = nalgebra::distance(
-                                &nalgebra::Point::from(char_pos),
-                                &v2_to_p2(&target_pos),
-                            );
-                            if distance
-                                <= char_comp.calculated_attribs().attack_range.as_f32() * 2.0
-                            {
-                                if char_comp.attack_delay_ends_at.has_already_passed(now) {
-                                    let attack_anim_duration =
-                                        1.0 / char_comp.calculated_attribs().attack_speed.as_f32();
-                                    let damage_occurs_at =
-                                        now.add_seconds(attack_anim_duration / 2.0);
-                                    let new_state = CharState::Attacking {
-                                        damage_occurs_at,
-                                        target: *target_entity,
-                                        basic_attack: char_comp.basic_attack.clone(),
-                                    };
-                                    char_comp.set_state(
-                                        new_state,
-                                        NextActionApplierSystem::determine_dir(
-                                            target_pos, &char_pos,
-                                        ),
-                                    );
-                                    let attack_anim_duration = ElapsedTime(
-                                        1.0 / char_comp.calculated_attribs().attack_speed.as_f32(),
-                                    );
-                                    char_comp.attack_delay_ends_at = now.add(attack_anim_duration);
-                                } else {
-                                    char_comp.set_state(CharState::Idle, char_comp.dir());
-                                }
-                            } else {
-                                // move closer
-                                char_comp.set_state(
-                                    CharState::Walking(*target_pos),
-                                    NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                if let Some(target) = &char_comp.target.clone() {
+                    if let EntityTarget::PosWhileAttacking(pos, current_target) = target {
+                        // hack end
+                        let current_target_entity = match current_target {
+                            Some(target_id) => all_char_data.get(target_id),
+                            _ => None,
+                        };
+                        let no_target_or_dead_or_out_of_range = match current_target_entity {
+                            Some((pos, _team)) => {
+                                let current_distance = nalgebra::distance(
+                                    &v2_to_p2(&pos),
+                                    &v2_to_p2(&char_comp.pos()),
                                 );
+                                current_distance > 10.0
                             }
-                        } else {
-                            char_comp.set_state(CharState::Idle, char_comp.dir());
-                            char_comp.target = None;
-                        }
-                    } else if let EntityTarget::Pos(target_pos) = target {
-                        let distance = nalgebra::distance(
-                            &nalgebra::Point::from(char_pos),
-                            &v2_to_p2(target_pos),
-                        );
-                        if distance <= 0.2 {
-                            // stop
-                            char_comp.set_state(CharState::Idle, char_comp.dir());
-                            char_comp.target = None;
-                        } else {
-                            // move closer
-                            char_comp.set_state(
-                                CharState::Walking(*target_pos),
-                                NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                            None => true,
+                        };
+                        if no_target_or_dead_or_out_of_range {
+                            let maybe_enemy = CharacterStateUpdateSystem::get_closest_enemy_in_area(
+                                &all_char_data,
+                                &char_comp.pos(),
+                                10.0,
+                                char_comp.team,
+                                char_entity_id,
                             );
+                            char_comp.target =
+                                Some(EntityTarget::PosWhileAttacking(*pos, maybe_enemy));
+                            CharacterStateUpdateSystem::act_based_on_target(
+                                now,
+                                &all_char_data,
+                                char_comp,
+                                &EntityTarget::Pos(*pos),
+                            )
+                        } else {
+                            // there is an active target, move closer or attack it
+                            CharacterStateUpdateSystem::act_based_on_target(
+                                now,
+                                &all_char_data,
+                                char_comp,
+                                &EntityTarget::OtherEntity(current_target.unwrap()),
+                            )
                         }
+                    } else {
+                        CharacterStateUpdateSystem::act_based_on_target(
+                            now,
+                            &all_char_data,
+                            char_comp,
+                            target,
+                        )
                     }
                 } else {
                     // no target and no receieving damage, casting or attacking
@@ -232,6 +225,101 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                     body.set_linear_velocity(force);
                 }
             }
+        }
+    }
+}
+
+impl CharacterStateUpdateSystem {
+    pub fn get_closest_enemy_in_area(
+        char_positions: &HashMap<CharEntityId, (WorldCoord, Team)>,
+        center: &WorldCoord,
+        radius: f32,
+        self_team: Team,
+        except: CharEntityId,
+    ) -> Option<CharEntityId> {
+        let mut ret = None;
+        let mut distance = 2000.0;
+        let center = v2_to_p2(center);
+        for (char_id, (pos, team)) in char_positions {
+            if *char_id == except
+                || !team.is_enemy_to(self_team)
+                || (pos.x - center.x).abs() > radius
+            {
+                continue;
+            }
+            let current_distance = nalgebra::distance(&center, &v2_to_p2(&pos));
+            if current_distance <= radius && current_distance < distance {
+                distance = current_distance;
+                ret = Some(*char_id);
+            }
+        }
+        return ret;
+    }
+
+    fn act_based_on_target(
+        now: ElapsedTime,
+        char_positions: &HashMap<CharEntityId, (WorldCoord, Team)>,
+        char_comp: &mut CharacterStateComponent,
+        target: &EntityTarget,
+    ) {
+        let char_pos = char_comp.pos();
+        match target {
+            EntityTarget::OtherEntity(target_entity) => {
+                let target_pos = char_positions.get(target_entity);
+                if let Some((target_pos, _team)) = target_pos {
+                    let distance = nalgebra::distance(
+                        &nalgebra::Point::from(char_pos),
+                        &v2_to_p2(&target_pos),
+                    );
+                    if distance <= char_comp.calculated_attribs().attack_range.as_f32() * 2.0 {
+                        if char_comp.attack_delay_ends_at.has_already_passed(now) {
+                            let attack_anim_duration =
+                                1.0 / char_comp.calculated_attribs().attack_speed.as_f32();
+                            let damage_occurs_at = now.add_seconds(attack_anim_duration / 2.0);
+                            let new_state = CharState::Attacking {
+                                damage_occurs_at,
+                                target: *target_entity,
+                                basic_attack: char_comp.basic_attack.clone(),
+                            };
+                            char_comp.set_state(
+                                new_state,
+                                NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                            );
+                            let attack_anim_duration = ElapsedTime(
+                                1.0 / char_comp.calculated_attribs().attack_speed.as_f32(),
+                            );
+                            char_comp.attack_delay_ends_at = now.add(attack_anim_duration);
+                        } else {
+                            char_comp.set_state(CharState::Idle, char_comp.dir());
+                        }
+                    } else {
+                        // move closer
+                        char_comp.set_state(
+                            CharState::Walking(*target_pos),
+                            NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                        );
+                    }
+                } else {
+                    char_comp.set_state(CharState::Idle, char_comp.dir());
+                    char_comp.target = None;
+                }
+            }
+            EntityTarget::Pos(target_pos) => {
+                let distance =
+                    nalgebra::distance(&nalgebra::Point::from(char_pos), &v2_to_p2(target_pos));
+                if distance <= 0.2 {
+                    // stop
+                    char_comp.set_state(CharState::Idle, char_comp.dir());
+                    char_comp.target = None;
+                } else {
+                    // move closer
+                    char_comp.set_state(
+                        CharState::Walking(*target_pos),
+                        NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                    );
+                }
+            }
+            EntityTarget::PosWhileAttacking(pos, current_target) => {}
         }
     }
 }
