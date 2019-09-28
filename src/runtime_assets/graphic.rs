@@ -51,11 +51,7 @@ pub fn load_sprites(
                 .unwrap(),
             exoskeleton,
             ginseng_bullet: asset_loader
-                .load_spr_and_act(
-                    gl,
-                    "data\\sprite\\¸ó½ºÅÍ\\ginseng_bullet",
-                    asset_database,
-                )
+                .load_spr_and_act(gl, "data\\sprite\\¸ó½ºÅÍ\\ginseng_bullet", asset_database)
                 .unwrap(),
             arrow: asset_loader
                 .load_spr_and_act(gl, "data\\sprite\\npc\\skel_archer_arrow", asset_database)
@@ -64,16 +60,12 @@ pub fn load_sprites(
                 .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\¸Å", asset_database)
                 .unwrap(),
             stun: asset_loader
-                .load_spr_and_act(
-                    gl,
-                    "data\\sprite\\ÀÌÆÑÆ®\\status-stun",
-                    asset_database,
-                )
+                .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\status-stun", asset_database)
                 .unwrap(),
             timefont: asset_loader
                 .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\timefont", asset_database)
                 .unwrap(),
-            numbers: GlTexture::from_file(gl, "assets\\damage.bmp", asset_database),
+            numbers: GlTexture::from_file(gl, "assets/damage.bmp", asset_database),
             magic_target: asset_loader
                 .load_texture(
                     gl,
@@ -182,10 +174,8 @@ pub fn load_sprites(
             head_sprites: [
                 (1..=25)
                     .map(|i| {
-                        let male_file_name = format!(
-                            "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²",
-                            i.to_string()
-                        );
+                        let male_file_name =
+                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²", i.to_string());
                         let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
                             let mut head = asset_loader
                                 .load_spr_and_act(gl, &male_file_name, asset_database)
@@ -205,10 +195,8 @@ pub fn load_sprites(
                     .collect::<Vec<SpriteResource>>(),
                 (1..=25)
                     .map(|i| {
-                        let female_file_name = format!(
-                            "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©",
-                            i.to_string()
-                        );
+                        let female_file_name =
+                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©", i.to_string());
                         let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
                             let mut head = asset_loader
                                 .load_spr_and_act(gl, &female_file_name, asset_database)
