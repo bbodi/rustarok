@@ -129,7 +129,6 @@ impl StrFile {
                     .map(|_i| {
                         let texture_name = buf.string(128);
                         if !texture_names_to_index.contains_key(&texture_name) {
-                            let effect_file = format!("data\\texture\\effect\\{}.str", str_name);
                             let base = Path::new("data")
                                 .join("texture")
                                 .join("effect")

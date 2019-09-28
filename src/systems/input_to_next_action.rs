@@ -7,6 +7,7 @@ use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSO
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
+use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
 
@@ -82,7 +83,17 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 controller.select_skill_target
             {
                 if skill == Skills::AttackMove {
-                    Some(PlayerIntention::AttackTowards(input.mouse_world_pos))
+                    if input.left_mouse_pressed {
+                        controller.select_skill_target = None;
+                        Some(PlayerIntention::AttackTowards(input.mouse_world_pos))
+                    } else if input.right_mouse_pressed
+                        || input.is_key_just_pressed(Scancode::Escape)
+                    {
+                        controller.select_skill_target = None;
+                        None
+                    } else {
+                        None
+                    }
                 } else {
                     match input.cast_mode {
                         CastMode::Normal => {
@@ -94,7 +105,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                                     false,
                                     input.mouse_world_pos,
                                 ))
-                            } else if input.right_mouse_pressed {
+                            } else if input.right_mouse_pressed
+                                || input.is_key_just_pressed(Scancode::Escape)
+                            {
                                 controller.select_skill_target = None;
                                 None
                             } else if let Some((skill_key, skill)) = just_pressed_skill_key
@@ -133,7 +146,9 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                                         input.mouse_world_pos,
                                     )
                                 )
-                            } else if input.right_mouse_pressed {
+                            } else if input.right_mouse_pressed
+                                || input.is_key_just_pressed(Scancode::Escape)
+                            {
                                 controller.select_skill_target = None;
                                 None
                             } else {

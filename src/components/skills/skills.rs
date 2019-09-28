@@ -222,6 +222,32 @@ pub struct SkillCastingAttributes {
     pub width: Option<f32>,
 }
 
+pub struct AttackMoveSkill;
+
+pub const ATTACK_MOVE_SKILL: &'static AttackMoveSkill = &AttackMoveSkill;
+
+impl SkillDef for AttackMoveSkill {
+    fn get_icon_path(&self) -> &'static str {
+        ""
+    }
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<WorldCoord>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        None
+    }
+
+    fn get_skill_target_type(&self) -> SkillTargetType {
+        SkillTargetType::Area
+    }
+}
+
 impl Skills {
     pub fn get_definition(&self) -> &'static dyn SkillDef {
         match self {
@@ -245,7 +271,7 @@ impl Skills {
             Skills::FalconAttack => FALCON_ATTACK_SKILL,
             Skills::Sanctuary => SANCTUARY_SKILL,
             Skills::ExoSkeleton => EXO_SKELETON_SKILL,
-            Skills::AttackMove => panic!(),
+            Skills::AttackMove => ATTACK_MOVE_SKILL,
         }
     }
 

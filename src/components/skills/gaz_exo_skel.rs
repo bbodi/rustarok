@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 
 use crate::asset::SpriteResource;
 use crate::common::ElapsedTime;
-use crate::components::char::Percentage;
+use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
@@ -12,8 +12,10 @@ use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTarge
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
+use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
 use crate::consts::JobId;
+use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{Sex, SystemVariables};
 use specs::{Entities, LazyUpdate};
@@ -121,7 +123,17 @@ impl Status for ExoSkeletonStatus {
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
             bullet_type: WeaponType::SilverBullet,
-        }
+        };
+        updater.insert(
+            entities.create(),
+            StrEffectComponent {
+                effect_id: StrEffectType::Cart.into(),
+                pos: target_char.pos(),
+                start_time: system_vars.time,
+                die_at: None,
+                play_mode: ActionPlayMode::Once,
+            },
+        );
     }
 
     fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {

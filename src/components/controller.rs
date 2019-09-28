@@ -8,6 +8,7 @@ use serde::Deserialize;
 use specs::prelude::*;
 use std::collections::HashMap;
 use strum_macros::Display;
+use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 
 #[derive(Default)]
@@ -36,7 +37,7 @@ impl KeyState {
 pub type ScreenCoords = Vector2<u16>;
 pub type WorldCoord = Vector2<f32>;
 
-#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash)]
+#[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash, EnumCount)]
 pub enum SkillKey {
     A,
     Q,
@@ -253,7 +254,7 @@ pub struct HumanInputComponent {
     pub is_console_open: bool,
     pub username: String,
     pub inputs: Vec<sdl2::event::Event>,
-    skills_for_keys: [Option<Skills>; 9],
+    skills_for_keys: [Option<Skills>; SKILLKEY_COUNT],
     pub cast_mode: CastMode,
     keys: HashMap<Scancode, KeyState>,
     keys_released_in_prev_frame: Vec<Scancode>,
