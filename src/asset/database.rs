@@ -47,6 +47,14 @@ impl AssetDatabase {
         self.model_name_to_index[&AssetDatabase::replace_non_ascii_chars(&name)]
     }
 
+    pub fn register_model(&mut self, name: &str, model: ModelRenderData) {
+        self.model_name_to_index.insert(
+            AssetDatabase::replace_non_ascii_chars(name),
+            self.models.len(),
+        );
+        self.models.push(model);
+    }
+
     pub fn register_models(&mut self, models: HashMap<String, ModelRenderData>) {
         self.models = Vec::with_capacity(models.len());
         self.model_name_to_index = HashMap::with_capacity(models.len());

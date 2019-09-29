@@ -338,8 +338,9 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             ("team", CommandParamType::String, true),
             ("[count:1]", CommandParamType::Int, false),
             ("[x]", CommandParamType::Int, false),
-            ("[y]", CommandParamType::Int, false),
+            ("[z]", CommandParamType::Int, false),
             ("[outlook]", CommandParamType::String, false),
+            ("[y]", CommandParamType::Float, false),
         ],
         autocompletion: BasicAutocompletionProvider::new(|index| match index {
             0 => Some(vec![
@@ -347,6 +348,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                 "minion_ranged".to_owned(),
                 "dummy_enemy".to_owned(),
                 "dummy_ally".to_owned(),
+                "guard".to_owned(),
             ]),
             1 => Some(vec!["left".to_owned(), "right".to_owned()]),
             2 => Some(
@@ -399,6 +401,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             let outlook = args
                 .as_str(5)
                 .and_then(|outlook| get_outlook(outlook, None));
+            let y = args.as_f32(6).unwrap_or(0.0);
 
             for _ in 0..count {
                 let pos2d = p3_to_p2(&pos);
@@ -422,6 +425,10 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             .with(MinionComponent { fountain_up: false })
                             .build();
                     }
+                    "guard" => {
+                        let _char_entity_id =
+                            create_guard(ecs_world, pos2d, team, outlook.clone(), y);
+                    }
                     "dummy_enemy" => {
                         let _char_entity_id =
                             create_dummy(ecs_world, pos2d, JobId::TargetDummy, outlook.clone());
@@ -437,6 +444,44 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             Ok(())
         }),
     }
+}
+
+fn create_guard(
+    ecs_world: &mut World,
+    pos2d: Point2<f32>,
+    team: Team,
+    outlook: Option<CharOutlook>,
+    y: f32,
+) -> CharEntityId {
+    let entity_id = CharEntityId(ecs_world.create_entity().build());
+    attach_char_components(
+        "Guard".to_owned(),
+        entity_id,
+        &ecs_world.read_resource::<LazyUpdate>(),
+        &mut ecs_world.write_resource::<PhysicEngine>(),
+        pos2d,
+        y,
+        outlook.unwrap_or(if team == Team::Left {
+            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
+        } else {
+            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
+        }),
+        JobId::Guard,
+        1,
+        team,
+        CharType::Guard,
+        CollisionGroup::Guard,
+        &[
+            CollisionGroup::NonPlayer,
+            CollisionGroup::NonCollidablePlayer,
+            CollisionGroup::StaticModel,
+            CollisionGroup::Player,
+            CollisionGroup::Guard,
+            CollisionGroup::SkillArea,
+        ],
+        &ecs_world.read_resource::<DevConfig>(),
+    );
+    entity_id
 }
 
 fn create_dummy(
@@ -459,6 +504,7 @@ fn create_dummy(
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
+        0.0,
         outlook.unwrap_or(if job_id == JobId::HealingDummy {
             CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
         } else {
@@ -512,6 +558,7 @@ fn create_random_char_minion(
         &ecs_world.read_resource::<LazyUpdate>(),
         &mut ecs_world.write_resource::<PhysicEngine>(),
         pos2d,
+        0.0,
         outlook.unwrap_or(CharOutlook::Player {
             sex,
             job_sprite_id: if job_id == JobId::MeleeMinion {
@@ -968,6 +1015,78 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
     }
 }
 
+pub(super) fn cmd_enable_collision() -> CommandDefinition {
+    CommandDefinition {
+        name: "enable_collision".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(1);
+
+            let target_char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(target_char_id) = target_char_id {
+                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+
+                char_state.set_collidable(&mut ecs_world.write_resource::<PhysicEngine>());
+
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_disable_collision() -> CommandDefinition {
+    CommandDefinition {
+        name: "disable_collision".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(1);
+
+            let target_char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(target_char_id) = target_char_id {
+                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+
+                char_state.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
+
+                Ok(())
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
 pub(super) fn cmd_resurrect() -> CommandDefinition {
     CommandDefinition {
         name: "resurrect".to_string(),
@@ -1336,8 +1455,9 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
         name: "set_pos".to_string(),
         arguments: vec![
             ("x", CommandParamType::Int, true),
-            ("y", CommandParamType::Int, true),
+            ("z", CommandParamType::Int, true),
             ("[username]", CommandParamType::String, false),
+            ("[y]", CommandParamType::Float, false),
         ],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |index, username_completor, input_storage| {
@@ -1350,26 +1470,24 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
         ),
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let x = args.as_int(0).unwrap();
-            let y = args.as_int(1).unwrap();
+            let z = args.as_int(1).unwrap();
             let username = args.as_str(2);
+            let y = args.as_f32(3).unwrap_or(0.0);
 
-            let entity_id = if let Some(username) = username {
+            let char_id = if let Some(username) = username {
                 ConsoleSystem::get_char_id_by_name(ecs_world, username)
             } else {
                 Some(self_char_id)
             };
 
-            let body_handle = entity_id.and_then(|it| {
-                ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(it.0)
-                    .map(|it| it.body_handle)
-            });
+            let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+            if let Some(char_state) = char_id.and_then(|it| char_storage.get_mut(it.0)) {
+                let body_handle = char_state.body_handle;
 
-            if let Some(body_handle) = body_handle {
                 let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
                 if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
-                    body.set_position(Isometry2::translation(x as f32, y as f32));
+                    body.set_position(Isometry2::translation(x as f32, z as f32));
+                    char_state.set_y(y);
                     Ok(())
                 } else {
                     Err("No rigid body was found for this user".to_owned())

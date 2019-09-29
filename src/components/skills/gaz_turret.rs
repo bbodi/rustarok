@@ -47,6 +47,7 @@ impl SkillDef for GazTurretSkill {
                 &updater,
                 &mut ecs_world.write_resource::<PhysicEngine>(),
                 Point2::new(skill_pos.unwrap().x, skill_pos.unwrap().y), // TODO: why is it point2?
+                0.0,
                 CharOutlook::Monster(MonsterId::Dimik),
                 JobId::Turret,
                 1,

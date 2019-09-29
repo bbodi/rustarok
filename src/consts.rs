@@ -13,6 +13,8 @@ pub enum MonsterId {
     Poring,
     Barricade,
     GEFFEN_MAGE_6,
+    GEFFEN_MAGE_12, // red
+    GEFFEN_MAGE_9,  // blue
     Dimik,
 }
 
@@ -38,6 +40,7 @@ pub enum JobId {
     MeleeMinion,
     RangedMinion,
     Turret,
+    Guard,
 }
 
 pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 14] = [

@@ -252,7 +252,7 @@ impl AssetLoader {
         return rwops.load_wav();
     }
 
-    fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
+    pub fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
         let buffer = self.get_content(path)?;
         let rwops = sdl2::rwops::RWops::from_bytes(buffer.as_slice())?;
         let mut surface = if path.ends_with(".tga") {

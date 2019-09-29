@@ -71,6 +71,7 @@ pub fn attach_human_player_components(
         updater,
         physic_world,
         pos2d,
+        0.0,
         CharOutlook::Player {
             sex,
             job_sprite_id: match job_id {
@@ -93,6 +94,7 @@ pub fn attach_human_player_components(
                 JobId::MeleeMinion => panic!(),
                 JobId::RangedMinion => panic!(),
                 JobId::Turret => panic!(),
+                JobId::Guard => panic!(),
             },
             head_index,
         },
@@ -130,12 +132,21 @@ pub fn attach_human_player_components(
     }
 }
 
+//pub fn assign_skills(human: &mut HumanInputComponent, job_id: JobId) {
+//    match job_id {
+//        JobId::CRUSADER => {
+//
+//        }
+//    }
+//}
+
 pub fn attach_char_components(
     name: String,
     entity_id: CharEntityId,
     updater: &LazyUpdate,
     physics_world: &mut PhysicEngine,
     pos2d: Point2<f32>,
+    y: f32,
     outlook: CharOutlook,
     job_id: JobId,
     radius: i32,
@@ -157,6 +168,7 @@ pub fn attach_char_components(
         entity_id.0,
         CharacterStateComponent::new(
             name,
+            y,
             typ,
             outlook,
             job_id,
@@ -470,6 +482,7 @@ pub enum CharType {
     Minion,
     Mercenary,
     Boss,
+    Guard,
 }
 
 #[derive(Clone)]
@@ -977,6 +990,7 @@ impl CharacterStateComponent {
 
     pub fn new(
         name: String,
+        y: f32,
         typ: CharType,
         outlook: CharOutlook,
         job_id: JobId,
@@ -1007,7 +1021,7 @@ impl CharacterStateComponent {
             job_id,
             name,
             pos: v2!(0, 0),
-            y: 0.0,
+            y,
             team,
             typ,
             outlook,
