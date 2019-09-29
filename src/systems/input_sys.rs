@@ -416,6 +416,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                         input.assign_skill(SkillKey::R, Skills::Lightning);
                         input.assign_skill(SkillKey::Num1, Skills::Sanctuary);
                         input.assign_skill(SkillKey::Num2, Skills::ExoSkeleton);
+                        input.assign_skill(SkillKey::Num3, Skills::GazBarricade);
                     }
                     Some(Skills::Poison) => {
                         input.assign_skill(SkillKey::Q, Skills::WizPyroBlast);

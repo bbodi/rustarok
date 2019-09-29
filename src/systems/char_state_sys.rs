@@ -129,20 +129,26 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 } => {
                     if damage_occurs_at.has_already_passed(now) {
                         char_comp.set_state(CharState::Idle, char_comp.dir());
-                        let target_pos = all_char_data[&target].0;
-                        if let Some(manifestation) = basic_attack.finish_attack(
-                            char_comp.calculated_attribs(),
-                            char_entity_id,
-                            char_pos,
-                            target_pos,
-                            target,
-                            &mut system_vars,
-                        ) {
-                            let skill_manifest_id = entities.create();
-                            updater.insert(
-                                skill_manifest_id,
-                                SkillManifestationComponent::new(skill_manifest_id, manifestation),
-                            );
+                        if let Some(target_pos) = all_char_data.get(&target) {
+                            if let Some(manifestation) = basic_attack.finish_attack(
+                                char_comp.calculated_attribs(),
+                                char_entity_id,
+                                char_pos,
+                                target_pos.0,
+                                target,
+                                &mut system_vars,
+                            ) {
+                                let skill_manifest_id = entities.create();
+                                updater.insert(
+                                    skill_manifest_id,
+                                    SkillManifestationComponent::new(
+                                        skill_manifest_id,
+                                        manifestation,
+                                    ),
+                                );
+                            }
+                        } else {
+                            // target might have died
                         }
                     }
                 }

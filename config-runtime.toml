@@ -1,5 +1,5 @@
 
-sleep_ms = 0
+sleep_ms = 10
 minions_enabled = false
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
 cast_mode = "Normal"
@@ -145,6 +145,13 @@ start_pos_y = -65
             # normal values
             attack_damage = 62
             max_hp = 593
+    [skills.gaz_barricade]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 2.0
+        armor = 0
+        hp_regen = 0
+        max_hp = 5000
     [skills.gaz_destroy_turret]
         casting_time = 0.0
         cast_delay = 0.0

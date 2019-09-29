@@ -10,6 +10,7 @@ pub mod falcon_attack;
 pub mod falcon_carry;
 pub mod fire_bomb;
 pub mod firewall;
+pub mod gaz_barricade;
 pub mod gaz_exo_skel;
 pub mod gaz_turret;
 pub mod gaz_xplod_charge;

@@ -1,13 +1,13 @@
 use crate::asset::gat::CellType;
-use crate::common::p3_to_p2;
 use crate::components::char::{
-    attach_char_components, attach_human_player_components, create_physics_component,
-    ActionPlayMode, CharActionIndex, CharOutlook, CharState, CharType, CharacterStateComponent,
-    ComponentRadius, NpcComponent, SpriteRenderDescriptorComponent,
+    attach_human_player_components, ActionPlayMode, CharActionIndex, CharOutlook,
+    CharPhysicsEntityBuilder, CharState, CharStateComponentBuilder, CharacterEntityBuilder,
+    CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    WorldCoord,
 };
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::fire_bomb::FireBombStatus;
@@ -34,8 +34,8 @@ use crate::systems::console_system::{
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
-use nalgebra::{Isometry2, Point2};
-use nalgebra::{Point3, Vector2};
+use nalgebra::Isometry2;
+use nalgebra::Vector2;
 use rand::Rng;
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -102,10 +102,9 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                                 .read_resource::<SystemVariables>()
                                 .matrices
                                 .projection,
-                            Point2::new(target_char.pos().x, target_char.pos().y),
+                            target_char.pos(),
                             Sex::Male,
                             job_id,
-                            1,
                             1,
                             target_char.team,
                             &ecs_world.read_resource::<DevConfig>(),
@@ -372,8 +371,8 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                 _ => Team::Right,
             };
             let count = args.as_int(2).unwrap_or(1);
-            let pos = match (args.as_int(3), args.as_int(4)) {
-                (Some(x), Some(y)) => p3!(x, 0.5, y),
+            let pos2d = match (args.as_int(3), args.as_int(4)) {
+                (Some(x), Some(y)) => v2!(x, y),
                 _ => {
                     let map_render_data =
                         &ecs_world.read_resource::<SystemVariables>().map_render_data;
@@ -395,7 +394,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             break (x, y);
                         }
                     };
-                    p3!(x, 0.5, -y)
+                    v2!(x, -y)
                 }
             };
             let outlook = args
@@ -404,7 +403,6 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             let y = args.as_f32(6).unwrap_or(0.0);
 
             for _ in 0..count {
-                let pos2d = p3_to_p2(&pos);
                 match type_name {
                     "minion_melee" | "minion_ranged" => {
                         let job_id = if type_name == "minion_melee" {
@@ -448,89 +446,86 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
 
 fn create_guard(
     ecs_world: &mut World,
-    pos2d: Point2<f32>,
+    pos2d: WorldCoord,
     team: Team,
     outlook: Option<CharOutlook>,
     y: f32,
 ) -> CharEntityId {
-    let entity_id = CharEntityId(ecs_world.create_entity().build());
-    attach_char_components(
-        "Guard".to_owned(),
-        entity_id,
-        &ecs_world.read_resource::<LazyUpdate>(),
-        &mut ecs_world.write_resource::<PhysicEngine>(),
-        pos2d,
-        y,
-        outlook.unwrap_or(if team == Team::Left {
-            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
-        } else {
-            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
-        }),
-        JobId::Guard,
-        1,
-        team,
-        CharType::Guard,
-        CollisionGroup::Guard,
-        &[
-            CollisionGroup::NonPlayer,
-            CollisionGroup::NonCollidablePlayer,
-            CollisionGroup::StaticModel,
-            CollisionGroup::Player,
-            CollisionGroup::Guard,
-            CollisionGroup::SkillArea,
-        ],
-        &ecs_world.read_resource::<DevConfig>(),
-    );
-    entity_id
+    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+
+    let updater = &ecs_world.read_resource::<LazyUpdate>();
+    CharacterEntityBuilder::new(char_entity_id, "Guard")
+        .insert_npc_component(updater)
+        .insert_sprite_render_descr_component(updater)
+        .physics(
+            CharPhysicsEntityBuilder::new(pos2d)
+                .collision_group(CollisionGroup::Guard)
+                .circle(1.0),
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+        )
+        .char_state(
+            CharStateComponentBuilder::new()
+                .y_coord(y)
+                .outlook(outlook.unwrap_or(if team == Team::Left {
+                    CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
+                } else {
+                    CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
+                }))
+                .job_id(JobId::Guard)
+                .team(team),
+            updater,
+            &ecs_world.read_resource::<DevConfig>(),
+        );
+
+    char_entity_id
 }
 
 fn create_dummy(
     ecs_world: &mut World,
-    pos2d: Point2<f32>,
+    pos2d: WorldCoord,
     job_id: JobId,
     outlook: Option<CharOutlook>,
 ) -> CharEntityId {
-    let entity_id = CharEntityId(ecs_world.create_entity().build());
-    //    ecs_world
-    //        .read_resource::<LazyUpdate>()
-    //        .insert(entity_id.0, NpcComponent);
-    attach_char_components(
-        if job_id == JobId::HealingDummy {
+    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let updater = &ecs_world.read_resource::<LazyUpdate>();
+    CharacterEntityBuilder::new(
+        char_entity_id,
+        &if job_id == JobId::HealingDummy {
             "Healing Dummy".to_owned()
         } else {
             "Target Dummy".to_owned()
         },
-        entity_id,
-        &ecs_world.read_resource::<LazyUpdate>(),
+    )
+    .insert_sprite_render_descr_component(updater)
+    .physics(
+        CharPhysicsEntityBuilder::new(pos2d)
+            .collision_group(CollisionGroup::NeutralPlayerPlayer)
+            .circle(1.0),
         &mut ecs_world.write_resource::<PhysicEngine>(),
-        pos2d,
-        0.0,
-        outlook.unwrap_or(if job_id == JobId::HealingDummy {
-            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
-        } else {
-            CharOutlook::Monster(MonsterId::Barricade)
-        }),
-        job_id,
-        1,
-        if job_id == JobId::HealingDummy {
-            Team::AllyForAll
-        } else {
-            Team::EnemyForAll
-        },
-        CharType::Player,
-        CollisionGroup::Player,
-        &[
-            CollisionGroup::NonPlayer,
-            CollisionGroup::NonCollidablePlayer,
-        ],
+    )
+    .char_state(
+        CharStateComponentBuilder::new()
+            .outlook(outlook.unwrap_or(if job_id == JobId::HealingDummy {
+                CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
+            } else {
+                CharOutlook::Monster(MonsterId::Barricade)
+            }))
+            .job_id(job_id)
+            .team(if job_id == JobId::HealingDummy {
+                Team::AllyForAll
+            } else {
+                Team::EnemyForAll
+            }),
+        updater,
         &ecs_world.read_resource::<DevConfig>(),
     );
-    entity_id
+
+    char_entity_id
 }
 
 fn create_random_char_minion(
     ecs_world: &mut World,
-    pos2d: Point2<f32>,
+    pos2d: WorldCoord,
     team: Team,
     job_id: JobId,
     outlook: Option<CharOutlook>,
@@ -548,40 +543,34 @@ fn create_random_char_minion(
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let entity_id = CharEntityId(ecs_world.create_entity().build());
-    ecs_world
-        .read_resource::<LazyUpdate>()
-        .insert(entity_id.0, NpcComponent);
-    attach_char_components(
-        "minion".to_owned(),
-        entity_id,
-        &ecs_world.read_resource::<LazyUpdate>(),
-        &mut ecs_world.write_resource::<PhysicEngine>(),
-        pos2d,
-        0.0,
-        outlook.unwrap_or(CharOutlook::Player {
-            sex,
-            job_sprite_id: if job_id == JobId::MeleeMinion {
-                JobSpriteId::SWORDMAN
-            } else {
-                JobSpriteId::ARCHER
-            },
-            head_index: rng.gen::<usize>() % head_count,
-        }),
-        job_id,
-        1,
-        team,
-        CharType::Minion,
-        CollisionGroup::NonPlayer,
-        &[
-            //CollisionGroup::NonPlayer,
-            CollisionGroup::Player,
-            CollisionGroup::StaticModel,
-            CollisionGroup::NonCollidablePlayer,
-        ],
-        &ecs_world.read_resource::<DevConfig>(),
-    );
-    entity_id
+    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let updater = &ecs_world.read_resource::<LazyUpdate>();
+    CharacterEntityBuilder::new(char_entity_id, "minion")
+        .insert_npc_component(updater)
+        .insert_sprite_render_descr_component(updater)
+        .physics(
+            CharPhysicsEntityBuilder::new(pos2d)
+                .collision_group(CollisionGroup::Minion)
+                .circle(1.0),
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+        )
+        .char_state(
+            CharStateComponentBuilder::new()
+                .outlook(outlook.unwrap_or(CharOutlook::Player {
+                    sex,
+                    job_sprite_id: if job_id == JobId::MeleeMinion {
+                        JobSpriteId::SWORDMAN
+                    } else {
+                        JobSpriteId::ARCHER
+                    },
+                    head_index: rng.gen::<usize>() % head_count,
+                }))
+                .job_id(job_id)
+                .team(team),
+            updater,
+            &ecs_world.read_resource::<DevConfig>(),
+        );
+    char_entity_id
 }
 
 pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
@@ -990,7 +979,7 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
             },
         ),
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let team = match args.as_str(0).unwrap() {
+            let new_team = match args.as_str(0).unwrap() {
                 "left" => Team::Left,
                 _ => Team::Right,
             };
@@ -1005,8 +994,24 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
             if let Some(target_char_id) = target_entity_id {
                 let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                 let char_state = char_storage.get_mut(target_char_id.0).unwrap();
-                char_state.team = team;
 
+                if let Some(collider) = ecs_world
+                    .write_resource::<PhysicEngine>()
+                    .colliders
+                    .get_mut(char_state.collider_handle)
+                {
+                    let mut cg = collider.collision_groups().clone();
+                    cg.modify_membership(char_state.team.get_collision_group() as usize, false);
+                    cg.modify_membership(new_team.get_collision_group() as usize, true);
+                    cg.modify_blacklist(
+                        char_state.team.get_barricade_collision_group() as usize,
+                        true,
+                    );
+                    cg.modify_blacklist(new_team.get_barricade_collision_group() as usize, false);
+                    collider.set_collision_groups(cg);
+                }
+
+                char_state.team = new_team;
                 Ok(())
             } else {
                 Err("The user was not found".to_owned())
@@ -1104,7 +1109,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
             let username = args.as_str(0).unwrap();
             let target_entity_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
             if let Some(target_char_id) = target_entity_id {
-                let pos2d = {
+                let (pos2d, team) = {
                     // remove death status (that is the only status a death character has)
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let char_state = char_storage.get_mut(target_char_id.0).unwrap();
@@ -1113,21 +1118,19 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
 
                     // give him max hp/sp
                     char_state.hp = char_state.calculated_attribs().max_hp;
-                    char_state.pos()
+                    (char_state.pos(), char_state.team)
                 };
 
                 // give him back it's physic component
-                let physics_component = create_physics_component(
-                    &mut ecs_world.write_resource::<PhysicEngine>(),
-                    pos2d,
-                    ComponentRadius(1),
-                    target_char_id,
-                    CollisionGroup::Player,
-                    &[
-                        CollisionGroup::NonPlayer,
-                        CollisionGroup::NonCollidablePlayer,
-                    ],
-                );
+                let physics_component = CharacterEntityBuilder::new(target_char_id, "tmp")
+                    .physics(
+                        CharPhysicsEntityBuilder::new(pos2d)
+                            .collision_group(CollisionGroup::Minion)
+                            .circle(1.0),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                    )
+                    .physics_handles
+                    .unwrap();
                 let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                 let char_state = char_storage.get_mut(target_char_id.0).unwrap();
                 char_state.collider_handle = physics_component.0;

@@ -308,6 +308,20 @@ impl Statuses {
             },
             JobId::MeleeMinion => configs.stats.minion.melee.clone(),
             JobId::Turret => configs.skills.gaz_turret.turret.clone(),
+            JobId::Barricade => {
+                let configs = &configs.skills.gaz_barricade;
+                CharAttributes {
+                    walking_speed: Percentage(0),
+                    attack_range: Percentage(0),
+                    attack_speed: Percentage(0),
+                    attack_damage: 0,
+                    armor: configs.armor,
+                    healing: Percentage(0),
+                    hp_regen: configs.hp_regen,
+                    max_hp: configs.max_hp,
+                    mana_regen: Percentage(10),
+                }
+            }
             _ => CharAttributes {
                 walking_speed: Percentage(100),
                 attack_range: Percentage(100),

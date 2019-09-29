@@ -25,6 +25,7 @@ use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
 use crate::components::skills::assa_phase_prism::ASSA_PHASE_PRISM_SKILL;
 use crate::components::skills::falcon_attack::FALCON_ATTACK_SKILL;
 use crate::components::skills::falcon_carry::FALCON_CARRY_SKILL;
+use crate::components::skills::gaz_barricade::GAZ_BARRICADE_SKILL;
 use crate::components::skills::gaz_exo_skel::EXO_SKELETON_SKILL;
 use crate::components::skills::gaz_turret::{
     GAZ_DESTROY_TURRET_SKILL, GAZ_TURRET_SKILL, GAZ_TURRET_TARGET_SKILL,
@@ -205,6 +206,7 @@ pub enum Skills {
     AssaPhasePrism,
     GazXplodiumCharge,
     GazTurret,
+    GazBarricade,
     GazDestroyTurret,
     GazTurretTarget,
     FalconCarry,
@@ -272,6 +274,7 @@ impl Skills {
             Skills::Sanctuary => SANCTUARY_SKILL,
             Skills::ExoSkeleton => EXO_SKELETON_SKILL,
             Skills::AttackMove => ATTACK_MOVE_SKILL,
+            Skills::GazBarricade => GAZ_BARRICADE_SKILL,
         }
     }
 
@@ -318,6 +321,7 @@ impl Skills {
                 casting_range: 200_000_000.0,
                 width: None,
             },
+            Skills::GazBarricade => &configs.skills.gaz_barricade.attributes,
         }
     }
 

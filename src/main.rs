@@ -30,7 +30,7 @@ use std::time::{Duration, SystemTime};
 
 use imgui::{ImString, ImVec2};
 use log::LevelFilter;
-use nalgebra::{Matrix4, Point2};
+use nalgebra::{Matrix4, Vector2};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -40,11 +40,13 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
 use crate::components::char::{
-    CharActionIndex, CharOutlook, CharType, CharacterStateComponent, NpcComponent,
-    SpriteRenderDescriptorComponent, Team,
+    CharActionIndex, CharOutlook, CharPhysicsEntityBuilder, CharStateComponentBuilder,
+    CharacterEntityBuilder, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
+    Team,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    WorldCoord,
 };
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
@@ -66,9 +68,7 @@ use crate::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
-use crate::systems::falcon_ai_sys::{
-    FalconAiSystem, FalconComponent, FalconState, FALCON_FLY_HEIGHT,
-};
+use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -275,13 +275,12 @@ fn main() {
             .read_resource::<SystemVariables>()
             .matrices
             .projection,
-        Point2::new(
+        v2!(
             ecs_world.read_resource::<DevConfig>().start_pos_x,
-            ecs_world.read_resource::<DevConfig>().start_pos_y,
+            ecs_world.read_resource::<DevConfig>().start_pos_y
         ),
         Sex::Male,
         JobId::CRUSADER,
-        1,
         1,
         Team::Right,
         &ecs_world.read_resource::<DevConfig>(),
@@ -523,7 +522,7 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
         let char_entity_id = create_random_char_minion(
             ecs_world,
-            p2!(
+            v2!(
                 MinionAiSystem::CHECKPOINTS[0][0],
                 MinionAiSystem::CHECKPOINTS[0][1]
             ),
@@ -537,7 +536,7 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
         let entity_id = create_random_char_minion(
             ecs_world,
-            p2!(
+            v2!(
                 MinionAiSystem::CHECKPOINTS[5][0],
                 MinionAiSystem::CHECKPOINTS[5][1]
             ),
@@ -878,7 +877,7 @@ fn imgui_frame(
 
 fn create_random_char_minion(
     ecs_world: &mut specs::world::World,
-    pos2d: Point2<f32>,
+    pos2d: WorldCoord,
     team: Team,
 ) -> CharEntityId {
     let mut rng = rand::thread_rng();
@@ -899,34 +898,28 @@ fn create_random_char_minion(
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let entity_id = CharEntityId(ecs_world.create_entity().build());
-    ecs_world
-        .read_resource::<LazyUpdate>()
-        .insert(entity_id.0, NpcComponent);
-    components::char::attach_char_components(
-        "minion".to_owned(),
-        entity_id,
-        &ecs_world.read_resource::<LazyUpdate>(),
-        &mut ecs_world.write_resource::<PhysicEngine>(),
-        pos2d,
-        0.0,
-        CharOutlook::Player {
-            sex,
-            job_sprite_id,
-            head_index: rng.gen::<usize>() % head_count,
-        },
-        job_id,
-        1,
-        team,
-        CharType::Minion,
-        CollisionGroup::NonPlayer,
-        &[
-            //CollisionGroup::NonPlayer,
-            CollisionGroup::Player,
-            CollisionGroup::StaticModel,
-            CollisionGroup::NonCollidablePlayer,
-        ],
-        &ecs_world.read_resource::<DevConfig>(),
-    );
-    entity_id
+    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let updater = &ecs_world.read_resource::<LazyUpdate>();
+    CharacterEntityBuilder::new(char_entity_id, "minion")
+        .insert_npc_component(updater)
+        .insert_sprite_render_descr_component(updater)
+        .physics(
+            CharPhysicsEntityBuilder::new(pos2d)
+                .collision_group(CollisionGroup::Minion)
+                .circle(1.0),
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+        )
+        .char_state(
+            CharStateComponentBuilder::new()
+                .outlook(CharOutlook::Player {
+                    sex,
+                    job_sprite_id,
+                    head_index: rng.gen::<usize>() % head_count,
+                })
+                .job_id(job_id)
+                .team(team),
+            updater,
+            &ecs_world.read_resource::<DevConfig>(),
+        );
+    char_entity_id
 }

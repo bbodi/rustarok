@@ -1,6 +1,6 @@
 use crate::components::char::{
-    attach_char_components, CharOutlook, CharType, CharacterStateComponent, NpcComponent,
-    TurretComponent, TurretControllerComponent,
+    CharOutlook, CharPhysicsEntityBuilder, CharStateComponentBuilder, CharacterEntityBuilder,
+    CharacterStateComponent, NpcComponent, TurretComponent, TurretControllerComponent,
 };
 use crate::components::controller::{
     CharEntityId, ControllerComponent, ControllerEntityId, WorldCoord,
@@ -10,7 +10,7 @@ use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
 use crate::systems::SystemVariables;
-use nalgebra::{Point2, Vector2};
+use nalgebra::Vector2;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -37,38 +37,27 @@ impl SkillDef for GazTurretSkill {
             .get(caster_entity_id.0)
         {
             let entities = &ecs_world.entities();
-            let updater = ecs_world.read_resource::<LazyUpdate>();
+            let updater = &ecs_world.read_resource::<LazyUpdate>();
             let system_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
-            attach_char_components(
-                "turret".to_owned(),
-                char_entity_id,
-                &updater,
-                &mut ecs_world.write_resource::<PhysicEngine>(),
-                Point2::new(skill_pos.unwrap().x, skill_pos.unwrap().y), // TODO: why is it point2?
-                0.0,
-                CharOutlook::Monster(MonsterId::Dimik),
-                JobId::Turret,
-                1,
-                caster.team,
-                CharType::Minion,
-                CollisionGroup::NonPlayer,
-                &[
-                    CollisionGroup::NonPlayer,
-                    CollisionGroup::Player,
-                    CollisionGroup::StaticModel,
-                    CollisionGroup::NonCollidablePlayer,
-                ],
-                &ecs_world.read_resource::<DevConfig>(),
-            );
-            updater.insert(
-                char_entity_id.0,
-                TurretComponent {
-                    owner_entity_id: caster_entity_id,
-                    preferred_target: None,
-                },
-            );
+            CharacterEntityBuilder::new(char_entity_id, "turret")
+                .insert_sprite_render_descr_component(updater)
+                .insert_turret_component(caster_entity_id, updater)
+                .physics(
+                    CharPhysicsEntityBuilder::new(skill_pos.unwrap())
+                        .collision_group(CollisionGroup::Turret)
+                        .circle(1.0),
+                    &mut ecs_world.write_resource::<PhysicEngine>(),
+                )
+                .char_state(
+                    CharStateComponentBuilder::new()
+                        .outlook(CharOutlook::Monster(MonsterId::Dimik))
+                        .job_id(JobId::Turret)
+                        .team(caster.team),
+                    updater,
+                    &ecs_world.read_resource::<DevConfig>(),
+                );
 
             let controller_id = ControllerEntityId(entities.create());
             updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));

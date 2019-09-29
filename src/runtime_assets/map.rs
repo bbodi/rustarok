@@ -23,9 +23,14 @@ use std::collections::{HashMap, HashSet};
 #[derive(Clone, Copy)]
 pub enum CollisionGroup {
     StaticModel,
-    Player,
+    LeftPlayer,
+    RightPlayer,
+    LeftBarricade,
+    RightBarricade,
+    NeutralPlayerPlayer,
     NonCollidablePlayer,
-    NonPlayer,
+    Minion,
+    Turret,
     Guard,
     SkillArea,
 }

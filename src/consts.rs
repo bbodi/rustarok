@@ -38,6 +38,7 @@ pub enum JobId {
     TargetDummy,
     HealingDummy,
     MeleeMinion,
+    Barricade,
     RangedMinion,
     Turret,
     Guard,

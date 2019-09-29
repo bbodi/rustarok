@@ -1,3 +1,15 @@
+use std::collections::HashMap;
+
+use nalgebra::{Matrix4, Vector2};
+use ncollide2d::pipeline::CollisionGroups;
+use ncollide2d::shape::ShapeHandle;
+use nphysics2d::object::{
+    BodyPartHandle, BodyStatus, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle,
+    RigidBodyDesc,
+};
+use serde::Deserialize;
+use specs::prelude::*;
+
 use crate::asset::SpriteResource;
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
@@ -13,16 +25,6 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
-use nalgebra::{Matrix4, Point2, Vector2};
-use ncollide2d::pipeline::CollisionGroups;
-use ncollide2d::shape::ShapeHandle;
-use nphysics2d::object::{
-    BodyPartHandle, BodyStatus, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle,
-    RigidBodyDesc,
-};
-use serde::Deserialize;
-use specs::prelude::*;
-use std::collections::HashMap;
 
 #[derive(Clone, Copy)]
 pub enum CharActionIndex {
@@ -57,58 +59,55 @@ pub fn attach_human_player_components(
     updater: &LazyUpdate,
     physic_world: &mut PhysicEngine,
     projection_mat: Matrix4<f32>,
-    pos2d: Point2<f32>,
+    pos2d: WorldCoord,
     sex: Sex,
     job_id: JobId,
     head_index: usize,
-    radius: i32,
     team: Team,
     dev_configs: &DevConfig,
 ) {
-    attach_char_components(
-        username.to_owned(),
-        char_entity_id,
-        updater,
-        physic_world,
-        pos2d,
-        0.0,
-        CharOutlook::Player {
-            sex,
-            job_sprite_id: match job_id {
-                JobId::WIZARD => JobSpriteId::WIZARD,
-                JobId::CRUSADER => JobSpriteId::CRUSADER,
-                JobId::SWORDMAN => JobSpriteId::SWORDMAN,
-                JobId::ARCHER => JobSpriteId::ARCHER,
-                JobId::ASSASSIN => JobSpriteId::ASSASSIN,
-                JobId::KNIGHT => JobSpriteId::KNIGHT,
-                JobId::SAGE => JobSpriteId::SAGE,
-                JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
-                JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
-                JobId::PRIEST => JobSpriteId::PRIEST,
-                JobId::MONK => JobSpriteId::MONK,
-                JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
-                JobId::ROGUE => JobSpriteId::ROGUE,
-                JobId::HUNTER => JobSpriteId::HUNTER,
-                JobId::TargetDummy => panic!(),
-                JobId::HealingDummy => panic!(),
-                JobId::MeleeMinion => panic!(),
-                JobId::RangedMinion => panic!(),
-                JobId::Turret => panic!(),
-                JobId::Guard => panic!(),
-            },
-            head_index,
-        },
-        job_id,
-        radius,
-        team,
-        CharType::Player,
-        CollisionGroup::Player,
-        &[
-            CollisionGroup::NonPlayer,
-            CollisionGroup::NonCollidablePlayer,
-        ],
-        dev_configs,
-    );
+    CharacterEntityBuilder::new(char_entity_id, username)
+        .insert_sprite_render_descr_component(updater)
+        .physics(
+            CharPhysicsEntityBuilder::new(pos2d)
+                .collision_group(team.get_collision_group())
+                .circle(1.0),
+            physic_world,
+        )
+        .char_state(
+            CharStateComponentBuilder::new()
+                .outlook(CharOutlook::Player {
+                    sex,
+                    job_sprite_id: match job_id {
+                        JobId::WIZARD => JobSpriteId::WIZARD,
+                        JobId::CRUSADER => JobSpriteId::CRUSADER,
+                        JobId::SWORDMAN => JobSpriteId::SWORDMAN,
+                        JobId::ARCHER => JobSpriteId::ARCHER,
+                        JobId::ASSASSIN => JobSpriteId::ASSASSIN,
+                        JobId::KNIGHT => JobSpriteId::KNIGHT,
+                        JobId::SAGE => JobSpriteId::SAGE,
+                        JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
+                        JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
+                        JobId::PRIEST => JobSpriteId::PRIEST,
+                        JobId::MONK => JobSpriteId::MONK,
+                        JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
+                        JobId::ROGUE => JobSpriteId::ROGUE,
+                        JobId::HUNTER => JobSpriteId::HUNTER,
+                        JobId::TargetDummy => panic!(),
+                        JobId::HealingDummy => panic!(),
+                        JobId::MeleeMinion => panic!(),
+                        JobId::RangedMinion => panic!(),
+                        JobId::Turret => panic!(),
+                        JobId::Guard => panic!(),
+                        JobId::Barricade => panic!(),
+                    },
+                    head_index,
+                })
+                .job_id(job_id)
+                .team(team),
+            updater,
+            dev_configs,
+        );
 
     let mut human_player = HumanInputComponent::new(username);
     human_player.cast_mode = dev_configs.cast_mode;
@@ -140,82 +139,267 @@ pub fn attach_human_player_components(
 //    }
 //}
 
-pub fn attach_char_components(
-    name: String,
-    entity_id: CharEntityId,
-    updater: &LazyUpdate,
-    physics_world: &mut PhysicEngine,
-    pos2d: Point2<f32>,
-    y: f32,
-    outlook: CharOutlook,
-    job_id: JobId,
-    radius: i32,
-    team: Team,
-    typ: CharType,
-    collision_group: CollisionGroup,
-    blacklist_coll_groups: &[CollisionGroup],
-    dev_configs: &DevConfig,
-) {
-    let physics_component = create_physics_component(
-        physics_world,
-        pos2d.coords,
-        ComponentRadius(radius),
-        entity_id,
-        collision_group,
-        blacklist_coll_groups,
-    );
-    updater.insert(
-        entity_id.0,
-        CharacterStateComponent::new(
-            name,
-            y,
-            typ,
-            outlook,
-            job_id,
-            team,
-            dev_configs,
-            ComponentRadius(radius),
-            physics_component,
-        ),
-    );
-    updater.insert(entity_id.0, SpriteRenderDescriptorComponent::new());
+pub struct CharPhysicsEntityBuilder<'a> {
+    pos2d: WorldCoord,
+    self_group: CollisionGroup,
+    collider_shape: ShapeHandle<f32>,
+    blacklist_groups: &'a [CollisionGroup],
+    body_status: BodyStatus,
 }
 
-pub fn create_physics_component(
-    world: &mut PhysicEngine,
-    pos: Vector2<f32>,
-    radius: ComponentRadius,
-    entity_id: CharEntityId,
-    collision_group: CollisionGroup,
-    blacklist_coll_groups: &[CollisionGroup],
-) -> (DefaultColliderHandle, DefaultBodyHandle) {
-    let capsule = ShapeHandle::new(ncollide2d::shape::Ball::new(radius.get()));
-    let body_handle = world.bodies.insert(
-        RigidBodyDesc::new()
-            .user_data(entity_id)
-            .gravity_enabled(false)
-            .linear_damping(5.0)
-            .set_translation(pos)
-            .build(),
-    );
-    let collider_handle = world.colliders.insert(
-        ColliderDesc::new(capsule)
-            .collision_groups(
-                CollisionGroups::new()
-                    .with_membership(&[collision_group as usize])
-                    .with_blacklist(
-                        blacklist_coll_groups
-                            .iter()
-                            .map(|it| *it as usize)
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    ),
-            )
-            .density(radius.0 as f32 * 500.0)
-            .user_data(entity_id)
-            .build(BodyPartHandle(body_handle, 0)),
-    );
-    (collider_handle, body_handle)
+impl<'a> CharPhysicsEntityBuilder<'a> {
+    pub fn new(pos2d: WorldCoord) -> CharPhysicsEntityBuilder<'a> {
+        CharPhysicsEntityBuilder {
+            pos2d,
+            self_group: CollisionGroup::StaticModel,
+            collider_shape: ShapeHandle::new(ncollide2d::shape::Ball::new(1.0)),
+            blacklist_groups: &[],
+            body_status: BodyStatus::Dynamic,
+        }
+    }
+
+    pub fn collision_group(mut self, self_group: CollisionGroup) -> CharPhysicsEntityBuilder<'a> {
+        self.self_group = self_group;
+        self.blacklist_groups = match self_group {
+            CollisionGroup::Guard => &[
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::StaticModel,
+                CollisionGroup::LeftPlayer,
+                CollisionGroup::RightPlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::SkillArea,
+                CollisionGroup::Turret,
+                CollisionGroup::NeutralPlayerPlayer,
+                CollisionGroup::LeftBarricade,
+                CollisionGroup::RightBarricade,
+            ],
+            CollisionGroup::StaticModel => panic!(),
+            CollisionGroup::LeftPlayer | CollisionGroup::RightPlayer => &[
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+            ],
+            CollisionGroup::NonCollidablePlayer => &[
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::StaticModel,
+                CollisionGroup::LeftPlayer,
+                CollisionGroup::RightPlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+                CollisionGroup::NeutralPlayerPlayer,
+            ],
+            CollisionGroup::Minion => &[
+                CollisionGroup::LeftPlayer,
+                CollisionGroup::RightPlayer,
+                CollisionGroup::StaticModel,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::Turret,
+                CollisionGroup::NeutralPlayerPlayer,
+            ],
+            CollisionGroup::SkillArea => panic!(),
+            CollisionGroup::Turret => &[
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::StaticModel,
+                CollisionGroup::LeftPlayer,
+                CollisionGroup::RightPlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+                CollisionGroup::NeutralPlayerPlayer,
+            ],
+            CollisionGroup::NeutralPlayerPlayer => &[
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+            ],
+            CollisionGroup::LeftBarricade => &[
+                CollisionGroup::LeftPlayer,
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+            ],
+            CollisionGroup::RightBarricade => &[
+                CollisionGroup::RightPlayer,
+                CollisionGroup::Minion,
+                CollisionGroup::NonCollidablePlayer,
+                CollisionGroup::Guard,
+                CollisionGroup::Turret,
+            ],
+        };
+        self
+    }
+
+    pub fn body_status(mut self, body_status: BodyStatus) -> CharPhysicsEntityBuilder<'a> {
+        self.body_status = body_status;
+        self
+    }
+
+    pub fn circle(mut self, radius: f32) -> CharPhysicsEntityBuilder<'a> {
+        self.collider_shape = ShapeHandle::new(ncollide2d::shape::Ball::new(radius));
+        self
+    }
+
+    pub fn rectangle(mut self, w: f32, h: f32) -> CharPhysicsEntityBuilder<'a> {
+        self.collider_shape = ShapeHandle::new(ncollide2d::shape::Cuboid::new(Vector2::new(
+            w / 2.0,
+            h / 2.0,
+        )));
+        self
+    }
+}
+
+pub struct CharStateComponentBuilder {
+    job_id: JobId,
+    y: f32,
+    outlook: CharOutlook,
+    team: Team,
+}
+
+impl CharStateComponentBuilder {
+    pub fn new() -> CharStateComponentBuilder {
+        CharStateComponentBuilder {
+            job_id: JobId::CRUSADER,
+            y: 0.0,
+            outlook: CharOutlook::Monster(MonsterId::Poring),
+            team: Team::Left,
+        }
+    }
+
+    pub fn job_id(mut self, job_id: JobId) -> CharStateComponentBuilder {
+        self.job_id = job_id;
+        self
+    }
+
+    pub fn y_coord(mut self, y: f32) -> CharStateComponentBuilder {
+        self.y = y;
+        self
+    }
+
+    pub fn outlook(mut self, outlook: CharOutlook) -> CharStateComponentBuilder {
+        self.outlook = outlook;
+        self
+    }
+
+    pub fn team(mut self, team: Team) -> CharStateComponentBuilder {
+        self.team = team;
+        self
+    }
+}
+
+pub struct CharacterEntityBuilder {
+    char_id: CharEntityId,
+    name: String,
+    pub physics_handles: Option<(DefaultColliderHandle, DefaultBodyHandle)>,
+}
+
+impl CharacterEntityBuilder {
+    pub fn new(char_id: CharEntityId, name: &str) -> CharacterEntityBuilder {
+        CharacterEntityBuilder {
+            char_id,
+            name: name.to_owned(),
+            physics_handles: None,
+        }
+    }
+
+    pub fn insert_npc_component(self, updater: &LazyUpdate) -> CharacterEntityBuilder {
+        updater.insert(self.char_id.0, NpcComponent);
+        self
+    }
+
+    pub fn insert_turret_component(
+        self,
+        owner_entity_id: CharEntityId,
+        updater: &LazyUpdate,
+    ) -> CharacterEntityBuilder {
+        updater.insert(
+            self.char_id.0,
+            TurretComponent {
+                owner_entity_id,
+                preferred_target: None,
+            },
+        );
+        self
+    }
+
+    pub fn insert_sprite_render_descr_component(
+        self,
+        updater: &LazyUpdate,
+    ) -> CharacterEntityBuilder {
+        updater.insert(self.char_id.0, SpriteRenderDescriptorComponent::new());
+        self
+    }
+
+    pub fn char_state(
+        self,
+        char_builder: CharStateComponentBuilder,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+    ) {
+        updater.insert(
+            self.char_id.0,
+            CharacterStateComponent::new(
+                self.name,
+                char_builder.y,
+                match char_builder.job_id {
+                    JobId::Guard => CharType::Guard,
+                    JobId::TargetDummy => CharType::Player,
+                    JobId::HealingDummy => CharType::Player,
+                    JobId::MeleeMinion => CharType::Minion,
+                    JobId::RangedMinion => CharType::Minion,
+                    JobId::Turret => CharType::Minion,
+                    JobId::CRUSADER | JobId::SWORDMAN | JobId::ARCHER | JobId::HUNTER | JobId::ASSASSIN | JobId::ROGUE | JobId::KNIGHT | JobId::WIZARD | JobId::SAGE | JobId::ALCHEMIST | JobId::BLACKSMITH | JobId::PRIEST | JobId::MONK | JobId::GUNSLINGER =>
+                        CharType::Player,
+                    JobId::Barricade => CharType::Minion,
+                },
+                char_builder.outlook,
+                char_builder.job_id,
+                char_builder.team,
+                dev_configs,
+                self.physics_handles.expect("Initialize the physics component on this entity by calling 'physics()' on the builder!"),
+            ),
+        );
+    }
+
+    pub fn physics(
+        mut self,
+        physics_builder: CharPhysicsEntityBuilder,
+        world: &mut PhysicEngine,
+    ) -> CharacterEntityBuilder {
+        let body_handle = world.bodies.insert(
+            RigidBodyDesc::new()
+                .user_data(self.char_id)
+                .gravity_enabled(false)
+                .status(physics_builder.body_status)
+                .linear_damping(5.0)
+                .set_translation(physics_builder.pos2d)
+                .build(),
+        );
+        let collider_handle = world.colliders.insert(
+            ColliderDesc::new(physics_builder.collider_shape)
+                .collision_groups(
+                    CollisionGroups::new()
+                        .with_membership(&[physics_builder.self_group as usize])
+                        .with_blacklist(
+                            physics_builder
+                                .blacklist_groups
+                                .iter()
+                                .map(|it| *it as usize)
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        ),
+                )
+                .density(500.0) // TODO
+                .user_data(self.char_id)
+                .build(BodyPartHandle(body_handle, 0)),
+        );
+        self.physics_handles = Some((collider_handle, body_handle));
+        self
+    }
 }
 
 // radius = ComponentRadius * 0.5f32
@@ -357,6 +541,7 @@ pub enum EntityTarget {
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
+
 #[derive(Copy, Clone, Debug, Deserialize)]
 #[serde(from = "i32")]
 pub struct Percentage {
@@ -830,6 +1015,30 @@ pub enum Team {
 }
 
 impl Team {
+    pub fn get_collision_group(&self) -> CollisionGroup {
+        match self {
+            Team::Left => CollisionGroup::LeftPlayer,
+            Team::Right => CollisionGroup::RightPlayer,
+            _ => CollisionGroup::NeutralPlayerPlayer,
+        }
+    }
+
+    pub fn get_barricade_collision_group(&self) -> CollisionGroup {
+        match self {
+            Team::Left => CollisionGroup::LeftBarricade,
+            Team::Right => CollisionGroup::RightBarricade,
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_enemy_collision_group(&self) -> CollisionGroup {
+        match self {
+            Team::Left => CollisionGroup::RightPlayer,
+            Team::Right => CollisionGroup::LeftPlayer,
+            _ => CollisionGroup::NeutralPlayerPlayer,
+        }
+    }
+
     pub fn is_compatible(&self, nature: StatusNature, other_team: Team) -> bool {
         match nature {
             StatusNature::Harmful => self.can_attack(other_team),
@@ -894,6 +1103,7 @@ impl Team {
 }
 
 pub struct TurretControllerComponent;
+
 impl Component for TurretControllerComponent {
     type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
 }
@@ -927,7 +1137,8 @@ impl Component for NpcComponent {
 
 #[derive(Component)]
 pub struct CharacterStateComponent {
-    pub name: String, // characters also has names so it is possible to follow them with a camera
+    pub name: String,
+    // characters also has names so it is possible to follow them with a camera
     pub basic_attack: BasicAttack,
     pos: WorldCoord,
     y: f32,
@@ -947,7 +1158,6 @@ pub struct CharacterStateComponent {
     calculated_attribs: CharAttributes,
     attrib_bonuses: CharAttributesBonuses,
     pub statuses: Statuses,
-    pub radius: ComponentRadius,
     pub body_handle: DefaultBodyHandle,
     pub collider_handle: DefaultColliderHandle,
 }
@@ -967,7 +1177,7 @@ impl CharacterStateComponent {
     pub fn set_noncollidable(&self, physics_world: &mut PhysicEngine) {
         if let Some(collider) = physics_world.colliders.get_mut(self.collider_handle) {
             let mut cg = collider.collision_groups().clone();
-            cg.modify_membership(CollisionGroup::Player as usize, false);
+            cg.modify_membership(self.team.get_collision_group() as usize, false);
             cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, true);
             collider.set_collision_groups(cg);
         }
@@ -979,7 +1189,7 @@ impl CharacterStateComponent {
     pub fn set_collidable(&self, physics_world: &mut PhysicEngine) {
         if let Some(collider) = physics_world.colliders.get_mut(self.collider_handle) {
             let mut cg = collider.collision_groups().clone();
-            cg.modify_membership(CollisionGroup::Player as usize, true);
+            cg.modify_membership(self.team.get_collision_group() as usize, true);
             cg.modify_membership(CollisionGroup::NonCollidablePlayer as usize, false);
             collider.set_collision_groups(cg);
         }
@@ -991,12 +1201,11 @@ impl CharacterStateComponent {
     pub fn new(
         name: String,
         y: f32,
-        typ: CharType,
+        char_type: CharType,
         outlook: CharOutlook,
         job_id: JobId,
         team: Team,
         dev_configs: &DevConfig,
-        radius: ComponentRadius,
         physics_component: (DefaultColliderHandle, DefaultBodyHandle),
     ) -> CharacterStateComponent {
         let statuses = Statuses::new();
@@ -1023,7 +1232,7 @@ impl CharacterStateComponent {
             pos: v2!(0, 0),
             y,
             team,
-            typ,
+            typ: char_type,
             outlook,
             target: None,
             skill_cast_allowed_at: HashMap::new(),
@@ -1040,7 +1249,6 @@ impl CharacterStateComponent {
                 durations: BonusDurations::with_invalid_times(),
             },
             statuses,
-            radius,
             body_handle: physics_component.1,
             collider_handle: physics_component.0,
         }

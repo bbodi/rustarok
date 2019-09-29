@@ -22,7 +22,7 @@ use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Isometry2, Vector2, Vector3};
 use specs::prelude::*;
 
 pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
@@ -90,17 +90,48 @@ impl RenderDesktopClientSystem {
             let _stopwatch = system_benchmark.start_measurement("render.draw_physics_coll");
             // Draw physics colliders
             for physics in (&char_state_storage).join() {
-                if let Some(body) = physics_world.bodies.rigid_body(physics.body_handle) {
-                    let pos = body.position().translation.vector;
-
-                    render_commands
-                        .circle_3d()
-                        .radius(physics.radius.get())
-                        .color(&[255, 0, 255, 255])
-                        .pos_2d(&pos)
-                        .y(0.05)
-                        .add();
-                }
+                let radius =
+                    if let Some(collider) = physics_world.colliders.get(physics.collider_handle) {
+                        if collider.shape().is_shape::<ncollide2d::shape::Ball<f32>>() {
+                            let radius = collider
+                                .shape()
+                                .bounding_sphere(&Isometry2::new(Vector2::zeros(), 0.0))
+                                .radius();
+                            let pos = physics_world
+                                .bodies
+                                .rigid_body(physics.body_handle)
+                                .unwrap()
+                                .position()
+                                .translation
+                                .vector;
+                            render_commands
+                                .circle_3d()
+                                .radius(radius)
+                                .color(&[255, 0, 255, 255])
+                                .pos_2d(&pos)
+                                .y(0.05)
+                                .add();
+                        } else {
+                            let extents = collider
+                                .shape()
+                                .aabb(&Isometry2::new(Vector2::zeros(), 0.0))
+                                .extents();
+                            let pos = physics_world
+                                .bodies
+                                .rigid_body(physics.body_handle)
+                                .unwrap()
+                                .position()
+                                .translation
+                                .vector;
+                            render_commands
+                                .rectangle_3d()
+                                .pos_2d(&pos)
+                                .color(&[255, 0, 255, 255])
+                                .y(0.05)
+                                .size(extents.x, extents.y)
+                                .add();
+                        }
+                    };
             }
         }
 

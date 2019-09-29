@@ -222,6 +222,15 @@ pub struct GazTurretSkillConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct GazBarricadeSkillConfig {
+    #[serde(flatten)]
+    pub attributes: SkillCastingAttributes,
+    pub max_hp: i32,
+    pub armor: Percentage,
+    pub hp_regen: Percentage,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SkillsConfig {
     pub firewall: SkillConfigFireWall,
     pub wiz_pyroblast: SkillConfigPyroBlast,
@@ -241,6 +250,7 @@ pub struct SkillsConfig {
     pub falcon_attack: FalconAttack,
     pub gaz_xplodium_charge: GazXplodiumChargeSkillConfig,
     pub gaz_turret: GazTurretSkillConfig,
+    pub gaz_barricade: GazBarricadeSkillConfig,
     pub gaz_destroy_turret: SkillCastingAttributes,
     pub sanctuary: SkillConfigSanctuarySkill,
 }
