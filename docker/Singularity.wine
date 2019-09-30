@@ -1,0 +1,33 @@
+Bootstrap: docker
+From: node:10
+
+# sudo singularity build wine.sif Singularity
+# singularity exec --bind $HOME/.wine:/root/.wine wine.sif
+# cp $HOME/.wine/drive_c/Games/TalonRO/*.grf docker/
+
+%environment
+export DEBIAN_FRONTEND=noninteractive
+export WINEPREFIX=/root/.wine
+
+%post
+export DEBIAN_FRONTEND=noninteractive
+apt-get update \
+  && apt-get install -y software-properties-common apt-transport-https \
+  && dpkg --add-architecture i386 \
+  && wget -nc https://dl.winehq.org/wine-builds/winehq.key \
+  && apt-key add winehq.key \
+  && apt-add-repository https://dl.winehq.org/wine-builds/debian/ \
+  && apt-get update \
+  && apt-get install -y --install-recommends winehq-stable xvfb \
+  && apt-get remove -y software-properties-common apt-transport-https \
+  && apt-get clean -y \
+  && apt-get autoremove -y
+
+# You'll need to export this as your user, or bind to root's home.
+export WINEPREFIX=/root/.wine
+wget https://downloads.talonro.com/TalonRO_Full.zip
+unzip TalonRO_Full.zip
+
+%runscript
+echo "WINEPREFIX is $WINEPREFIX"
+exec wine /TalonRO_Full_Installer.exe "$@"

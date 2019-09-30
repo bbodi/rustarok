@@ -1,6 +1,7 @@
 # Table of contents
 - [Building](#building)
 - [Running on Windows](#running-on-windows)
+- [Running with Docker](#running-with-docker)
 - [How to play](#how-to-play)
 - [Design decisions](#design-decisions)
 - [Blog](#blog)
@@ -39,6 +40,11 @@ You will need Ragnarok Online asset files to run the game.
   ```
   
 - Run ``cargo run`` from rustarok directory.
+
+## Running with Docker
+
+See the README.md in the [docker](docker) folder for complete instructions.
+
 
 ## How to play
 

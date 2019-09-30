@@ -1,0 +1,13 @@
+
+# possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+log_level = "TRACE"
+
+# if true, many resources won't be loaded (static models, gat data etc)
+quick_startup = false
+
+grf_paths = [
+  "/code/docker/rdata.grf",
+  "/code/docker/sdata.grf",
+  "/code/docker/tdata.grf",
+  "/code/docker/gepard.grf",
+]
