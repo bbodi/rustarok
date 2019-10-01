@@ -562,7 +562,7 @@ impl AttackSystem {
         dev_configs: &DevConfig,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
         for status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
@@ -593,7 +593,7 @@ impl AttackSystem {
                             entities,
                             updater,
                             system_vars,
-                            physic_world,
+                            physics_world,
                         );
                         target_char.statuses.add(box_status);
                     }

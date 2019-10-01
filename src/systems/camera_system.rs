@@ -2,6 +2,7 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
     CameraComponent, CameraMode, ControllerComponent, HumanInputComponent,
 };
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::SystemVariables;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
@@ -15,11 +16,19 @@ impl<'a> specs::System<'a> for CameraSystem {
         specs::ReadStorage<'a, ControllerComponent>,
         specs::WriteStorage<'a, CameraComponent>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
         &mut self,
-        (char_state_storage, input_storage, controller_storage, mut camera_storage, system_vars): Self::SystemData,
+        (
+            char_state_storage,
+            input_storage,
+            controller_storage,
+            mut camera_storage,
+            system_vars,
+            map_render_data,
+        ): Self::SystemData,
     ) {
         for (input, camera) in (&input_storage, &mut camera_storage).join() {
             match input.camera_movement_mode {
@@ -80,18 +89,15 @@ impl<'a> specs::System<'a> for CameraSystem {
 
             if camera.camera.pos().x < 0.0 {
                 camera.camera.set_x(0.0);
-            } else if camera.camera.pos().x > system_vars.map_render_data.gnd.width as f32 * 2.0 {
-                camera
-                    .camera
-                    .set_x(system_vars.map_render_data.gnd.width as f32 * 2.0);
+            } else if camera.camera.pos().x > map_render_data.gnd.width as f32 * 2.0 {
+                camera.camera.set_x(map_render_data.gnd.width as f32 * 2.0);
             }
             if camera.camera.pos().z > 0.0 {
                 camera.camera.set_z(0.0);
-            } else if camera.camera.pos().z < -(system_vars.map_render_data.gnd.height as f32 * 2.0)
-            {
+            } else if camera.camera.pos().z < -(map_render_data.gnd.height as f32 * 2.0) {
                 camera
                     .camera
-                    .set_z(-(system_vars.map_render_data.gnd.height as f32 * 2.0));
+                    .set_z(-(map_render_data.gnd.height as f32 * 2.0));
             }
 
             camera.view_matrix = camera.camera.create_view_matrix();

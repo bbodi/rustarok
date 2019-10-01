@@ -57,7 +57,7 @@ pub fn attach_human_player_components(
     char_entity_id: CharEntityId,
     controller_id: ControllerEntityId,
     updater: &LazyUpdate,
-    physic_world: &mut PhysicEngine,
+    physics_world: &mut PhysicEngine,
     projection_mat: Matrix4<f32>,
     pos2d: WorldCoord,
     sex: Sex,
@@ -68,46 +68,16 @@ pub fn attach_human_player_components(
 ) {
     CharacterEntityBuilder::new(char_entity_id, username)
         .insert_sprite_render_descr_component(updater)
-        .physics(
-            CharPhysicsEntityBuilder::new(pos2d)
+        .physics(pos2d, physics_world, |builder| {
+            builder
                 .collision_group(team.get_collision_group())
-                .circle(1.0),
-            physic_world,
-        )
-        .char_state(
-            CharStateComponentBuilder::new()
-                .outlook(CharOutlook::Player {
-                    sex,
-                    job_sprite_id: match job_id {
-                        JobId::WIZARD => JobSpriteId::WIZARD,
-                        JobId::CRUSADER => JobSpriteId::CRUSADER,
-                        JobId::SWORDMAN => JobSpriteId::SWORDMAN,
-                        JobId::ARCHER => JobSpriteId::ARCHER,
-                        JobId::ASSASSIN => JobSpriteId::ASSASSIN,
-                        JobId::KNIGHT => JobSpriteId::KNIGHT,
-                        JobId::SAGE => JobSpriteId::SAGE,
-                        JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
-                        JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
-                        JobId::PRIEST => JobSpriteId::PRIEST,
-                        JobId::MONK => JobSpriteId::MONK,
-                        JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
-                        JobId::ROGUE => JobSpriteId::ROGUE,
-                        JobId::HUNTER => JobSpriteId::HUNTER,
-                        JobId::TargetDummy => panic!(),
-                        JobId::HealingDummy => panic!(),
-                        JobId::MeleeMinion => panic!(),
-                        JobId::RangedMinion => panic!(),
-                        JobId::Turret => panic!(),
-                        JobId::Guard => panic!(),
-                        JobId::Barricade => panic!(),
-                    },
-                    head_index,
-                })
+                .circle(1.0)
+        })
+        .char_state(updater, dev_configs, |ch| {
+            ch.outlook_player(sex, JobSpriteId::from_job_id(job_id), head_index)
                 .job_id(job_id)
-                .team(team),
-            updater,
-            dev_configs,
-        );
+                .team(team)
+        });
 
     let mut human_player = HumanInputComponent::new(username);
     human_player.cast_mode = dev_configs.cast_mode;
@@ -285,6 +255,25 @@ impl CharStateComponentBuilder {
         self
     }
 
+    pub fn outlook_player(
+        mut self,
+        sex: Sex,
+        job_sprite_id: JobSpriteId,
+        head_index: usize,
+    ) -> CharStateComponentBuilder {
+        self.outlook = CharOutlook::Player {
+            sex,
+            job_sprite_id,
+            head_index,
+        };
+        self
+    }
+
+    pub fn outlook_monster(mut self, monster_id: MonsterId) -> CharStateComponentBuilder {
+        self.outlook = CharOutlook::Monster(monster_id);
+        self
+    }
+
     pub fn team(mut self, team: Team) -> CharStateComponentBuilder {
         self.team = team;
         self
@@ -334,12 +323,11 @@ impl CharacterEntityBuilder {
         self
     }
 
-    pub fn char_state(
-        self,
-        char_builder: CharStateComponentBuilder,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-    ) {
+    pub fn char_state<F>(self, updater: &LazyUpdate, dev_configs: &DevConfig, char_builder_func: F)
+    where
+        F: Fn(CharStateComponentBuilder) -> CharStateComponentBuilder,
+    {
+        let char_builder = char_builder_func(CharStateComponentBuilder::new());
         updater.insert(
             self.char_id.0,
             CharacterStateComponent::new(
@@ -365,11 +353,16 @@ impl CharacterEntityBuilder {
         );
     }
 
-    pub fn physics(
+    pub fn physics<F>(
         mut self,
-        physics_builder: CharPhysicsEntityBuilder,
+        pos2d: WorldCoord,
         world: &mut PhysicEngine,
-    ) -> CharacterEntityBuilder {
+        phys_builder_fn: F,
+    ) -> CharacterEntityBuilder
+    where
+        F: Fn(CharPhysicsEntityBuilder) -> CharPhysicsEntityBuilder,
+    {
+        let physics_builder = phys_builder_fn(CharPhysicsEntityBuilder::new(pos2d));
         let body_handle = world.bodies.insert(
             RigidBodyDesc::new()
                 .user_data(self.char_id)
@@ -1324,7 +1317,7 @@ impl CharacterStateComponent {
         self.y
     }
 
-    pub fn state_has_changed(&mut self) -> bool {
+    pub fn state_has_changed(&self) -> bool {
         return self.prev_state != self.state;
     }
 

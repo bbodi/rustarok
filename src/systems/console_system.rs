@@ -659,7 +659,10 @@ impl<'a> ConsoleSystem<'a> {
         return None;
     }
 
-    pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
+    pub fn init_commands(
+        effect_names: Vec<String>,
+        _map_names: Vec<String>,
+    ) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
         ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_pos());

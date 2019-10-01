@@ -93,26 +93,17 @@ struct GroundLoadResult {
 }
 
 pub fn load_map(
+    physics_world: &mut PhysicEngine,
     gl: &Gl,
     map_name: &str,
     asset_loader: &AssetLoader,
     asset_db: &mut AssetDatabase,
     quick_loading: bool,
-) -> (MapRenderData, PhysicEngine) {
+) -> (MapRenderData) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
     let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
     log::info!("gat loaded: {}ms", elapsed.as_millis());
-
-    let mut physics_world = PhysicEngine {
-        mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
-        geometrical_world: DefaultGeometricalWorld::new(),
-
-        bodies: DefaultBodySet::new(),
-        colliders: DefaultColliderSet::new(),
-        joint_constraints: DefaultJointConstraintSet::new(),
-        force_generators: DefaultForceGeneratorSet::new(),
-    };
 
     let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
         .rectangles
@@ -431,31 +422,28 @@ pub fn load_map(
         model_instances[537].asset_db_model_index = new_model_index;
     }
 
-    (
-        MapRenderData {
-            gat,
-            gnd: ground_data.ground,
-            rsw: world,
-            ground_vertex_array: ground_data.ground_vertex_array,
-            texture_atlas: ground_data.texture_atlas,
-            tile_color_texture: ground_data.tile_color_texture,
-            lightmap_texture: ground_data.lightmap_texture,
-            model_instances,
-            centered_sprite_vertex_array,
-            bottom_left_sprite_vertex_array: sprite_vertex_array,
-            rectangle_vertex_array,
-            use_tile_colors: true,
-            use_lightmaps: true,
-            use_lighting: true,
-            draw_models: true,
-            draw_ground: true,
-            ground_walkability_mesh: ground_data.ground_walkability_mesh,
-            ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
-            ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
-            minimap_texture_id: minimap_texture,
-        },
-        physics_world,
-    )
+    MapRenderData {
+        gat,
+        gnd: ground_data.ground,
+        rsw: world,
+        ground_vertex_array: ground_data.ground_vertex_array,
+        texture_atlas: ground_data.texture_atlas,
+        tile_color_texture: ground_data.tile_color_texture,
+        lightmap_texture: ground_data.lightmap_texture,
+        model_instances,
+        centered_sprite_vertex_array,
+        bottom_left_sprite_vertex_array: sprite_vertex_array,
+        rectangle_vertex_array,
+        use_tile_colors: true,
+        use_lightmaps: true,
+        use_lighting: true,
+        draw_models: true,
+        draw_ground: true,
+        ground_walkability_mesh: ground_data.ground_walkability_mesh,
+        ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
+        ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
+        minimap_texture_id: minimap_texture,
+    }
 }
 
 fn load_ground(
@@ -641,6 +629,18 @@ pub struct PhysicEngine {
 }
 
 impl PhysicEngine {
+    pub fn new() -> PhysicEngine {
+        PhysicEngine {
+            mechanical_world: DefaultMechanicalWorld::new(Vector2::zeros()),
+            geometrical_world: DefaultGeometricalWorld::new(),
+
+            bodies: DefaultBodySet::new(),
+            colliders: DefaultColliderSet::new(),
+            joint_constraints: DefaultJointConstraintSet::new(),
+            force_generators: DefaultForceGeneratorSet::new(),
+        }
+    }
+
     pub fn step(&mut self, dt: f32) {
         self.mechanical_world.set_timestep(dt);
         self.mechanical_world.step(

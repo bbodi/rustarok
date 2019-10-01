@@ -479,6 +479,18 @@ pub struct SpriteResource {
     pub textures: Vec<TextureId>,
 }
 
+impl SpriteResource {
+    pub fn new_for_test() -> SpriteResource {
+        SpriteResource {
+            action: ActionFile {
+                actions: vec![],
+                sounds: vec![],
+            },
+            textures: vec![],
+        }
+    }
+}
+
 struct BinaryReader {
     buf: Vec<u8>,
     index: usize,

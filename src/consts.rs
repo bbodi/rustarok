@@ -61,6 +61,34 @@ pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 14] = [
     JobSpriteId::HUNTER,
 ];
 
+impl JobSpriteId {
+    pub fn from_job_id(job_id: JobId) -> JobSpriteId {
+        match job_id {
+            JobId::WIZARD => JobSpriteId::WIZARD,
+            JobId::CRUSADER => JobSpriteId::CRUSADER,
+            JobId::SWORDMAN => JobSpriteId::SWORDMAN,
+            JobId::ARCHER => JobSpriteId::ARCHER,
+            JobId::ASSASSIN => JobSpriteId::ASSASSIN,
+            JobId::KNIGHT => JobSpriteId::KNIGHT,
+            JobId::SAGE => JobSpriteId::SAGE,
+            JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
+            JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
+            JobId::PRIEST => JobSpriteId::PRIEST,
+            JobId::MONK => JobSpriteId::MONK,
+            JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
+            JobId::ROGUE => JobSpriteId::ROGUE,
+            JobId::HUNTER => JobSpriteId::HUNTER,
+            JobId::TargetDummy => panic!(),
+            JobId::HealingDummy => panic!(),
+            JobId::MeleeMinion => panic!(),
+            JobId::RangedMinion => panic!(),
+            JobId::Turret => panic!(),
+            JobId::Guard => panic!(),
+            JobId::Barricade => panic!(),
+        }
+    }
+}
+
 #[derive(EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobSpriteId {
     NOVICE = 0,

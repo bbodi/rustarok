@@ -47,7 +47,7 @@ pub trait Status: Any {
         entities: &Entities,
         updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
     }
 

@@ -8,6 +8,7 @@ use crate::components::controller::{
     CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
 };
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
@@ -36,6 +37,7 @@ impl RenderUI {
         camera_pos: &Point3<f32>,
         is_browser: bool,
         asset_db: &AssetDatabase,
+        map_render_data: &MapRenderData,
     ) {
         // Draw casting bar
         match self_char_state.state() {
@@ -105,6 +107,7 @@ impl RenderUI {
             entities,
             camera_pos,
             asset_db,
+            map_render_data,
         );
 
         if !is_browser {
@@ -132,10 +135,11 @@ impl RenderUI {
         entities: &specs::Entities,
         camera_pos: &Point3<f32>,
         asset_db: &AssetDatabase,
+        map_render_data: &MapRenderData,
     ) {
         // prontera minimaps has empty spaces: left 52, right 45 pixels
         // 6 pixel padding on left and bottom, 7 on top and right
-        let minimap_texture = asset_db.get_texture(system_vars.map_render_data.minimap_texture_id);
+        let minimap_texture = asset_db.get_texture(map_render_data.minimap_texture_id);
         let scale = (VIDEO_HEIGHT as i32 / 4).min(minimap_texture.height) as f32
             / minimap_texture.height as f32;
         let all_minimap_w = (minimap_texture.width as f32 * scale) as i32;
@@ -149,13 +153,11 @@ impl RenderUI {
             .scale(scale)
             .screen_pos(minimap_render_x, minimap_y)
             .layer(UiLayer2d::Minimap)
-            .add(system_vars.map_render_data.minimap_texture_id);
+            .add(map_render_data.minimap_texture_id);
         let minimap_w = (minimap_texture.width as f32 * scale) as i32
             - ((52.0 + 45.0 + 6.0 + 7.0) * scale) as i32;
-        let real_to_map_scale_w =
-            minimap_w as f32 / (system_vars.map_render_data.gnd.width * 2) as f32;
-        let real_to_map_scale_h =
-            minimap_h as f32 / (system_vars.map_render_data.gnd.height * 2) as f32;
+        let real_to_map_scale_w = minimap_w as f32 / (map_render_data.gnd.width * 2) as f32;
+        let real_to_map_scale_h = minimap_h as f32 / (map_render_data.gnd.height * 2) as f32;
         for (entity_id, char_state) in (entities, char_state_storage).join() {
             let entity_id = CharEntityId(entity_id);
             let head_index = if npc_storage.get(entity_id.0).is_none() {
@@ -178,7 +180,7 @@ impl RenderUI {
 
             let (char_x, char_y) = {
                 let char_pos = char_state.pos();
-                let char_y = (system_vars.map_render_data.gnd.height * 2) as f32 + char_pos.y;
+                let char_y = (map_render_data.gnd.height * 2) as f32 + char_pos.y;
                 (char_pos.x, char_y)
             };
 
@@ -250,7 +252,7 @@ impl RenderUI {
         );
 
         let h = right_bottom.y - right_top.y;
-        let letf_bottom_y = (system_vars.map_render_data.gnd.height * 2) as f32 + left_bottom.y;
+        let letf_bottom_y = (map_render_data.gnd.height * 2) as f32 + left_bottom.y;
         render_commands
             .rectangle_2d()
             .screen_pos(

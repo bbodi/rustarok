@@ -52,6 +52,7 @@ use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
+use crate::my_gl::Gl;
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
@@ -60,7 +61,7 @@ use crate::runtime_assets::effect::load_str_effects;
 use crate::runtime_assets::graphic::{
     load_skill_icons, load_sprites, load_status_icons, load_texts,
 };
-use crate::runtime_assets::map::{load_map, CollisionGroup, PhysicEngine};
+use crate::runtime_assets::map::{load_map, CollisionGroup, MapRenderData, PhysicEngine};
 use crate::shaders::load_shaders;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
@@ -73,7 +74,9 @@ use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
-use crate::systems::next_action_applier_sys::NextActionApplierSystem;
+use crate::systems::next_action_applier_sys::{
+    NextActionApplierSystem, SavePreviousCharStateSystem, UpdateCharSpriteBasedOnStateSystem,
+};
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::render::falcon_render_sys::FalconRenderSys;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
@@ -81,6 +84,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
+use crate::systems::sound_sys::SoundSystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, SystemFrameDurations, SystemVariables,
@@ -101,6 +105,7 @@ mod my_gl;
 mod network;
 mod runtime_assets;
 mod shaders;
+mod test;
 mod video;
 mod web_server;
 
@@ -142,11 +147,6 @@ fn main() {
 
     let mut asset_db = AssetDatabase::new();
 
-    let mut map_name_filter = ImString::new("prontera");
-    let mut filtered_map_names: Vec<String> = vec![];
-    let all_map_names = get_all_map_names(&asset_loader);
-    let all_str_names = get_all_effect_names(&asset_loader);
-
     let mut fov = 0.638;
     let mut window_opened = false;
     let mut cam_angle = -60.0;
@@ -156,8 +156,11 @@ fn main() {
     // !!! gl_context: sdl2::video::GLContext THIS MUST BE KEPT IN SCOPE, DON'T REMOVE IT!
     let (mut video, gl, _gl_context) = Video::init(&sdl_context);
 
+    let mut physics_world = PhysicEngine::new();
+
     let map_name = "prontera";
-    let (map_render_data, physics_world) = load_map(
+    let map_render_data = load_map(
+        &mut physics_world,
         &gl,
         map_name,
         &asset_loader,
@@ -165,8 +168,10 @@ fn main() {
         config.quick_startup,
     );
 
-    let command_defs: HashMap<String, CommandDefinition> =
-        ConsoleSystem::init_commands(all_str_names);
+    let command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands(
+        get_all_effect_names(&asset_loader),
+        get_all_map_names(&asset_loader),
+    );
 
     let mut ecs_world = create_ecs_world();
 
@@ -177,83 +182,26 @@ fn main() {
     let system_vars = SystemVariables::new(
         load_sprites(&gl, &asset_loader, &mut asset_db),
         load_texts(&gl, &ttf_context, &mut asset_db),
-        load_shaders(&gl),
         render_matrices,
-        map_render_data,
         load_status_icons(&gl, &asset_loader, &mut asset_db),
         load_skill_icons(&gl, &asset_loader, &mut asset_db),
         str_effects,
         sounds,
-        asset_loader,
-        gl,
     );
 
     let mut ecs_dispatcher = {
-        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new()
-            .with(BrowserInputProducerSystem, "browser_input_processor", &[])
-            .with(
-                InputConsumerSystem,
-                "input_handler",
-                &["browser_input_processor"],
-            )
-            .with(CameraSystem, "camera_system", &["input_handler"])
-            .with(FrictionSystem, "friction_sys", &[])
-            .with(
-                InputToNextActionSystem,
-                "input_to_next_action_sys",
-                &["input_handler", "browser_input_processor"],
-            )
-            .with(MinionAiSystem, "minion_ai_sys", &[])
-            .with(TurretAiSystem, "turret_ai_sys", &[])
-            .with(FalconAiSystem, "falcon_ai_sys", &[])
-            //////////////////////////////////////
-            // statuses
-            /////////////////////////////////////
-            //            .with(
-            //                CharStatusCleanerSysem,
-            //                "CharStatusCleanerSysem",
-            //                &["input_handler"],
-            //            )
-            /////////////////////////////////////
-            //            .with(StunStatusSystem, "StunStatusSystem", &["input_handler"])
-            /////////////////////////////////////
-            // statuses end
-            /////////////////////////////////////
-            .with(
-                NextActionApplierSystem,
-                "char_control",
-                &[
-                    "friction_sys",
-                    "input_to_next_action_sys",
-                    "browser_input_processor",
-                ],
-            )
-            .with(
-                CharacterStateUpdateSystem,
-                "char_state_update",
-                &["char_control"],
-            )
-            .with(
-                PhysCollisionCollectorSystem,
-                "collision_collector",
-                &["char_state_update"],
-            )
-            .with(SkillSystem, "skill_sys", &["collision_collector"])
-            .with(AttackSystem, "attack_sys", &["collision_collector"])
-            .with_thread_local(ConsoleSystem::new(&command_defs)) // thread_local to avoid Send fields
-            .with_thread_local(RenderDesktopClientSystem::new())
-            .with_thread_local(FalconRenderSys)
-            .with_thread_local(opengl_render_sys)
-            .with_thread_local(WebSocketBrowserRenderSystem::new());
-        if let Some(sound_system) = maybe_sound_system {
-            ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
-        }
-
-        ecs_dispatcher_builder
-            .with_thread_local(FrameEndSystem)
-            .build()
+        let console_sys = ConsoleSystem::new(&command_defs);
+        register_systems(
+            Some(opengl_render_sys),
+            maybe_sound_system,
+            Some(console_sys),
+            false,
+        )
     };
     ecs_world.add_resource(system_vars);
+    ecs_world.add_resource(asset_loader);
+    ecs_world.add_resource(gl);
+    ecs_world.add_resource(map_render_data);
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
 
@@ -403,9 +351,6 @@ fn main() {
             desktop_client_controller,
             &mut video,
             &mut ecs_world,
-            &mut map_name_filter,
-            &all_map_names,
-            &mut filtered_map_names,
             fps,
             fps_history.as_slice(),
             &mut fov,
@@ -416,16 +361,16 @@ fn main() {
         sdl_context.mouse().show_cursor(show_cursor);
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
-            let (map_render_data, physics_world) = load_map(
-                &ecs_world.read_resource::<SystemVariables>().gl,
+            let mut physics_world = PhysicEngine::new();
+            let map_render_data = load_map(
+                &mut physics_world,
+                &ecs_world.read_resource::<Gl>(),
                 &new_map_name,
-                &ecs_world.read_resource::<SystemVariables>().asset_loader,
+                &ecs_world.read_resource::<AssetLoader>(),
                 &mut ecs_world.write_resource::<AssetDatabase>(),
                 config.quick_startup,
             );
-            ecs_world
-                .write_resource::<SystemVariables>()
-                .map_render_data = map_render_data;
+            *ecs_world.write_resource::<MapRenderData>() = map_render_data;
             ecs_world.add_resource(physics_world);
 
             // TODO
@@ -478,6 +423,107 @@ fn main() {
         // runtime configs
         reload_configs_if_changed(&runtime_conf_watcher_rx, &mut ecs_world);
     }
+}
+
+fn register_systems<'a, 'b>(
+    opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
+    maybe_sound_system: Option<SoundSystem>,
+    console_system: Option<ConsoleSystem<'b>>,
+    for_test: bool,
+) -> Dispatcher<'a, 'b> {
+    let ecs_dispatcher = {
+        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
+        let mut char_control_deps = vec!["friction_sys"];
+        if !for_test {
+            ecs_dispatcher_builder = ecs_dispatcher_builder
+                .with(BrowserInputProducerSystem, "browser_input_processor", &[])
+                .with(
+                    InputConsumerSystem,
+                    "input_handler",
+                    &["browser_input_processor"],
+                )
+                .with(
+                    InputToNextActionSystem,
+                    "input_to_next_action_sys",
+                    &["input_handler", "browser_input_processor"],
+                )
+                .with(CameraSystem, "camera_system", &["input_handler"]);
+            char_control_deps.push("input_to_next_action_sys");
+        }
+        ecs_dispatcher_builder = ecs_dispatcher_builder.with(FrictionSystem, "friction_sys", &[]);
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with(MinionAiSystem, "minion_ai_sys", &[])
+            .with(TurretAiSystem, "turret_ai_sys", &[])
+            .with(FalconAiSystem, "falcon_ai_sys", &[])
+            //////////////////////////////////////
+            // statuses
+            /////////////////////////////////////
+            //            .with(
+            //                CharStatusCleanerSysem,
+            //                "CharStatusCleanerSysem",
+            //                &["input_handler"],
+            //            )
+            /////////////////////////////////////
+            //            .with(StunStatusSystem, "StunStatusSystem", &["input_handler"])
+            /////////////////////////////////////
+            // statuses end
+            /////////////////////////////////////
+            .with(
+                NextActionApplierSystem,
+                "char_control",
+                char_control_deps.as_slice(),
+            );
+        if !for_test {
+            ecs_dispatcher_builder.add(
+                UpdateCharSpriteBasedOnStateSystem,
+                "UpdateCharSpriteBasedOnStateSystem",
+                &["char_control"],
+            );
+            ecs_dispatcher_builder.add(
+                SavePreviousCharStateSystem,
+                "SavePreviousCharStateSystem",
+                &["UpdateCharSpriteBasedOnStateSystem"],
+            );
+        } else {
+            ecs_dispatcher_builder.add(
+                SavePreviousCharStateSystem,
+                "SavePreviousCharStateSystem",
+                &["char_control"],
+            );
+        }
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with(
+                CharacterStateUpdateSystem,
+                "char_state_update",
+                &["char_control"],
+            )
+            .with(
+                PhysCollisionCollectorSystem,
+                "collision_collector",
+                &["char_state_update"],
+            )
+            .with(SkillSystem, "skill_sys", &["collision_collector"])
+            .with(AttackSystem, "attack_sys", &["collision_collector"]);
+        if let Some(console_system) = console_system {
+            // thread_local to avoid Send fields
+            ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);
+        }
+        if !for_test {
+            ecs_dispatcher_builder = ecs_dispatcher_builder
+                .with_thread_local(RenderDesktopClientSystem::new())
+                .with_thread_local(FalconRenderSys)
+                .with_thread_local(opengl_render_sys.unwrap())
+                .with_thread_local(WebSocketBrowserRenderSystem::new());
+        }
+        if let Some(sound_system) = maybe_sound_system {
+            ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
+        }
+
+        ecs_dispatcher_builder
+            .with_thread_local(FrameEndSystem)
+            .build()
+    };
+    ecs_dispatcher
 }
 
 fn update_desktop_inputs(
@@ -685,9 +731,6 @@ fn imgui_frame(
     desktop_client_entity: ControllerEntityId,
     video: &mut Video,
     ecs_world: &mut specs::world::World,
-    mut map_name_filter: &mut ImString,
-    all_map_names: &Vec<String>,
-    filtered_map_names: &mut Vec<String>,
     fps: u64,
     fps_history: &[f32],
     fov: &mut f32,
@@ -709,32 +752,6 @@ fn imgui_frame(
             .opened(window_opened)
             .build(|| {
                 ret.1 = ui.is_window_hovered();
-                let map_name_filter_clone = map_name_filter.clone();
-                if ui
-                    .input_text(im_str!("Map name:"), &mut map_name_filter)
-                    .enter_returns_true(false)
-                    .build()
-                {
-                    filtered_map_names.clear();
-                    filtered_map_names.extend(
-                        all_map_names
-                            .iter()
-                            .filter(|map_name| {
-                                let matc = sublime_fuzzy::best_match(
-                                    map_name_filter_clone.to_str(),
-                                    map_name,
-                                );
-                                matc.is_some()
-                            })
-                            .map(|it| it.to_owned()),
-                    );
-                }
-                for map_name in filtered_map_names.iter() {
-                    if ui.small_button(&ImString::new(map_name.as_str())) {
-                        ret.0 = Some(map_name.to_owned());
-                    }
-                }
-
                 if ui
                     .slider_float(im_str!("Perspective"), fov, 0.1, std::f32::consts::PI)
                     .build()
@@ -759,9 +776,7 @@ fn imgui_frame(
                     controller.camera.rotate(*cam_angle, 270.0);
                 }
 
-                let mut map_render_data = &mut ecs_world
-                    .write_resource::<SystemVariables>()
-                    .map_render_data;
+                let map_render_data = &mut ecs_world.write_resource::<MapRenderData>();
                 ui.checkbox(
                     im_str!("Use tile_colors"),
                     &mut map_render_data.use_tile_colors,
@@ -902,26 +917,23 @@ fn create_random_char_minion(
         .len();
     let char_entity_id = CharEntityId(ecs_world.create_entity().build());
     let updater = &ecs_world.read_resource::<LazyUpdate>();
+    let head_index = rng.gen::<usize>() % head_count;
     CharacterEntityBuilder::new(char_entity_id, "minion")
         .insert_npc_component(updater)
         .insert_sprite_render_descr_component(updater)
         .physics(
-            CharPhysicsEntityBuilder::new(pos2d)
-                .collision_group(CollisionGroup::Minion)
-                .circle(1.0),
+            pos2d,
             &mut ecs_world.write_resource::<PhysicEngine>(),
+            |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
         )
-        .char_state(
-            CharStateComponentBuilder::new()
-                .outlook(CharOutlook::Player {
-                    sex,
-                    job_sprite_id,
-                    head_index: rng.gen::<usize>() % head_count,
-                })
-                .job_id(job_id)
-                .team(team),
-            updater,
-            &ecs_world.read_resource::<DevConfig>(),
-        );
+        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+            ch.outlook(CharOutlook::Player {
+                sex,
+                job_sprite_id,
+                head_index,
+            })
+            .job_id(job_id)
+            .team(team)
+        });
     char_entity_id
 }

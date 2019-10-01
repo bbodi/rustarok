@@ -5,7 +5,8 @@ use crate::components::BrowserClient;
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
+use crate::my_gl::Gl;
+use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::{Sex, SystemVariables};
 use crate::video::VIDEO_HEIGHT;
 use crate::video::VIDEO_WIDTH;
@@ -35,6 +36,7 @@ pub fn handle_new_connections(
             {
                 let asset_db: &AssetDatabase = &ecs_world.read_resource();
                 let system_vars = &ecs_world.read_resource::<SystemVariables>();
+                let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                 let welcome_data = json!({
                     "screen_width": VIDEO_WIDTH,
                     "screen_height": VIDEO_HEIGHT,
@@ -42,10 +44,10 @@ pub fn handle_new_connections(
                     "asset_db": serde_json::to_value(asset_db).unwrap(),
                     "effect_names": StrEffectType::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
                     "ground": json!({
-                        "light_dir" : system_vars.map_render_data.rsw.light.direction,
-                        "light_ambient" : system_vars.map_render_data.rsw.light.ambient,
-                        "light_diffuse" : system_vars.map_render_data.rsw.light.diffuse,
-                        "light_opacity" : system_vars.map_render_data.rsw.light.opacity,
+                        "light_dir" : map_render_data.rsw.light.direction,
+                        "light_ambient" : map_render_data.rsw.light.ambient,
+                        "light_diffuse" : map_render_data.rsw.light.diffuse,
+                        "light_opacity" : map_render_data.rsw.light.opacity,
                     }),
                     "projection_mat": system_vars
                                         .matrices
@@ -95,7 +97,7 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 ecs_world
                                     .read_resource::<AssetDatabase>()
                                     .copy_texture_into(
-                                        &ecs_world.read_resource::<SystemVariables>().gl,
+                                        &ecs_world.read_resource::<Gl>(),
                                         mismatched_texture.as_str().unwrap_or(""),
                                         &mut response_buf,
                                     );
@@ -115,8 +117,7 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 if let Some("3d_ground") = mismatched_vertex_buffer.as_str() {
                                     response_buf.write_u8(1).unwrap();
                                     let ground_vao = &ecs_world
-                                        .read_resource::<SystemVariables>()
-                                        .map_render_data
+                                        .read_resource::<MapRenderData>()
                                         .ground_vertex_array;
                                     ground_vao.write_into(&mut response_buf);
                                     client.send_message(&response_buf);
@@ -166,10 +167,8 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                         }
                         if deserialized["send_me_model_instances"].as_bool().is_some() {
                             let mut response_buf = Vec::with_capacity(256 * 256 * 4);
-                            for model_instance in &ecs_world
-                                .read_resource::<SystemVariables>()
-                                .map_render_data
-                                .model_instances
+                            for model_instance in
+                                &ecs_world.read_resource::<MapRenderData>().model_instances
                             {
                                 response_buf
                                     .write_u32::<LittleEndian>(

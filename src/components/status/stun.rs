@@ -98,7 +98,7 @@ impl Status for StunStatus {
         entities: &Entities,
         updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
         target_char.set_state(CharState::StandBy, target_char.dir());
         let entity = entities.create();

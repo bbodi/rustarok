@@ -115,10 +115,10 @@ impl Status for AssaBladeDashStatus {
         entities: &Entities,
         updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
         // allow to go through anything
-        target_char.set_noncollidable(physic_world);
+        target_char.set_noncollidable(physics_world);
     }
 
     fn can_target_move(&self) -> bool {

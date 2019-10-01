@@ -118,9 +118,9 @@ impl Status for FalconCarryStatus {
         entities: &Entities,
         updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
-        target_char.set_noncollidable(physic_world);
+        target_char.set_noncollidable(physics_world);
         target_char.set_state(CharState::StandBy, 0);
     }
 

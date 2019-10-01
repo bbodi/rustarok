@@ -1,17 +1,13 @@
 use crate::asset::str::StrFile;
-use crate::asset::texture::TextureId;
-use crate::asset::AssetLoader;
+use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
 use crate::consts::{JobId, JobSpriteId, MonsterId};
-use crate::my_gl::Gl;
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
-use crate::runtime_assets::map::MapRenderData;
-use crate::shaders::Shaders;
 use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
 use nalgebra::Matrix4;
@@ -70,9 +66,36 @@ pub struct Sprites {
     pub effect_sprites: EffectSprites,
 }
 
+impl Sprites {
+    pub fn new_for_test() -> Sprites {
+        Sprites {
+            cursors: SpriteResource::new_for_test(),
+            numbers: DUMMY_TEXTURE_ID_FOR_TEST,
+            magic_target: DUMMY_TEXTURE_ID_FOR_TEST,
+            fire_particle: DUMMY_TEXTURE_ID_FOR_TEST,
+            clock: DUMMY_TEXTURE_ID_FOR_TEST,
+            ginseng_bullet: SpriteResource::new_for_test(),
+            exoskeleton: SpriteResource::new_for_test(),
+            arrow: SpriteResource::new_for_test(),
+            falcon: SpriteResource::new_for_test(),
+            stun: SpriteResource::new_for_test(),
+            timefont: SpriteResource::new_for_test(),
+            character_sprites: HashMap::new(),
+            mounted_character_sprites: HashMap::new(),
+            head_sprites: [vec![], vec![]],
+            monster_sprites: HashMap::new(),
+            effect_sprites: EffectSprites {
+                torch: SpriteResource::new_for_test(),
+                fire_wall: SpriteResource::new_for_test(),
+                fire_ball: SpriteResource::new_for_test(),
+                plasma: SpriteResource::new_for_test(),
+            },
+        }
+    }
+}
+
 pub struct AssetResources {
     pub sprites: Sprites,
-    pub shaders: Shaders,
     pub texts: Texts,
     pub skill_icons: HashMap<Skills, TextureId>,
     pub status_icons: HashMap<&'static str, TextureId>,
@@ -99,16 +122,13 @@ impl RenderMatrices {
 }
 
 pub struct SystemVariables {
-    pub gl: Gl,
     pub assets: AssetResources,
-    pub asset_loader: AssetLoader,
     pub tick: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
     /// extract from the struct?
     pub time: ElapsedTime,
     pub matrices: RenderMatrices,
-    pub map_render_data: MapRenderData,
     pub attacks: Vec<AttackComponent>,
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
@@ -123,31 +143,24 @@ impl SystemVariables {
     pub fn new(
         sprites: Sprites,
         texts: Texts,
-        shaders: Shaders,
         render_matrices: RenderMatrices,
-        map_render_data: MapRenderData,
         status_icons: HashMap<&'static str, TextureId>,
         skill_icons: HashMap<Skills, TextureId>,
         str_effects: Vec<StrFile>,
         sounds: Sounds,
-        asset_loader: AssetLoader,
-        gl: Gl,
     ) -> SystemVariables {
         SystemVariables {
             assets: AssetResources {
-                shaders,
                 sprites,
                 texts,
                 skill_icons,
                 status_icons,
                 sounds,
             },
-            asset_loader,
             tick: 1,
             dt: DeltaTime(0.0),
             time: ElapsedTime(0.0),
             matrices: render_matrices,
-            map_render_data,
             attacks: Vec::with_capacity(128),
             area_attacks: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
@@ -156,7 +169,6 @@ impl SystemVariables {
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
             str_effects,
-            gl,
         }
     }
 

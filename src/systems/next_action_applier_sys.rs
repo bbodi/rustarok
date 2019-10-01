@@ -16,9 +16,7 @@ pub struct NextActionApplierSystem;
 
 impl<'a> specs::System<'a> for NextActionApplierSystem {
     type SystemData = (
-        specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, DevConfig>,
@@ -28,9 +26,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     fn run(
         &mut self,
         (
-            entities,
             mut char_state_storage,
-            mut sprite_storage,
             mut controller_storage,
             system_vars,
             dev_configs,
@@ -77,19 +73,41 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                         )
                     }
                     None => false,
+                };
+                let state_has_changed = char_state.state_has_changed();
+                // TODO: if debug
+                if state_has_changed {
+                    let state: CharState = char_state.state().clone();
+                    let prev_state: CharState = char_state.prev_state().clone();
+                    log::debug!(
+                        "{:?} state has changed {:?} ==> {:?}",
+                        controller.controlled_entity.0,
+                        prev_state,
+                        state
+                    )
                 }
             }
         }
+    }
+}
 
+pub struct UpdateCharSpriteBasedOnStateSystem;
+
+impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
+    type SystemData = (
+        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+    );
+
+    fn run(&mut self, (char_state_storage, mut sprite_storage, system_vars): Self::SystemData) {
         // update character's sprite based on its state
-        for (char_id, char_comp, sprite) in
-            (&entities, &mut char_state_storage, &mut sprite_storage).join()
-        {
+        for (char_comp, sprite) in (&char_state_storage, &mut sprite_storage).join() {
+            let now = system_vars.time;
             // it was removed due to a bug in falcon carry
             //            if char_comp.statuses.can_be_controlled() == false {
             //                continue;
             //            }
-            let sprite: &mut SpriteRenderDescriptorComponent = sprite;
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();
@@ -100,14 +118,6 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                 _ => false,
             };
             let state_has_changed = char_comp.state_has_changed();
-            if state_has_changed {
-                log::debug!(
-                    "{:?} state has changed {:?} ==> {:?}",
-                    char_id,
-                    prev_state,
-                    state
-                )
-            }
             if (state_has_changed && state != CharState::Idle)
                 || (state == CharState::Idle && prev_animation_has_ended)
                 || (state == CharState::Idle && prev_animation_must_stop_at_end)
@@ -147,6 +157,17 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                 sprite.animation_ends_at = sprite.animation_started.add_seconds(duration);
             }
             sprite.direction = char_comp.dir();
+        }
+    }
+}
+
+pub struct SavePreviousCharStateSystem;
+
+impl<'a> specs::System<'a> for SavePreviousCharStateSystem {
+    type SystemData = (specs::WriteStorage<'a, CharacterStateComponent>,);
+
+    fn run(&mut self, (mut char_state_storage,): Self::SystemData) {
+        for char_comp in (&mut char_state_storage).join() {
             char_comp.save_prev_state();
         }
     }

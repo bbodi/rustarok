@@ -1,8 +1,8 @@
 use crate::asset::gat::CellType;
+use crate::asset::AssetLoader;
 use crate::components::char::{
-    attach_human_player_components, ActionPlayMode, CharActionIndex, CharOutlook,
-    CharPhysicsEntityBuilder, CharState, CharStateComponentBuilder, CharacterEntityBuilder,
-    CharacterStateComponent, SpriteRenderDescriptorComponent,
+    attach_human_player_components, ActionPlayMode, CharActionIndex, CharOutlook, CharState,
+    CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
@@ -26,6 +26,8 @@ use crate::components::{
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::effect::StrEffectId;
+use crate::my_gl::Gl;
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
     BasicAutocompletionProvider, CommandDefinition, CommandParamType, ConsoleComponent,
@@ -374,8 +376,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             let pos2d = match (args.as_int(3), args.as_int(4)) {
                 (Some(x), Some(y)) => v2!(x, y),
                 _ => {
-                    let map_render_data =
-                        &ecs_world.read_resource::<SystemVariables>().map_render_data;
+                    let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                     let hero_pos = {
                         let storage = ecs_world.read_storage::<CharacterStateComponent>();
                         let char_state = storage.get(self_char_id.0).unwrap();
@@ -458,24 +459,20 @@ fn create_guard(
         .insert_npc_component(updater)
         .insert_sprite_render_descr_component(updater)
         .physics(
-            CharPhysicsEntityBuilder::new(pos2d)
-                .collision_group(CollisionGroup::Guard)
-                .circle(1.0),
+            pos2d,
             &mut ecs_world.write_resource::<PhysicEngine>(),
+            |builder| builder.collision_group(CollisionGroup::Guard).circle(1.0),
         )
-        .char_state(
-            CharStateComponentBuilder::new()
-                .y_coord(y)
-                .outlook(outlook.unwrap_or(if team == Team::Left {
+        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+            ch.y_coord(y)
+                .outlook(outlook.clone().unwrap_or(if team == Team::Left {
                     CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
                 } else {
                     CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
                 }))
                 .job_id(JobId::Guard)
-                .team(team),
-            updater,
-            &ecs_world.read_resource::<DevConfig>(),
-        );
+                .team(team)
+        });
 
     char_entity_id
 }
@@ -498,27 +495,27 @@ fn create_dummy(
     )
     .insert_sprite_render_descr_component(updater)
     .physics(
-        CharPhysicsEntityBuilder::new(pos2d)
-            .collision_group(CollisionGroup::NeutralPlayerPlayer)
-            .circle(1.0),
+        pos2d,
         &mut ecs_world.write_resource::<PhysicEngine>(),
+        |builder| {
+            builder
+                .collision_group(CollisionGroup::NeutralPlayerPlayer)
+                .circle(1.0)
+        },
     )
-    .char_state(
-        CharStateComponentBuilder::new()
-            .outlook(outlook.unwrap_or(if job_id == JobId::HealingDummy {
-                CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
-            } else {
-                CharOutlook::Monster(MonsterId::Barricade)
-            }))
-            .job_id(job_id)
-            .team(if job_id == JobId::HealingDummy {
-                Team::AllyForAll
-            } else {
-                Team::EnemyForAll
-            }),
-        updater,
-        &ecs_world.read_resource::<DevConfig>(),
-    );
+    .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+        ch.outlook(outlook.clone().unwrap_or(if job_id == JobId::HealingDummy {
+            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
+        } else {
+            CharOutlook::Monster(MonsterId::Barricade)
+        }))
+        .job_id(job_id)
+        .team(if job_id == JobId::HealingDummy {
+            Team::AllyForAll
+        } else {
+            Team::EnemyForAll
+        })
+    });
 
     char_entity_id
 }
@@ -545,31 +542,28 @@ fn create_random_char_minion(
         .len();
     let char_entity_id = CharEntityId(ecs_world.create_entity().build());
     let updater = &ecs_world.read_resource::<LazyUpdate>();
+    let head_index = rng.gen::<usize>() % head_count;
     CharacterEntityBuilder::new(char_entity_id, "minion")
         .insert_npc_component(updater)
         .insert_sprite_render_descr_component(updater)
         .physics(
-            CharPhysicsEntityBuilder::new(pos2d)
-                .collision_group(CollisionGroup::Minion)
-                .circle(1.0),
+            pos2d,
             &mut ecs_world.write_resource::<PhysicEngine>(),
+            |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
         )
-        .char_state(
-            CharStateComponentBuilder::new()
-                .outlook(outlook.unwrap_or(CharOutlook::Player {
-                    sex,
-                    job_sprite_id: if job_id == JobId::MeleeMinion {
-                        JobSpriteId::SWORDMAN
-                    } else {
-                        JobSpriteId::ARCHER
-                    },
-                    head_index: rng.gen::<usize>() % head_count,
-                }))
-                .job_id(job_id)
-                .team(team),
-            updater,
-            &ecs_world.read_resource::<DevConfig>(),
-        );
+        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+            ch.outlook(outlook.clone().unwrap_or(CharOutlook::Player {
+                sex,
+                job_sprite_id: if job_id == JobId::MeleeMinion {
+                    JobSpriteId::SWORDMAN
+                } else {
+                    JobSpriteId::ARCHER
+                },
+                head_index,
+            }))
+            .job_id(job_id)
+            .team(team)
+        });
     char_entity_id
 }
 
@@ -582,13 +576,11 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
             let new_str_name = args.as_str(0).unwrap();
             let effect_id = {
                 let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
-                system_vars
-                    .asset_loader
-                    .load_effect(
-                        &system_vars.gl,
-                        new_str_name,
-                        &mut ecs_world.write_resource(),
-                    )
+                let gl = &ecs_world.read_resource::<Gl>();
+                let asset_loader = &ecs_world.read_resource::<AssetLoader>();
+
+                asset_loader
+                    .load_effect(gl, new_str_name, &mut ecs_world.write_resource())
                     .and_then(|str_file| {
                         let new_id = StrEffectId(system_vars.str_effects.len());
                         system_vars.str_effects.push(str_file);
@@ -1124,10 +1116,9 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                 // give him back it's physic component
                 let physics_component = CharacterEntityBuilder::new(target_char_id, "tmp")
                     .physics(
-                        CharPhysicsEntityBuilder::new(pos2d)
-                            .collision_group(CollisionGroup::Minion)
-                            .circle(1.0),
+                        pos2d,
                         &mut ecs_world.write_resource::<PhysicEngine>(),
+                        |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
                     )
                     .physics_handles
                     .unwrap();

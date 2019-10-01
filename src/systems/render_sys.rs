@@ -66,6 +66,7 @@ impl RenderDesktopClientSystem {
         system_benchmark: &mut SystemFrameDurations,
         asset_db: &AssetDatabase,
         render_only_chars: bool,
+        map_render_data: &MapRenderData,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
         {
@@ -144,7 +145,7 @@ impl RenderDesktopClientSystem {
                     .map(|it| it.controlled_char.pos())
                     .as_ref(),
                 &camera.camera,
-                &system_vars.map_render_data,
+                &map_render_data,
                 asset_db,
                 render_commands,
             );
@@ -271,23 +272,6 @@ impl RenderDesktopClientSystem {
                     }
                 }
             }
-        }
-        // TODO: into a separate system
-        {
-            //            let _stopwatch = system_benchmark.start_measurement("render.dyn_str_effect");
-            //            for (entity_id, str_effect) in (entities, dynamic_str_effect_storage).join() {
-            //                if str_effect.die_at.is_earlier_than(system_vars.time) {
-            //                    updater.remove::<StrEffectComponent>(entity_id);
-            //                } else {
-            //                    RenderDesktopClientSystem::render_str(
-            //                        str_effect.effect_type,
-            //                        str_effect.start_time,
-            //                        &str_effect.pos,
-            //                        system_vars,
-            //                        render_commands,
-            //                    );
-            //                }
-            //            }
         }
     }
 
@@ -644,6 +628,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, AssetDatabase>,
         specs::ReadStorage<'a, NpcComponent>,
         specs::ReadStorage<'a, BrowserClient>,
+        specs::ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
@@ -669,6 +654,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             asset_db,
             npc_storage,
             browser_storage,
+            map_render_data,
         ): Self::SystemData,
     ) {
         let join = {
@@ -727,6 +713,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &mut system_benchmark,
                     &asset_db,
                     render_only_chars,
+                    &map_render_data,
                 );
             }
 
@@ -770,6 +757,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &camera.camera.pos(),
                     browser_storage.get(controller_id.0).is_some(),
                     &asset_db,
+                    &map_render_data,
                 );
             }
         }

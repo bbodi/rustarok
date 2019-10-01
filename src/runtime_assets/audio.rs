@@ -11,6 +11,20 @@ pub struct Sounds {
     pub firewall: SoundId,
 }
 
+impl Sounds {
+    pub fn new_for_test() -> Sounds {
+        Sounds {
+            attack: DUMMY_SOUND_ID,
+            arrow_hit: DUMMY_SOUND_ID,
+            arrow_attack: DUMMY_SOUND_ID,
+            gun_attack: DUMMY_SOUND_ID,
+            stun: DUMMY_SOUND_ID,
+            heal: DUMMY_SOUND_ID,
+            firewall: DUMMY_SOUND_ID,
+        }
+    }
+}
+
 pub fn init_audio_and_load_sounds(
     sdl_context: &sdl2::Sdl,
     asset_loader: &AssetLoader,
@@ -22,18 +36,7 @@ pub fn init_audio_and_load_sounds(
         let sound_system = SoundSystem::new(sdl_audio, sound_store);
         (Some(sound_system), sounds)
     } else {
-        (
-            None,
-            Sounds {
-                attack: DUMMY_SOUND_ID,
-                arrow_hit: DUMMY_SOUND_ID,
-                arrow_attack: DUMMY_SOUND_ID,
-                gun_attack: DUMMY_SOUND_ID,
-                stun: DUMMY_SOUND_ID,
-                heal: DUMMY_SOUND_ID,
-                firewall: DUMMY_SOUND_ID,
-            },
-        )
+        (None, Sounds::new_for_test())
     };
 }
 

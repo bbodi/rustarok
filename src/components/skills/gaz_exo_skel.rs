@@ -119,7 +119,7 @@ impl Status for ExoSkeletonStatus {
         entities: &Entities,
         updater: &mut LazyUpdate,
         system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        physics_world: &mut PhysicEngine,
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
             bullet_type: WeaponType::SilverBullet,

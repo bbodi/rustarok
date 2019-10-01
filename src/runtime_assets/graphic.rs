@@ -1,5 +1,5 @@
 use crate::asset::database::AssetDatabase;
-use crate::asset::texture::{GlTexture, TextureId};
+use crate::asset::texture::{GlTexture, TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::measure_time;
 use crate::components::char::CharActionIndex;
@@ -18,7 +18,6 @@ use std::string::ToString;
 use strum::IntoEnumIterator;
 
 pub struct Texts {
-    // TODO: texture id instead?
     pub skill_name_texts: HashMap<Skills, TextureId>,
     pub skill_key_texts: HashMap<SkillKey, TextureId>,
     pub custom_texts: HashMap<String, TextureId>,
@@ -26,6 +25,20 @@ pub struct Texts {
     pub attack_blocked: TextureId,
     pub minus: TextureId,
     pub plus: TextureId,
+}
+
+impl Texts {
+    pub fn new_for_test() -> Texts {
+        Texts {
+            skill_name_texts: Default::default(),
+            skill_key_texts: Default::default(),
+            custom_texts: Default::default(),
+            attack_absorbed: DUMMY_TEXTURE_ID_FOR_TEST,
+            attack_blocked: DUMMY_TEXTURE_ID_FOR_TEST,
+            minus: DUMMY_TEXTURE_ID_FOR_TEST,
+            plus: DUMMY_TEXTURE_ID_FOR_TEST,
+        }
+    }
 }
 
 pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDatabase) -> Sprites {
