@@ -6,8 +6,8 @@ use crate::asset::rsm::Rsm;
 use crate::asset::rsw::Rsw;
 use crate::asset::spr::SpriteFile;
 use crate::asset::str::StrFile;
+use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId};
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::video::{GlNativeTextureId, GlTexture};
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use libflate::zlib::Decoder;
@@ -31,6 +31,7 @@ pub mod rsm;
 pub mod rsw;
 pub mod spr;
 pub mod str;
+pub mod texture;
 
 const GRF_HEADER_SIZE: usize = 15 + 15 + 4 * 4;
 
@@ -72,6 +73,10 @@ impl AssetLoader {
                     .into_iter()
                     .enumerate()
                     .map(|(file_index, mut buf)| {
+                        log::info!(
+                            "Loading {}",
+                            paths[file_index].as_ref().to_str().unwrap_or("")
+                        );
                         let signature = buf.string(15);
                         let _key = buf.string(15);
                         let file_table_offset = buf.next_u32();
@@ -200,14 +205,14 @@ impl AssetLoader {
         &self,
         gl: &Gl,
         effect_name: &str,
-        asset_database: &mut AssetDatabase,
+        asset_db: &mut AssetDatabase,
     ) -> Result<StrFile, String> {
         let file_name = format!("data\\texture\\effect\\{}.str", effect_name);
         let content = self.get_content(&file_name)?;
         return Ok(StrFile::load(
             gl,
             &self,
-            asset_database,
+            asset_db,
             BinaryReader::from_vec(content),
             effect_name,
         ));
@@ -283,11 +288,10 @@ impl AssetLoader {
         surface: sdl2::surface::Surface,
         min_mag: MyGlEnum,
         asset_db: &mut AssetDatabase,
-    ) -> GlTexture {
+    ) -> TextureId {
         let ret = AssetLoader::create_texture_from_surface_inner(gl, surface, min_mag);
-        asset_db.register_texture(gl, &name, &[&ret]);
         log::trace!("Texture was created loaded: {}", name);
-        ret
+        return asset_db.register_texture(gl, &name, ret);
     }
 
     pub fn create_texture_from_data(
@@ -297,12 +301,12 @@ impl AssetLoader {
         width: i32,
         height: i32,
         asset_db: &mut AssetDatabase,
-    ) -> GlTexture {
+    ) -> TextureId {
         let mut texture_id = GlNativeTextureId(0);
         unsafe {
             gl.GenTextures(1, &mut texture_id.0);
             log::debug!("Texture from_data {}", texture_id.0);
-            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
+            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id);
             gl.TexImage2D(
                 MyGlEnum::TEXTURE_2D,
                 0,                     // Pyramid level (for mip-mapping) - 0 is the top level
@@ -328,8 +332,7 @@ impl AssetLoader {
         }
         let texture = GlTexture::new(gl, texture_id, width, height);
 
-        asset_db.register_texture(gl, &name, &[&texture]);
-        return texture;
+        return asset_db.register_texture(gl, &name, texture);
     }
 
     pub fn load_texture(
@@ -338,7 +341,7 @@ impl AssetLoader {
         path: &str,
         min_mag: MyGlEnum,
         asset_db: &mut AssetDatabase,
-    ) -> Result<GlTexture, String> {
+    ) -> Result<TextureId, String> {
         let surface = self.load_sdl_surface(&path);
         return surface.map(|surface| {
             AssetLoader::create_texture_from_surface(gl, path, surface, min_mag, asset_db)
@@ -368,7 +371,7 @@ impl AssetLoader {
         let mut texture_id = GlNativeTextureId(0);
         unsafe {
             gl.GenTextures(1, &mut texture_id.0);
-            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
+            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id);
             gl.TexImage2D(
                 MyGlEnum::TEXTURE_2D,
                 0,                     // Pyramid level (for mip-mapping) - 0 is the top level
@@ -426,12 +429,17 @@ impl AssetLoader {
         let content = self.get_content(&format!("{}.act", path))?;
         let action = ActionFile::load(BinaryReader::from_vec(content));
 
-        let s = frames.iter().map(|it| it).collect::<Vec<_>>();
-        asset_db.register_texture(gl, &path.to_string(), s.as_slice());
+        let texture_ids = frames
+            .into_iter()
+            .enumerate()
+            .map(|(i, gl_texture)| {
+                asset_db.register_texture(gl, &format!("{}_{}", &path.to_string(), i), gl_texture)
+            })
+            .collect::<Vec<_>>();
 
         return Ok(SpriteResource {
             action,
-            textures: frames,
+            textures: texture_ids,
         });
     }
 
@@ -468,7 +476,7 @@ impl AssetLoader {
 #[derive(Clone)]
 pub struct SpriteResource {
     pub action: ActionFile,
-    pub textures: Vec<GlTexture>,
+    pub textures: Vec<TextureId>,
 }
 
 struct BinaryReader {

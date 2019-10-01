@@ -365,10 +365,13 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            ret = status
+            let body = status
                 .as_ref()
                 .unwrap()
                 .get_body_sprite(system_vars, job_id, sex);
+            if body.is_some() {
+                ret = body;
+            }
         }
         return ret;
     }

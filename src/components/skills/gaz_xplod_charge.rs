@@ -254,7 +254,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .sprite_3d()
                 .pos_2d(&self.end_pos)
                 .y(1.0)
-                .add(&assets.sprites.clock);
+                .add(assets.sprites.clock);
 
             // render area
             render_commands
@@ -262,7 +262,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .pos(&self.end_pos)
                 .rotation_rad(now.0 % 6.28)
                 .fix_size(self.configs.explosion_area * 2.0)
-                .add(&assets.sprites.magic_target);
+                .add(assets.sprites.magic_target);
         }
     }
 }

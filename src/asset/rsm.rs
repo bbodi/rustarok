@@ -1,8 +1,9 @@
 use crate::asset::database::AssetDatabase;
+use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
-use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
+use crate::video::{VertexArray, VertexAttribDefinition};
 use nalgebra::{
     Matrix3, Matrix4, Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3, Vector4,
 };
@@ -342,7 +343,7 @@ impl Rsm {
         shade_type: i32,
         is_only: bool,
         nodes: &Vec<RsmNode>,
-        textures: &Vec<(String, GlTexture)>,
+        textures: &Vec<(String, TextureId)>,
     ) -> (Vec<DataForRenderingSingleNode>, BoundingBox) {
         let mut real_bounding_box = BoundingBox::new();
         let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
@@ -417,14 +418,14 @@ impl Rsm {
     pub fn load_textures(
         gl: &Gl,
         asset_loader: &AssetLoader,
-        asset_database: &mut AssetDatabase,
+        asset_db: &mut AssetDatabase,
         texture_names: &Vec<String>,
-    ) -> Vec<(String, GlTexture)> {
+    ) -> Vec<(String, TextureId)> {
         texture_names
             .iter()
             .map(|texture_name| {
                 let path = format!("data\\texture\\{}", texture_name);
-                let ret = asset_database.get_texture(gl, &path).unwrap_or_else(|| {
+                let ret = asset_db.get_texture_id(gl, &path).unwrap_or_else(|| {
                     let surface = asset_loader.load_sdl_surface(&path);
                     log::trace!("Surface loaded: {}", path);
                     let surface = surface.unwrap_or_else(|e| {
@@ -436,7 +437,7 @@ impl Rsm {
                         &path,
                         surface,
                         MyGlEnum::NEAREST,
-                        asset_database,
+                        asset_db,
                     )
                 });
                 log::trace!("Texture was created loaded: {}", path);

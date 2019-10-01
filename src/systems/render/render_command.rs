@@ -1,7 +1,9 @@
+use crate::asset::database::AssetDatabase;
+use crate::asset::texture::TextureId;
 use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::video::{GlNativeTextureId, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::{HashMap, VecDeque};
@@ -369,7 +371,6 @@ impl<'a> Point2dCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct PartialCircle2dRenderCommand {
     pub(super) circumference_index: usize,
     pub(super) color: [u8; 4],
@@ -458,16 +459,13 @@ pub enum UiLayer2d {
     Cursor,
 }
 
-#[derive(Debug)]
 pub struct Texture2dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) offset: [i16; 2],
     pub(super) screen_pos: [i16; 2],
     pub(super) rotation_rad: f32,
     pub(super) scale: f32,
-    pub(super) texture: GlNativeTextureId,
-    pub(super) texture_width: i32,
-    pub(super) texture_height: i32,
+    pub(super) texture: TextureId,
     pub(super) layer: UiLayer2d,
 }
 
@@ -496,16 +494,20 @@ impl<'a> Texture2dRenderCommandCommandBuilder<'a> {
         }
     }
 
-    pub fn add(&mut self, texture: &GlTexture) {
+    pub fn add(&mut self, texture: TextureId) {
         self.collector
             .texture_2d_commands
             .push(Texture2dRenderCommand {
                 color: self.color,
-                scale: self.scale,
-                texture: texture.id(),
+                scale: if self.flip_vertically {
+                    -self.scale
+                } else {
+                    self.scale
+                },
+                texture,
                 offset: self.offset,
-                texture_width: (1 - self.flip_vertically as i32 * 2) * texture.width,
-                texture_height: texture.height,
+                //                texture_width: (1 - self.flip_vertically as i32 * 2) * texture.width,
+                //                texture_height: texture.height,
                 screen_pos: self.screen_pos,
                 rotation_rad: self.rotation_rad,
                 layer: self.layer,
@@ -558,7 +560,6 @@ impl<'a> Texture2dRenderCommandCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct Text2dRenderCommand {
     pub(super) text: String,
     pub(super) color: [u8; 4],
@@ -848,26 +849,17 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct HorizontalTexture3dRenderCommand {
     pub color: [u8; 4],
-    //    pub size: TextureSize,
-    pub w: f32,
-    pub h: f32,
+    pub size: TextureSizeSetting,
     pub pos: Vector2<f32>,
     pub rotation_rad: f32,
-    pub texture: GlNativeTextureId,
+    pub texture_id: TextureId,
 }
 
 #[derive(Clone, Copy)]
-enum TextureSizeSetting {
+pub enum TextureSizeSetting {
     Scale(f32),
-    FixSize(f32),
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum TextureSize {
-    Scale(u16, u16, f32),
     FixSize(f32),
 }
 
@@ -933,25 +925,11 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn add(&'a mut self, texture: &GlTexture) {
-        let (w, h) = match self.size {
-            TextureSizeSetting::Scale(scale) => (
-                (texture.width as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                (texture.height as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-            ),
-            TextureSizeSetting::FixSize(size) => (size, size),
-        };
+    pub fn add(&'a mut self, texture_id: TextureId) {
         let command = HorizontalTexture3dRenderCommand {
             color: self.color,
-            w,
-            h,
-            //            size: match self.size {
-            //                TextureSizeSetting::Scale(scale) => {
-            //                    TextureSize::Scale(texture.width as u16, texture.height as u16, scale)
-            //                }
-            //                TextureSizeSetting::FixSize(size) => TextureSize::FixSize(size),
-            //            },
-            texture: texture.id(),
+            size: self.size,
+            texture_id,
             pos: self.pos,
             rotation_rad: self.rotation_rad,
         };
@@ -959,16 +937,15 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct Sprite3dRenderCommand {
     pub color: [u8; 4],
     pub scale: f32,
     pub pos: Vector3<f32>,
     pub rot_radian: f32,
-    pub texture: GlNativeTextureId,
+    pub texture_id: TextureId,
     pub offset: [i16; 2],
-    pub texture_width: u16,
-    pub texture_height: u16,
+    //    pub texture_width: u16,
+    //    pub texture_height: u16,
     pub is_vertically_flipped: bool,
 }
 
@@ -977,9 +954,11 @@ impl Sprite3dRenderCommand {
         &self,
         view: &Matrix4<f32>,
         projection: &Matrix4<f32>,
+        asset_db: &AssetDatabase,
     ) -> SpriteBoundingRect {
-        let width = self.texture_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale;
-        let height = self.texture_height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale;
+        let texture = asset_db.get_texture(self.texture_id);
+        let width = texture.width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale;
+        let height = texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale;
         let offset_in_3d_space = [
             self.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale,
             self.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale,
@@ -1112,15 +1091,13 @@ impl<'a> Sprite3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn add(&'a mut self, texture: &GlTexture) {
+    pub fn add(&'a mut self, texture: TextureId) {
         let command = Sprite3dRenderCommand {
             color: self.color,
             scale: self.scale,
             offset: self.offset,
-            texture: texture.id(),
+            texture_id: texture,
             is_vertically_flipped: self.flip_vertically,
-            texture_width: texture.width as u16,
-            texture_height: texture.height as u16,
             pos: self.pos,
             rot_radian: self.rot_radian,
         };
@@ -1128,7 +1105,6 @@ impl<'a> Sprite3dRenderCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct Number3dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) scale: f32,
@@ -1212,7 +1188,6 @@ impl<'a> Number3dRenderCommandBuilder<'a> {
     }
 }
 
-#[derive(Debug)]
 pub struct ModelRenderCommand {
     pub(super) is_transparent: bool,
     pub(super) model_instance_index: usize,

@@ -35,7 +35,7 @@ impl<'a> specs::System<'a> for FalconRenderSys {
             camera_storage,
             mut render_commands_storage,
             mut audio_commands_storage,
-            asset_database,
+            asset_db,
         ): Self::SystemData,
     ) {
         for render_commands in (&mut render_commands_storage).join() {

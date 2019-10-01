@@ -1,4 +1,5 @@
 use crate::asset::str::StrFile;
+use crate::asset::texture::TextureId;
 use crate::asset::AssetLoader;
 use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
@@ -11,7 +12,7 @@ use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::Shaders;
-use crate::video::{ortho, GlTexture, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
 use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
@@ -52,10 +53,10 @@ pub enum Sex {
 
 pub struct Sprites {
     pub cursors: SpriteResource,
-    pub numbers: GlTexture,
-    pub magic_target: GlTexture,
-    pub fire_particle: GlTexture,
-    pub clock: GlTexture,
+    pub numbers: TextureId,
+    pub magic_target: TextureId,
+    pub fire_particle: TextureId,
+    pub clock: TextureId,
     pub ginseng_bullet: SpriteResource,
     pub exoskeleton: SpriteResource,
     pub arrow: SpriteResource,
@@ -73,8 +74,8 @@ pub struct AssetResources {
     pub sprites: Sprites,
     pub shaders: Shaders,
     pub texts: Texts,
-    pub skill_icons: HashMap<Skills, GlTexture>,
-    pub status_icons: HashMap<&'static str, GlTexture>,
+    pub skill_icons: HashMap<Skills, TextureId>,
+    pub status_icons: HashMap<&'static str, TextureId>,
     pub sounds: Sounds,
 }
 
@@ -125,8 +126,8 @@ impl SystemVariables {
         shaders: Shaders,
         render_matrices: RenderMatrices,
         map_render_data: MapRenderData,
-        status_icons: HashMap<&'static str, GlTexture>,
-        skill_icons: HashMap<Skills, GlTexture>,
+        status_icons: HashMap<&'static str, TextureId>,
+        skill_icons: HashMap<Skills, TextureId>,
         str_effects: Vec<StrFile>,
         sounds: Sounds,
         asset_loader: AssetLoader,

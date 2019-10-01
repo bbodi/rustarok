@@ -1,11 +1,13 @@
 use nalgebra::{Point3, Vector2};
 
+use crate::asset::database::AssetDatabase;
 use crate::components::char::{
     CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
 };
+use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
@@ -33,6 +35,7 @@ impl RenderUI {
         entities: &specs::Entities,
         camera_pos: &Point3<f32>,
         is_browser: bool,
+        asset_db: &AssetDatabase,
     ) {
         // Draw casting bar
         match self_char_state.state() {
@@ -60,7 +63,8 @@ impl RenderUI {
                     let percentage = system_vars
                         .time
                         .percentage_between(casting_info.cast_started, casting_info.cast_ends);
-                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[36, 92, 201, 255]); // inner fill
+                    draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[36, 92, 201, 255]);
+                    // inner fill
                 }
             }
             _ => {}
@@ -100,6 +104,7 @@ impl RenderUI {
             npc_storage,
             entities,
             camera_pos,
+            asset_db,
         );
 
         if !is_browser {
@@ -112,6 +117,7 @@ impl RenderUI {
                 render_commands,
                 UiLayer2d::Cursor,
                 1.0,
+                asset_db,
             );
         }
     }
@@ -125,26 +131,26 @@ impl RenderUI {
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
         camera_pos: &Point3<f32>,
+        asset_db: &AssetDatabase,
     ) {
         // prontera minimaps has empty spaces: left 52, right 45 pixels
         // 6 pixel padding on left and bottom, 7 on top and right
-        let scale = (VIDEO_HEIGHT as i32 / 4)
-            .min(system_vars.map_render_data.minimap_texture.height) as f32
-            / system_vars.map_render_data.minimap_texture.height as f32;
-        let all_minimap_w =
-            (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32;
+        let minimap_texture = asset_db.get_texture(system_vars.map_render_data.minimap_texture_id);
+        let scale = (VIDEO_HEIGHT as i32 / 4).min(minimap_texture.height) as f32
+            / minimap_texture.height as f32;
+        let all_minimap_w = (minimap_texture.width as f32 * scale) as i32;
         let minimap_render_x = VIDEO_WIDTH as i32 - all_minimap_w - 20;
         let offset_x = ((52.0 + 6.0) * scale) as i32;
         let minimap_x = minimap_render_x + offset_x;
-        let minimap_h = (system_vars.map_render_data.minimap_texture.height as f32 * scale) as i32;
+        let minimap_h = (minimap_texture.height as f32 * scale) as i32;
         let minimap_y = VIDEO_HEIGHT as i32 - minimap_h - 20;
         render_commands
             .sprite_2d()
             .scale(scale)
             .screen_pos(minimap_render_x, minimap_y)
             .layer(UiLayer2d::Minimap)
-            .add(&system_vars.map_render_data.minimap_texture);
-        let minimap_w = (system_vars.map_render_data.minimap_texture.width as f32 * scale) as i32
+            .add(system_vars.map_render_data.minimap_texture_id);
+        let minimap_w = (minimap_texture.width as f32 * scale) as i32
             - ((52.0 + 45.0 + 6.0 + 7.0) * scale) as i32;
         let real_to_map_scale_w =
             minimap_w as f32 / (system_vars.map_render_data.gnd.width * 2) as f32;
@@ -177,11 +183,12 @@ impl RenderUI {
             };
 
             if let Some((sex, head_index)) = head_index {
-                let head_texture = {
+                let head_texture_id = {
                     let sprites = &system_vars.assets.sprites.head_sprites;
-                    &sprites[sex as usize][head_index].textures[0]
+                    sprites[sex as usize][head_index].textures[0]
                 };
 
+                let head_texture = asset_db.get_texture(head_texture_id);
                 let center_offset_x = (head_texture.width as f32 * 0.7 / 2.0) as i32;
                 let center_offset_y = (head_texture.height as f32 * 0.7 / 2.0) as i32;
                 render_commands
@@ -193,7 +200,7 @@ impl RenderUI {
                     .color(color)
                     .scale(0.7)
                     .layer(UiLayer2d::MinimapImportantEntities)
-                    .add(head_texture);
+                    .add(head_texture_id);
 
                 let center_offset_x = (head_texture.width as f32 * 0.5 / 2.0) as i32;
                 let center_offset_y = (head_texture.height as f32 * 0.5 / 2.0) as i32;
@@ -205,7 +212,7 @@ impl RenderUI {
                     )
                     .scale(0.5)
                     .layer(UiLayer2d::MinimapImportantEntities)
-                    .add(head_texture);
+                    .add(head_texture_id);
             } else {
                 render_commands
                     .point_2d()
@@ -267,7 +274,7 @@ impl RenderUI {
         system_vars: &SystemVariables,
     ) {
         if let Some((_skill_key, skill)) = controller.select_skill_target {
-            let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+            let texture = system_vars.assets.texts.skill_name_texts[&skill];
             let not_castable = char_state
                 .skill_cast_allowed_at
                 .get(&skill)
@@ -283,7 +290,9 @@ impl RenderUI {
                     }),
                 )
                 .screen_pos(
-                    input.last_mouse_x as i32 - texture.width / 2,
+                    // TODO: asd, store the skill name w in the vec above
+                    //                    input.last_mouse_x as i32 - texture.width / 2,
+                    input.last_mouse_x as i32 - 30 / 2,
                     input.last_mouse_y as i32 + 32,
                 )
                 .layer(UiLayer2d::SelectingTargetSkillName)
@@ -366,11 +375,11 @@ impl RenderUI {
                     .screen_pos(x, icon_y)
                     .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32 * 2.0)
                     .layer(UiLayer2d::SkillBarIcon)
-                    .add(&system_vars.assets.skill_icons[&skill]);
+                    .add(system_vars.assets.skill_icons[&skill]);
 
-                let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
-                let center_x = -2 + x + single_icon_size - skill_key_texture.width;
-                let center_y = -2 + icon_y + single_icon_size - skill_key_texture.height;
+                let skill_key_texture_id = system_vars.assets.texts.skill_key_texts[&skill_key];
+                let center_x = -2 + x + single_icon_size - FONT_SIZE_SKILL_KEY;
+                let center_y = -2 + icon_y + single_icon_size - FONT_SIZE_SKILL_KEY;
                 render_commands
                     .sprite_2d()
                     .screen_pos(center_x, center_y)
@@ -381,7 +390,7 @@ impl RenderUI {
                     })
                     .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32)
                     .layer(UiLayer2d::SkillBarKey)
-                    .add(skill_key_texture);
+                    .add(skill_key_texture_id);
 
                 if input.mouse_pos().x > x as u16
                     && input.mouse_pos().x < (x + single_icon_size) as u16
@@ -389,7 +398,7 @@ impl RenderUI {
                     if input.mouse_pos().y > y as u16
                         && input.mouse_pos().y < (y + single_icon_size) as u16
                     {
-                        let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+                        let texture = system_vars.assets.texts.skill_name_texts[&skill];
                         render_commands
                             .sprite_2d()
                             .color(&[255, 255, 255, 255])
@@ -482,11 +491,11 @@ impl RenderUI {
                     .screen_pos(x, icon_y)
                     .scale(2.0)
                     .layer(UiLayer2d::SkillBarIcon)
-                    .add(&system_vars.assets.skill_icons[&skill]);
+                    .add(system_vars.assets.skill_icons[&skill]);
 
-                let skill_key_texture = &system_vars.assets.texts.skill_key_texts[&skill_key];
-                let center_x = -2 + x + single_icon_size - skill_key_texture.width;
-                let center_y = -2 + icon_y + single_icon_size - skill_key_texture.height;
+                let skill_key_texture = system_vars.assets.texts.skill_key_texts[&skill_key];
+                let center_x = -2 + x + single_icon_size - FONT_SIZE_SKILL_KEY;
+                let center_y = -2 + icon_y + single_icon_size - FONT_SIZE_SKILL_KEY;
                 render_commands
                     .sprite_2d()
                     .screen_pos(center_x, center_y)
@@ -504,7 +513,7 @@ impl RenderUI {
                     if input.mouse_pos().y > y as u16
                         && input.mouse_pos().y < (y + single_icon_size) as u16
                     {
-                        let texture = &system_vars.assets.texts.skill_name_texts[&skill];
+                        let texture = system_vars.assets.texts.skill_name_texts[&skill];
                         render_commands
                             .sprite_2d()
                             .color(&[255, 255, 255, 255])
@@ -530,6 +539,7 @@ fn render_action_2d(
     render_commands: &mut RenderCommandCollector,
     layer: UiLayer2d,
     scale: f32,
+    asset_db: &AssetDatabase,
 ) {
     let idx = animated_sprite.action_index;
     let action = &sprite_res.action.actions[idx];
@@ -547,15 +557,16 @@ fn render_action_2d(
         if layer.sprite_frame_index < 0 {
             continue;
         }
-        let texture = &sprite_res.textures[layer.sprite_frame_index as usize];
+        let texture_id = sprite_res.textures[layer.sprite_frame_index as usize];
 
-        // todo: don't we need layer.scale[0]?
-
-        let offset = [layer.pos[0], layer.pos[1]];
-        let offset = [
-            (offset[0] - (texture.width / 2)) as i16,
-            (offset[1] - (texture.height / 2)) as i16,
-        ];
+        let offset = {
+            let texture = asset_db.get_texture(texture_id);
+            let offset = [layer.pos[0], layer.pos[1]];
+            [
+                (offset[0] - (texture.width / 2)) as i16,
+                (offset[1] - (texture.height / 2)) as i16,
+            ]
+        };
 
         render_commands
             .sprite_2d()
@@ -565,6 +576,6 @@ fn render_action_2d(
             .flip_vertically(layer.is_mirror)
             .layer(UiLayer2d::Cursor)
             .offset(offset[0], offset[1])
-            .add(texture);
+            .add(texture_id);
     }
 }

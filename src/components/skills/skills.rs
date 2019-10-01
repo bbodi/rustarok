@@ -174,7 +174,7 @@ pub trait SkillDef {
                     .horizontal_texture_3d()
                     .rotation_rad(system_vars.time.0 % 6.28)
                     .pos(&target_char.pos())
-                    .add(&system_vars.assets.sprites.magic_target)
+                    .add(system_vars.assets.sprites.magic_target)
             }
         }
     }

@@ -178,7 +178,7 @@ impl Status for FalconCarryStatus {
                 .color_rgb(&[0, 255, 0])
                 .scale(0.5)
                 .pos(&self.end_pos)
-                .add(&system_vars.assets.sprites.falcon.textures[2])
+                .add(system_vars.assets.sprites.falcon.textures[2])
         }
     }
 

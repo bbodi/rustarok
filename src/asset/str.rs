@@ -1,7 +1,7 @@
 use crate::asset::database::AssetDatabase;
+use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
-use crate::video::GlTexture;
 use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::ByteWriter;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ pub struct StrFile {
     pub max_key: u32,
     pub fps: u32,
     pub layers: Vec<StrLayer>,
-    pub textures: Vec<GlTexture>,
+    pub textures: Vec<TextureId>,
 }
 
 pub struct StrLayer {
@@ -52,7 +52,7 @@ impl StrFile {
             .write_u16::<LittleEndian>(self.textures.len() as u16)
             .unwrap();
         for texture in &self.textures {
-            buffer.write_u32::<LittleEndian>(texture.id().0).unwrap();
+            buffer.write_u32::<LittleEndian>(texture.0 as u32).unwrap();
         }
         for layer in &self.layers {
             buffer
@@ -86,7 +86,7 @@ impl StrFile {
     pub(super) fn load(
         gl: &Gl,
         asset_loader: &AssetLoader,
-        asset_database: &mut AssetDatabase,
+        asset_db: &mut AssetDatabase,
         mut buf: BinaryReader,
         str_name: &str,
     ) -> Self {
@@ -121,7 +121,7 @@ impl StrFile {
         ];
 
         let mut texture_names_to_index: HashMap<String, usize> = HashMap::new();
-        let mut textures: Vec<GlTexture> = Vec::new();
+        let mut textures: Vec<TextureId> = Vec::new();
 
         let layers = (0..layer_num)
             .map(|_i| {
@@ -149,15 +149,15 @@ impl StrFile {
                                 );
                                 asset_loader.backup_surface()
                             });
-                            let texture = asset_database
-                                .get_texture(gl, &texture_name)
+                            let texture = asset_db
+                                .get_texture_id(gl, &texture_name)
                                 .unwrap_or_else(|| {
                                     AssetLoader::create_texture_from_surface(
                                         gl,
                                         &texture_name,
                                         surface,
                                         MyGlEnum::NEAREST,
-                                        asset_database,
+                                        asset_db,
                                     )
                                 });
                             textures.push(texture);

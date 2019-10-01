@@ -1,4 +1,5 @@
 use crate::asset::database::AssetDatabase;
+use crate::asset::texture::{GlTexture, TextureId};
 use crate::asset::AssetLoader;
 use crate::my_gl::{Gl, MyGlEnum};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -6,16 +7,12 @@ use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
 use nalgebra::{Matrix3, Matrix4};
-use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::BlendMode;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::Window;
 use sdl2::EventPump;
-use serde::Serialize;
 use std::ffi::{CStr, CString};
-use std::fmt::Display;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
-use std::path::Path;
 use std::sync::Arc;
 
 pub struct Video {
@@ -83,18 +80,18 @@ impl Video {
         gl: &Gl,
         font: &sdl2::ttf::Font<'a, 'b>,
         text: &str,
-        asset_database: &mut AssetDatabase,
-    ) -> GlTexture {
+        asset_db: &mut AssetDatabase,
+    ) -> TextureId {
         let surface = font
             .render(text)
-            .blended(Color::RGBA(255, 255, 255, 255))
+            .blended(sdl2::pixels::Color::RGBA(255, 255, 255, 255))
             .unwrap();
         return AssetLoader::create_texture_from_surface(
             gl,
             &format!("text_{}", text),
             surface,
             MyGlEnum::LINEAR,
-            asset_database,
+            asset_db,
         );
     }
 
@@ -105,7 +102,7 @@ impl Video {
     ) -> GlTexture {
         let surface = font
             .render(text)
-            .blended(Color::RGBA(255, 255, 255, 255))
+            .blended(sdl2::pixels::Color::RGBA(255, 255, 255, 255))
             .unwrap();
         return AssetLoader::create_texture_from_surface_inner(gl, surface, MyGlEnum::LINEAR);
     }
@@ -115,22 +112,22 @@ impl Video {
         font: &sdl2::ttf::Font<'a, 'b>,
         outline_font: &sdl2::ttf::Font<'a, 'b>,
         text: &str,
-        asset_database: &mut AssetDatabase,
-    ) -> GlTexture {
+        asset_db: &mut AssetDatabase,
+    ) -> TextureId {
         let key = format!(
             "outlinetext_{}_{}_{}",
             text,
             font.height(),
             outline_font.get_outline_width()
         );
-        return asset_database.get_texture(gl, &key).unwrap_or_else(|| {
+        return asset_db.get_texture_id(gl, &key).unwrap_or_else(|| {
             let mut bg_surface = outline_font
                 .render(text)
-                .blended(Color::RGBA(0, 0, 0, 255))
+                .blended(sdl2::pixels::Color::RGBA(0, 0, 0, 255))
                 .unwrap();
             let mut fg_surface = font
                 .render(text)
-                .blended(Color::RGBA(255, 255, 255, 255))
+                .blended(sdl2::pixels::Color::RGBA(255, 255, 255, 255))
                 .unwrap();
             fg_surface.set_blend_mode(BlendMode::Blend).unwrap();
             fg_surface
@@ -150,7 +147,7 @@ impl Video {
                 &key,
                 bg_surface,
                 MyGlEnum::NEAREST,
-                asset_database,
+                asset_db,
             )
         });
     }
@@ -168,81 +165,6 @@ pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32
     mat[(2, 3)] = -(zfar + znear) / (zfar - znear);
 
     mat
-}
-
-struct GlTextureContext {
-    native_id: GlNativeTextureId,
-    gl_for_drop: Gl,
-}
-
-impl Drop for GlTextureContext {
-    fn drop(&mut self) {
-        unsafe {
-            self.gl_for_drop
-                .DeleteTextures(1, &(self.native_id).0 as *const c_uint)
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct GlTexture {
-    context: Arc<GlTextureContext>,
-    pub width: i32,
-    pub height: i32,
-}
-
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, Serialize)]
-pub struct GlNativeTextureId(pub c_uint);
-
-impl GlTexture {
-    pub fn new(gl: &Gl, texture_id: GlNativeTextureId, width: i32, height: i32) -> GlTexture {
-        GlTexture {
-            context: Arc::new(GlTextureContext {
-                native_id: texture_id,
-                gl_for_drop: gl.clone(),
-            }),
-            width,
-            height,
-        }
-    }
-
-    pub fn id(&self) -> GlNativeTextureId {
-        (self.context.native_id).clone()
-    }
-
-    pub fn bind(&self, gl: &Gl, texture_index: MyGlEnum) {
-        unsafe {
-            gl.ActiveTexture(texture_index);
-            gl.BindTexture(MyGlEnum::TEXTURE_2D, (self.context.native_id).0);
-        }
-    }
-
-    pub fn from_file<P: AsRef<Path>>(
-        gl: &Gl,
-        path: P,
-        asset_database: &mut AssetDatabase,
-    ) -> GlTexture
-    where
-        P: Display,
-    {
-        use sdl2::image::LoadSurface;
-        let mut surface = sdl2::surface::Surface::from_file(&path).unwrap();
-        let mut optimized_surf =
-            sdl2::surface::Surface::new(surface.width(), surface.height(), PixelFormatEnum::RGBA32)
-                .unwrap();
-        surface
-            .set_color_key(true, Color::RGB(255, 0, 255))
-            .unwrap();
-        surface.blit(None, &mut optimized_surf, None).unwrap();
-        log::trace!("Texture from file --> {}", &path);
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            &path.to_string(),
-            optimized_surf,
-            MyGlEnum::NEAREST,
-            asset_database,
-        );
-    }
 }
 
 #[derive(Clone, Debug)]

@@ -200,7 +200,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
             .sprite_3d()
             .pos_2d(&self.pos)
             .y(2.0)
-            .add(&assets.sprites.fire_particle);
+            .add(assets.sprites.fire_particle);
     }
 }
 

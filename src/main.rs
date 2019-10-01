@@ -121,6 +121,7 @@ pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) a
 //3xos gyorsitás = 1 frame alatt 3x annyi minden történik (3 physics etc
 
 fn main() {
+    log::info!("Loading config file config.toml");
     let config = AppConfig::new().expect("Could not load config file ('config.toml')");
     let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
     let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
@@ -132,13 +133,14 @@ fn main() {
         LevelFilter::from_str(&config.log_level)
             .expect("Unknown log level. Please set one of the following values for 'log_level' in 'config.toml': \"OFF\", \"ERROR\", \"WARN\", \"INFO\", \"DEBUG\", \"TRACE\"")
     );
+    log::info!("Loading GRF files");
     let (elapsed, asset_loader) = measure_time(|| {
         AssetLoader::new(config.grf_paths.as_slice())
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
     log::info!("GRF loading: {}ms", elapsed.as_millis());
 
-    let mut asset_database = AssetDatabase::new();
+    let mut asset_db = AssetDatabase::new();
 
     let mut map_name_filter = ImString::new("prontera");
     let mut filtered_map_names: Vec<String> = vec![];
@@ -159,7 +161,7 @@ fn main() {
         &gl,
         map_name,
         &asset_loader,
-        &mut asset_database,
+        &mut asset_db,
         config.quick_startup,
     );
 
@@ -169,17 +171,17 @@ fn main() {
     let mut ecs_world = create_ecs_world();
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
-    let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_database);
+    let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_db);
     let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
     let (maybe_sound_system, sounds) = init_audio_and_load_sounds(&sdl_context, &asset_loader);
     let system_vars = SystemVariables::new(
-        load_sprites(&gl, &asset_loader, &mut asset_database),
-        load_texts(&gl, &ttf_context, &mut asset_database),
+        load_sprites(&gl, &asset_loader, &mut asset_db),
+        load_texts(&gl, &ttf_context, &mut asset_db),
         load_shaders(&gl),
         render_matrices,
         map_render_data,
-        load_status_icons(&gl, &asset_loader, &mut asset_database),
-        load_skill_icons(&gl, &asset_loader, &mut asset_database),
+        load_status_icons(&gl, &asset_loader, &mut asset_db),
+        load_skill_icons(&gl, &asset_loader, &mut asset_db),
         str_effects,
         sounds,
         asset_loader,
@@ -255,7 +257,7 @@ fn main() {
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
 
-    ecs_world.add_resource(asset_database);
+    ecs_world.add_resource(asset_db);
 
     ecs_world.add_resource(CollisionsFromPrevFrame {
         collisions: HashMap::new(),

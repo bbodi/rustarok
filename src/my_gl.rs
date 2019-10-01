@@ -1,5 +1,6 @@
 extern crate singleton_gl_dont_use_it as gl;
 
+use crate::asset::texture::GlNativeTextureId;
 use singleton_gl_dont_use_it::types::*;
 use std::os::raw::c_void;
 
@@ -132,8 +133,8 @@ impl Gl {
         gl::DrawArrays(mode as u32, first, count);
     }
 
-    pub unsafe fn BindTexture(&self, target: MyGlEnum, texture: GLuint) {
-        gl::BindTexture(target as u32, texture);
+    pub unsafe fn BindTexture(&self, target: MyGlEnum, texture: GlNativeTextureId) {
+        gl::BindTexture(target as u32, texture.0);
     }
 
     pub unsafe fn ActiveTexture(&self, texture: MyGlEnum) {

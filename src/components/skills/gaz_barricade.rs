@@ -22,6 +22,7 @@ impl SkillDef for GazBarricadeSkill {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_cartcannon.bmp"
     }
 
+    // TODO 2 barricade ne lehessen egy kockán
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,

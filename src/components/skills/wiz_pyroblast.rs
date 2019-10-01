@@ -103,7 +103,7 @@ impl SkillDef for WizPyroBlastSkill {
                         * casting_percentage)
                         .max(0.5),
                 )
-                .add(&system_vars.assets.sprites.magic_target)
+                .add(system_vars.assets.sprites.magic_target)
         }
         let anim_descr = SpriteRenderDescriptorComponent {
             action_index: 16,
@@ -271,7 +271,7 @@ impl Status for PyroBlastTargetStatus {
             .pos(&char_state.pos())
             .rotation_rad(system_vars.time.0 % 6.28)
             .fix_size(self.splash_radius * 2.0)
-            .add(&system_vars.assets.sprites.magic_target);
+            .add(system_vars.assets.sprites.magic_target);
     }
 
     fn typ(&self) -> StatusNature {

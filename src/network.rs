@@ -39,7 +39,7 @@ pub fn handle_new_connections(
                     "screen_width": VIDEO_WIDTH,
                     "screen_height": VIDEO_HEIGHT,
                     "map_name": map_name,
-                    "asset_database": serde_json::to_value(asset_db).unwrap(),
+                    "asset_db": serde_json::to_value(asset_db).unwrap(),
                     "effect_names": StrEffectType::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
                     "ground": json!({
                         "light_dir" : system_vars.map_render_data.rsw.light.direction,

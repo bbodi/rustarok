@@ -132,7 +132,6 @@ impl WebSocketBrowserRenderSystem {
         send_buffer: &mut Vec<u8>,
         render_commands: &Vec<Text2dRenderCommand>,
     ) {
-
     }
 
     fn send_2d_rectangle_commands(
@@ -253,10 +252,11 @@ impl WebSocketBrowserRenderSystem {
                 .write_f32::<LittleEndian>(command.rotation_rad)
                 .unwrap();
             send_buffer
-                .write_u32::<LittleEndian>(command.texture.0 as u32)
+                .write_u32::<LittleEndian>(command.texture_id.as_u32())
                 .unwrap();
-            send_buffer.write_f32::<LittleEndian>(command.w).unwrap();
-            send_buffer.write_f32::<LittleEndian>(command.h).unwrap();
+            // TODO: asd
+            //            send_buffer.write_f32::<LittleEndian>(command.w).unwrap();
+            //            send_buffer.write_f32::<LittleEndian>(command.h).unwrap();
         }
     }
 
@@ -340,7 +340,7 @@ impl WebSocketBrowserRenderSystem {
                 .write_f32::<LittleEndian>(command.scale)
                 .unwrap();
             let packed_int: u32 =
-                ((command.is_vertically_flipped as u32) << 31) | command.texture.0 as u32;
+                ((command.is_vertically_flipped as u32) << 31) | command.texture_id.as_u32();
 
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
         }
@@ -431,7 +431,7 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_i16::<LittleEndian>(command.screen_pos[1])
                 .unwrap();
-            let packed_int: u32 = ((command.layer as u32) << 24) | command.texture.0 as u32;
+            let packed_int: u32 = ((command.layer as u32) << 24) | command.texture.as_u32();
             send_buffer.write_u32::<LittleEndian>(packed_int).unwrap();
 
             send_buffer

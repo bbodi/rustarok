@@ -64,7 +64,7 @@ impl RenderDesktopClientSystem {
         str_effect_storage: &specs::ReadStorage<'a, StrEffectComponent>,
         updater: &specs::Write<'a, LazyUpdate>,
         system_benchmark: &mut SystemFrameDurations,
-        asset_database: &AssetDatabase,
+        asset_db: &AssetDatabase,
         render_only_chars: bool,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
@@ -79,6 +79,7 @@ impl RenderDesktopClientSystem {
                 char_state_storage,
                 entities,
                 sprite_storage,
+                asset_db,
             );
         }
 
@@ -144,7 +145,7 @@ impl RenderDesktopClientSystem {
                     .as_ref(),
                 &camera.camera,
                 &system_vars.map_render_data,
-                asset_database,
+                asset_db,
                 render_commands,
             );
         }
@@ -343,6 +344,7 @@ impl RenderDesktopClientSystem {
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
+        asset_db: &AssetDatabase,
     ) {
         // Draw players
         for (rendering_entity_id, animated_sprite, char_state) in
@@ -458,6 +460,7 @@ impl RenderDesktopClientSystem {
                         render_command.project_to_screen(
                             &camera.view_matrix,
                             &system_vars.matrices.projection,
+                            &asset_db,
                         )
                     };
                     let _head_pos_offset = render_single_layer_action(
@@ -478,6 +481,7 @@ impl RenderDesktopClientSystem {
                         let head_bounding_rect = render_command.project_to_screen(
                             &camera.view_matrix,
                             &system_vars.matrices.projection,
+                            asset_db,
                         );
                         body_bounding_rect.merge(&head_bounding_rect);
                     };
@@ -564,6 +568,7 @@ impl RenderDesktopClientSystem {
                         render_command.project_to_screen(
                             &camera.view_matrix,
                             &system_vars.matrices.projection,
+                            asset_db,
                         )
                     };
                     if !char_state.state().is_dead() {
@@ -661,7 +666,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             sound_effects,
             mut render_commands_storage,
             mut audio_commands_storage,
-            asset_database,
+            asset_db,
             npc_storage,
             browser_storage,
         ): Self::SystemData,
@@ -720,7 +725,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &str_effect_storage,
                     &updater,
                     &mut system_benchmark,
-                    &asset_database,
+                    &asset_db,
                     render_only_chars,
                 );
             }
@@ -764,6 +769,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &entities,
                     &camera.camera.pos(),
                     browser_storage.get(controller_id.0).is_some(),
+                    &asset_db,
                 );
             }
         }
@@ -846,7 +852,7 @@ pub fn render_single_layer_action<'a>(
         color[i] = (color[i] as u32 * layer.color[i] as u32 / 255) as u8;
     }
 
-    let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
+    let sprite_texture = sprite_res.textures[layer.sprite_frame_index as usize];
     render_commands
         .sprite_3d()
         .pos(&pos)
@@ -855,7 +861,7 @@ pub fn render_single_layer_action<'a>(
         .offset(offset)
         .color(&color)
         .flip_vertically(layer.is_mirror)
-        .add(&sprite_texture);
+        .add(sprite_texture);
 
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
@@ -943,7 +949,7 @@ pub fn render_action(
             color[i] = (color[i] as u32 * layer.color[i] as u32 / 255) as u8;
         }
 
-        let sprite_texture = &sprite_res.textures[layer.sprite_frame_index as usize];
+        let sprite_texture = sprite_res.textures[layer.sprite_frame_index as usize];
         render_commands
             .sprite_3d()
             .pos_2d(&pos)
@@ -952,7 +958,7 @@ pub fn render_action(
             .offset(offset)
             .color(&color)
             .flip_vertically(layer.is_mirror)
-            .add(&sprite_texture);
+            .add(sprite_texture);
     }
     // TODO: put 0,0 manually on startup if it is empty
     let anim_pos = frame
@@ -971,7 +977,7 @@ fn render_models(
     char_pos: Option<&Vector2<f32>>,
     camera: &Camera,
     map_render_data: &MapRenderData,
-    asset_database: &AssetDatabase,
+    asset_db: &AssetDatabase,
     render_commands: &mut RenderCommandCollector,
 ) {
     // cam area is [-20;20] width and [70;5] height
@@ -990,7 +996,7 @@ fn render_models(
             {
                 continue;
             }
-            let model_render_data = asset_database.get_model(model_instance.asset_db_model_index);
+            let model_render_data = asset_db.get_model(model_instance.asset_db_model_index);
             let alpha = if let Some(char_pos) = char_pos {
                 if (max.x > char_pos.x && min.x < char_pos.x)
                     && char_pos.y <= min.z // character is behind
@@ -1098,8 +1104,8 @@ impl DamageRenderSystem {
             | FlyingNumberType::Combo { .. }
             | FlyingNumberType::Mana
             | FlyingNumberType::Crit => digit_count as f32,
-            FlyingNumberType::Block => assets.texts.attack_blocked.width as f32,
-            FlyingNumberType::Absorb => assets.texts.attack_absorbed.width as f32,
+            FlyingNumberType::Block => 100.0,
+            FlyingNumberType::Absorb => 120.0,
         };
 
         let perc = now
@@ -1240,7 +1246,7 @@ impl DamageRenderSystem {
                     .scale(size_mult)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add(&assets.texts.attack_blocked);
+                    .add(assets.texts.attack_blocked);
             }
             FlyingNumberType::Absorb => {
                 render_commands
@@ -1249,7 +1255,7 @@ impl DamageRenderSystem {
                     .scale(size_mult)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add(&assets.texts.attack_absorbed);
+                    .add(assets.texts.attack_absorbed);
             }
         };
     }
@@ -1390,17 +1396,19 @@ impl RenderDesktopClientSystem {
         }
 
         // draw status indicator icons
+        const ICON_WIDTH: i32 = 24;
         if char_state.attrib_bonuses().attrs.armor.is_not_zero() {
             let armor_bonus = char_state.attrib_bonuses().attrs.armor.as_i16();
-            let shield_icon_texture = &assets.status_icons["shield"];
+            let shield_icon_texture = assets.status_icons["shield"];
             let x = bar_x + bar_w + 1;
             let y = bounding_rect_2d.top_right[1] - 30;
+            // icon size is 24x24
             render_commands
                 .sprite_2d()
                 .color(&COLOR_WHITE)
                 .screen_pos(x, y)
                 .layer(UiLayer2d::StatusIndicators)
-                .offset(0, (-shield_icon_texture.height / 2) as i16)
+                .offset(0, -(ICON_WIDTH as i16) / 2)
                 .add(shield_icon_texture);
 
             // progress bar
@@ -1415,7 +1423,7 @@ impl RenderDesktopClientSystem {
                 char_state.attrib_bonuses().durations.armor_bonus_ends_at,
             ) * 100.0) as i32;
             let index = (100 - perc).max(1) as usize;
-            let x = bar_x + bar_w + shield_icon_texture.width / 2 + 1;
+            let x = bar_x + bar_w + ICON_WIDTH / 2 + 1;
             let y = bounding_rect_2d.top_right[1] - 30;
 
             render_commands
@@ -1426,7 +1434,7 @@ impl RenderDesktopClientSystem {
                 .circumference_percentage(index)
                 .add();
 
-            let text_texture = &assets.texts.custom_texts[&armor_bonus.to_string()];
+            let text_texture = assets.texts.custom_texts[&armor_bonus.to_string()];
 
             render_commands
                 .sprite_2d()

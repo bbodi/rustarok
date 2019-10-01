@@ -602,15 +602,15 @@ impl Percentage {
     }
 
     pub fn add_me_to(&self, num: i32) -> i32 {
-        let change =
-            num * PERCENTAGE_FACTOR / 100 * self.value / PERCENTAGE_FACTOR / PERCENTAGE_FACTOR;
-        return num + change;
+        let f = PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return num + (change as i32);
     }
 
     pub fn subtract_me_from(&self, num: i32) -> i32 {
-        let change =
-            num * PERCENTAGE_FACTOR / 100 * self.value / PERCENTAGE_FACTOR / PERCENTAGE_FACTOR;
-        return num - change;
+        let f = PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return num - (change as i32);
     }
 
     pub fn add(&mut self, p: Percentage) {
@@ -650,7 +650,9 @@ mod tests {
         assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
         assert_eq!(Percentage(-10).add_me_to(200), 180);
         assert_eq!(Percentage(50).add_me_to(76), 114);
+        assert_eq!(Percentage(50).add_me_to(10_000), 15_000);
         assert_eq!(Percentage(10).subtract_me_from(200), 180);
+        assert_eq!(Percentage(40).subtract_me_from(10_000), 6_000);
         assert_eq!(Percentage(70).subtract_me_from(600), 180);
         assert_eq!(Percentage(50).subtract_me_from(76), 38);
         assert_eq!(Percentage(100).as_f32(), 1.0);

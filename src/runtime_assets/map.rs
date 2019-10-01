@@ -3,10 +3,11 @@ use crate::asset::gat::{CellType, Gat};
 use crate::asset::gnd::Gnd;
 use crate::asset::rsm::{BoundingBox, Rsm};
 use crate::asset::rsw::{Rsw, WaterData};
+use crate::asset::texture::TextureId;
 use crate::asset::AssetLoader;
 use crate::common::measure_time;
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::video::{GlTexture, VertexArray, VertexAttribDefinition};
+use crate::video::{VertexArray, VertexAttribDefinition};
 use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
@@ -51,18 +52,18 @@ pub struct MapRenderData {
     pub use_lighting: bool,
     pub ground_vertex_array: VertexArray,
     pub centered_sprite_vertex_array: VertexArray,
-    pub sprite_vertex_array: VertexArray,
+    pub bottom_left_sprite_vertex_array: VertexArray,
     pub rectangle_vertex_array: VertexArray,
-    pub texture_atlas: GlTexture,
-    pub tile_color_texture: GlTexture,
-    pub lightmap_texture: GlTexture,
+    pub texture_atlas: TextureId,
+    pub tile_color_texture: TextureId,
+    pub lightmap_texture: TextureId,
     pub model_instances: Vec<ModelInstance>,
     pub draw_models: bool,
     pub draw_ground: bool,
     pub ground_walkability_mesh: VertexArray,
     pub ground_walkability_mesh2: VertexArray,
     pub ground_walkability_mesh3: VertexArray,
-    pub minimap_texture: GlTexture,
+    pub minimap_texture_id: TextureId,
 }
 
 pub struct ModelRenderData {
@@ -76,7 +77,7 @@ pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
 #[derive(Clone)]
 pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
-    pub texture: GlTexture,
+    pub texture: TextureId,
     pub texture_name: String, // todo: why does it store texture name?
 }
 
@@ -86,16 +87,16 @@ struct GroundLoadResult {
     ground_walkability_mesh2: VertexArray,
     ground_walkability_mesh3: VertexArray,
     ground: Gnd,
-    texture_atlas: GlTexture,
-    tile_color_texture: GlTexture,
-    lightmap_texture: GlTexture,
+    texture_atlas: TextureId,
+    tile_color_texture: TextureId,
+    lightmap_texture: TextureId,
 }
 
 pub fn load_map(
     gl: &Gl,
     map_name: &str,
     asset_loader: &AssetLoader,
-    asset_database: &mut AssetDatabase,
+    asset_db: &mut AssetDatabase,
     quick_loading: bool,
 ) -> (MapRenderData, PhysicEngine) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
@@ -157,7 +158,7 @@ pub fn load_map(
         &world.water,
         &colliders,
         asset_loader,
-        asset_database,
+        asset_db,
     );
 
     ////////////////////////////
@@ -186,7 +187,7 @@ pub fn load_map(
                 .iter()
                 .map(|(name, rsm)| {
                     let textures =
-                        Rsm::load_textures(gl, &asset_loader, asset_database, &rsm.texture_names);
+                        Rsm::load_textures(gl, &asset_loader, asset_db, &rsm.texture_names);
                     log::trace!("{} textures loaded for model {}", textures.len(), name);
                     let (data_for_rendering_full_model, bbox): (
                         Vec<DataForRenderingSingleNode>,
@@ -211,7 +212,7 @@ pub fn load_map(
                 .collect::<HashMap<String, ModelRenderData>>()
         });
         log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
-        asset_database.register_models(model_render_datas);
+        asset_db.register_models(model_render_datas);
     };
 
     let model_instances_iter = if quick_loading {
@@ -266,8 +267,8 @@ pub fn load_map(
             instance_matrix = rotation * instance_matrix;
             only_transition_matrix = rotation * only_transition_matrix;
 
-            let model_db_index = asset_database.get_model_index(&model_instance.filename);
-            let model_render_data = asset_database.get_model(model_db_index);
+            let model_db_index = asset_db.get_model_index(&model_instance.filename);
+            let model_render_data = asset_db.get_model(model_db_index);
             let tmin = only_transition_matrix
                 .transform_point(&model_render_data.bounding_box.min)
                 .coords;
@@ -354,7 +355,7 @@ pub fn load_map(
         .set_contact_model(Box::new(SignoriniModel::new()));
 
     let path = format!("data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\map\\{}.bmp", map_name);
-    let minimap_texture = asset_database.get_texture(gl, &path).unwrap_or_else(|| {
+    let minimap_texture = asset_db.get_texture_id(gl, &path).unwrap_or_else(|| {
         let surface = asset_loader.load_sdl_surface(&path);
         log::trace!("Surface loaded: {}", path);
         let mut surface = surface.unwrap_or_else(|e| {
@@ -379,20 +380,14 @@ pub fn load_map(
                 }
             }
         });
-        AssetLoader::create_texture_from_surface(
-            gl,
-            &path,
-            surface,
-            MyGlEnum::NEAREST,
-            asset_database,
-        )
+        AssetLoader::create_texture_from_surface(gl, &path, surface, MyGlEnum::NEAREST, asset_db)
     });
 
     // remove the the upper half of lamps on which Guards are standing
     {
         let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
-        let model_index = asset_database.get_model_index(lamp_name);
-        let model = asset_database.get_model(model_index);
+        let model_index = asset_db.get_model_index(lamp_name);
+        let model = asset_db.get_model(model_index);
         let new_model = ModelRenderData {
             bounding_box: model.bounding_box.clone(),
             alpha: 255,
@@ -410,8 +405,8 @@ pub fn load_map(
                 })
                 .collect(),
         };
-        asset_database.register_model("half_lamp", new_model);
-        let new_model_index = dbg!(asset_database.get_model_index("half_lamp"));
+        asset_db.register_model("half_lamp", new_model);
+        let new_model_index = dbg!(asset_db.get_model_index("half_lamp"));
         // RIGHT TEAM GUARDS
         // middle final 4 guards on lamps
         model_instances[453].asset_db_model_index = new_model_index;
@@ -447,7 +442,7 @@ pub fn load_map(
             lightmap_texture: ground_data.lightmap_texture,
             model_instances,
             centered_sprite_vertex_array,
-            sprite_vertex_array,
+            bottom_left_sprite_vertex_array: sprite_vertex_array,
             rectangle_vertex_array,
             use_tile_colors: true,
             use_lightmaps: true,
@@ -457,7 +452,7 @@ pub fn load_map(
             ground_walkability_mesh: ground_data.ground_walkability_mesh,
             ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
             ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
-            minimap_texture,
+            minimap_texture_id: minimap_texture,
         },
         physics_world,
     )
@@ -470,7 +465,7 @@ fn load_ground(
     water: &WaterData,
     colliders: &Vec<(Vector2<f32>, Vector2<f32>)>,
     asset_loader: &AssetLoader,
-    asset_database: &mut AssetDatabase,
+    asset_db: &mut AssetDatabase,
 ) -> GroundLoadResult {
     let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
     let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
@@ -579,7 +574,7 @@ fn load_ground(
     });
     log::info!("gnd loaded: {}ms", elapsed.as_millis());
     let (elapsed, texture_atlas) = measure_time(|| {
-        Gnd::create_gl_texture_atlas(gl, &asset_loader, asset_database, &ground.texture_names)
+        Gnd::create_gl_texture_atlas(gl, &asset_loader, asset_db, &ground.texture_names)
     });
     log::info!("gnd texture_atlas loaded: {}ms", elapsed.as_millis());
 
@@ -588,14 +583,10 @@ fn load_ground(
         &mut ground.tiles_color_image,
         ground.width,
         ground.height,
-        asset_database,
+        asset_db,
     );
-    let lightmap_texture = Gnd::create_lightmap_texture(
-        gl,
-        &ground.lightmap_image,
-        ground.lightmaps.count,
-        asset_database,
-    );
+    let lightmap_texture =
+        Gnd::create_lightmap_texture(gl, &ground.lightmap_image, ground.lightmaps.count, asset_db);
     let ground_vertex_array = VertexArray::new_static(
         gl,
         MyGlEnum::TRIANGLES,

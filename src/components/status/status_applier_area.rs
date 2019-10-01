@@ -111,6 +111,6 @@ where
             } else {
                 [77, 77, 77, 255]
             })
-            .add(&assets.texts.custom_texts[&self.name]);
+            .add(assets.texts.custom_texts[&self.name]);
     }
 }

@@ -1,5 +1,6 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
+use crate::asset::texture::GlTexture;
 use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
@@ -9,11 +10,11 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::GroundShaderParameters;
 use crate::systems::render::render_command::{
     create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, create_3d_rot_matrix, EffectFrameCacheKey,
-    RenderCommandCollector, UiLayer2d,
+    RenderCommandCollector, TextureSizeSetting, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::video::{GlTexture, ShaderProgram, VertexArray, VertexAttribDefinition, Video};
+use crate::video::{ShaderProgram, VertexArray, VertexAttribDefinition, Video};
 use nalgebra::{Matrix3, Matrix4, Point2, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
@@ -436,6 +437,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         map_render_data: &MapRenderData,
         model_view: &Matrix4<f32>,
         normal_matrix: &Matrix3<f32>,
+        asset_db: &AssetDatabase,
     ) {
         let shader = ground_shader.gl_use(gl);
         shader.params.projection_mat.set(gl, &projection_matrix);
@@ -478,12 +480,14 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             .use_lighting
             .set(gl, if map_render_data.use_lighting { 1 } else { 0 });
 
-        map_render_data.texture_atlas.bind(&gl, MyGlEnum::TEXTURE0);
-        map_render_data
-            .tile_color_texture
+        asset_db
+            .get_texture(map_render_data.texture_atlas)
+            .bind(&gl, MyGlEnum::TEXTURE0);
+        asset_db
+            .get_texture(map_render_data.tile_color_texture)
             .bind(&gl, MyGlEnum::TEXTURE1);
-        map_render_data
-            .lightmap_texture
+        asset_db
+            .get_texture(map_render_data.lightmap_texture)
             .bind(&gl, MyGlEnum::TEXTURE2);
         map_render_data.ground_vertex_array.bind(&gl).draw(&gl);
     }
@@ -662,7 +666,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             camera_storage,
             mut system_benchmark,
             system_vars,
-            asset_database,
+            asset_db,
         ): Self::SystemData,
     ) {
         unsafe {
@@ -691,6 +695,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         &system_vars.map_render_data,
                         &camera.view_matrix,
                         &camera.normal_matrix,
+                        &asset_db,
                     );
                 }
             }
@@ -718,16 +723,15 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         .centered_sprite_vertex_array
                         .bind(&system_vars.gl);
                     for command in &render_commands.sprite_3d_commands {
-                        let flipped_width = (1 - command.is_vertically_flipped as i16 * 2)
-                            * command.texture_width as i16;
+                        let texture = asset_db.get_texture(command.texture_id);
+                        let flipped_width =
+                            (1 - command.is_vertically_flipped as i16 * 2) * texture.width as i16;
 
                         shader.params.size.set(
                             gl,
                             &[
                                 flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
-                                command.texture_height as f32
-                                    * ONE_SPRITE_PIXEL_SIZE_IN_3D
-                                    * command.scale,
+                                texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
                             ],
                         );
                         shader
@@ -750,7 +754,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         unsafe {
                             system_vars
                                 .gl
-                                .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
+                                .BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
                         }
                         vao_bind.draw(&system_vars.gl);
                     }
@@ -765,10 +769,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     unsafe {
                         gl.Disable(MyGlEnum::DEPTH_TEST);
                     }
-                    system_vars
-                        .assets
-                        .sprites
-                        .numbers
+                    asset_db
+                        .get_texture(system_vars.assets.sprites.numbers)
                         .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                     shader.params.offset.set(gl, &[0.0, 0.0]);
                     for command in &render_commands.number_3d_commands {
@@ -811,7 +813,15 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .centered_sprite_vertex_array
                     .bind(&system_vars.gl);
                 for command in &render_commands.horizontal_texture_3d_commands {
-                    shader.params.size.set(gl, &[command.w, command.h]);
+                    let texture = asset_db.get_texture(command.texture_id);
+                    let (w, h) = match command.size {
+                        TextureSizeSetting::Scale(scale) => (
+                            (texture.width as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                            (texture.height as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                        ),
+                        TextureSizeSetting::FixSize(size) => (size, size),
+                    };
+                    shader.params.size.set(gl, &[w, h]);
 
                     let model_matrix = create_3d_pos_rot_matrix(
                         &Vector3::new(command.pos.x, 0.2, command.pos.y),
@@ -824,7 +834,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     unsafe {
                         system_vars
                             .gl
-                            .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
+                            .BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
                     vao_bind.draw(&system_vars.gl);
                 }
@@ -880,7 +890,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                     gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
                                 }
                                 // TODO: save the native_id into the command, so str_file should not be looked up
-                                str_file.textures[cached_frame.texture_index]
+                                asset_db
+                                    .get_texture(str_file.textures[cached_frame.texture_index])
                                     .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                                 let bind = cached_frame.pos_vao.bind(&system_vars.gl);
                                 for pos in commands {
@@ -959,12 +970,12 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let asset_db_model_index = system_vars.map_render_data.model_instances
                         [render_command.model_instance_index]
                         .asset_db_model_index;
-                    let model_render_data = asset_database.get_model(asset_db_model_index);
+                    let model_render_data = asset_db.get_model(asset_db_model_index);
                     for node_render_data in &model_render_data.model {
                         // TODO: optimize this
                         for face_render_data in node_render_data {
-                            face_render_data
-                                .texture
+                            asset_db
+                                .get_texture(face_render_data.texture)
                                 .bind(&system_vars.gl, MyGlEnum::TEXTURE0);
                             face_render_data
                                 .vao
@@ -1112,18 +1123,19 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 let vertex_array_bind = system_vars
                     .map_render_data
-                    .sprite_vertex_array
+                    .bottom_left_sprite_vertex_array
                     .bind(&system_vars.gl);
                 unsafe {
                     system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.texture_2d_commands {
-                    let width = command.texture_width as f32;
-                    let height = command.texture_height as f32;
+                    let texture = asset_db.get_texture(command.texture);
+                    let width = texture.width as f32;
+                    let height = texture.height as f32;
                     unsafe {
                         system_vars
                             .gl
-                            .BindTexture(MyGlEnum::TEXTURE_2D, command.texture.0);
+                            .BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
                     let matrix =
                         create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
@@ -1154,7 +1166,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     system_benchmark.start_measurement("OpenGlRenderSystem.rectangle2d");
                 let vertex_array_bind = system_vars
                     .map_render_data
-                    .sprite_vertex_array
+                    .bottom_left_sprite_vertex_array
                     .bind(&system_vars.gl);
                 let shader = system_vars.assets.shaders.trimesh2d_shader.gl_use(gl);
                 shader
@@ -1195,7 +1207,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 let vertex_array_bind = system_vars
                     .map_render_data
-                    .sprite_vertex_array
+                    .bottom_left_sprite_vertex_array
                     .bind(&system_vars.gl);
                 unsafe {
                     system_vars.gl.ActiveTexture(MyGlEnum::TEXTURE0);
@@ -1207,7 +1219,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         unsafe {
                             system_vars
                                 .gl
-                                .BindTexture(MyGlEnum::TEXTURE_2D, texture.id().0);
+                                .BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
                         }
                         shader
                             .params

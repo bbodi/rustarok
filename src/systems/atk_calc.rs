@@ -368,15 +368,17 @@ impl AttackCalculation {
         let mut dst_outcomes = vec![];
         match typ {
             AttackType::SpellDamage(base_dmg, damage_render_type) => {
-                let atk = base_dmg;
-                let atk = dst.calculated_attribs().armor.subtract_me_from(atk as i32);
-                let outcome = if atk <= 0 {
+                let dmg = dst
+                    .calculated_attribs()
+                    .armor
+                    .subtract_me_from(base_dmg as i32);
+                let outcome = if dmg <= 0 {
                     AttackOutcome::Block
                 } else {
                     match damage_render_type {
-                        DamageDisplayType::SingleNumber => AttackOutcome::Damage(atk as u32),
+                        DamageDisplayType::SingleNumber => AttackOutcome::Damage(dmg as u32),
                         DamageDisplayType::Combo(count) => AttackOutcome::create_combo()
-                            .base_atk((atk / count as i32) as u32)
+                            .base_atk((dmg / count as i32) as u32)
                             .attack_count(count)
                             .build(),
                     }

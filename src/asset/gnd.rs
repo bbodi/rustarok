@@ -3,9 +3,9 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 
 use crate::asset::database::AssetDatabase;
+use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::video::GlTexture;
 
 pub struct Gnd {
     pub version: f32,
@@ -365,7 +365,7 @@ impl Gnd {
         lightmap: &Vec<u8>,
         count: u32,
         asset_db: &mut AssetDatabase,
-    ) -> GlTexture {
+    ) -> TextureId {
         let width = ((count as f32).sqrt().round() as u32 * 8).next_power_of_two();
         let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
 
@@ -384,8 +384,8 @@ impl Gnd {
         tiles_color_buffer: &mut Vec<u8>,
         width: u32,
         height: u32,
-        asset_database: &mut AssetDatabase,
-    ) -> GlTexture {
+        asset_db: &mut AssetDatabase,
+    ) -> TextureId {
         let tile_color_surface = sdl2::surface::Surface::from_data(
             tiles_color_buffer,
             width,
@@ -416,7 +416,7 @@ impl Gnd {
             "ground_tile_color_texture",
             scaled_tiles_color_surface,
             MyGlEnum::LINEAR,
-            asset_database,
+            asset_db,
         );
     }
 
@@ -722,9 +722,9 @@ impl Gnd {
     pub fn create_gl_texture_atlas(
         gl: &Gl,
         asset_loader: &AssetLoader,
-        asset_database: &mut AssetDatabase,
+        asset_db: &mut AssetDatabase,
         texture_names: &Vec<String>,
-    ) -> GlTexture {
+    ) -> TextureId {
         let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names
             .iter()
             .map(|texture_name| {
@@ -742,7 +742,7 @@ impl Gnd {
             "ground_texture_atlas",
             surface_atlas,
             MyGlEnum::NEAREST,
-            asset_database,
+            asset_db,
         );
     }
 
