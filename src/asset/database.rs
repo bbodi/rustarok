@@ -1,12 +1,10 @@
-use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId};
-use crate::my_gl::{Gl, MyGlEnum};
+use crate::asset::texture::{GlTexture, TextureId};
+use crate::my_gl::Gl;
 use crate::runtime_assets::map::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::raw::c_void;
 
 #[derive(Debug, Serialize)]
 struct TextureDatabase {
@@ -72,7 +70,7 @@ impl AssetDatabase {
         return &self.textures[i.0];
     }
 
-    pub fn register_texture(&mut self, gl: &Gl, path: &str, gl_texture: GlTexture) -> TextureId {
+    pub fn register_texture(&mut self, path: &str, gl_texture: GlTexture) -> TextureId {
         let key = AssetDatabase::replace_non_ascii_chars(&path);
         if self.texture_db.entries.contains_key(&key) {
             panic!("Texture already exists with this name: {}", key);

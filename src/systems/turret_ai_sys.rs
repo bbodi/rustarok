@@ -33,7 +33,7 @@ impl<'a> specs::System<'a> for TurretAiSystem {
             turret_controller_storage,
             turret_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             dev_configs,
         ): Self::SystemData,
     ) {

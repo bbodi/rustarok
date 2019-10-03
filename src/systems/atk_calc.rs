@@ -87,7 +87,7 @@ impl<'a> specs::System<'a> for AttackSystem {
         (
             entities,
             mut char_state_storage,
-            mut system_vars,
+            mut sys_vars,
             dev_configs,
             mut physics_world,
             mut system_benchmark,
@@ -96,7 +96,7 @@ impl<'a> specs::System<'a> for AttackSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("AttackSystem");
 
-        let mut new_attacks = system_vars
+        let mut new_attacks = sys_vars
             .area_attacks
             .iter()
             .map(|area_attack| {
@@ -112,11 +112,11 @@ impl<'a> specs::System<'a> for AttackSystem {
             })
             .flatten()
             .collect();
-        system_vars.attacks.append(&mut new_attacks);
-        system_vars.area_attacks.clear();
+        sys_vars.attacks.append(&mut new_attacks);
+        sys_vars.area_attacks.clear();
 
         // apply area statuses
-        let mut new_status_applies = system_vars
+        let mut new_status_applies = sys_vars
             .apply_area_statuses
             .iter()
             .map(|area_status_change| {
@@ -128,10 +128,10 @@ impl<'a> specs::System<'a> for AttackSystem {
             })
             .flatten()
             .collect();
-        system_vars.apply_statuses.append(&mut new_status_applies);
-        system_vars.apply_area_statuses.clear();
+        sys_vars.apply_statuses.append(&mut new_status_applies);
+        sys_vars.apply_area_statuses.clear();
 
-        for apply_force in &system_vars.pushes {
+        for apply_force in &sys_vars.pushes {
             if let Some(char_body) = physics_world.bodies.rigid_body_mut(apply_force.body_handle) {
                 let char_state = char_state_storage
                     .get_mut(apply_force.dst_entity.0)
@@ -145,15 +145,15 @@ impl<'a> specs::System<'a> for AttackSystem {
                         .unwrap();
                     char_state
                         .cannot_control_until
-                        .run_at_least_until_seconds(system_vars.time, apply_force.duration);
+                        .run_at_least_until_seconds(sys_vars.time, apply_force.duration);
                 } else {
                     log::trace!("Push was denied");
                 }
             }
         }
-        system_vars.pushes.clear();
+        sys_vars.pushes.clear();
 
-        for attack in &system_vars.attacks {
+        for attack in &sys_vars.attacks {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,
             // so src data (or an attack specific data structure) must be copied
@@ -190,10 +190,10 @@ impl<'a> specs::System<'a> for AttackSystem {
                         outcome,
                         attack,
                         &mut char_state_storage,
-                        system_vars.time,
+                        sys_vars.time,
                         &entities,
                         &mut updater,
-                        &system_vars.assets,
+                        &sys_vars.assets,
                     );
                 }
                 for outcome in dst_outcomes.into_iter() {
@@ -205,23 +205,23 @@ impl<'a> specs::System<'a> for AttackSystem {
                         outcome,
                         attack,
                         &mut char_state_storage,
-                        system_vars.time,
+                        sys_vars.time,
                         &entities,
                         &mut updater,
-                        &system_vars.assets,
+                        &sys_vars.assets,
                     );
                 }
             }
         }
-        system_vars.attacks.clear();
+        sys_vars.attacks.clear();
 
         // TODO: use a preallocated backbuffer
         let status_changes =
-            std::mem::replace(&mut system_vars.apply_statuses, Vec::with_capacity(128));
+            std::mem::replace(&mut sys_vars.apply_statuses, Vec::with_capacity(128));
         AttackSystem::add_new_statuses(
             status_changes,
             &mut char_state_storage,
-            &system_vars,
+            &sys_vars,
             &dev_configs,
             &entities,
             &mut updater,
@@ -229,9 +229,9 @@ impl<'a> specs::System<'a> for AttackSystem {
         );
 
         let status_changes =
-            std::mem::replace(&mut system_vars.remove_statuses, Vec::with_capacity(128));
+            std::mem::replace(&mut sys_vars.remove_statuses, Vec::with_capacity(128));
         AttackSystem::remove_statuses(status_changes, &mut char_state_storage);
-        system_vars.remove_statuses.clear();
+        sys_vars.remove_statuses.clear();
     }
 }
 
@@ -558,7 +558,7 @@ impl AttackSystem {
     fn add_new_statuses(
         status_changes: Vec<ApplyStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
         entities: &Entities,
         updater: &mut LazyUpdate,
@@ -592,7 +592,7 @@ impl AttackSystem {
                             target_char,
                             entities,
                             updater,
-                            system_vars,
+                            sys_vars,
                             physics_world,
                         );
                         target_char.statuses.add(box_status);

@@ -575,15 +575,15 @@ pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
         action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let new_str_name = args.as_str(0).unwrap();
             let effect_id = {
-                let system_vars = &mut ecs_world.write_resource::<SystemVariables>();
+                let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
                 let gl = &ecs_world.read_resource::<Gl>();
                 let asset_loader = &ecs_world.read_resource::<AssetLoader>();
 
                 asset_loader
                     .load_effect(gl, new_str_name, &mut ecs_world.write_resource())
                     .and_then(|str_file| {
-                        let new_id = StrEffectId(system_vars.str_effects.len());
-                        system_vars.str_effects.push(str_file);
+                        let new_id = StrEffectId(sys_vars.str_effects.len());
+                        sys_vars.str_effects.push(str_file);
                         Ok(new_id)
                     })
             };
@@ -744,8 +744,8 @@ pub(super) fn cmd_heal() -> CommandDefinition {
             };
 
             if let Some(entity_id) = entity_id {
-                let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-                system_vars.attacks.push(AttackComponent {
+                let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+                sys_vars.attacks.push(AttackComponent {
                     src_entity: self_char_id,
                     dst_entity: entity_id,
                     typ: AttackType::Heal(value as u32),
@@ -932,14 +932,14 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
             };
 
             if let Some(entity_id) = entity_id {
-                let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-                let now = system_vars.time;
+                let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+                let now = sys_vars.time;
                 let team = ecs_world
                     .read_storage::<CharacterStateComponent>()
                     .get(self_char_id.0)
                     .unwrap()
                     .team;
-                system_vars.apply_statuses.push(ApplyStatusComponent {
+                sys_vars.apply_statuses.push(ApplyStatusComponent {
                     source_entity_id: self_char_id,
                     target_entity_id: entity_id,
                     status: create_status_payload(status_name, entity_id, now, time, value, team)?,

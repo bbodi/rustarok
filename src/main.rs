@@ -18,6 +18,7 @@ extern crate serde_json;
 extern crate specs;
 #[macro_use]
 extern crate specs_derive;
+extern crate assert_approx_eq;
 extern crate strum;
 extern crate strum_macros;
 extern crate sublime_fuzzy;
@@ -28,7 +29,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
-use imgui::{ImString, ImVec2};
+use imgui::ImVec2;
 use log::LevelFilter;
 use nalgebra::{Matrix4, Vector2};
 use rand::Rng;
@@ -40,15 +41,13 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::{measure_time, DeltaTime, ElapsedTime};
 use crate::components::char::{
-    CharActionIndex, CharOutlook, CharPhysicsEntityBuilder, CharStateComponentBuilder,
-    CharacterEntityBuilder, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
-    Team,
+    CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,
+    SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
     WorldCoord,
 };
-use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
@@ -62,7 +61,6 @@ use crate::runtime_assets::graphic::{
     load_skill_icons, load_sprites, load_status_icons, load_texts,
 };
 use crate::runtime_assets::map::{load_map, CollisionGroup, MapRenderData, PhysicEngine};
-use crate::shaders::load_shaders;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -70,6 +68,7 @@ use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
+use crate::systems::finish_cast_simple::FinishSimpleSkillCastSystem;
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -85,6 +84,7 @@ use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRender
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::sound_sys::SoundSystem;
+use crate::systems::spawn_entity_system::{SpawnEntityComponent, SpawnEntitySystem};
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, SystemFrameDurations, SystemVariables,
@@ -105,7 +105,8 @@ mod my_gl;
 mod network;
 mod runtime_assets;
 mod shaders;
-mod test;
+#[cfg(test)]
+mod tests;
 mod video;
 mod web_server;
 
@@ -179,7 +180,7 @@ fn main() {
     let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_db);
     let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
     let (maybe_sound_system, sounds) = init_audio_and_load_sounds(&sdl_context, &asset_loader);
-    let system_vars = SystemVariables::new(
+    let sys_vars = SystemVariables::new(
         load_sprites(&gl, &asset_loader, &mut asset_db),
         load_texts(&gl, &ttf_context, &mut asset_db),
         render_matrices,
@@ -187,6 +188,7 @@ fn main() {
         load_skill_icons(&gl, &asset_loader, &mut asset_db),
         str_effects,
         sounds,
+        0.0, // fix dt, used only in tests
     );
 
     let mut ecs_dispatcher = {
@@ -198,7 +200,7 @@ fn main() {
             false,
         )
     };
-    ecs_world.add_resource(system_vars);
+    ecs_world.add_resource(sys_vars);
     ecs_world.add_resource(asset_loader);
     ecs_world.add_resource(gl);
     ecs_world.add_resource(map_render_data);
@@ -260,7 +262,6 @@ fn main() {
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
         .unwrap();
-    let mut last_tick_time: u64 = get_current_ms(SystemTime::now());
     let mut next_minion_spawn = ElapsedTime(2.0);
     let mut fps_counter: u64 = 0;
     let mut fps: u64 = 0;
@@ -344,7 +345,6 @@ fn main() {
             desktop_client_char,
             desktop_client_controller,
         );
-        execute_finished_skill_castings(&mut ecs_world);
         ecs_world.maintain();
 
         let (new_map, show_cursor) = imgui_frame(
@@ -383,8 +383,6 @@ fn main() {
         ));
         let now = std::time::SystemTime::now();
         let now_ms = get_current_ms(now);
-        let dt = (now_ms - last_tick_time) as f32 / 1000.0;
-        last_tick_time = now_ms;
         if now >= next_second {
             fps = fps_counter;
             fps_history.push(fps as f32);
@@ -408,9 +406,6 @@ fn main() {
             send_ping_packets(&mut ecs_world)
         }
         fps_counter += 1;
-        ecs_world
-            .write_resource::<SystemVariables>()
-            .update_timers(dt);
 
         let now = ecs_world.read_resource::<SystemVariables>().time;
         if next_minion_spawn.has_already_passed(now)
@@ -501,6 +496,16 @@ fn register_systems<'a, 'b>(
                 PhysCollisionCollectorSystem,
                 "collision_collector",
                 &["char_state_update"],
+            )
+            ////////////////////////////
+            //// Skill systems
+            ////////////////////////////
+            .with(FinishSimpleSkillCastSystem, "finish_cast_simple", &[])
+            ////////////////////////////
+            .with(
+                SpawnEntitySystem,
+                "spawn_entity_sys",
+                &["finish_cast_simple"],
             )
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem, "attack_sys", &["collision_collector"]);
@@ -639,33 +644,6 @@ fn execute_console_command(
             &args,
             ecs_world,
         );
-    }
-}
-
-fn execute_finished_skill_castings(ecs_world: &mut specs::world::World) {
-    // TODO: avoid allocating new vec
-    let finished_casts = std::mem::replace(
-        &mut ecs_world
-            .write_resource::<SystemVariables>()
-            .just_finished_skill_casts,
-        Vec::with_capacity(128),
-    );
-    for finished_cast in &finished_casts {
-        let manifestation = finished_cast.skill.get_definition().finish_cast(
-            finished_cast.caster_entity_id,
-            finished_cast.caster_pos,
-            finished_cast.skill_pos,
-            &finished_cast.char_to_skill_dir,
-            finished_cast.target_entity,
-            ecs_world,
-        );
-        if let Some(manifestation) = manifestation {
-            let skill_entity_id = ecs_world.create_entity().build();
-            ecs_world.read_resource::<LazyUpdate>().insert(
-                skill_entity_id,
-                SkillManifestationComponent::new(skill_entity_id, manifestation),
-            );
-        }
     }
 }
 

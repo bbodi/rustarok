@@ -8,7 +8,7 @@ use crate::components::controller::{
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::configs::DevConfig;
 use crate::systems::render_sys::DIRECTION_TABLE;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use specs::prelude::*;
 
@@ -28,13 +28,13 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
         (
             mut char_state_storage,
             mut controller_storage,
-            system_vars,
+            sys_vars,
             dev_configs,
             mut system_benchmark,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
-        let now = system_vars.time;
+        let now = sys_vars.time;
         for controller in (&mut controller_storage).join() {
             let char_state = char_state_storage.get_mut(controller.controlled_entity.0);
 
@@ -74,18 +74,6 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                     }
                     None => false,
                 };
-                let state_has_changed = char_state.state_has_changed();
-                // TODO: if debug
-                if state_has_changed {
-                    let state: CharState = char_state.state().clone();
-                    let prev_state: CharState = char_state.prev_state().clone();
-                    log::debug!(
-                        "{:?} state has changed {:?} ==> {:?}",
-                        controller.controlled_entity.0,
-                        prev_state,
-                        state
-                    )
-                }
             }
         }
     }
@@ -100,10 +88,10 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
         specs::ReadExpect<'a, SystemVariables>,
     );
 
-    fn run(&mut self, (char_state_storage, mut sprite_storage, system_vars): Self::SystemData) {
+    fn run(&mut self, (char_state_storage, mut sprite_storage, sys_vars): Self::SystemData) {
         // update character's sprite based on its state
         for (char_comp, sprite) in (&char_state_storage, &mut sprite_storage).join() {
-            let now = system_vars.time;
+            let now = sys_vars.time;
             // it was removed due to a bug in falcon carry
             //            if char_comp.statuses.can_be_controlled() == false {
             //                continue;
@@ -117,7 +105,7 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 CharState::Walking(_) => true,
                 _ => false,
             };
-            let state_has_changed = char_comp.state_has_changed();
+            let state_has_changed = char_comp.state_type_has_changed();
             if (state_has_changed && state != CharState::Idle)
                 || (state == CharState::Idle && prev_animation_has_ended)
                 || (state == CharState::Idle && prev_animation_must_stop_at_end)
@@ -133,13 +121,13 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 };
                 sprite.forced_duration = forced_duration;
                 sprite.fps_multiplier = if state.is_walking() {
-                    char_comp.calculated_attribs().walking_speed.as_f32()
+                    char_comp.calculated_attribs().movement_speed.as_f32()
                 } else {
                     1.0
                 };
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.assets.sprites, &state);
+                    .get_sprite_and_action_index(&sys_vars.assets.sprites, &state);
                 sprite.action_index = action_index;
                 sprite.animation_ends_at = now.add(forced_duration.unwrap_or_else(|| {
                     let duration = sprite_res.action.actions[action_index].duration;
@@ -152,7 +140,7 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 sprite.forced_duration = None;
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.assets.sprites, &prev_state);
+                    .get_sprite_and_action_index(&sys_vars.assets.sprites, &prev_state);
                 let duration = sprite_res.action.actions[action_index].duration;
                 sprite.animation_ends_at = sprite.animation_started.add_seconds(duration);
             }
@@ -164,10 +152,35 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
 pub struct SavePreviousCharStateSystem;
 
 impl<'a> specs::System<'a> for SavePreviousCharStateSystem {
-    type SystemData = (specs::WriteStorage<'a, CharacterStateComponent>,);
+    type SystemData = (
+        specs::Entities<'a>,
+        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+        Option<specs::Write<'a, Vec<SystemEvent>>>,
+    );
 
-    fn run(&mut self, (mut char_state_storage,): Self::SystemData) {
-        for char_comp in (&mut char_state_storage).join() {
+    fn run(&mut self, (entities, mut char_state_storage, sys_vars, mut events): Self::SystemData) {
+        for (char_id, char_comp) in (&entities, &mut char_state_storage).join() {
+            // TODO: if debug
+            let state_has_changed = char_comp.state_type_has_changed();
+            if state_has_changed {
+                let state: CharState = char_comp.state().clone();
+                let prev_state: CharState = char_comp.prev_state().clone();
+                if let Some(events) = &mut events {
+                    events.push(SystemEvent::CharStatusChange(
+                        sys_vars.tick,
+                        CharEntityId(char_id),
+                        prev_state.clone(),
+                        state.clone(),
+                    ));
+                }
+                log::debug!(
+                    "{:?} state has changed {:?} ==> {:?}",
+                    char_id,
+                    prev_state,
+                    state
+                );
+            }
             char_comp.save_prev_state();
         }
     }

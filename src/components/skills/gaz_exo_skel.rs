@@ -1,14 +1,14 @@
-use nalgebra::Vector2;
-
 use crate::asset::SpriteResource;
 use crate::common::ElapsedTime;
 use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
+};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
@@ -24,40 +24,45 @@ pub struct ExoSkeletonSkill;
 
 pub const EXO_SKELETON_SKILL: &'static ExoSkeletonSkill = &ExoSkeletonSkill;
 
-impl SkillDef for ExoSkeletonSkill {
-    fn get_icon_path(&self) -> &'static str {
-        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
-    }
-
-    fn finish_cast(
-        &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
-        target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
-    ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = system_vars.time;
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.exoskeleton;
+impl ExoSkeletonSkill {
+    fn do_finish_cast(
+        finish_cast: &FinishCast,
+        entities: &Entities,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+        sys_vars: &mut SystemVariables,
+    ) {
+        let now = sys_vars.time;
+        let configs = &dev_configs.skills.exoskeleton;
         let duration_seconds = configs.duration_seconds;
-        system_vars
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                caster_entity_id,
+                finish_cast.caster_entity_id,
+                finish_cast.caster_entity_id,
                 Box::new(ExoSkeletonStatus::new(
                     now,
                     duration_seconds,
                     configs.armor,
                     configs.attack_range,
-                    configs.walking_speed,
+                    configs.movement_speed,
                     configs.attack_damage,
                     configs.attack_speed,
                 )),
             ));
-        None
+    }
+}
+
+impl SkillDef for ExoSkeletonSkill {
+    fn get_icon_path(&self) -> &'static str {
+        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
+    }
+
+    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+        updater.insert(
+            entities.create(),
+            FinishSimpleSkillCastComponent::new(finish_cast_data, ExoSkeletonSkill::do_finish_cast),
+        )
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -71,7 +76,7 @@ struct ExoSkeletonStatus {
     until: ElapsedTime,
     armor: Percentage,
     attack_range: Percentage,
-    walking_speed: Percentage,
+    movement_speed: Percentage,
     attack_damage: Percentage,
     attack_speed: Percentage,
 }
@@ -82,7 +87,7 @@ impl ExoSkeletonStatus {
         duration: f32,
         armor: Percentage,
         attack_range: Percentage,
-        walking_speed: Percentage,
+        movement_speed: Percentage,
         attack_damage: Percentage,
         attack_speed: Percentage,
     ) -> ExoSkeletonStatus {
@@ -91,7 +96,7 @@ impl ExoSkeletonStatus {
             until: now.add_seconds(duration),
             armor,
             attack_range,
-            walking_speed,
+            movement_speed,
             attack_damage,
             attack_speed,
         }
@@ -105,11 +110,11 @@ impl Status for ExoSkeletonStatus {
 
     fn get_body_sprite<'a>(
         &self,
-        system_vars: &'a SystemVariables,
+        sys_vars: &'a SystemVariables,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
-        Some(&system_vars.assets.sprites.exoskeleton)
+        Some(&sys_vars.assets.sprites.exoskeleton)
     }
 
     fn on_apply(
@@ -118,7 +123,7 @@ impl Status for ExoSkeletonStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         physics_world: &mut PhysicEngine,
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
@@ -129,7 +134,7 @@ impl Status for ExoSkeletonStatus {
             StrEffectComponent {
                 effect_id: StrEffectType::Cart.into(),
                 pos: target_char.pos(),
-                start_time: system_vars.time,
+                start_time: sys_vars.time,
                 die_at: None,
                 play_mode: ActionPlayMode::Once,
             },
@@ -143,7 +148,7 @@ impl Status for ExoSkeletonStatus {
             self.until,
         );
         modifiers.change_walking_speed(
-            CharAttributeModifier::AddPercentage(self.walking_speed),
+            CharAttributeModifier::AddPercentage(self.movement_speed),
             self.started,
             self.until,
         );
@@ -169,11 +174,11 @@ impl Status for ExoSkeletonStatus {
         _self_char_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         _phyisic_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             target_char.basic_attack = BasicAttack::Melee;
             StatusUpdateResult::RemoveIt
         } else {

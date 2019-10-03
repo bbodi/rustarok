@@ -1,9 +1,11 @@
-use nalgebra::{Isometry2, Vector2};
-use specs::LazyUpdate;
+use nalgebra::Isometry2;
+use specs::{Entities, LazyUpdate};
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoord};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::controller::CharEntityId;
+use crate::components::skills::skills::{
+    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
+};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateResult,
@@ -21,46 +23,41 @@ pub struct FireBombSkill;
 
 pub const FIRE_BOMB_SKILL: &'static FireBombSkill = &FireBombSkill;
 
+impl FireBombSkill {
+    fn do_finish_cast(
+        finish_cast: &FinishCast,
+        entities: &Entities,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+        sys_vars: &mut SystemVariables,
+    ) {
+        let now = sys_vars.time;
+        sys_vars
+            .apply_statuses
+            .push(ApplyStatusComponent::from_secondary_status(
+                finish_cast.caster_entity_id,
+                finish_cast.target_entity.unwrap(),
+                Box::new(FireBombStatus {
+                    caster_entity_id: finish_cast.caster_entity_id,
+                    started: now,
+                    until: now.add_seconds(2.0),
+                    damage: dev_configs.skills.firebomb.damage,
+                    spread_count: 0,
+                    caster_team: finish_cast.caster_team,
+                }),
+            ));
+    }
+}
+
 impl SkillDef for FireBombSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp"
     }
-
-    fn finish_cast(
-        &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
-        target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
-    ) -> Option<Box<dyn SkillManifestation>> {
-        if let Some(caster) = ecs_world
-            .read_storage::<CharacterStateComponent>()
-            .get(caster_entity_id.0)
-        {
-            let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-            let now = system_vars.time;
-            system_vars
-                .apply_statuses
-                .push(ApplyStatusComponent::from_secondary_status(
-                    caster_entity_id,
-                    target_entity.unwrap(),
-                    Box::new(FireBombStatus {
-                        caster_entity_id,
-                        started: now,
-                        until: now.add_seconds(2.0),
-                        damage: ecs_world
-                            .read_resource::<DevConfig>()
-                            .skills
-                            .firebomb
-                            .damage,
-                        spread_count: 0,
-                        caster_team: caster.team,
-                    }),
-                ));
-        }
-        None
+    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+        updater.insert(
+            entities.create(),
+            FinishSimpleSkillCastComponent::new(finish_cast_data, FireBombSkill::do_finish_cast),
+        )
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -88,14 +85,14 @@ impl Status for FireBombStatus {
         self_char_id: CharEntityId,
         char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
             let area_isom = Isometry2::new(char_state.pos(), 0.0);
-            system_vars.area_attacks.push(AreaAttackComponent {
+            sys_vars.area_attacks.push(AreaAttackComponent {
                 area_shape: area_shape.clone(),
                 area_isom: area_isom.clone(),
                 source_entity_id: self.caster_entity_id,
@@ -103,15 +100,15 @@ impl Status for FireBombStatus {
                 except: None,
             });
             if self.spread_count < 1 {
-                system_vars
+                sys_vars
                     .apply_area_statuses
                     .push(ApplyStatusInAreaComponent {
                         source_entity_id: self.caster_entity_id,
                         status: ApplyStatusComponentPayload::from_secondary(Box::new(
                             FireBombStatus {
                                 caster_entity_id: self.caster_entity_id,
-                                started: system_vars.time,
-                                until: system_vars.time.add_seconds(2.0),
+                                started: sys_vars.time,
+                                until: sys_vars.time.add_seconds(2.0),
                                 damage: self.damage,
                                 spread_count: self.spread_count + 1,
                                 caster_team: self.caster_team,
@@ -127,8 +124,8 @@ impl Status for FireBombStatus {
             let effect_comp = StrEffectComponent {
                 effect_id: StrEffectType::FirePillarBomb.into(),
                 pos: char_state.pos(),
-                start_time: system_vars.time.add_seconds(-0.5),
-                die_at: Some(system_vars.time.add_seconds(1.0)),
+                start_time: sys_vars.time.add_seconds(-0.5),
+                die_at: Some(sys_vars.time.add_seconds(1.0)),
                 play_mode: ActionPlayMode::Repeat,
             };
             updater.insert(entities.create(), effect_comp);
@@ -142,14 +139,14 @@ impl Status for FireBombStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::FireWall,
             self.started,
             &char_state.pos(),
-            system_vars,
+            sys_vars,
             render_commands,
             ActionPlayMode::Repeat,
         );

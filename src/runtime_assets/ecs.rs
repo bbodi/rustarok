@@ -3,7 +3,9 @@ use crate::components::char::{
     TurretControllerComponent,
 };
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
-use crate::components::skills::skills::SkillManifestationComponent;
+use crate::components::skills::skills::{
+    FinishSimpleSkillCastComponent, SkillManifestationComponent,
+};
 use crate::components::{
     BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
 };
@@ -11,6 +13,7 @@ use crate::systems::console_system::ConsoleComponent;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
+use crate::systems::spawn_entity_system::SpawnEntityComponent;
 use specs::World;
 
 pub fn create_ecs_world() -> World {
@@ -33,5 +36,7 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<ConsoleComponent>();
+    ecs_world.register::<FinishSimpleSkillCastComponent>();
+    ecs_world.register::<SpawnEntityComponent>();
     ecs_world
 }

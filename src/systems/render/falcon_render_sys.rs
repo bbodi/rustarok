@@ -30,7 +30,7 @@ impl<'a> specs::System<'a> for FalconRenderSys {
             entities,
             sprite_storage,
             falcon_storage,
-            system_vars,
+            sys_vars,
             dev_configs,
             camera_storage,
             mut render_commands_storage,
@@ -41,9 +41,9 @@ impl<'a> specs::System<'a> for FalconRenderSys {
         for render_commands in (&mut render_commands_storage).join() {
             for (animated_sprite, falcon) in (&sprite_storage, &falcon_storage).join() {
                 let _offset = render_single_layer_action(
-                    system_vars.time,
+                    sys_vars.time,
                     &animated_sprite,
-                    &system_vars.assets.sprites.falcon,
+                    &sys_vars.assets.sprites.falcon,
                     &falcon.pos,
                     [0, 0],
                     true,

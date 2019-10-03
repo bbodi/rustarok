@@ -33,7 +33,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             char_state_storage,
             mut controller_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             map_render_data,
         ): Self::SystemData,
     ) {
@@ -69,7 +69,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 input.mouse_world_pos.y.abs() as usize,
             );
             let (cursor_frame, cursor_color) = InputToNextActionSystem::determine_cursor(
-                system_vars.time,
+                sys_vars.time,
                 controller,
                 &char_state_storage,
                 self_char_team,

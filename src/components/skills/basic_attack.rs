@@ -19,7 +19,7 @@ use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BasicAttack {
     Melee,
     Ranged { bullet_type: WeaponType },
@@ -33,11 +33,11 @@ impl BasicAttack {
         caster_pos: WorldCoord,
         target_pos: Vector2<f32>,
         target_entity_id: CharEntityId,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
             BasicAttack::Melee => {
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.attacks.push(AttackComponent {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity_id,
                     typ: AttackType::Basic(
@@ -54,15 +54,15 @@ impl BasicAttack {
                 caster_entity_id,
                 target_entity_id,
                 target_pos,
-                system_vars.time,
+                sys_vars.time,
                 *bullet_type,
-                system_vars.tick,
+                sys_vars.tick,
             ))),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum WeaponType {
     Sword,
     Arrow,
@@ -113,21 +113,21 @@ impl SkillManifestation for BasicRangeAttackBullet {
         &mut self,
         self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
-        let now = system_vars.time;
-        if system_vars.tick == self.started_tick + 1 {
+        let now = sys_vars.time;
+        if sys_vars.tick == self.started_tick + 1 {
             match self.weapon_type {
                 WeaponType::Arrow => {
                     updater.insert(
                         entities.create(),
                         SoundEffectComponent {
                             target_entity_id: self.caster_id,
-                            sound_id: system_vars.assets.sounds.arrow_attack,
+                            sound_id: sys_vars.assets.sounds.arrow_attack,
                             pos: self.start_pos,
                             start_time: now,
                         },
@@ -138,7 +138,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
                         entities.create(),
                         SoundEffectComponent {
                             target_entity_id: self.caster_id,
-                            sound_id: system_vars.assets.sounds.gun_attack,
+                            sound_id: sys_vars.assets.sounds.gun_attack,
                             pos: self.start_pos,
                             start_time: now,
                         },
@@ -148,7 +148,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
             }
         }
 
-        let travel_duration_percentage = system_vars
+        let travel_duration_percentage = sys_vars
             .time
             .percentage_between(self.started_at, self.ends_at);
         if travel_duration_percentage < 1.0 {
@@ -159,7 +159,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
             }
         } else {
             if let Some(caster) = char_storage.get(self.caster_id.0) {
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_id,
                     dst_entity: self.target_id,
                     typ: AttackType::Basic(

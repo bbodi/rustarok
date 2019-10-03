@@ -1,45 +1,53 @@
-use nalgebra::Vector2;
-
-use crate::components::controller::{CharEntityId, WorldCoord};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
+};
 use crate::components::status::absorb_shield::AbsorbStatus;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::configs::DevConfig;
 use crate::systems::SystemVariables;
+use specs::{Entities, LazyUpdate};
 
 pub struct AbsorbShieldSkill;
 
 pub const ABSORB_SHIELD_SKILL: &'static AbsorbShieldSkill = &AbsorbShieldSkill;
+
+impl AbsorbShieldSkill {
+    fn do_finish_cast(
+        finish_cast: &FinishCast,
+        entities: &Entities,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+        sys_vars: &mut SystemVariables,
+    ) {
+        let now = sys_vars.time;
+        let duration_seconds = dev_configs.skills.absorb_shield.duration_seconds;
+        sys_vars
+            .apply_statuses
+            .push(ApplyStatusComponent::from_secondary_status(
+                finish_cast.caster_entity_id,
+                finish_cast.target_entity.unwrap(),
+                Box::new(AbsorbStatus::new(
+                    finish_cast.caster_entity_id,
+                    now,
+                    duration_seconds,
+                )),
+            ));
+    }
+}
 
 impl SkillDef for AbsorbShieldSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
     }
 
-    fn finish_cast(
-        &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
-        target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
-    ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = system_vars.time;
-        let duration_seconds = ecs_world
-            .read_resource::<DevConfig>()
-            .skills
-            .absorb_shield
-            .duration_seconds;
-        system_vars
-            .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                target_entity.unwrap(),
-                Box::new(AbsorbStatus::new(caster_entity_id, now, duration_seconds)),
-            ));
-        None
+    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+        updater.insert(
+            entities.create(),
+            FinishSimpleSkillCastComponent::new(
+                finish_cast_data,
+                AbsorbShieldSkill::do_finish_cast,
+            ),
+        )
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

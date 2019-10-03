@@ -30,7 +30,7 @@ impl RenderUI {
         input: &HumanInputComponent,
         controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
@@ -62,7 +62,7 @@ impl RenderUI {
                     };
                     draw_rect(0, 0, 540, 30, &[36, 92, 201, 77]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0, 0, 0, 255]); // black background
-                    let percentage = system_vars
+                    let percentage = sys_vars
                         .time
                         .percentage_between(casting_info.cast_started, casting_info.cast_ends);
                     draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[36, 92, 201, 255]);
@@ -77,7 +77,7 @@ impl RenderUI {
             input,
             controller,
             render_commands,
-            &system_vars,
+            &sys_vars,
         );
 
         RenderUI::draw_secondary_skill_bar(
@@ -85,7 +85,7 @@ impl RenderUI {
             input,
             controller,
             render_commands,
-            &system_vars,
+            &sys_vars,
             main_skill_bar_top,
         );
 
@@ -95,13 +95,13 @@ impl RenderUI {
             input,
             controller,
             render_commands,
-            &system_vars,
+            &sys_vars,
         );
 
         self.draw_minimap(
             self_char_state,
             render_commands,
-            system_vars,
+            sys_vars,
             char_state_storage,
             npc_storage,
             entities,
@@ -112,9 +112,9 @@ impl RenderUI {
 
         if !is_browser {
             render_action_2d(
-                &system_vars,
+                &sys_vars,
                 &controller.cursor_anim_descr,
-                &system_vars.assets.sprites.cursors,
+                &sys_vars.assets.sprites.cursors,
                 &Vector2::new(input.last_mouse_x as i32, input.last_mouse_y as i32),
                 &controller.cursor_color,
                 render_commands,
@@ -129,7 +129,7 @@ impl RenderUI {
         &mut self,
         self_char_state: &CharacterStateComponent,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
@@ -186,7 +186,7 @@ impl RenderUI {
 
             if let Some((sex, head_index)) = head_index {
                 let head_texture_id = {
-                    let sprites = &system_vars.assets.sprites.head_sprites;
+                    let sprites = &sys_vars.assets.sprites.head_sprites;
                     sprites[sex as usize][head_index].textures[0]
                 };
 
@@ -233,21 +233,21 @@ impl RenderUI {
             VIDEO_WIDTH as u16,
             0,
             camera_pos,
-            &system_vars.matrices.projection,
+            &sys_vars.matrices.projection,
             &render_commands.view_matrix,
         );
         let left_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
             0,
             VIDEO_HEIGHT as u16,
             camera_pos,
-            &system_vars.matrices.projection,
+            &sys_vars.matrices.projection,
             &render_commands.view_matrix,
         );
         let right_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
             VIDEO_WIDTH as u16,
             VIDEO_HEIGHT as u16,
             camera_pos,
-            &system_vars.matrices.projection,
+            &sys_vars.matrices.projection,
             &render_commands.view_matrix,
         );
 
@@ -273,15 +273,15 @@ impl RenderUI {
         input: &HumanInputComponent,
         controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
     ) {
         if let Some((_skill_key, skill)) = controller.select_skill_target {
-            let texture = system_vars.assets.texts.skill_name_texts[&skill];
+            let texture = sys_vars.assets.texts.skill_name_texts[&skill];
             let not_castable = char_state
                 .skill_cast_allowed_at
                 .get(&skill)
                 .unwrap_or(&ElapsedTime(0.0))
-                .has_not_passed_yet(system_vars.time);
+                .has_not_passed_yet(sys_vars.time);
             render_commands
                 .sprite_2d()
                 .color(
@@ -309,7 +309,7 @@ impl RenderUI {
         input: &HumanInputComponent,
         controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         main_skill_bar_top: i32,
     ) {
         let single_icon_size = 32;
@@ -334,7 +334,7 @@ impl RenderUI {
                     .skill_cast_allowed_at
                     .get(&skill)
                     .unwrap_or(&ElapsedTime(0.0))
-                    .has_not_passed_yet(system_vars.time);
+                    .has_not_passed_yet(sys_vars.time);
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
                 } else {
@@ -377,9 +377,9 @@ impl RenderUI {
                     .screen_pos(x, icon_y)
                     .scale(single_icon_size as f32 / RenderUI::SINGLE_MAIN_ICON_SIZE as f32 * 2.0)
                     .layer(UiLayer2d::SkillBarIcon)
-                    .add(system_vars.assets.skill_icons[&skill]);
+                    .add(sys_vars.assets.skill_icons[&skill]);
 
-                let skill_key_texture_id = system_vars.assets.texts.skill_key_texts[&skill_key];
+                let skill_key_texture_id = sys_vars.assets.texts.skill_key_texts[&skill_key];
                 let center_x = -2 + x + single_icon_size - FONT_SIZE_SKILL_KEY;
                 let center_y = -2 + icon_y + single_icon_size - FONT_SIZE_SKILL_KEY;
                 render_commands
@@ -400,7 +400,7 @@ impl RenderUI {
                     if input.mouse_pos().y > y as u16
                         && input.mouse_pos().y < (y + single_icon_size) as u16
                     {
-                        let texture = system_vars.assets.texts.skill_name_texts[&skill];
+                        let texture = sys_vars.assets.texts.skill_name_texts[&skill];
                         render_commands
                             .sprite_2d()
                             .color(&[255, 255, 255, 255])
@@ -420,7 +420,7 @@ impl RenderUI {
         input: &HumanInputComponent,
         controller: &ControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
     ) -> i32 {
         let single_icon_size = RenderUI::SINGLE_MAIN_ICON_SIZE;
         let inner_border = 3;
@@ -450,7 +450,7 @@ impl RenderUI {
                     .skill_cast_allowed_at
                     .get(&skill)
                     .unwrap_or(&ElapsedTime(0.0))
-                    .has_not_passed_yet(system_vars.time);
+                    .has_not_passed_yet(sys_vars.time);
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
                 } else {
@@ -493,9 +493,9 @@ impl RenderUI {
                     .screen_pos(x, icon_y)
                     .scale(2.0)
                     .layer(UiLayer2d::SkillBarIcon)
-                    .add(system_vars.assets.skill_icons[&skill]);
+                    .add(sys_vars.assets.skill_icons[&skill]);
 
-                let skill_key_texture = system_vars.assets.texts.skill_key_texts[&skill_key];
+                let skill_key_texture = sys_vars.assets.texts.skill_key_texts[&skill_key];
                 let center_x = -2 + x + single_icon_size - FONT_SIZE_SKILL_KEY;
                 let center_y = -2 + icon_y + single_icon_size - FONT_SIZE_SKILL_KEY;
                 render_commands
@@ -515,7 +515,7 @@ impl RenderUI {
                     if input.mouse_pos().y > y as u16
                         && input.mouse_pos().y < (y + single_icon_size) as u16
                     {
-                        let texture = system_vars.assets.texts.skill_name_texts[&skill];
+                        let texture = sys_vars.assets.texts.skill_name_texts[&skill];
                         render_commands
                             .sprite_2d()
                             .color(&[255, 255, 255, 255])
@@ -533,7 +533,7 @@ impl RenderUI {
 }
 
 fn render_action_2d(
-    system_vars: &SystemVariables,
+    sys_vars: &SystemVariables,
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector2<i32>,
@@ -549,7 +549,7 @@ fn render_action_2d(
     let frame_index = {
         let frame_count = action.frames.len();
         let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 4.0;
-        let elapsed_time = system_vars
+        let elapsed_time = sys_vars
             .time
             .elapsed_since(animated_sprite.animation_started);
         ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize

@@ -57,13 +57,13 @@ where
         &mut self,
         _self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         _updater: &mut LazyUpdate,
     ) {
-        if self.next_action_at.has_already_passed(system_vars.time) {
+        if self.next_action_at.has_already_passed(sys_vars.time) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = all_collisions_in_world
                 .iter()
@@ -77,12 +77,12 @@ where
                     .user_data()
                     .map(|v| v.downcast_ref().unwrap())
                     .unwrap();
-                system_vars.apply_statuses.push(ApplyStatusComponent {
+                sys_vars.apply_statuses.push(ApplyStatusComponent {
                     source_entity_id: self.caster_entity_id,
                     target_entity_id: char_entity_id,
-                    status: (self.status_creator)(system_vars.time),
+                    status: (self.status_creator)(sys_vars.time),
                 });
-                self.next_action_at = system_vars.time.add_seconds(2.0);
+                self.next_action_at = sys_vars.time.add_seconds(2.0);
             }
         }
     }

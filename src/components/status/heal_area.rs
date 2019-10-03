@@ -52,13 +52,13 @@ impl SkillManifestation for HealApplierArea {
         &mut self,
         _self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         _updater: &mut LazyUpdate,
     ) {
-        if self.next_action_at.has_already_passed(system_vars.time) {
+        if self.next_action_at.has_already_passed(sys_vars.time) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = all_collisions_in_world
                 .iter()
@@ -72,12 +72,12 @@ impl SkillManifestation for HealApplierArea {
                     .user_data()
                     .map(|v| v.downcast_ref().unwrap())
                     .unwrap();
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
                     dst_entity: char_entity_id,
                     typ: self.attack_type,
                 });
-                self.next_action_at = system_vars.time.add_seconds(self.interval);
+                self.next_action_at = sys_vars.time.add_seconds(self.interval);
             }
         }
     }

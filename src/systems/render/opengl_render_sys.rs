@@ -669,7 +669,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             browser_client_storage,
             camera_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             asset_db,
             gl,
             map_render_data,
@@ -695,7 +695,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     OpenGlRenderSystem::render_ground(
                         gl,
                         &self.shaders.ground_shader,
-                        &system_vars.matrices.projection,
+                        &sys_vars.matrices.projection,
                         &map_render_data,
                         &camera.view_matrix,
                         &camera.normal_matrix,
@@ -709,7 +709,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
+                    .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader.params.texture.set(gl, 0);
 
@@ -769,7 +769,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         gl.Disable(MyGlEnum::DEPTH_TEST);
                     }
                     asset_db
-                        .get_texture(system_vars.assets.sprites.numbers)
+                        .get_texture(sys_vars.assets.sprites.numbers)
                         .bind(&gl, MyGlEnum::TEXTURE0);
                     shader.params.offset.set(gl, &[0.0, 0.0]);
                     for command in &render_commands.number_3d_commands {
@@ -800,7 +800,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
+                    .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader.params.texture.set(gl, 0);
 
@@ -847,7 +847,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
+                    .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader.params.texture.set(gl, 0);
                 unsafe {
@@ -861,7 +861,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .filter(|(frame_cache_key, commands)| !commands.is_empty())
                     .for_each(|(frame_cache_key, commands)| {
                         let cached_frame = str_effect_cache.cache.get(&frame_cache_key);
-                        let str_file = &system_vars.str_effects[frame_cache_key.effect_id.0];
+                        let str_file = &sys_vars.str_effects[frame_cache_key.effect_id.0];
                         match cached_frame {
                             None => {
                                 let layer = &str_file.layers[frame_cache_key.layer_index];
@@ -915,7 +915,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
+                    .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader
                     .params
@@ -977,7 +977,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.projection);
+                    .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
 
                 {
@@ -1049,7 +1049,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.ortho);
+                    .set(gl, &sys_vars.matrices.ortho);
 
                 for command in &render_commands.partial_circle_2d_commands {
                     let matrix = OpenGlRenderSystem::create_translation_matrix_for_2d(
@@ -1075,7 +1075,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.ortho);
+                    .set(gl, &sys_vars.matrices.ortho);
 
                 self.points_buffer.clear();
                 for command in &render_commands.point_2d_commands {
@@ -1103,7 +1103,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.ortho);
+                    .set(gl, &sys_vars.matrices.ortho);
                 shader.params.texture.set(gl, 0);
 
                 let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
@@ -1149,7 +1149,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.ortho);
+                    .set(gl, &sys_vars.matrices.ortho);
 
                 for command in &render_commands.rectangle_2d_commands {
                     shader.params.color.set(gl, &command.color);
@@ -1179,7 +1179,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .projection_mat
-                    .set(gl, &system_vars.matrices.ortho);
+                    .set(gl, &sys_vars.matrices.ortho);
                 shader.params.texture.set(gl, 0);
 
                 let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);

@@ -291,7 +291,7 @@ impl AssetLoader {
     ) -> TextureId {
         let ret = AssetLoader::create_texture_from_surface_inner(gl, surface, min_mag);
         log::trace!("Texture was created loaded: {}", name);
-        return asset_db.register_texture(gl, &name, ret);
+        return asset_db.register_texture(&name, ret);
     }
 
     pub fn create_texture_from_data(
@@ -332,7 +332,7 @@ impl AssetLoader {
         }
         let texture = GlTexture::new(gl, texture_id, width, height);
 
-        return asset_db.register_texture(gl, &name, texture);
+        return asset_db.register_texture(&name, texture);
     }
 
     pub fn load_texture(
@@ -433,7 +433,7 @@ impl AssetLoader {
             .into_iter()
             .enumerate()
             .map(|(i, gl_texture)| {
-                asset_db.register_texture(gl, &format!("{}_{}", &path.to_string(), i), gl_texture)
+                asset_db.register_texture(&format!("{}_{}", &path.to_string(), i), gl_texture)
             })
             .collect::<Vec<_>>();
 

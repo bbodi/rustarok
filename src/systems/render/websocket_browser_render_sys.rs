@@ -40,19 +40,19 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             render_commands_storage,
             mut browser_client_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             dev_configs,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("WebSocketBrowserRenderSystem");
-        if system_vars.tick % dev_configs.network.send_render_data_every_nth_frame.max(1) != 0 {
+        if sys_vars.tick % dev_configs.network.send_render_data_every_nth_frame.max(1) != 0 {
             return;
         }
 
         for (render_commands, browser) in
             (&render_commands_storage, &mut browser_client_storage).join()
         {
-            if browser.next_send_at.has_not_passed_yet(system_vars.time) {
+            if browser.next_send_at.has_not_passed_yet(sys_vars.time) {
                 continue;
             }
             self.send_buffer.clear();
@@ -122,7 +122,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             );
 
             browser.send_message(&self.send_buffer);
-            browser.update_sending_fps(system_vars.time);
+            browser.update_sending_fps(sys_vars.time);
         }
     }
 }

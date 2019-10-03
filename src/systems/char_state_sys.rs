@@ -32,7 +32,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             entities,
             npc_storage,
             mut char_state_storage,
-            mut system_vars,
+            mut sys_vars,
             mut physics_world,
             mut collisions_resource,
             mut system_benchmark,
@@ -40,7 +40,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("CharacterStateUpdateSystem");
-        let now = system_vars.time;
+        let now = sys_vars.time;
 
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
@@ -67,7 +67,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 char_comp.set_state(CharState::Dead, char_comp.dir());
                 char_comp.statuses.remove_all();
                 char_comp.statuses.add(DeathStatus::new(
-                    system_vars.time,
+                    sys_vars.time,
                     npc_storage.get(char_entity_id.0).is_some(),
                 ));
                 // remove rigid bodies from the physic simulation
@@ -77,9 +77,9 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
             } else if is_dead && npc_storage.get(char_entity_id.0).is_some() {
                 let remove_char_at = char_comp
                     .statuses
-                    .get_status::<_, DeathStatus, _>(|status| status.remove_char_at)
+                    .with_status::<_, DeathStatus, _>(|status| status.remove_char_at)
                     .unwrap();
-                if remove_char_at.has_already_passed(system_vars.time) {
+                if remove_char_at.has_already_passed(sys_vars.time) {
                     entities.delete(char_entity_id.0).unwrap();
                 }
                 continue;
@@ -87,7 +87,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
 
             char_comp.update_statuses(
                 char_entity_id,
-                &mut system_vars,
+                &mut sys_vars,
                 &entities,
                 &mut updater,
                 &mut physics_world,
@@ -110,14 +110,20 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         } else {
                             casting_info.target_area_pos
                         };
-                        system_vars.just_finished_skill_casts.push(FinishCast {
+                        let finish_cast_data = FinishCast {
                             skill: casting_info.skill,
                             caster_pos: char_pos,
                             caster_entity_id: char_entity_id,
                             skill_pos,
                             char_to_skill_dir: casting_info.char_to_skill_dir_when_casted,
                             target_entity: casting_info.target_entity,
-                        });
+                            caster_team: char_comp.team,
+                        };
+                        casting_info.skill.get_definition().finish_cast(
+                            finish_cast_data,
+                            &entities,
+                            &updater,
+                        );
 
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                     }
@@ -136,7 +142,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                                 char_pos,
                                 target_pos.0,
                                 target,
-                                &mut system_vars,
+                                &mut sys_vars,
                             ) {
                                 let skill_manifest_id = entities.create();
                                 updater.insert(
@@ -212,17 +218,20 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                 }
             }
         }
+
+        // TODO: into a system
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
         for char_comp in (&char_state_storage).join() {
             if let CharState::Walking(target_pos) = char_comp.state() {
                 if char_comp.can_move(now) {
                     // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the attack)
                     let dir = (target_pos - char_comp.pos()).normalize();
+                    // 100% movement speed = 5 units/second
                     let speed =
-                        dir * char_comp.calculated_attribs().walking_speed.as_f32() * (60.0 * 0.1);
+                        dir * char_comp.calculated_attribs().movement_speed.as_f32() * (5.0);
                     //                    let speed = dir
-                    //                        * char_comp.calculated_attribs().walking_speed.as_f32()
-                    //                        * (600.0 * system_vars.dt.0);
+                    //                        * char_comp.calculated_attribs().movement_speed.as_f32()
+                    //                        * (600.0 * sys_vars.dt.0);
                     let force = speed;
                     let body = physics_world
                         .bodies

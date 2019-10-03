@@ -269,7 +269,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 
     fn run(
         &mut self,
-        (entities, mut input_storage, mut camera_storage, browser_storage, system_vars): Self::SystemData,
+        (entities, mut input_storage, mut camera_storage, browser_storage, sys_vars): Self::SystemData,
     ) {
         for (controller_id, input, camera) in
             (&entities, &mut input_storage, &mut camera_storage).join()
@@ -387,7 +387,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 match input.camera_movement_mode {
                     CameraMode::Free => {
                         input.camera_movement_mode = CameraMode::FollowChar;
-                        camera.reset_y_and_angle(&system_vars.matrices.projection);
+                        camera.reset_y_and_angle(&sys_vars.matrices.projection);
                     }
                     CameraMode::FollowChar => {
                         input.camera_movement_mode = CameraMode::FreeMoveButFixedAngle
@@ -402,7 +402,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 input.last_mouse_x,
                 input.last_mouse_y,
                 &camera.camera.pos(),
-                &system_vars.matrices.projection,
+                &sys_vars.matrices.projection,
                 &camera.view_matrix,
             );
             input.mouse_world_pos = mouse_world_pos;

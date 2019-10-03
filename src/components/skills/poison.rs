@@ -1,65 +1,68 @@
-use nalgebra::Vector2;
-use specs::LazyUpdate;
+use specs::{Entities, LazyUpdate};
 
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::{CharEntityId, WorldCoord};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
+};
 use crate::components::status::status::{ApplyStatusComponent, PoisonStatus};
 use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
 
-pub struct PosionSkill;
+pub struct PoisonSkill;
 
-pub const POISON_SKILL: &'static PosionSkill = &PosionSkill;
+pub const POISON_SKILL: &'static PoisonSkill = &PoisonSkill;
 
-impl SkillDef for PosionSkill {
+impl SkillDef for PoisonSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\tf_poison.bmp"
     }
 
-    fn finish_cast(
-        &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
-        target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
-    ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        let entities = &ecs_world.entities();
-        let updater = ecs_world.read_resource::<LazyUpdate>();
-        let now = system_vars.time;
+    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+        updater.insert(
+            entities.create(),
+            FinishSimpleSkillCastComponent::new(finish_cast_data, PoisonSkill::do_finish_cast),
+        )
+    }
+
+    fn get_skill_target_type(&self) -> SkillTargetType {
+        SkillTargetType::OnlyEnemy
+    }
+}
+
+impl PoisonSkill {
+    fn do_finish_cast(
+        finish_cast: &FinishCast,
+        entities: &Entities,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+        sys_vars: &mut SystemVariables,
+    ) {
+        let now = sys_vars.time;
         updater.insert(
             entities.create(),
             StrEffectComponent {
                 effect_id: StrEffectType::Poison.into(),
-                pos: skill_pos.unwrap(),
+                pos: finish_cast.skill_pos.unwrap(),
                 start_time: now,
                 die_at: Some(now.add_seconds(0.7)),
                 play_mode: ActionPlayMode::Repeat,
             },
         );
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.poison;
-        system_vars
+        let configs = &dev_configs.skills.poison;
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                target_entity.unwrap(),
+                finish_cast.caster_entity_id,
+                finish_cast.target_entity.unwrap(),
                 Box::new(PoisonStatus {
-                    poison_caster_entity_id: caster_entity_id,
+                    poison_caster_entity_id: finish_cast.caster_entity_id,
                     started: now,
                     until: now.add_seconds(configs.duration_seconds),
                     next_damage_at: now,
                     damage: configs.damage,
                 }),
             ));
-        None
-    }
-
-    fn get_skill_target_type(&self) -> SkillTargetType {
-        SkillTargetType::OnlyEnemy
     }
 }

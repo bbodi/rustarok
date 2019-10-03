@@ -35,7 +35,7 @@ pub fn handle_new_connections(
             let mut browser_client = BrowserClient::new(browser_socket);
             {
                 let asset_db: &AssetDatabase = &ecs_world.read_resource();
-                let system_vars = &ecs_world.read_resource::<SystemVariables>();
+                let sys_vars = &ecs_world.read_resource::<SystemVariables>();
                 let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                 let welcome_data = json!({
                     "screen_width": VIDEO_WIDTH,
@@ -49,10 +49,10 @@ pub fn handle_new_connections(
                         "light_diffuse" : map_render_data.rsw.light.diffuse,
                         "light_opacity" : map_render_data.rsw.light.opacity,
                     }),
-                    "projection_mat": system_vars
+                    "projection_mat": sys_vars
                                         .matrices
                                         .projection.as_slice(),
-                    "ortho_mat": system_vars
+                    "ortho_mat": sys_vars
                                         .matrices
                                         .ortho.as_slice()
                 });

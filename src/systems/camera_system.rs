@@ -26,7 +26,7 @@ impl<'a> specs::System<'a> for CameraSystem {
             input_storage,
             controller_storage,
             mut camera_storage,
-            system_vars,
+            sys_vars,
             map_render_data,
         ): Self::SystemData,
     ) {
@@ -63,7 +63,7 @@ impl<'a> specs::System<'a> for CameraSystem {
                                 camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
                                 camera
                                     .camera
-                                    .update_visible_z_range(&system_vars.matrices.projection);
+                                    .update_visible_z_range(&sys_vars.matrices.projection);
                             };
                             if let Some(char_state) = char_state_storage.get(followed_char.0) {
                                 let pos = char_state.pos();
@@ -79,7 +79,7 @@ impl<'a> specs::System<'a> for CameraSystem {
                         camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
                         camera
                             .camera
-                            .update_visible_z_range(&system_vars.matrices.projection);
+                            .update_visible_z_range(&sys_vars.matrices.projection);
                     }
                     if !input.is_console_open {
                         CameraSystem::axis_aligned_movement(camera, input);

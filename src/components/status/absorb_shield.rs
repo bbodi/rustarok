@@ -44,13 +44,13 @@ impl Status for AbsorbStatus {
         self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             if self.absorbed_damage > 0 {
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.attacks.push(AttackComponent {
                     src_entity: self.caster_entity_id,
                     dst_entity: self_char_id,
                     typ: AttackType::Heal(self.absorbed_damage),
@@ -61,9 +61,9 @@ impl Status for AbsorbStatus {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .has_already_passed(system_vars.time)
+                .has_already_passed(sys_vars.time)
             {
-                self.animation_started = system_vars.time.add_seconds(-1.9);
+                self.animation_started = sys_vars.time.add_seconds(-1.9);
             }
             StatusUpdateResult::KeepIt
         }
@@ -91,14 +91,14 @@ impl Status for AbsorbStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Ramadan,
             self.animation_started,
             &char_state.pos(),
-            system_vars,
+            sys_vars,
             render_commands,
             ActionPlayMode::Repeat,
         );

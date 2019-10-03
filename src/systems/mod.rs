@@ -1,6 +1,8 @@
 use crate::asset::str::StrFile;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
-use crate::components::skills::skills::{FinishCast, Skills};
+use crate::components::char::CharState;
+use crate::components::controller::CharEntityId;
+use crate::components::skills::skills::Skills;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
@@ -9,11 +11,13 @@ use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use crate::{
+    get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
+};
 use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 pub mod atk_calc;
 pub mod camera_system;
@@ -21,6 +25,7 @@ pub mod char_state_sys;
 pub mod console_commands;
 pub mod console_system;
 pub mod falcon_ai_sys;
+pub mod finish_cast_simple;
 pub mod frame_end_system;
 pub mod input_sys;
 pub mod input_to_next_action;
@@ -31,6 +36,7 @@ pub mod render;
 pub mod render_sys;
 pub mod skill_sys;
 pub mod sound_sys;
+pub mod spawn_entity_system;
 pub mod turret_ai_sys;
 pub mod ui;
 
@@ -121,9 +127,14 @@ impl RenderMatrices {
     }
 }
 
+pub enum SystemEvent {
+    CharStatusChange(u64, CharEntityId, CharState, CharState),
+}
+
 pub struct SystemVariables {
     pub assets: AssetResources,
     pub tick: u64,
+    pub last_tick_time: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
     /// extract from the struct?
@@ -133,10 +144,10 @@ pub struct SystemVariables {
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
-    pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
     pub str_effects: Vec<StrFile>,
+    pub fix_dt_for_test: f32,
 }
 
 impl SystemVariables {
@@ -148,6 +159,7 @@ impl SystemVariables {
         skill_icons: HashMap<Skills, TextureId>,
         str_effects: Vec<StrFile>,
         sounds: Sounds,
+        fix_dt_for_test: f32,
     ) -> SystemVariables {
         SystemVariables {
             assets: AssetResources {
@@ -157,6 +169,7 @@ impl SystemVariables {
                 status_icons,
                 sounds,
             },
+            last_tick_time: get_current_ms(SystemTime::now()),
             tick: 1,
             dt: DeltaTime(0.0),
             time: ElapsedTime(0.0),
@@ -165,17 +178,24 @@ impl SystemVariables {
             area_attacks: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
-            just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
             str_effects,
+            fix_dt_for_test,
         }
     }
 
-    pub fn update_timers(&mut self, dt: f32) {
+    pub fn update_timers(&mut self, now_ms: u64) {
+        let dt = if cfg!(test) {
+            self.fix_dt_for_test
+        } else {
+            let dt = (now_ms - self.last_tick_time) as f32 / 1000.0;
+            self.last_tick_time = now_ms;
+            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME)
+        };
         self.tick += 1;
-        self.dt.0 = dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
-        self.time.0 += dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        self.dt.0 = dt;
+        self.time.0 += dt;
     }
 }
 
