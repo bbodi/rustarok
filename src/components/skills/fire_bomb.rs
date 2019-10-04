@@ -1,11 +1,9 @@
-use nalgebra::Isometry2;
-use specs::{Entities, LazyUpdate};
+use nalgebra::{Isometry2, Vector2};
+use specs::LazyUpdate;
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
-};
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateResult,
@@ -23,41 +21,46 @@ pub struct FireBombSkill;
 
 pub const FIRE_BOMB_SKILL: &'static FireBombSkill = &FireBombSkill;
 
-impl FireBombSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let now = sys_vars.time;
-        sys_vars
-            .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
-                finish_cast.caster_entity_id,
-                finish_cast.target_entity.unwrap(),
-                Box::new(FireBombStatus {
-                    caster_entity_id: finish_cast.caster_entity_id,
-                    started: now,
-                    until: now.add_seconds(2.0),
-                    damage: dev_configs.skills.firebomb.damage,
-                    spread_count: 0,
-                    caster_team: finish_cast.caster_team,
-                }),
-            ));
-    }
-}
-
 impl SkillDef for FireBombSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\gn_makebomb.bmp"
     }
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, FireBombSkill::do_finish_cast),
-        )
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        if let Some(caster) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(caster_entity_id.0)
+        {
+            let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+            let now = sys_vars.time;
+            sys_vars
+                .apply_statuses
+                .push(ApplyStatusComponent::from_secondary_status(
+                    caster_entity_id,
+                    target_entity.unwrap(),
+                    Box::new(FireBombStatus {
+                        caster_entity_id,
+                        started: now,
+                        until: now.add_seconds(2.0),
+                        damage: ecs_world
+                            .read_resource::<DevConfig>()
+                            .skills
+                            .firebomb
+                            .damage,
+                        spread_count: 0,
+                        caster_team: caster.team,
+                    }),
+                ));
+        }
+        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

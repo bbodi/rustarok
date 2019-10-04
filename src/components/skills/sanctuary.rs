@@ -1,11 +1,11 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillManifestation,
-    SkillManifestationComponent, SkillTargetType, Skills, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
+    WorldCollisions,
 };
 use crate::components::{AreaAttackComponent, AttackType};
 use crate::configs::DevConfig;
@@ -19,43 +19,29 @@ pub struct SanctuarySkill;
 
 pub const SANCTUARY_SKILL: &'static SanctuarySkill = &SanctuarySkill;
 
-impl SanctuarySkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let configs = &dev_configs.skills.sanctuary;
-        let skill_manifest_id = entities.create();
-        updater.insert(
-            skill_manifest_id,
-            SkillManifestationComponent::new(
-                skill_manifest_id,
-                Box::new(SanctuarySkillManifest::new(
-                    finish_cast.caster_entity_id,
-                    &finish_cast.skill_pos.unwrap(),
-                    configs.heal,
-                    configs.heal_freq_seconds,
-                    sys_vars.time,
-                    configs.duration,
-                )),
-            ),
-        );
-    }
-}
-
 impl SkillDef for SanctuarySkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wz_meteor.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, SanctuarySkill::do_finish_cast),
-        )
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let configs = &ecs_world.read_resource::<DevConfig>().skills.sanctuary;
+        Some(Box::new(SanctuarySkillManifest::new(
+            caster_entity_id,
+            &skill_pos.unwrap(),
+            configs.heal,
+            configs.heal_freq_seconds,
+            ecs_world.read_resource::<SystemVariables>().time,
+            configs.duration,
+        )))
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

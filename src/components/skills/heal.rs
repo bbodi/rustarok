@@ -1,8 +1,8 @@
-use specs::{Entities, LazyUpdate};
+use nalgebra::Vector2;
+use specs::LazyUpdate;
 
-use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
-};
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 
 use crate::components::{AttackComponent, AttackType, SoundEffectComponent};
 use crate::configs::DevConfig;
@@ -12,43 +12,40 @@ pub struct HealSkill;
 
 pub const HEAL_SKILL: &'static HealSkill = &HealSkill;
 
-impl HealSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let target_entity_id = finish_cast.target_entity.unwrap();
+impl SkillDef for HealSkill {
+    fn get_icon_path(&self) -> &'static str {
+        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp"
+    }
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let target_entity_id = target_entity.unwrap();
+        let entities = &ecs_world.entities();
+        let updater = ecs_world.read_resource::<LazyUpdate>();
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let entity = entities.create();
         updater.insert(
             entity,
             SoundEffectComponent {
                 target_entity_id,
                 sound_id: sys_vars.assets.sounds.heal,
-                pos: finish_cast.caster_pos,
+                pos: caster_pos,
                 start_time: sys_vars.time,
             },
         );
         sys_vars.attacks.push(AttackComponent {
-            src_entity: finish_cast.caster_entity_id,
+            src_entity: caster_entity_id,
             dst_entity: target_entity_id,
-            typ: AttackType::Heal(dev_configs.skills.heal.heal),
+            typ: AttackType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
         });
-    }
-}
-
-impl SkillDef for HealSkill {
-    fn get_icon_path(&self) -> &'static str {
-        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\al_heal.bmp"
-    }
-
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, HealSkill::do_finish_cast),
-        )
+        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

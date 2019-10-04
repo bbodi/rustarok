@@ -1,13 +1,16 @@
-use crate::components::controller::WorldCoord;
-use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType, Skills,
+use crate::components::char::{
+    CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent,
 };
+use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType, Skills};
 use crate::configs::DevConfig;
+use crate::consts::{JobId, MonsterId};
+use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
-use crate::systems::spawn_entity_system::{SpawnEntityComponent, SpawnEntityType};
 use crate::systems::SystemVariables;
 use nalgebra::Vector2;
-use specs::{Entities, LazyUpdate};
+use nphysics2d::object::BodyStatus;
+use specs::LazyUpdate;
 
 pub struct GazBarricadeSkill;
 
@@ -19,14 +22,48 @@ impl SkillDef for GazBarricadeSkill {
     }
 
     // TODO 2 barricade ne lehessen egy kockán
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(
-                finish_cast_data,
-                GazBarricadeSkill::do_finish_cast,
-            ),
-        )
+    // TODO: teamet a finishből szedje
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        if let Some(caster) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(caster_entity_id.0)
+        {
+            let entities = &ecs_world.entities();
+            let updater = &ecs_world.read_resource::<LazyUpdate>();
+            let sys_vars = ecs_world.read_resource::<SystemVariables>();
+            let char_entity_id = CharEntityId(entities.create());
+            updater.insert(char_entity_id.0, NpcComponent);
+            let pos2d = {
+                let pos = skill_pos.unwrap();
+                Vector2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
+            };
+            CharacterEntityBuilder::new(char_entity_id, "barricade")
+                .insert_sprite_render_descr_component(updater)
+                .physics(
+                    pos2d,
+                    &mut ecs_world.write_resource::<PhysicEngine>(),
+                    |builder| {
+                        builder
+                            .collision_group(caster.team.get_barricade_collision_group())
+                            .rectangle(1.0, 1.0)
+                            .body_status(BodyStatus::Static)
+                    },
+                )
+                .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+                    ch.outlook(CharOutlook::Monster(MonsterId::Barricade))
+                        .job_id(JobId::Barricade)
+                        .team(caster.team)
+                });
+        }
+        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -48,28 +85,6 @@ impl SkillDef for GazBarricadeSkill {
             &pos2d,
             &Vector2::zeros(),
             render_commands,
-        );
-    }
-}
-
-impl GazBarricadeSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let pos2d = {
-            let pos = finish_cast.skill_pos.unwrap();
-            Vector2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
-        };
-        updater.insert(
-            entities.create(),
-            SpawnEntityComponent::new(SpawnEntityType::Barricade {
-                pos: pos2d,
-                team: finish_cast.caster_team,
-            }),
         );
     }
 }

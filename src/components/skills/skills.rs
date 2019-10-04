@@ -131,33 +131,17 @@ pub struct FinishCast {
     pub target_entity: Option<CharEntityId>,
 }
 
-#[derive(Component)]
-pub struct FinishSimpleSkillCastComponent {
-    pub finish_cast_data: FinishCast,
-    pub logic: Box<
-        dyn Fn(&FinishCast, &Entities, &LazyUpdate, &DevConfig, &mut SystemVariables) + Send + Sync,
-    >,
-}
-
-impl FinishSimpleSkillCastComponent {
-    pub fn new<F>(finish_cast_data: FinishCast, logic: F) -> FinishSimpleSkillCastComponent
-    where
-        F: 'static
-            + Fn(&FinishCast, &Entities, &LazyUpdate, &DevConfig, &mut SystemVariables)
-            + Send
-            + Sync,
-    {
-        FinishSimpleSkillCastComponent {
-            finish_cast_data,
-            logic: Box::new(logic),
-        }
-    }
-}
-
 pub trait SkillDef {
     fn get_icon_path(&self) -> &'static str;
-
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate);
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<WorldCoord>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>>;
 
     fn get_skill_target_type(&self) -> SkillTargetType;
     fn render_casting(
@@ -250,7 +234,16 @@ impl SkillDef for AttackMoveSkill {
         ""
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<WorldCoord>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

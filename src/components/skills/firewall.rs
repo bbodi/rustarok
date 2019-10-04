@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
 use crate::components::{
@@ -31,53 +31,49 @@ impl SkillDef for FireWallSkill {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mg_firewall.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        if let Some(caster) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(caster_entity_id.0)
+        {
+            let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+            let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+                angle_in_rad
+            } else {
+                -angle_in_rad
+            };
+            let sys_vars = ecs_world.read_resource::<SystemVariables>();
+            let entities = &ecs_world.entities();
+            let mut updater = ecs_world.write_resource::<LazyUpdate>();
+            let configs = ecs_world.read_resource::<DevConfig>();
+            Some(Box::new(PushBackWallSkill::new(
+                caster_entity_id,
+                caster.team,
+                configs.skills.firewall.damage,
+                configs.skills.firewall.pushback_force,
+                configs.skills.firewall.force_duration_seconds,
+                &mut ecs_world.write_resource::<PhysicEngine>(),
+                &skill_pos.unwrap(),
+                angle_in_rad,
+                sys_vars.time,
+                sys_vars.tick,
+                entities,
+                &mut updater,
+                configs.skills.firewall.duration_seconds,
+                configs.skills.firewall.width,
+            )))
+        } else {
+            None
+        }
     }
-
-    // TODO: asd kell neki physic engine
-    //    fn finish_cast(
-    //        &self,
-    //        caster_entity_id: CharEntityId,
-    //        caster_pos: WorldCoord,
-    //        skill_pos: Option<Vector2<f32>>,
-    //        char_to_skill_dir: &Vector2<f32>,
-    //        target_entity: Option<CharEntityId>,
-    //        ecs_world: &mut specs::world::World,
-    //    ) -> Option<Box<dyn SkillManifestation>> {
-    //        if let Some(caster) = ecs_world
-    //            .read_storage::<CharacterStateComponent>()
-    //            .get(caster_entity_id.0)
-    //        {
-    //            let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-    //            let angle_in_rad = if char_to_skill_dir.x > 0.0 {
-    //                angle_in_rad
-    //            } else {
-    //                -angle_in_rad
-    //            };
-    //            let sys_vars = ecs_world.read_resource::<SystemVariables>();
-    //            let entities = &ecs_world.entities();
-    //            let mut updater = ecs_world.write_resource::<LazyUpdate>();
-    //            let configs = ecs_world.read_resource::<DevConfig>();
-    //            Some(Box::new(PushBackWallSkill::new(
-    //                caster_entity_id,
-    //                caster.team,
-    //                configs.skills.firewall.damage,
-    //                configs.skills.firewall.pushback_force,
-    //                configs.skills.firewall.force_duration_seconds,
-    //                &mut ecs_world.write_resource::<PhysicEngine>(),
-    //                &skill_pos.unwrap(),
-    //                angle_in_rad,
-    //                sys_vars.time,
-    //                sys_vars.tick,
-    //                entities,
-    //                &mut updater,
-    //                configs.skills.firewall.duration_seconds,
-    //                configs.skills.firewall.width,
-    //            )))
-    //        } else {
-    //            None
-    //        }
-    //    }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         SkillTargetType::Area

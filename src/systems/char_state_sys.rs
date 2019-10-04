@@ -110,7 +110,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                         } else {
                             casting_info.target_area_pos
                         };
-                        let finish_cast_data = FinishCast {
+                        sys_vars.just_finished_skill_casts.push(FinishCast {
                             skill: casting_info.skill,
                             caster_pos: char_pos,
                             caster_entity_id: char_entity_id,
@@ -118,12 +118,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
                             char_to_skill_dir: casting_info.char_to_skill_dir_when_casted,
                             target_entity: casting_info.target_entity,
                             caster_team: char_comp.team,
-                        };
-                        casting_info.skill.get_definition().finish_cast(
-                            finish_cast_data,
-                            &entities,
-                            &updater,
-                        );
+                        });
 
                         char_comp.set_state(CharState::Idle, char_comp.dir());
                     }

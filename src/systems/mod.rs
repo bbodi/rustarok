@@ -2,7 +2,7 @@ use crate::asset::str::StrFile;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::components::char::CharState;
 use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::Skills;
+use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
@@ -25,7 +25,6 @@ pub mod char_state_sys;
 pub mod console_commands;
 pub mod console_system;
 pub mod falcon_ai_sys;
-pub mod finish_cast_simple;
 pub mod frame_end_system;
 pub mod input_sys;
 pub mod input_to_next_action;
@@ -144,6 +143,7 @@ pub struct SystemVariables {
     pub area_attacks: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
+    pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
     pub str_effects: Vec<StrFile>,
@@ -178,6 +178,7 @@ impl SystemVariables {
             area_attacks: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
+            just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
             str_effects,

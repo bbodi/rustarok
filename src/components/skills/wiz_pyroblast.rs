@@ -1,13 +1,12 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate, ReadStorage};
+use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::components::char::{
     ActionPlayMode, CastingSkillData, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType,
-    WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
@@ -30,45 +29,43 @@ impl SkillDef for WizPyroBlastSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\ht_blastmine.bmp"
     }
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        let configs = ecs_world
+            .read_resource::<DevConfig>()
+            .skills
+            .wiz_pyroblast
+            .inner
+            .clone();
+
+        sys_vars
+            .apply_statuses
+            .push(ApplyStatusComponent::from_secondary_status(
+                caster_entity_id,
+                target_entity.unwrap(),
+                Box::new(PyroBlastTargetStatus {
+                    caster_entity_id,
+                    splash_radius: configs.splash_radius,
+                }),
+            ));
+        Some(Box::new(PyroBlastManifest::new(
+            caster_entity_id,
+            caster_pos,
+            target_entity.unwrap(),
+            sys_vars.time,
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+            configs,
+        )))
     }
-    // todo: asd
-    //    fn finish_cast(
-    //        &self,
-    //        caster_entity_id: CharEntityId,
-    //        caster_pos: WorldCoord,
-    //        skill_pos: Option<Vector2<f32>>,
-    //        char_to_skill_dir: &Vector2<f32>,
-    //        target_entity: Option<CharEntityId>,
-    //        ecs_world: &mut specs::world::World,
-    //    ) -> Option<Box<dyn SkillManifestation>> {
-    //        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-    //        let configs = ecs_world
-    //            .read_resource::<DevConfig>()
-    //            .skills
-    //            .wiz_pyroblast
-    //            .inner
-    //            .clone();
-    //
-    //        sys_vars
-    //            .apply_statuses
-    //            .push(ApplyStatusComponent::from_secondary_status(
-    //                caster_entity_id,
-    //                target_entity.unwrap(),
-    //                Box::new(PyroBlastTargetStatus {
-    //                    caster_entity_id,
-    //                    splash_radius: configs.splash_radius,
-    //                }),
-    //            ));
-    //        Some(Box::new(PyroBlastManifest::new(
-    //            caster_entity_id,
-    //            caster_pos,
-    //            target_entity.unwrap(),
-    //            sys_vars.time,
-    //            &mut ecs_world.write_resource::<PhysicEngine>(),
-    //            configs,
-    //        )))
-    //    }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         SkillTargetType::OnlyEnemy

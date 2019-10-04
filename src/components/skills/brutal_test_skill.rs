@@ -1,12 +1,12 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::rotate_vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillManifestation,
-    SkillManifestationComponent, SkillTargetType, Skills, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
+    WorldCollisions,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::configs::DevConfig;
@@ -21,49 +21,41 @@ pub struct BrutalTestSkill;
 
 pub const BRUTAL_TEST_SKILL: &'static BrutalTestSkill = &BrutalTestSkill;
 
-impl BrutalTestSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let angle_in_rad = finish_cast.char_to_skill_dir.angle(&Vector2::y());
-        let angle_in_rad = if finish_cast.char_to_skill_dir.x > 0.0 {
-            angle_in_rad
-        } else {
-            -angle_in_rad
-        };
-        let skill_manifest_id = entities.create();
-        updater.insert(
-            skill_manifest_id,
-            SkillManifestationComponent::new(
-                skill_manifest_id,
-                Box::new(BrutalSkillManifest::new(
-                    finish_cast.caster_entity_id,
-                    &finish_cast.skill_pos.unwrap(),
-                    angle_in_rad,
-                    dev_configs.skills.brutal_test_skill.damage,
-                    sys_vars.time,
-                    entities,
-                    updater,
-                )),
-            ),
-        );
-    }
-}
-
 impl SkillDef for BrutalTestSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wz_meteor.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, BrutalTestSkill::do_finish_cast),
-        )
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+            angle_in_rad
+        } else {
+            -angle_in_rad
+        };
+        let entities = &ecs_world.entities();
+        let mut updater = ecs_world.write_resource::<LazyUpdate>();
+        Some(Box::new(BrutalSkillManifest::new(
+            caster_entity_id,
+            &skill_pos.unwrap(),
+            angle_in_rad,
+            ecs_world
+                .read_resource::<DevConfig>()
+                .skills
+                .brutal_test_skill
+                .damage,
+            ecs_world.read_resource::<SystemVariables>().time,
+            entities,
+            &mut updater,
+        )))
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -112,7 +104,7 @@ impl BrutalSkillManifest {
         damage: u32,
         system_time: ElapsedTime,
         entities: &specs::Entities,
-        updater: &LazyUpdate,
+        updater: &mut LazyUpdate,
     ) -> BrutalSkillManifest {
         let effect_ids = (0..11 * 11)
             .map(|i| {

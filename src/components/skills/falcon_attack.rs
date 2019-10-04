@@ -6,8 +6,7 @@ use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType,
-    WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::ApplyStatusComponent;
@@ -31,75 +30,71 @@ impl SkillDef for FalconAttackSkill {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mer_scapegoat.bmp"
     }
 
-    // TODO: asd
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-    }
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
+        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
 
-    //    fn finish_cast(
-    //        &self,
-    //        caster_entity_id: CharEntityId,
-    //        caster_pos: WorldCoord,
-    //        skill_pos: Option<Vector2<f32>>,
-    //        char_to_skill_dir: &Vector2<f32>,
-    //        target_entity: Option<CharEntityId>,
-    //        ecs_world: &mut specs::world::World,
-    //    ) -> Option<Box<dyn SkillManifestation>> {
-    //        let sys_vars = ecs_world.read_resource::<SystemVariables>();
-    //        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
-    //
-    //        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-    //        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
-    //            angle_in_rad
-    //        } else {
-    //            -angle_in_rad
-    //        };
-    //        {
-    //            for (falcon, sprite) in (
-    //                &mut ecs_world.write_storage::<FalconComponent>(),
-    //                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
-    //            )
-    //                .join()
-    //            {
-    //                if falcon.owner_entity_id != caster_entity_id {
-    //                    continue;
-    //                }
-    //                let end_pos = caster_pos + (char_to_skill_dir * configs.attributes.casting_range);
-    //                falcon.set_state_to_attack(
-    //                    sys_vars.time,
-    //                    configs.duration_in_seconds,
-    //                    caster_pos,
-    //                    end_pos,
-    //                    sprite,
-    //                );
-    //                let extents = v2!(configs.attributes.width.unwrap(), 2.5);
-    //
-    //                let (coll_handle, _body_handle) = ecs_world
-    //                    .write_resource::<PhysicEngine>()
-    //                    .add_cuboid_skill_area(caster_pos, angle_in_rad, extents);
-    //                return Some(Box::new(FalconAttackSkillManifestation {
-    //                    damaged_entities: HashSet::with_capacity(8),
-    //                    extents,
-    //                    start_pos: caster_pos,
-    //                    path: end_pos - caster_pos,
-    //                    rot_angle_in_rad: angle_in_rad,
-    //                    created_at: sys_vars.time,
-    //                    die_at: sys_vars.time.add_seconds(configs.duration_in_seconds),
-    //                    falcon_collider_handle: coll_handle,
-    //                    falcon_owner_id: caster_entity_id,
-    //                    team: ecs_world
-    //                        .read_storage::<CharacterStateComponent>()
-    //                        .get(caster_entity_id.0)
-    //                        .unwrap()
-    //                        .team,
-    //                    damage: configs.damage,
-    //                    slow: configs.slow,
-    //                    slow_duration: configs.slow_duration,
-    //                }));
-    //            }
-    //        }
-    //
-    //        None
-    //    }
+        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
+        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+            angle_in_rad
+        } else {
+            -angle_in_rad
+        };
+        {
+            for (falcon, sprite) in (
+                &mut ecs_world.write_storage::<FalconComponent>(),
+                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
+            )
+                .join()
+            {
+                if falcon.owner_entity_id != caster_entity_id {
+                    continue;
+                }
+                let end_pos = caster_pos + (char_to_skill_dir * configs.attributes.casting_range);
+                falcon.set_state_to_attack(
+                    sys_vars.time,
+                    configs.duration_in_seconds,
+                    caster_pos,
+                    end_pos,
+                    sprite,
+                );
+                let extents = v2!(configs.attributes.width.unwrap(), 2.5);
+
+                let (coll_handle, _body_handle) = ecs_world
+                    .write_resource::<PhysicEngine>()
+                    .add_cuboid_skill_area(caster_pos, angle_in_rad, extents);
+                return Some(Box::new(FalconAttackSkillManifestation {
+                    damaged_entities: HashSet::with_capacity(8),
+                    extents,
+                    start_pos: caster_pos,
+                    path: end_pos - caster_pos,
+                    rot_angle_in_rad: angle_in_rad,
+                    created_at: sys_vars.time,
+                    die_at: sys_vars.time.add_seconds(configs.duration_in_seconds),
+                    falcon_collider_handle: coll_handle,
+                    falcon_owner_id: caster_entity_id,
+                    team: ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(caster_entity_id.0)
+                        .unwrap()
+                        .team,
+                    damage: configs.damage,
+                    slow: configs.slow,
+                    slow_duration: configs.slow_duration,
+                }));
+            }
+        }
+
+        None
+    }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         SkillTargetType::Directional

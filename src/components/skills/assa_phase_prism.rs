@@ -1,13 +1,12 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::ElapsedTime;
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillManifestation,
-    SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
@@ -23,52 +22,35 @@ pub struct AssaPhasePrismSkill;
 
 pub const ASSA_PHASE_PRISM_SKILL: &'static AssaPhasePrismSkill = &AssaPhasePrismSkill;
 
-impl AssaPhasePrismSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let configs = &dev_configs.skills.assa_phase_prism;
-        // TODO: asd, PhysicEngine kell neki, nem tudok ugy ütközést vizsgálni, h nem adok hozzá collidert, hanem
-        // adhoc modon?
-        // De igen: search for "sys_vars.area_attacks.push(AreaAttackComponent {"
-
-        //        let skill_manifest_id = entities.create();
-        //        updater.insert(
-        //            skill_manifest_id,
-        //            SkillManifestationComponent::new(
-        //                skill_manifest_id,
-        //                Box::new(AssaPhasePrismSkillManifestation::new(
-        //                    finish_cast.caster_entity_id,
-        //                    finish_cast.caster_pos,
-        //                    *finish_cast.char_to_skill_dir,
-        //                    &mut ecs_world.write_resource::<PhysicEngine>(),
-        //                    sys_vars.time,
-        //                    configs.duration_seconds,
-        //                    configs.attributes.casting_range,
-        //                    configs.swap_duration_unit_per_second,
-        //                )),
-        //            ),
-        //        );
-    }
-}
-
 impl SkillDef for AssaPhasePrismSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mer_scapegoat.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(
-                finish_cast_data,
-                AssaPhasePrismSkill::do_finish_cast,
-            ),
-        )
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
+        let configs = &ecs_world
+            .read_resource::<DevConfig>()
+            .skills
+            .assa_phase_prism;
+        Some(Box::new(AssaPhasePrismSkillManifestation::new(
+            caster_entity_id,
+            caster_pos,
+            *char_to_skill_dir,
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+            sys_vars.time,
+            configs.duration_seconds,
+            configs.attributes.casting_range,
+            configs.swap_duration_unit_per_second,
+        )))
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

@@ -48,6 +48,7 @@ use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
     WorldCoord,
 };
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
@@ -68,7 +69,6 @@ use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
-use crate::systems::finish_cast_simple::FinishSimpleSkillCastSystem;
 use crate::systems::frame_end_system::FrameEndSystem;
 use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
 use crate::systems::input_to_next_action::InputToNextActionSystem;
@@ -345,6 +345,7 @@ fn main() {
             desktop_client_char,
             desktop_client_controller,
         );
+        execute_finished_skill_castings(&mut ecs_world);
         ecs_world.maintain();
 
         let (new_map, show_cursor) = imgui_frame(
@@ -497,16 +498,7 @@ fn register_systems<'a, 'b>(
                 "collision_collector",
                 &["char_state_update"],
             )
-            ////////////////////////////
-            //// Skill systems
-            ////////////////////////////
-            .with(FinishSimpleSkillCastSystem, "finish_cast_simple", &[])
-            ////////////////////////////
-            .with(
-                SpawnEntitySystem,
-                "spawn_entity_sys",
-                &["finish_cast_simple"],
-            )
+            .with(SpawnEntitySystem, "spawn_entity_sys", &[])
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem, "attack_sys", &["collision_collector"]);
         if let Some(console_system) = console_system {
@@ -644,6 +636,33 @@ fn execute_console_command(
             &args,
             ecs_world,
         );
+    }
+}
+
+fn execute_finished_skill_castings(ecs_world: &mut specs::world::World) {
+    // TODO: avoid allocating new vec
+    let finished_casts = std::mem::replace(
+        &mut ecs_world
+            .write_resource::<SystemVariables>()
+            .just_finished_skill_casts,
+        Vec::with_capacity(128),
+    );
+    for finished_cast in &finished_casts {
+        let manifestation = finished_cast.skill.get_definition().finish_cast(
+            finished_cast.caster_entity_id,
+            finished_cast.caster_pos,
+            finished_cast.skill_pos,
+            &finished_cast.char_to_skill_dir,
+            finished_cast.target_entity,
+            ecs_world,
+        );
+        if let Some(manifestation) = manifestation {
+            let skill_entity_id = ecs_world.create_entity().build();
+            ecs_world.read_resource::<LazyUpdate>().insert(
+                skill_entity_id,
+                SkillManifestationComponent::new(skill_entity_id, manifestation),
+            );
+        }
     }
 }
 

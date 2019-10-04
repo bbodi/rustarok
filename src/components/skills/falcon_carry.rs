@@ -8,9 +8,7 @@ use crate::components::char::{
 use crate::components::controller::{
     CharEntityId, ControllerComponent, ControllerEntityId, WorldCoord,
 };
-use crate::components::skills::skills::{
-    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
-};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
@@ -31,72 +29,69 @@ impl SkillDef for FalconCarrySkill {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\mer_scapegoat.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
+        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
+        let target_entity = target_entity.unwrap();
+        let target_pos = {
+            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+            if let Some(target) = char_storage.get(target_entity.0) {
+                target.pos()
+            } else {
+                return None;
+            }
+        };
+        {
+            for (falcon, sprite) in (
+                &mut ecs_world.write_storage::<FalconComponent>(),
+                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
+            )
+                .join()
+            {
+                if falcon.owner_entity_id != caster_entity_id {
+                    continue;
+                }
+                if target_entity == caster_entity_id {
+                    // falcon.state = FalconState::CarryOwner
+                    for (entity_id, controller) in (
+                        &ecs_world.entities(),
+                        &ecs_world.read_storage::<ControllerComponent>(),
+                    )
+                        .join()
+                    {
+                        if controller.controlled_entity == falcon.owner_entity_id {
+                            falcon.carry_owner(
+                                ControllerEntityId(entity_id),
+                                &target_pos,
+                                sys_vars.time,
+                                configs.carry_owner_duration,
+                                sprite,
+                            );
+                            break;
+                        }
+                    }
+                } else {
+                    falcon.carry_ally(
+                        target_entity,
+                        &target_pos,
+                        sys_vars.time,
+                        configs.carry_ally_duration,
+                        sprite,
+                    );
+                };
+                break;
+            }
+        }
+        None
     }
-    // TODO: asd
-    //    fn finish_cast(
-    //        &self,
-    //        caster_entity_id: CharEntityId,
-    //        caster_pos: WorldCoord,
-    //        skill_pos: Option<Vector2<f32>>,
-    //        char_to_skill_dir: &Vector2<f32>,
-    //        target_entity: Option<CharEntityId>,
-    //        ecs_world: &mut specs::world::World,
-    //    ) -> Option<Box<dyn SkillManifestation>> {
-    //        let sys_vars = ecs_world.read_resource::<SystemVariables>();
-    //        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
-    //        let target_entity = target_entity.unwrap();
-    //        let target_pos = {
-    //            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
-    //            if let Some(target) = char_storage.get(target_entity.0) {
-    //                target.pos()
-    //            } else {
-    //                return None;
-    //            }
-    //        };
-    //        {
-    //            for (falcon, sprite) in (
-    //                &mut ecs_world.write_storage::<FalconComponent>(),
-    //                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
-    //            )
-    //                .join()
-    //            {
-    //                if falcon.owner_entity_id != caster_entity_id {
-    //                    continue;
-    //                }
-    //                if target_entity == caster_entity_id {
-    //                    // falcon.state = FalconState::CarryOwner
-    //                    for (entity_id, controller) in (
-    //                        &ecs_world.entities(),
-    //                        &ecs_world.read_storage::<ControllerComponent>(),
-    //                    )
-    //                        .join()
-    //                    {
-    //                        if controller.controlled_entity == falcon.owner_entity_id {
-    //                            falcon.carry_owner(
-    //                                ControllerEntityId(entity_id),
-    //                                &target_pos,
-    //                                sys_vars.time,
-    //                                configs.carry_owner_duration,
-    //                                sprite,
-    //                            );
-    //                            break;
-    //                        }
-    //                    }
-    //                } else {
-    //                    falcon.carry_ally(
-    //                        target_entity,
-    //                        &target_pos,
-    //                        sys_vars.time,
-    //                        configs.carry_ally_duration,
-    //                        sprite,
-    //                    );
-    //                };
-    //                break;
-    //            }
-    //        }
-    //        None
-    //    }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         SkillTargetType::OnlyAllyAndSelf

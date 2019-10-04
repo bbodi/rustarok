@@ -1,14 +1,14 @@
+use nalgebra::Vector2;
+
 use crate::asset::SpriteResource;
 use crate::common::ElapsedTime;
 use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
-use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillTargetType,
-};
+use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
@@ -24,22 +24,29 @@ pub struct ExoSkeletonSkill;
 
 pub const EXO_SKELETON_SKILL: &'static ExoSkeletonSkill = &ExoSkeletonSkill;
 
-impl ExoSkeletonSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
+impl SkillDef for ExoSkeletonSkill {
+    fn get_icon_path(&self) -> &'static str {
+        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
+    }
+
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let now = sys_vars.time;
-        let configs = &dev_configs.skills.exoskeleton;
+        let configs = &ecs_world.read_resource::<DevConfig>().skills.exoskeleton;
         let duration_seconds = configs.duration_seconds;
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                finish_cast.caster_entity_id,
-                finish_cast.caster_entity_id,
+                caster_entity_id,
+                caster_entity_id,
                 Box::new(ExoSkeletonStatus::new(
                     now,
                     duration_seconds,
@@ -50,19 +57,7 @@ impl ExoSkeletonSkill {
                     configs.attack_speed,
                 )),
             ));
-    }
-}
-
-impl SkillDef for ExoSkeletonSkill {
-    fn get_icon_path(&self) -> &'static str {
-        "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\cr_reflectshield.bmp"
-    }
-
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, ExoSkeletonSkill::do_finish_cast),
-        )
+        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

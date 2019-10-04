@@ -1,11 +1,10 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
+use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, FinishSimpleSkillCastComponent, SkillDef, SkillManifestation,
-    SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
 use crate::configs::DevConfig;
@@ -19,41 +18,28 @@ pub struct LightningSkill;
 
 pub const LIGHTNING_SKILL: &'static LightningSkill = &LightningSkill;
 
-impl LightningSkill {
-    fn do_finish_cast(
-        finish_cast: &FinishCast,
-        entities: &Entities,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-        sys_vars: &mut SystemVariables,
-    ) {
-        let skill_manifest_id = entities.create();
-        updater.insert(
-            skill_manifest_id,
-            SkillManifestationComponent::new(
-                skill_manifest_id,
-                Box::new(LightningManifest::new(
-                    finish_cast.caster_entity_id,
-                    &finish_cast.skill_pos.unwrap(),
-                    &finish_cast.char_to_skill_dir,
-                    sys_vars.time,
-                    entities,
-                )),
-            ),
-        );
-    }
-}
-
 impl SkillDef for LightningSkill {
     fn get_icon_path(&self) -> &'static str {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\wl_chainlightning.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
-        updater.insert(
-            entities.create(),
-            FinishSimpleSkillCastComponent::new(finish_cast_data, LightningSkill::do_finish_cast),
-        )
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
+        Some(Box::new(LightningManifest::new(
+            caster_entity_id,
+            &skill_pos.unwrap(),
+            char_to_skill_dir,
+            sys_vars.time,
+            &ecs_world.entities(),
+        )))
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

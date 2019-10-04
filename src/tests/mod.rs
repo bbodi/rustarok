@@ -7,7 +7,6 @@ use crate::components::char::{
     CharState, CharacterEntityBuilder, CharacterStateComponent, EntityTarget, Team,
 };
 use crate::components::controller::{CharEntityId, EntitiesBelowCursor, WorldCoord};
-use crate::components::skills::gaz_barricade::GazBarricadeSkill;
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::configs::DevConfig;
@@ -29,7 +28,6 @@ use nalgebra::Vector2;
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::time::Duration;
-use websocket::futures::Lazy;
 
 const TIMESTEP_FOR_30_FPS: f32 = 0.033333333;
 const TIMESTEP_FOR_60_FPS: f32 = 0.016666668;

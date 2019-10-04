@@ -1,5 +1,5 @@
 use nalgebra::{Isometry2, Vector2, Vector3};
-use specs::{Entities, Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate};
 
 use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
 use crate::components::char::{
@@ -7,8 +7,7 @@ use crate::components::char::{
 };
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
-    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType,
-    WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
@@ -34,32 +33,29 @@ impl SkillDef for GazXplodiumChargeSkill {
         "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\ra_detonator.bmp"
     }
 
-    fn finish_cast(&self, finish_cast_data: FinishCast, entities: &Entities, updater: &LazyUpdate) {
+    fn finish_cast(
+        &self,
+        caster_entity_id: CharEntityId,
+        caster_pos: WorldCoord,
+        skill_pos: Option<Vector2<f32>>,
+        char_to_skill_dir: &Vector2<f32>,
+        target_entity: Option<CharEntityId>,
+        ecs_world: &mut specs::world::World,
+    ) -> Option<Box<dyn SkillManifestation>> {
+        Some(Box::new(GazXplodiumChargeSkillManifestation::new(
+            caster_entity_id,
+            caster_pos,
+            skill_pos.unwrap(),
+            &mut ecs_world.write_resource::<PhysicEngine>(),
+            ecs_world.read_resource::<SystemVariables>().time,
+            ecs_world
+                .read_resource::<DevConfig>()
+                .skills
+                .gaz_xplodium_charge
+                .inner
+                .clone(),
+        )))
     }
-    // TODO: ASD
-    //    fn finish_cast(
-    //        &self,
-    //        caster_entity_id: CharEntityId,
-    //        caster_pos: WorldCoord,
-    //        skill_pos: Option<Vector2<f32>>,
-    //        char_to_skill_dir: &Vector2<f32>,
-    //        target_entity: Option<CharEntityId>,
-    //        ecs_world: &mut specs::world::World,
-    //    ) -> Option<Box<dyn SkillManifestation>> {
-    //        Some(Box::new(GazXplodiumChargeSkillManifestation::new(
-    //            caster_entity_id,
-    //            caster_pos,
-    //            skill_pos.unwrap(),
-    //            &mut ecs_world.write_resource::<PhysicEngine>(),
-    //            ecs_world.read_resource::<SystemVariables>().time,
-    //            ecs_world
-    //                .read_resource::<DevConfig>()
-    //                .skills
-    //                .gaz_xplodium_charge
-    //                .inner
-    //                .clone(),
-    //        )))
-    //    }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
         SkillTargetType::Area

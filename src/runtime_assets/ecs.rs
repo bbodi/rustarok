@@ -3,9 +3,7 @@ use crate::components::char::{
     TurretControllerComponent,
 };
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
-use crate::components::skills::skills::{
-    FinishSimpleSkillCastComponent, SkillManifestationComponent,
-};
+use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{
     BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
 };
@@ -36,7 +34,6 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<ConsoleComponent>();
-    ecs_world.register::<FinishSimpleSkillCastComponent>();
     ecs_world.register::<SpawnEntityComponent>();
     ecs_world
 }
