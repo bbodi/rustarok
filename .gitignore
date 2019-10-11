@@ -1,2 +1,4 @@
+*.grf
+*.sif
 /target
 **/*.rs.bk

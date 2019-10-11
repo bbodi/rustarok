@@ -1,0 +1,6 @@
+Bootstrap: docker
+From: vanessa/rustarok
+
+%runscript
+cd /code
+cargo run
