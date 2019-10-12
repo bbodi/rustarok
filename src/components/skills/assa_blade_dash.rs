@@ -12,7 +12,7 @@ use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTarge
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType};
+use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationRequestType};
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -166,7 +166,7 @@ impl Status for AssaBladeDashStatus {
                 body.set_position(Isometry2::translation(pos.x, pos.y));
 
                 if !self.forward_damage_done && duration_percentage > 0.25 {
-                    sys_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
                                 self.configs.attributes.width.unwrap_or(1.0),
@@ -175,7 +175,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(
+                        typ: HpModificationRequestType::BasicDamage(
                             self.configs.first_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,
@@ -184,7 +184,7 @@ impl Status for AssaBladeDashStatus {
                     });
                     self.forward_damage_done = true;
                 } else if !self.backward_damage_done && duration_percentage > 0.75 {
-                    sys_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
                                 self.configs.attributes.width.unwrap_or(1.0),
@@ -193,7 +193,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(
+                        typ: HpModificationRequestType::BasicDamage(
                             self.configs.second_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,

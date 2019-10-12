@@ -1,16 +1,18 @@
 extern crate rand;
 
+use std::sync::Mutex;
+
+use nalgebra::{Isometry2, Vector2};
+use nphysics2d::object::DefaultBodyHandle;
+use specs::prelude::*;
+use websocket::stream::sync::TcpStream;
+
 use crate::components::char::ActionPlayMode;
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::DefaultBodyHandle;
-use specs::prelude::*;
-use std::sync::Mutex;
-use websocket::stream::sync::TcpStream;
 
 pub mod char;
 pub mod controller;
@@ -198,18 +200,40 @@ pub enum DamageDisplayType {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum AttackType {
-    Basic(u32, DamageDisplayType, WeaponType),
+pub enum HpModificationRequestType {
+    BasicDamage(u32, DamageDisplayType, WeaponType),
     SpellDamage(u32, DamageDisplayType),
     Heal(u32),
     Poison(u32),
 }
 
 #[derive(Debug)]
-pub struct AttackComponent {
+pub struct HpModificationRequest {
     pub src_entity: CharEntityId,
     pub dst_entity: CharEntityId,
-    pub typ: AttackType,
+    pub typ: HpModificationRequestType,
+}
+
+#[derive(Debug)]
+pub enum HpModificationRequestResult {
+    Ok(HpModificationRequestType),
+    Blocked,
+    Absorbed,
+}
+
+impl HpModificationRequestResult {
+    pub fn ok(dmg: u32, typ: HpModificationRequestType) -> HpModificationRequestResult {
+        HpModificationRequestResult::Ok(match typ {
+            HpModificationRequestType::BasicDamage(_, display_type, weapon_type) => {
+                HpModificationRequestType::BasicDamage(dmg, display_type, weapon_type)
+            }
+            HpModificationRequestType::SpellDamage(_, display_type) => {
+                HpModificationRequestType::SpellDamage(dmg, display_type)
+            }
+            HpModificationRequestType::Heal(_) => HpModificationRequestType::Heal(dmg),
+            HpModificationRequestType::Poison(_) => HpModificationRequestType::Poison(dmg),
+        })
+    }
 }
 
 // TODO: be static types for Cuboid area attack components, Circle, etc
@@ -217,7 +241,7 @@ pub struct AreaAttackComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
     pub source_entity_id: CharEntityId,
-    pub typ: AttackType,
+    pub typ: HpModificationRequestType,
     pub except: Option<CharEntityId>,
 }
 

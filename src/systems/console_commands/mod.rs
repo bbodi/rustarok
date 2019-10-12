@@ -20,8 +20,8 @@ use crate::components::status::status::{
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
-    AttackComponent, AttackType, BrowserClient, DamageDisplayType, MinionComponent,
-    StrEffectComponent,
+    BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationRequestType,
+    MinionComponent, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
@@ -745,10 +745,10 @@ pub(super) fn cmd_heal() -> CommandDefinition {
 
             if let Some(entity_id) = entity_id {
                 let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-                sys_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self_char_id,
                     dst_entity: entity_id,
-                    typ: AttackType::Heal(value as u32),
+                    typ: HpModificationRequestType::Heal(value as u32),
                 });
                 Ok(())
             } else {
@@ -809,7 +809,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                         match name {
                             "heal" => Box::new(HealApplierArea::new(
                                 "Heal",
-                                AttackType::Heal(value.max(0) as u32),
+                                HpModificationRequestType::Heal(value.max(0) as u32),
                                 &pos,
                                 Vector2::new(width, height),
                                 interval,
@@ -818,7 +818,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                             )),
                             "damage" => Box::new(HealApplierArea::new(
                                 "Damage",
-                                AttackType::Basic(
+                                HpModificationRequestType::BasicDamage(
                                     value.max(0) as u32,
                                     DamageDisplayType::SingleNumber,
                                     WeaponType::Sword,

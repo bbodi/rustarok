@@ -605,6 +605,12 @@ impl Percentage {
         return num + (change as i32);
     }
 
+    pub fn of(&self, num: i32) -> i32 {
+        let f = PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return change as i32;
+    }
+
     pub fn subtract_me_from(&self, num: i32) -> i32 {
         let f = PERCENTAGE_FACTOR as i64;
         let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
@@ -649,6 +655,11 @@ mod tests {
         assert_eq!(Percentage(-10).add_me_to(200), 180);
         assert_eq!(Percentage(50).add_me_to(76), 114);
         assert_eq!(Percentage(50).add_me_to(10_000), 15_000);
+        assert_eq!(Percentage(10).of(200), 20);
+        assert_eq!(Percentage(70).of(600), 420);
+        assert_eq!(Percentage(70).div(10).of(600), 42);
+        assert_eq!(Percentage(50).of(76), 38);
+        assert_eq!(Percentage(50).of(10_000), 5_000);
         assert_eq!(Percentage(10).subtract_me_from(200), 180);
         assert_eq!(Percentage(40).subtract_me_from(10_000), 6_000);
         assert_eq!(Percentage(70).subtract_me_from(600), 180);
@@ -1225,7 +1236,7 @@ impl CharacterStateComponent {
                 JobId::Turret => BasicAttack::Ranged {
                     bullet_type: WeaponType::SilverBullet,
                 },
-                _ => BasicAttack::Melee,
+                _ => BasicAttack::MeleeSimple,
             },
             job_id,
             name,

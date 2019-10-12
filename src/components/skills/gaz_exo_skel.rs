@@ -174,7 +174,7 @@ impl Status for ExoSkeletonStatus {
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(sys_vars.time) {
-            target_char.basic_attack = BasicAttack::Melee;
+            target_char.basic_attack = BasicAttack::MeleeSimple;
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

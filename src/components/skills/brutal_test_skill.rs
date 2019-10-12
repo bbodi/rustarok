@@ -8,7 +8,9 @@ use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -171,11 +173,11 @@ impl SkillManifestation for BrutalSkillManifest {
                 return;
             }
             self.next_damage_at = sys_vars.time.add_seconds(0.5);
-            sys_vars.area_attacks.push(AreaAttackComponent {
+            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                 area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                 source_entity_id: self.caster_entity_id,
-                typ: AttackType::SpellDamage(600, DamageDisplayType::Combo(10)),
+                typ: HpModificationRequestType::SpellDamage(600, DamageDisplayType::Combo(10)),
                 except: None,
             });
         }

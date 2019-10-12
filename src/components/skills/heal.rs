@@ -4,7 +4,7 @@ use specs::LazyUpdate;
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 
-use crate::components::{AttackComponent, AttackType, SoundEffectComponent};
+use crate::components::{HpModificationRequest, HpModificationRequestType, SoundEffectComponent};
 use crate::configs::DevConfig;
 use crate::systems::SystemVariables;
 
@@ -40,10 +40,12 @@ impl SkillDef for HealSkill {
                 start_time: sys_vars.time,
             },
         );
-        sys_vars.attacks.push(AttackComponent {
+        sys_vars.hp_mod_requests.push(HpModificationRequest {
             src_entity: caster_entity_id,
             dst_entity: target_entity_id,
-            typ: AttackType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
+            typ: HpModificationRequestType::Heal(
+                ecs_world.read_resource::<DevConfig>().skills.heal.heal,
+            ),
         });
         None
     }

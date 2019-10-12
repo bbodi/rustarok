@@ -12,7 +12,8 @@ use crate::components::skills::skills::{
     WorldCollisions,
 };
 use crate::components::{
-    ApplyForceComponent, AttackComponent, AttackType, DamageDisplayType, StrEffectComponent,
+    ApplyForceComponent, DamageDisplayType, HpModificationRequest, HpModificationRequestType,
+    StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
@@ -221,10 +222,10 @@ impl SkillManifestation for PushBackWallSkill {
                         } else {
                             -push_dir.normalize()
                         };
-                        sys_vars.attacks.push(AttackComponent {
+                        sys_vars.hp_mod_requests.push(HpModificationRequest {
                             src_entity: self.caster_entity_id,
                             dst_entity: target_char_entity_id,
-                            typ: AttackType::SpellDamage(
+                            typ: HpModificationRequestType::SpellDamage(
                                 self.damage,
                                 DamageDisplayType::SingleNumber,
                             ),

@@ -4,12 +4,14 @@ use crate::components::char::{
     CharacterStateComponent, Percentage, Team,
 };
 use crate::components::controller::CharEntityId;
-use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::components::{
+    ApplyForceComponent, HpModificationRequest, HpModificationRequestResult,
+    HpModificationRequestType,
+};
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, SystemVariables};
@@ -85,7 +87,18 @@ pub trait Status: Any {
         StatusUpdateResult::KeepIt
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+    fn right_before_apply_damage(
+        &mut self,
+        outcome: HpModificationRequestResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) -> HpModificationRequestResult {
+        outcome
+    }
+
+    fn affect_incoming_damage(
+        &mut self,
+        outcome: HpModificationRequestResult,
+    ) -> HpModificationRequestResult {
         outcome
     }
 
@@ -200,7 +213,10 @@ impl Statuses {
         return allow;
     }
 
-    pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
+    pub fn affect_incoming_damage(
+        &mut self,
+        mut outcome: HpModificationRequestResult,
+    ) -> HpModificationRequestResult {
         for status in self
             .statuses
             .iter_mut()
@@ -208,6 +224,25 @@ impl Statuses {
             .filter(|it| it.is_some())
         {
             outcome = status.as_mut().unwrap().affect_incoming_damage(outcome);
+        }
+        return outcome;
+    }
+
+    pub fn right_before_apply_damage(
+        &mut self,
+        mut outcome: HpModificationRequestResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) -> HpModificationRequestResult {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            outcome = status
+                .as_mut()
+                .unwrap()
+                .right_before_apply_damage(outcome, hp_mod_reqs);
         }
         return outcome;
     }
@@ -628,10 +663,10 @@ impl Status for PoisonStatus {
             StatusUpdateResult::RemoveIt
         } else {
             if self.next_damage_at.has_already_passed(sys_vars.time) {
-                sys_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,
-                    typ: AttackType::Poison(30),
+                    typ: HpModificationRequestType::Poison(30),
                 });
                 self.next_damage_at = sys_vars.time.add_seconds(1.0);
             }

@@ -13,7 +13,9 @@ use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
 };
 use crate::components::status::stun::StunStatus;
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+};
 use crate::configs::{DevConfig, GazXplodiumChargeSkillConfigInner};
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -131,11 +133,11 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                     let area_shape =
                         Box::new(ncollide2d::shape::Ball::new(self.configs.explosion_area));
                     let area_isom = Isometry2::new(self.end_pos, 0.0);
-                    sys_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
                         source_entity_id: self.caster_id,
-                        typ: AttackType::SpellDamage(
+                        typ: HpModificationRequestType::SpellDamage(
                             self.configs.damage,
                             DamageDisplayType::SingleNumber,
                         ),

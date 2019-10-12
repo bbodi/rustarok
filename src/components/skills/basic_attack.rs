@@ -11,7 +11,10 @@ use crate::components::skills::skills::{
 };
 
 use crate::common::ElapsedTime;
-use crate::components::{AttackComponent, AttackType, DamageDisplayType, SoundEffectComponent};
+use crate::components::char::Percentage;
+use crate::components::{
+    DamageDisplayType, HpModificationRequest, HpModificationRequestType, SoundEffectComponent,
+};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -21,8 +24,14 @@ use crate::systems::{AssetResources, SystemVariables};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BasicAttack {
-    Melee,
-    Ranged { bullet_type: WeaponType },
+    MeleeSimple,
+    MeleeCombo {
+        combo_count: u8,
+        base_dmg_percentage_for_each_combo: Percentage,
+    },
+    Ranged {
+        bullet_type: WeaponType,
+    },
 }
 
 impl BasicAttack {
@@ -36,13 +45,31 @@ impl BasicAttack {
         sys_vars: &mut SystemVariables,
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
-            BasicAttack::Melee => {
-                sys_vars.attacks.push(AttackComponent {
+            BasicAttack::MeleeSimple => {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity_id,
-                    typ: AttackType::Basic(
+                    typ: HpModificationRequestType::BasicDamage(
                         calculated_attribs.attack_damage as u32,
                         DamageDisplayType::SingleNumber,
+                        WeaponType::Sword,
+                    ),
+                });
+                None
+            }
+            BasicAttack::MeleeCombo {
+                combo_count,
+                base_dmg_percentage_for_each_combo,
+            } => {
+                let p = base_dmg_percentage_for_each_combo;
+                let dmg =
+                    (p.of(calculated_attribs.attack_damage as i32) * *combo_count as i32) as u32;
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
+                    src_entity: caster_entity_id,
+                    dst_entity: target_entity_id,
+                    typ: HpModificationRequestType::BasicDamage(
+                        dmg,
+                        DamageDisplayType::Combo(*combo_count),
                         WeaponType::Sword,
                     ),
                 });
@@ -159,10 +186,10 @@ impl SkillManifestation for BasicRangeAttackBullet {
             }
         } else {
             if let Some(caster) = char_storage.get(self.caster_id.0) {
-                sys_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_id,
                     dst_entity: self.target_id,
-                    typ: AttackType::Basic(
+                    typ: HpModificationRequestType::BasicDamage(
                         caster.calculated_attribs().attack_damage as u32,
                         DamageDisplayType::SingleNumber,
                         self.weapon_type,

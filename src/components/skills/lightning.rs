@@ -6,7 +6,9 @@ use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -188,11 +190,14 @@ impl SkillManifestation for LightningManifest {
                 self.next_damage_at = sys_vars.time.add_seconds(1.0);
             }
             if self.next_damage_at.has_already_passed(sys_vars.time) {
-                sys_vars.area_attacks.push(AreaAttackComponent {
+                sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                     area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::SpellDamage(120, DamageDisplayType::SingleNumber),
+                    typ: HpModificationRequestType::SpellDamage(
+                        120,
+                        DamageDisplayType::SingleNumber,
+                    ),
                     except: None,
                 });
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);

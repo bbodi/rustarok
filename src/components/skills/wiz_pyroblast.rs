@@ -10,7 +10,8 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
-    AreaAttackComponent, AttackComponent, AttackType, DamageDisplayType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationRequestType,
+    StrEffectComponent,
 };
 use crate::configs::{DevConfig, SkillConfigPyroBlastInner};
 use crate::effect::StrEffectType;
@@ -177,21 +178,21 @@ impl SkillManifestation for PyroBlastManifest {
                 self.pos = self.pos + (dir_vector * sys_vars.dt.0 * self.configs.moving_speed);
             } else {
                 updater.remove::<SkillManifestationComponent>(self_entity_id);
-                sys_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: self.target_entity_id,
-                    typ: AttackType::SpellDamage(
+                    typ: HpModificationRequestType::SpellDamage(
                         self.configs.damage,
                         DamageDisplayType::SingleNumber,
                     ),
                 });
                 let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
                 let area_isom = Isometry2::new(target_pos, 0.0);
-                sys_vars.area_attacks.push(AreaAttackComponent {
+                sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                     area_shape,
                     area_isom,
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::SpellDamage(
+                    typ: HpModificationRequestType::SpellDamage(
                         self.configs.secondary_damage,
                         DamageDisplayType::SingleNumber,
                     ),

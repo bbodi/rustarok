@@ -3,10 +3,12 @@ use crate::components::controller::CharEntityId;
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
-use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::components::{
+    ApplyForceComponent, HpModificationRequest, HpModificationRequestResult,
+    HpModificationRequestType,
+};
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
@@ -50,10 +52,10 @@ impl Status for AbsorbStatus {
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(sys_vars.time) {
             if self.absorbed_damage > 0 {
-                sys_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: self_char_id,
-                    typ: AttackType::Heal(self.absorbed_damage),
+                    typ: HpModificationRequestType::Heal(self.absorbed_damage),
                 });
             }
             StatusUpdateResult::RemoveIt
@@ -69,18 +71,23 @@ impl Status for AbsorbStatus {
         }
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+    fn affect_incoming_damage(
+        &mut self,
+        outcome: HpModificationRequestResult,
+    ) -> HpModificationRequestResult {
         match outcome {
-            AttackOutcome::Damage(value)
-            | AttackOutcome::Poison(value)
-            | AttackOutcome::Combo {
-                sum_damage: value, ..
+            HpModificationRequestResult::Ok(hp_mod_req) => match hp_mod_req {
+                HpModificationRequestType::BasicDamage(value, _, _)
+                | HpModificationRequestType::SpellDamage(value, _)
+                | HpModificationRequestType::Poison(value) => {
+                    self.absorbed_damage += value;
+                    return HpModificationRequestResult::Absorbed;
+                }
+                HpModificationRequestType::Heal(_) => return outcome,
+            },
+            HpModificationRequestResult::Blocked | HpModificationRequestResult::Absorbed => {
+                return outcome
             }
-            | AttackOutcome::Crit(value) => {
-                self.absorbed_damage += value;
-                AttackOutcome::Absorb
-            }
-            AttackOutcome::Heal(_) | AttackOutcome::Block | AttackOutcome::Absorb => outcome,
         }
     }
 

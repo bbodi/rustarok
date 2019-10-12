@@ -84,7 +84,7 @@ use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRender
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::sound_sys::SoundSystem;
-use crate::systems::spawn_entity_system::{SpawnEntityComponent, SpawnEntitySystem};
+use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, SystemFrameDurations, SystemVariables,
@@ -338,15 +338,13 @@ fn main() {
             break 'running;
         }
 
-        ecs_dispatcher.dispatch(&mut ecs_world.res);
         run_console_commands(
             &command_defs,
             &mut ecs_world,
             desktop_client_char,
             desktop_client_controller,
         );
-        execute_finished_skill_castings(&mut ecs_world);
-        ecs_world.maintain();
+        run_main_frame(&mut ecs_world, &mut ecs_dispatcher);
 
         let (new_map, show_cursor) = imgui_frame(
             desktop_client_controller,
@@ -419,6 +417,12 @@ fn main() {
         // runtime configs
         reload_configs_if_changed(&runtime_conf_watcher_rx, &mut ecs_world);
     }
+}
+
+pub fn run_main_frame(mut ecs_world: &mut World, ecs_dispatcher: &mut Dispatcher) {
+    ecs_dispatcher.dispatch(&mut ecs_world.res);
+    execute_finished_skill_castings(&mut ecs_world);
+    ecs_world.maintain();
 }
 
 fn register_systems<'a, 'b>(
@@ -500,7 +504,7 @@ fn register_systems<'a, 'b>(
             )
             .with(SpawnEntitySystem, "spawn_entity_sys", &[])
             .with(SkillSystem, "skill_sys", &["collision_collector"])
-            .with(AttackSystem, "attack_sys", &["collision_collector"]);
+            .with(AttackSystem::new(), "attack_sys", &["collision_collector"]);
         if let Some(console_system) = console_system {
             // thread_local to avoid Send fields
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);

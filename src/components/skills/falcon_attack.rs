@@ -10,7 +10,7 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::ApplyStatusComponent;
-use crate::components::{AttackComponent, AttackType, DamageDisplayType};
+use crate::components::{DamageDisplayType, HpModificationRequest, HpModificationRequestType};
 use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
@@ -149,10 +149,13 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                         {
                             continue;
                         }
-                        sys_vars.attacks.push(AttackComponent {
+                        sys_vars.hp_mod_requests.push(HpModificationRequest {
                             src_entity: self.falcon_owner_id,
                             dst_entity: target_char_entity_id,
-                            typ: AttackType::SpellDamage(self.damage, DamageDisplayType::Combo(2)),
+                            typ: HpModificationRequestType::SpellDamage(
+                                self.damage,
+                                DamageDisplayType::Combo(2),
+                            ),
                         });
                         sys_vars
                             .apply_statuses

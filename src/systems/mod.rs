@@ -6,7 +6,9 @@ use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
-use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
+use crate::components::{
+    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationRequestResult,
+};
 use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
@@ -126,8 +128,15 @@ impl RenderMatrices {
     }
 }
 
+#[derive(Debug)]
 pub enum SystemEvent {
     CharStatusChange(u64, CharEntityId, CharState, CharState),
+    HpModification {
+        timestamp: u64,
+        src: CharEntityId,
+        dst: CharEntityId,
+        result: HpModificationRequestResult,
+    },
 }
 
 pub struct SystemVariables {
@@ -139,8 +148,8 @@ pub struct SystemVariables {
     /// extract from the struct?
     pub time: ElapsedTime,
     pub matrices: RenderMatrices,
-    pub attacks: Vec<AttackComponent>,
-    pub area_attacks: Vec<AreaAttackComponent>,
+    pub hp_mod_requests: Vec<HpModificationRequest>,
+    pub area_hp_mod_requests: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
     pub just_finished_skill_casts: Vec<FinishCast>,
@@ -174,8 +183,8 @@ impl SystemVariables {
             dt: DeltaTime(0.0),
             time: ElapsedTime(0.0),
             matrices: render_matrices,
-            attacks: Vec::with_capacity(128),
-            area_attacks: Vec::with_capacity(128),
+            hp_mod_requests: Vec::with_capacity(128),
+            area_hp_mod_requests: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
             just_finished_skill_casts: Vec::with_capacity(128),

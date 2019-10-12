@@ -7,7 +7,7 @@ use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
-use crate::components::{AreaAttackComponent, AttackType};
+use crate::components::{AreaAttackComponent, HpModificationRequestType};
 use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::{RenderCommandCollector, Trimesh3dType};
@@ -115,11 +115,11 @@ impl SkillManifestation for SanctuarySkillManifest {
                 return;
             }
             self.next_heal_at = sys_vars.time.add_seconds(self.heal_freq);
-            sys_vars.area_attacks.push(AreaAttackComponent {
+            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2!(2.5, 2.5))),
                 area_isom: Isometry2::new(self.pos, 0.0),
                 source_entity_id: self.caster_entity_id,
-                typ: AttackType::Heal(self.heal),
+                typ: HpModificationRequestType::Heal(self.heal),
                 except: None,
             });
         }

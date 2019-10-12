@@ -235,11 +235,15 @@ impl NextActionApplierSystem {
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
             let casting_time_seconds = skill_cast_attrs.casting_time;
+            dbg!(char_state.pos());
+            dbg!(target_pos);
             let (target_pos, dir_vector) = Skills::limit_vector_into_range(
                 &char_state.pos(),
                 &target_pos,
                 skill_cast_attrs.casting_range,
             );
+            dbg!(target_pos);
+            dbg!(dir_vector);
             let new_state = CharState::CastingSkill(CastingSkillData {
                 target_entity,
                 cast_started: now,

@@ -768,7 +768,6 @@ impl CommandArguments {
         }
         if !current_str.is_empty() {
             // push the last param
-            dbg!(&current_str);
             let len = current_str.chars().count();
             args.push(CommandElement {
                 text: current_str,

@@ -8,7 +8,9 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateResult,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -95,11 +97,14 @@ impl Status for FireBombStatus {
         if self.until.has_already_passed(sys_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
             let area_isom = Isometry2::new(char_state.pos(), 0.0);
-            sys_vars.area_attacks.push(AreaAttackComponent {
+            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                 area_shape: area_shape.clone(),
                 area_isom: area_isom.clone(),
                 source_entity_id: self.caster_entity_id,
-                typ: AttackType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
+                typ: HpModificationRequestType::SpellDamage(
+                    self.damage,
+                    DamageDisplayType::Combo(10),
+                ),
                 except: None,
             });
             if self.spread_count < 1 {

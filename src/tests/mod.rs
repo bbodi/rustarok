@@ -1,4 +1,4 @@
-#[cfg(test)]
+mod test_firewall;
 mod test_moving;
 
 use crate::assert_approx_eq::*;
@@ -9,9 +9,9 @@ use crate::components::char::{
 use crate::components::controller::{CharEntityId, EntitiesBelowCursor, WorldCoord};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
+use crate::components::{HpModificationRequestResult, HpModificationRequestType};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId};
-use crate::register_systems;
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::graphic::Texts;
@@ -23,6 +23,7 @@ use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent, SystemFrameDurations,
     SystemVariables,
 };
+use crate::{register_systems, run_main_frame};
 use log::LevelFilter;
 use nalgebra::Vector2;
 use specs::prelude::*;
@@ -112,6 +113,11 @@ impl<'a> CharAsserter<'a> {
         self
     }
 
+    pub fn has_less_than_max_hp(self) -> CharAsserter<'a> {
+        assert!(get_char!(self).calculated_attribs().max_hp > get_char!(self).hp);
+        self
+    }
+
     pub fn has_max_hp(self) -> CharAsserter<'a> {
         assert_eq!(
             get_char!(self).calculated_attribs().max_hp,
@@ -156,7 +162,12 @@ struct OrderedEventAsserter<'a> {
 impl<'a> OrderedEventAsserter<'a> {
     pub fn no_other_events(self) -> OrderedEventAsserter<'a> {
         let events = &self.ecs_world.read_resource::<Vec<SystemEvent>>();
-        assert_eq!(events.len(), self.index);
+        assert_eq!(
+            events.len(),
+            self.index,
+            "events: {:?}",
+            events.iter().skip(self.index).collect::<Vec<_>>()
+        );
         self
     }
 
@@ -176,23 +187,90 @@ impl<'a> OrderedEventAsserter<'a> {
         expected_prev_status: CharState,
         expected_next_status: CharState,
     ) {
-        let events = &self.ecs_world.read_resource::<Vec<SystemEvent>>();
-        let pos = events
-            .iter()
-            .skip(self.index)
-            .position(|event| match event {
-                SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
-                    expected_char_id == *char_id
-                        && *from_status == expected_prev_status
-                        && *to_status == expected_next_status
-                }
-                _ => false,
-            });
+        if !self.search_event(|event| match event {
+            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+                expected_char_id == *char_id
+                    && *from_status == expected_prev_status
+                    && *to_status == expected_next_status
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No status change event was found from {:?} to {:?}",
+                expected_prev_status, expected_next_status,
+            );
+        }
+    }
 
-        self.index += pos.expect(&format!(
-            "No status change event was found from {:?} to {:?}",
-            expected_prev_status, expected_next_status,
-        )) + 1;
+    pub fn state_went_into_casting(
+        mut self,
+        expected_char_id: CharEntityId,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+                expected_char_id == *char_id
+                    && match to_status {
+                        CharState::CastingSkill(_) => true,
+                        _ => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No status change event was found from any to casting for char({:?})",
+                expected_char_id,
+            );
+        }
+        self
+    }
+
+    pub fn spell_damage(
+        mut self,
+        expected_attacker: CharEntityId,
+        expected_attacked: CharEntityId,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::HpModification {
+                timestamp,
+                src,
+                dst,
+                result,
+            } => {
+                expected_attacker == *src
+                    && expected_attacked == *dst
+                    && match result {
+                        HpModificationRequestResult::Ok(hp_mod_req) => match hp_mod_req {
+                            HpModificationRequestType::SpellDamage(_damage, _display_type) => true,
+                            HpModificationRequestType::BasicDamage(_, _, _) => false,
+                            HpModificationRequestType::Heal(_) => false,
+                            HpModificationRequestType::Poison(_) => false,
+                        },
+                        HpModificationRequestResult::Blocked => false,
+                        HpModificationRequestResult::Absorbed => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No damage event was found: {:?} -> {:?}",
+                expected_attacker, expected_attacked,
+            );
+        }
+        self
+    }
+
+    fn search_event<F>(&mut self, predicate: F) -> bool
+    where
+        F: Fn(&SystemEvent) -> bool,
+    {
+        let events = &self.ecs_world.read_resource::<Vec<SystemEvent>>();
+        let pos = events.iter().skip(self.index).position(predicate);
+
+        self.index += pos.unwrap_or(0) + 1;
+        return pos.is_some();
     }
 }
 
@@ -210,8 +288,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
 
     pub fn run_frames_n_times(&mut self, count: u64) {
         for _ in 0..count {
-            self.ecs_dispatcher.dispatch(&self.ecs_world.res);
-            self.ecs_world.maintain();
+            run_main_frame(&mut self.ecs_world, &mut self.ecs_dispatcher);
         }
     }
 
@@ -268,6 +345,23 @@ impl<'a, 'b> TestUtil<'a, 'b> {
             .push(apply_status);
     }
 
+    pub fn cast_skill_on_pos(&mut self, char_id: CharEntityId, skill: Skills, pos: WorldCoord) {
+        let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
+        let char_state = char_storage.get_mut(char_id.0).unwrap();
+        dbg!(char_state.pos());
+        dbg!(pos);
+        NextActionApplierSystem::try_cast_skill(
+            skill,
+            self.ecs_world.read_resource::<SystemVariables>().time,
+            &self.ecs_world.read_resource::<DevConfig>(),
+            char_state,
+            &pos,
+            &EntitiesBelowCursor::new(),
+            char_id,
+            false, // self target
+        );
+    }
+
     pub fn cast_skill_on_self(&mut self, char_id: CharEntityId, skill: Skills) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
         let char_state = char_storage.get_mut(char_id.0).unwrap();
@@ -279,7 +373,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
             &Vector2::zeros(),
             &EntitiesBelowCursor::new(),
             char_id,
-            true,
+            true, // self target
         );
     }
 
