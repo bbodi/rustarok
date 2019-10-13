@@ -1,10 +1,10 @@
 use crate::asset::gat::CellType;
 use crate::asset::AssetLoader;
+use crate::components::char::Team;
 use crate::components::char::{
-    attach_human_player_components, ActionPlayMode, CharActionIndex, CharOutlook, CharState,
-    CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
+    attach_human_player_components, percentage, ActionPlayMode, CharActionIndex, CharOutlook,
+    CharState, CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::char::{Percentage, Team};
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
     WorldCoord,
@@ -20,8 +20,8 @@ use crate::components::status::status::{
 };
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
-    BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationRequestType,
-    MinionComponent, StrEffectComponent,
+    BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
+    StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
@@ -748,7 +748,7 @@ pub(super) fn cmd_heal() -> CommandDefinition {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self_char_id,
                     dst_entity: entity_id,
-                    typ: HpModificationRequestType::Heal(value as u32),
+                    typ: HpModificationType::Heal(value as u32),
                 });
                 Ok(())
             } else {
@@ -809,7 +809,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                         match name {
                             "heal" => Box::new(HealApplierArea::new(
                                 "Heal",
-                                HpModificationRequestType::Heal(value.max(0) as u32),
+                                HpModificationType::Heal(value.max(0) as u32),
                                 &pos,
                                 Vector2::new(width, height),
                                 interval,
@@ -818,7 +818,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                             )),
                             "damage" => Box::new(HealApplierArea::new(
                                 "Damage",
-                                HpModificationRequestType::BasicDamage(
+                                HpModificationType::BasicDamage(
                                     value.max(0) as u32,
                                     DamageDisplayType::SingleNumber,
                                     WeaponType::Sword,
@@ -891,7 +891,7 @@ fn create_status_payload(
             },
         ))),
         "armor" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            ArmorModifierStatus::new(now, Percentage(value)),
+            ArmorModifierStatus::new(now, percentage(value)),
         ))),
         _ => Err("Status not found".to_owned()),
     }

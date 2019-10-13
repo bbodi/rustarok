@@ -1,10 +1,11 @@
+use crate::components::char::Percentage;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
 use crate::components::{
-    ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationResultType,
+    DamageDisplayType, HpModificationRequest, HpModificationResult, HpModificationResultType,
     HpModificationType,
 };
 use crate::effect::StrEffectType;
@@ -16,27 +17,32 @@ use crate::ElapsedTime;
 use specs::LazyUpdate;
 
 #[derive(Clone)]
-pub struct AbsorbStatus {
-    pub caster_entity_id: CharEntityId,
+pub struct ReflectDamageStatus {
     pub started: ElapsedTime,
-    pub animation_started: ElapsedTime,
     pub until: ElapsedTime,
-    pub absorbed_damage: u32,
+    pub animation_started: ElapsedTime,
+    pub reflected_damage: u32,
+    pub reflected_amount: Percentage,
 }
 
-impl AbsorbStatus {
-    pub fn new(caster_entity_id: CharEntityId, now: ElapsedTime, duration: f32) -> AbsorbStatus {
-        AbsorbStatus {
-            caster_entity_id,
+impl ReflectDamageStatus {
+    pub fn new(
+        self_entity_id: CharEntityId,
+        reflected_amount: Percentage,
+        now: ElapsedTime,
+        duration: f32,
+    ) -> ReflectDamageStatus {
+        ReflectDamageStatus {
             started: now,
             animation_started: now.add_seconds(-1.9),
             until: now.add_seconds(duration),
-            absorbed_damage: 0,
+            reflected_damage: 0,
+            reflected_amount,
         }
     }
 }
 
-impl Status for AbsorbStatus {
+impl Status for ReflectDamageStatus {
     fn dupl(&self) -> Box<dyn Status + Send> {
         Box::new(self.clone())
     }
@@ -51,13 +57,6 @@ impl Status for AbsorbStatus {
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(sys_vars.time) {
-            if self.absorbed_damage > 0 {
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
-                    src_entity: self.caster_entity_id,
-                    dst_entity: self_char_id,
-                    typ: HpModificationType::Heal(self.absorbed_damage),
-                });
-            }
             StatusUpdateResult::RemoveIt
         } else {
             if self
@@ -71,8 +70,31 @@ impl Status for AbsorbStatus {
         }
     }
 
-    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
-        false
+    fn hp_mod_has_been_applied_on_enemy(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
+        match outcome.typ {
+            HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                HpModificationType::BasicDamage(value, _, weapon_type) => {
+                    let reflected_value = self.reflected_amount.of(value as i32) as u32;
+                    self.reflected_damage += reflected_value;
+                    hp_mod_reqs.push(HpModificationRequest {
+                        src_entity: self_id,
+                        dst_entity: outcome.src_entity,
+                        typ: HpModificationType::BasicDamage(
+                            reflected_value,
+                            DamageDisplayType::SingleNumber,
+                            weapon_type,
+                        ),
+                    })
+                }
+                _ => {}
+            },
+            _ => {}
+        }
     }
 
     fn render(
@@ -96,40 +118,10 @@ impl Status for AbsorbStatus {
     }
 
     fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        // I think it should be overwritten only when the caster_entity_id is the same
-        // otherwise other players should get the healed credits for their armors
-        //        let other_absorb = unsafe { Statuses::hack_cast::<AbsorbStatus>(&other) };
-        //        if other_absorb.until.is_later_than(self.until) {
-        //            self.until = other_absorb.until;
-        //            self.started = other_absorb.started;
-        //            self.caster_entity_id = other_absorb.caster_entity_id;
-        //            self.animation_started = other_absorb.animation_started;
-        //        }
-        StatusStackingResult::AddTheNewStatus
+        StatusStackingResult::Replace
     }
 
     fn typ(&self) -> StatusNature {
         StatusNature::Supportive
-    }
-
-    fn hp_mod_is_calculated_but_not_applied_yet(
-        &mut self,
-        outcome: HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
-    ) -> HpModificationResult {
-        match outcome.typ {
-            HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
-                HpModificationType::BasicDamage(value, _, _)
-                | HpModificationType::SpellDamage(value, _)
-                | HpModificationType::Poison(value) => {
-                    self.absorbed_damage += value;
-                    return outcome.absorbed();
-                }
-                HpModificationType::Heal(_) => return outcome,
-            },
-            HpModificationResultType::Blocked | HpModificationResultType::Absorbed => {
-                return outcome
-            }
-        }
     }
 }

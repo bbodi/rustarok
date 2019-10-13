@@ -12,7 +12,7 @@ use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTarge
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
-use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationRequestType};
+use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -175,7 +175,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: HpModificationRequestType::BasicDamage(
+                        typ: HpModificationType::BasicDamage(
                             self.configs.first_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,
@@ -193,7 +193,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: HpModificationRequestType::BasicDamage(
+                        typ: HpModificationType::BasicDamage(
                             self.configs.second_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,

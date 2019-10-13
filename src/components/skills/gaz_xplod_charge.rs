@@ -14,7 +14,7 @@ use crate::components::status::status::{
 };
 use crate::components::status::stun::StunStatus;
 use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
 };
 use crate::configs::{DevConfig, GazXplodiumChargeSkillConfigInner};
 use crate::effect::StrEffectType;
@@ -137,7 +137,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
                         source_entity_id: self.caster_id,
-                        typ: HpModificationRequestType::SpellDamage(
+                        typ: HpModificationType::SpellDamage(
                             self.configs.damage,
                             DamageDisplayType::SingleNumber,
                         ),

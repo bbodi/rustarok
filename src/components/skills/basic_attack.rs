@@ -13,7 +13,7 @@ use crate::components::skills::skills::{
 use crate::common::ElapsedTime;
 use crate::components::char::Percentage;
 use crate::components::{
-    DamageDisplayType, HpModificationRequest, HpModificationRequestType, SoundEffectComponent,
+    DamageDisplayType, HpModificationRequest, HpModificationType, SoundEffectComponent,
 };
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
@@ -49,7 +49,7 @@ impl BasicAttack {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity_id,
-                    typ: HpModificationRequestType::BasicDamage(
+                    typ: HpModificationType::BasicDamage(
                         calculated_attribs.attack_damage as u32,
                         DamageDisplayType::SingleNumber,
                         WeaponType::Sword,
@@ -67,7 +67,7 @@ impl BasicAttack {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity_id,
-                    typ: HpModificationRequestType::BasicDamage(
+                    typ: HpModificationType::BasicDamage(
                         dmg,
                         DamageDisplayType::Combo(*combo_count),
                         WeaponType::Sword,
@@ -189,7 +189,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_id,
                     dst_entity: self.target_id,
-                    typ: HpModificationRequestType::BasicDamage(
+                    typ: HpModificationType::BasicDamage(
                         caster.calculated_attribs().attack_damage as u32,
                         DamageDisplayType::SingleNumber,
                         self.weapon_type,

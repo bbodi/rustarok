@@ -10,7 +10,7 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationRequestType,
+    AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
     StrEffectComponent,
 };
 use crate::configs::{DevConfig, SkillConfigPyroBlastInner};
@@ -181,7 +181,7 @@ impl SkillManifestation for PyroBlastManifest {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: self.target_entity_id,
-                    typ: HpModificationRequestType::SpellDamage(
+                    typ: HpModificationType::SpellDamage(
                         self.configs.damage,
                         DamageDisplayType::SingleNumber,
                     ),
@@ -192,7 +192,7 @@ impl SkillManifestation for PyroBlastManifest {
                     area_shape,
                     area_isom,
                     source_entity_id: self.caster_entity_id,
-                    typ: HpModificationRequestType::SpellDamage(
+                    typ: HpModificationType::SpellDamage(
                         self.configs.secondary_damage,
                         DamageDisplayType::SingleNumber,
                     ),

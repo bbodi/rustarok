@@ -1,7 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
-use crate::components::{HpModificationRequest, HpModificationRequestType};
+use crate::components::{HpModificationRequest, HpModificationType};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -15,7 +15,7 @@ pub struct HealApplierArea {
     pub extents: Vector2<u16>,
     pub pos: Vector2<f32>,
     pub name: &'static str,
-    pub attack_type: HpModificationRequestType,
+    pub attack_type: HpModificationType,
     pub interval: f32,
     pub caster_entity_id: CharEntityId,
     pub next_action_at: ElapsedTime,
@@ -24,7 +24,7 @@ pub struct HealApplierArea {
 impl HealApplierArea {
     pub fn new(
         name: &'static str,
-        attack_type: HpModificationRequestType,
+        attack_type: HpModificationType,
         skill_center: &Vector2<f32>,
         size: Vector2<u16>,
         interval: f32,

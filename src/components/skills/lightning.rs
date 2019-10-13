@@ -7,7 +7,7 @@ use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
@@ -194,10 +194,7 @@ impl SkillManifestation for LightningManifest {
                     area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,
-                    typ: HpModificationRequestType::SpellDamage(
-                        120,
-                        DamageDisplayType::SingleNumber,
-                    ),
+                    typ: HpModificationType::SpellDamage(120, DamageDisplayType::SingleNumber),
                     except: None,
                 });
                 self.next_damage_at = self.next_damage_at.add_seconds(0.6);

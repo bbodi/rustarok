@@ -175,7 +175,8 @@ impl<'a> specs::System<'a> for SavePreviousCharStateSystem {
                     ));
                 }
                 log::debug!(
-                    "{:?} state has changed {:?} ==> {:?}",
+                    "[{}] {:?} state has changed {:?} ==> {:?}",
+                    sys_vars.tick,
                     char_id,
                     prev_state,
                     state

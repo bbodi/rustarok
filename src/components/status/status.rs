@@ -1,12 +1,11 @@
 use crate::asset::SpriteResource;
 use crate::components::char::{
-    ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
-    CharacterStateComponent, Percentage, Team,
+    percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
+    CharAttributes, CharacterStateComponent, Percentage, Team,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::{
-    ApplyForceComponent, HpModificationRequest, HpModificationRequestResult,
-    HpModificationRequestType,
+    ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationType,
 };
 use crate::configs::DevConfig;
 use crate::consts::JobId;
@@ -87,19 +86,28 @@ pub trait Status: Any {
         StatusUpdateResult::KeepIt
     }
 
-    fn right_before_apply_damage(
+    fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
-        outcome: HpModificationRequestResult,
+        outcome: HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
-    ) -> HpModificationRequestResult {
+    ) -> HpModificationResult {
         outcome
     }
 
-    fn affect_incoming_damage(
+    fn hp_mod_has_been_applied_on_me(
         &mut self,
-        outcome: HpModificationRequestResult,
-    ) -> HpModificationRequestResult {
-        outcome
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
+    }
+
+    fn hp_mod_has_been_applied_on_enemy(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
     }
 
     fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
@@ -213,26 +221,31 @@ impl Statuses {
         return allow;
     }
 
-    pub fn affect_incoming_damage(
+    pub fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        mut outcome: HpModificationRequestResult,
-    ) -> HpModificationRequestResult {
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
         for status in self
             .statuses
             .iter_mut()
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            outcome = status.as_mut().unwrap().affect_incoming_damage(outcome);
+            status.as_mut().unwrap().hp_mod_has_been_applied_on_enemy(
+                self_id,
+                &outcome,
+                hp_mod_reqs,
+            );
         }
-        return outcome;
     }
 
-    pub fn right_before_apply_damage(
+    pub fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
-        mut outcome: HpModificationRequestResult,
+        mut outcome: HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
-    ) -> HpModificationRequestResult {
+    ) -> HpModificationResult {
         for status in self
             .statuses
             .iter_mut()
@@ -242,9 +255,29 @@ impl Statuses {
             outcome = status
                 .as_mut()
                 .unwrap()
-                .right_before_apply_damage(outcome, hp_mod_reqs);
+                .hp_mod_is_calculated_but_not_applied_yet(outcome, hp_mod_reqs);
         }
         return outcome;
+    }
+
+    pub fn hp_mod_has_been_applied_on_me(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            status.as_mut().unwrap().hp_mod_has_been_applied_on_enemy(
+                self_id,
+                &outcome,
+                hp_mod_reqs,
+            );
+        }
     }
 
     pub fn update(
@@ -320,53 +353,53 @@ impl Statuses {
             JobId::HUNTER => configs.stats.player.hunter.attributes.clone(),
             JobId::RangedMinion => configs.stats.minion.ranged.clone(),
             JobId::HealingDummy => CharAttributes {
-                movement_speed: Percentage(0),
-                attack_range: Percentage(0),
-                attack_speed: Percentage(0),
+                movement_speed: percentage(0),
+                attack_range: percentage(0),
+                attack_speed: percentage(0),
                 attack_damage: 0,
-                armor: Percentage(0),
-                healing: Percentage(100),
-                hp_regen: Percentage(0),
+                armor: percentage(0),
+                healing: percentage(100),
+                hp_regen: percentage(0),
                 max_hp: 1_000_000,
-                mana_regen: Percentage(0),
+                mana_regen: percentage(0),
             },
             JobId::TargetDummy => CharAttributes {
-                movement_speed: Percentage(0),
-                attack_range: Percentage(0),
-                attack_speed: Percentage(0),
+                movement_speed: percentage(0),
+                attack_range: percentage(0),
+                attack_speed: percentage(0),
                 attack_damage: 0,
-                armor: Percentage(0),
-                healing: Percentage(100),
-                hp_regen: Percentage(0),
+                armor: percentage(0),
+                healing: percentage(100),
+                hp_regen: percentage(0),
                 max_hp: 1_000_000,
-                mana_regen: Percentage(0),
+                mana_regen: percentage(0),
             },
             JobId::MeleeMinion => configs.stats.minion.melee.clone(),
             JobId::Turret => configs.skills.gaz_turret.turret.clone(),
             JobId::Barricade => {
                 let configs = &configs.skills.gaz_barricade;
                 CharAttributes {
-                    movement_speed: Percentage(0),
-                    attack_range: Percentage(0),
-                    attack_speed: Percentage(0),
+                    movement_speed: percentage(0),
+                    attack_range: percentage(0),
+                    attack_speed: percentage(0),
                     attack_damage: 0,
                     armor: configs.armor,
-                    healing: Percentage(0),
+                    healing: percentage(0),
                     hp_regen: configs.hp_regen,
                     max_hp: configs.max_hp,
-                    mana_regen: Percentage(10),
+                    mana_regen: percentage(10),
                 }
             }
             _ => CharAttributes {
-                movement_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(100),
+                movement_speed: percentage(100),
+                attack_range: percentage(100),
+                attack_speed: percentage(100),
                 attack_damage: 76,
-                armor: Percentage(10),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
+                armor: percentage(10),
+                healing: percentage(100),
+                hp_regen: percentage(100),
                 max_hp: 2000,
-                mana_regen: Percentage(100),
+                mana_regen: percentage(100),
             },
         };
     }
@@ -666,7 +699,7 @@ impl Status for PoisonStatus {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,
-                    typ: HpModificationRequestType::Poison(30),
+                    typ: HpModificationType::Poison(30),
                 });
                 self.next_damage_at = sys_vars.time.add_seconds(1.0);
             }

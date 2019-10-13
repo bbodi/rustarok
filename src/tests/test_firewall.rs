@@ -1,5 +1,10 @@
-use crate::components::char::{CharState, EntityTarget, Team};
+use crate::common::ElapsedTime;
+use crate::components::char::{percentage, CharState, EntityTarget, Team};
 use crate::components::skills::skills::Skills;
+use crate::components::status::attack_heal_status::AttackHealStatus;
+use crate::components::status::reflect_damage_status::ReflectDamageStatus;
+use crate::components::status::sacrafice_status::SacrificeStatus;
+use crate::components::status::status::ApplyStatusComponent;
 use crate::tests::setup_ecs_world;
 use nalgebra::Vector2;
 use std::time::Duration;
@@ -48,10 +53,6 @@ fn own_firewall_does_not_harm() {
         .state_went_into_casting(char_id)
         .no_other_events();
 }
-
- reflection: reflecting x% of the incoming damage
-sacrafice: A játékos helyett B kapja a sebzést
-Heal: Az ütés x%át healelje magán a támadó
 
 #[test]
 fn character_cant_move_after_touched_firewall() {}

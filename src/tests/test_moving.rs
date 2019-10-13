@@ -1,6 +1,6 @@
 use crate::common::ElapsedTime;
-use crate::components::char::{CharState, EntityTarget};
-use crate::components::char::{Percentage, Team};
+use crate::components::char::Team;
+use crate::components::char::{percentage, CharState, EntityTarget};
 use crate::components::skills::skills::Skills;
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::{ApplyStatusComponent, MainStatuses, MountedStatus};
@@ -24,7 +24,7 @@ fn finishing_mounting_skill_should_result_in_mounted_state() {
     test_util
         .assert_on_character(char_entity_id)
         .state(CharState::Idle)
-        .movement_speed(Percentage(130))
+        .movement_speed(percentage(130))
         .has_status::<MountedStatus>();
 }
 
@@ -128,7 +128,7 @@ fn many_chars_with_different_movement_speed() {
                     char_id,
                     Box::new(WalkingSpeedModifierStatus::new(
                         ElapsedTime(0.0),
-                        Percentage(i),
+                        percentage(i),
                         1000.0,
                     )),
                 ),

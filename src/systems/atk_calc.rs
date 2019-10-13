@@ -3,8 +3,8 @@ use ncollide2d::query::Proximity;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
-use crate::components::char::CharacterStateComponent;
 use crate::components::char::Percentage;
+use crate::components::char::{percentage, CharacterStateComponent};
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::status::status::{
@@ -13,7 +13,7 @@ use crate::components::status::status::{
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, FlyingNumberComponent, FlyingNumberType,
-    HpModificationRequest, HpModificationRequestResult, HpModificationRequestType,
+    HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
     SoundEffectComponent,
 };
 use crate::configs::DevConfig;
@@ -82,8 +82,6 @@ impl<'a> specs::System<'a> for AttackSystem {
             sys_vars.area_hp_mod_requests.clear();
         }
 
-        let hp_mod_requests = &self.hp_mod_requests;
-
         // apply area statuses
         let mut new_status_applies = sys_vars
             .apply_area_statuses
@@ -122,11 +120,14 @@ impl<'a> specs::System<'a> for AttackSystem {
         }
         sys_vars.pushes.clear();
 
-        for hp_mod_req in hp_mod_requests {
+        for hp_mod_req in self.hp_mod_requests.drain(..) {
             // TODO: char_state.cannot_control_until should be defined by this code
             // TODO: enemies can cause damages over a period of time, while they can die and be removed,
             // so src data (or an attack specific data structure) must be copied
             log::trace!("Process hp_mod_req {:?}", hp_mod_req);
+            // copy them so hp_mod_req can be moved into the closure
+            let attacker_id = hp_mod_req.src_entity;
+            let attacked_id = hp_mod_req.dst_entity;
             let hp_mod_req_results =
                 char_state_storage
                     .get(hp_mod_req.src_entity.0)
@@ -136,7 +137,7 @@ impl<'a> specs::System<'a> for AttackSystem {
                             .filter(|it| {
                                 let is_valid = it.state().is_alive()
                                     && match hp_mod_req.typ {
-                                        HpModificationRequestType::Heal(_) => {
+                                        HpModificationType::Heal(_) => {
                                             src_char_state.team.can_support(it.team)
                                         }
                                         _ => src_char_state.team.can_attack(it.team),
@@ -150,36 +151,55 @@ impl<'a> specs::System<'a> for AttackSystem {
                                 Some(AttackCalculation::apply_armor_calc(
                                     src_char_state,
                                     dst_char_state,
-                                    hp_mod_req.typ,
+                                    hp_mod_req,
                                 ))
                             })
                     });
             log::trace!("Attack outcomes: {:?}", hp_mod_req_results);
 
             for hp_mod_req_result in hp_mod_req_results.into_iter() {
-                let attacker_entity = hp_mod_req.src_entity;
-                let attacked_entity = hp_mod_req.dst_entity;
-                let attacked_entity_state = char_state_storage.get_mut(attacked_entity.0).unwrap();
-                let hp_mod_req_result = AttackCalculation::alter_requests_by_statuses(
-                    hp_mod_req_result,
-                    attacked_entity_state,
-                    &mut sys_vars.hp_mod_requests,
-                );
+                let (hp_mod_req_result, char_pos) = {
+                    let attacked_entity_state = char_state_storage.get_mut(attacked_id.0).unwrap();
+                    let hp_mod_req_result = AttackCalculation::alter_requests_by_attacked_statuses(
+                        hp_mod_req_result,
+                        attacked_entity_state,
+                        &mut sys_vars.hp_mod_requests,
+                    );
 
-                AttackCalculation::apply_damage(
-                    attacked_entity_state,
-                    &hp_mod_req_result,
-                    sys_vars.time,
-                );
+                    AttackCalculation::apply_damage(
+                        attacked_entity_state,
+                        &hp_mod_req_result,
+                        sys_vars.time,
+                    );
 
-                // TODO: rather than this, create a common component which
-                // contains all the necessary info from which an other system will be able to
-                // generate the render and audio commands
-                let char_pos = attacked_entity_state.pos();
+                    attacked_entity_state
+                        .statuses
+                        .hp_mod_has_been_applied_on_me(
+                            attacked_id,
+                            &hp_mod_req_result,
+                            &mut sys_vars.hp_mod_requests,
+                        );
+                    // TODO: rather than this, create a common component which
+                    // contains all the necessary info from which an other system will be able to
+                    // generate the render and audio commands
+                    (hp_mod_req_result, attacked_entity_state.pos())
+                };
+
+                {
+                    let attacker_entity_state = char_state_storage.get_mut(attacker_id.0).unwrap();
+                    attacker_entity_state
+                        .statuses
+                        .hp_mod_has_been_applied_on_enemy(
+                            attacker_id,
+                            &hp_mod_req_result,
+                            &mut sys_vars.hp_mod_requests,
+                        );
+                }
+
                 AttackCalculation::make_sound(
                     &entities,
                     char_pos,
-                    attacked_entity,
+                    attacked_id,
                     &hp_mod_req_result,
                     sys_vars.time,
                     &mut updater,
@@ -189,8 +209,8 @@ impl<'a> specs::System<'a> for AttackSystem {
                     &hp_mod_req_result,
                     &entities,
                     &mut updater,
-                    attacker_entity,
-                    attacked_entity,
+                    attacker_id,
+                    attacked_id,
                     &char_pos,
                     sys_vars.time,
                 );
@@ -198,8 +218,8 @@ impl<'a> specs::System<'a> for AttackSystem {
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::HpModification {
                         timestamp: sys_vars.tick,
-                        src: hp_mod_req.src_entity,
-                        dst: hp_mod_req.dst_entity,
+                        src: attacker_id,
+                        dst: attacked_id,
                         result: hp_mod_req_result,
                     });
                 }
@@ -229,23 +249,16 @@ impl<'a> specs::System<'a> for AttackSystem {
 pub struct AttackCalculation;
 
 impl AttackCalculation {
-    pub fn alter_requests_by_statuses(
-        outcome: HpModificationRequestResult,
+    pub fn alter_requests_by_attacked_statuses(
+        outcome: HpModificationResult,
         attacked_entity_state: &mut CharacterStateComponent,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
-    ) -> HpModificationRequestResult {
+    ) -> HpModificationResult {
         // Allow statuses to affect incoming damages/heals
-        log::trace!("Attack outcome: {:?}", outcome);
         let outcome = attacked_entity_state
             .statuses
-            .affect_incoming_damage(outcome);
-        log::trace!("Attack outcome affected by statuses: {:?}", outcome);
-
-        // Last chance to alter the final, calculated damage/heal for statuses
-        let outcome = attacked_entity_state
-            .statuses
-            .right_before_apply_damage(outcome, hp_mod_reqs);
-        log::trace!("Attack outcome affected(2nd) by statuses: {:?}", outcome);
+            .hp_mod_is_calculated_but_not_applied_yet(outcome, hp_mod_reqs);
+        log::trace!("Attack outcome affected) by statuses: {:?}", outcome);
 
         return outcome;
     }
@@ -327,44 +340,37 @@ impl AttackCalculation {
     pub fn apply_armor_calc(
         _src: &CharacterStateComponent,
         dst: &CharacterStateComponent,
-        typ: HpModificationRequestType,
-    ) -> HpModificationRequestResult {
-        return match typ {
-            HpModificationRequestType::SpellDamage(base_dmg, damage_render_type) => {
+        hp_mod_req: HpModificationRequest,
+    ) -> HpModificationResult {
+        return match hp_mod_req.typ {
+            HpModificationType::SpellDamage(base_dmg, damage_render_type) => {
                 let dmg = dst
                     .calculated_attribs()
                     .armor
                     .subtract_me_from(base_dmg as i32);
                 if dmg <= 0 {
-                    HpModificationRequestResult::Blocked
+                    hp_mod_req.blocked()
                 } else {
-                    HpModificationRequestResult::ok(dmg as u32, typ)
-                    //                    match damage_render_type {
-                    //                        DamageDisplayType::SingleNumber => AttackOutcome::Damage(dmg as u32),
-                    //                        DamageDisplayType::Combo(count) => AttackOutcome::create_combo()
-                    //                            .base_atk((dmg / count as i32) as u32)
-                    //                            .attack_count(count)
-                    //                            .build(),
-                    //                    }
+                    hp_mod_req.allow(dmg as u32)
                 }
             }
-            HpModificationRequestType::BasicDamage(base_dmg, _damage_render_type, _weapon_type) => {
+            HpModificationType::BasicDamage(base_dmg, _damage_render_type, _weapon_type) => {
                 let atk = dbg!(base_dmg);
                 let atk = dbg!(dst.calculated_attribs().armor).subtract_me_from(atk as i32);
                 dbg!(atk);
                 if atk <= 0 {
-                    HpModificationRequestResult::Blocked
+                    hp_mod_req.blocked()
                 } else {
-                    HpModificationRequestResult::ok(atk as u32, typ)
+                    hp_mod_req.allow(atk as u32)
                 }
             }
-            HpModificationRequestType::Heal(healed) => HpModificationRequestResult::ok(healed, typ),
-            HpModificationRequestType::Poison(dmg) => {
+            HpModificationType::Heal(healed) => hp_mod_req.allow(healed),
+            HpModificationType::Poison(dmg) => {
                 let atk = dst.calculated_attribs().armor.subtract_me_from(dmg as i32);
                 if atk <= 0 {
-                    HpModificationRequestResult::Blocked
+                    hp_mod_req.blocked()
                 } else {
-                    HpModificationRequestResult::ok(atk as u32, typ)
+                    hp_mod_req.allow(dmg as u32)
                 }
             }
         };
@@ -374,14 +380,14 @@ impl AttackCalculation {
         entities: &Entities,
         pos: WorldCoord,
         target_entity_id: CharEntityId,
-        outcome: &HpModificationRequestResult,
+        outcome: &HpModificationResult,
         now: ElapsedTime,
         updater: &mut LazyUpdate,
         sounds: &Sounds,
     ) {
-        match outcome {
-            HpModificationRequestResult::Ok(hp_mod_req) => match hp_mod_req {
-                HpModificationRequestType::BasicDamage(_, _damage_render_type, weapon_type) => {
+        match outcome.typ {
+            HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                HpModificationType::BasicDamage(_, _damage_render_type, weapon_type) => {
                     let entity = entities.create();
                     updater.insert(
                         entity,
@@ -397,53 +403,53 @@ impl AttackCalculation {
                         },
                     );
                 }
-                HpModificationRequestType::SpellDamage(_, _damage_render_type) => {}
-                HpModificationRequestType::Heal(_) => {}
-                HpModificationRequestType::Poison(_) => {}
+                HpModificationType::SpellDamage(_, _damage_render_type) => {}
+                HpModificationType::Heal(_) => {}
+                HpModificationType::Poison(_) => {}
             },
-            HpModificationRequestResult::Blocked => {}
-            HpModificationRequestResult::Absorbed => {}
+            HpModificationResultType::Blocked => {}
+            HpModificationResultType::Absorbed => {}
         }
     }
 
     fn apply_damage(
         char_comp: &mut CharacterStateComponent,
-        outcome: &HpModificationRequestResult,
+        outcome: &HpModificationResult,
         now: ElapsedTime,
     ) {
-        match outcome {
-            HpModificationRequestResult::Ok(hp_req_mod_type) => match hp_req_mod_type {
-                HpModificationRequestType::Heal(val) => {
+        match outcome.typ {
+            HpModificationResultType::Ok(hp_req_mod_type) => match hp_req_mod_type {
+                HpModificationType::Heal(val) => {
                     char_comp.hp = char_comp
                         .calculated_attribs()
                         .max_hp
-                        .min(char_comp.hp + *val as i32);
+                        .min(char_comp.hp + val as i32);
                 }
-                HpModificationRequestType::BasicDamage(val, _display_type, _weapon_type) => {
+                HpModificationType::BasicDamage(val, _display_type, _weapon_type) => {
                     char_comp
                         .cannot_control_until
                         .run_at_least_until_seconds(now, 0.1);
                     char_comp.set_receiving_damage();
-                    char_comp.hp -= *val as i32;
+                    char_comp.hp -= val as i32;
                 }
-                HpModificationRequestType::Poison(val) => {
-                    char_comp.hp -= *val as i32;
+                HpModificationType::Poison(val) => {
+                    char_comp.hp -= val as i32;
                 }
-                HpModificationRequestType::SpellDamage(val, _display_type) => {
+                HpModificationType::SpellDamage(val, _display_type) => {
                     char_comp
                         .cannot_control_until
                         .run_at_least_until_seconds(now, 0.1);
                     char_comp.set_receiving_damage();
-                    char_comp.hp -= *val as i32;
+                    char_comp.hp -= val as i32;
                 }
             },
-            HpModificationRequestResult::Blocked => {}
-            HpModificationRequestResult::Absorbed => {}
+            HpModificationResultType::Blocked => {}
+            HpModificationResultType::Absorbed => {}
         }
     }
 
     pub fn add_flying_damage_entity(
-        outcome: &HpModificationRequestResult,
+        outcome: &HpModificationResult,
         entities: &Entities,
         updater: &mut LazyUpdate,
         src_entity_id: CharEntityId,
@@ -452,28 +458,27 @@ impl AttackCalculation {
         sys_time: ElapsedTime,
     ) {
         let damage_entity = entities.create();
-        let (flying_numer_type, value) = match outcome {
-            HpModificationRequestResult::Ok(hp_req_mod) => match hp_req_mod {
-                HpModificationRequestType::BasicDamage(value, display_type, ..)
-                | HpModificationRequestType::SpellDamage(value, display_type) => match display_type
-                {
-                    DamageDisplayType::SingleNumber => (FlyingNumberType::Damage, *value),
+        let (flying_numer_type, value) = match outcome.typ {
+            HpModificationResultType::Ok(hp_req_mod) => match hp_req_mod {
+                HpModificationType::BasicDamage(value, display_type, ..)
+                | HpModificationType::SpellDamage(value, display_type) => match display_type {
+                    DamageDisplayType::SingleNumber => (FlyingNumberType::Damage, value),
                     DamageDisplayType::Combo(attack_count) => {
-                        let single_attack_damage = *value / (*attack_count as u32);
+                        let single_attack_damage = value / (attack_count as u32);
                         (
                             FlyingNumberType::Combo {
                                 single_attack_damage,
-                                attack_count: *attack_count,
+                                attack_count: attack_count,
                             },
-                            *value,
+                            value,
                         )
                     }
                 },
-                HpModificationRequestType::Poison(value) => (FlyingNumberType::Poison, *value),
-                HpModificationRequestType::Heal(value) => (FlyingNumberType::Heal, *value),
+                HpModificationType::Poison(value) => (FlyingNumberType::Poison, value),
+                HpModificationType::Heal(value) => (FlyingNumberType::Heal, value),
             },
-            HpModificationRequestResult::Blocked => (FlyingNumberType::Block, 0),
-            HpModificationRequestResult::Absorbed => (FlyingNumberType::Absorb, 0),
+            HpModificationResultType::Blocked => (FlyingNumberType::Block, 0),
+            HpModificationResultType::Absorbed => (FlyingNumberType::Absorb, 0),
         };
         updater.insert(
             damage_entity,
@@ -551,7 +556,7 @@ impl AttackSystem {
     ) -> Percentage {
         return match target_char.job_id {
             JobId::CRUSADER => configs.stats.player.crusader.mounted_speedup,
-            _ => Percentage(30),
+            _ => percentage(30),
         };
     }
 

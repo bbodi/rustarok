@@ -1,3 +1,4 @@
+mod basic_attack;
 mod test_firewall;
 mod test_moving;
 
@@ -9,7 +10,7 @@ use crate::components::char::{
 use crate::components::controller::{CharEntityId, EntitiesBelowCursor, WorldCoord};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
-use crate::components::{HpModificationRequestResult, HpModificationRequestType};
+use crate::components::{HpModificationResultType, HpModificationType};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId};
 use crate::runtime_assets::audio::Sounds;
@@ -203,6 +204,30 @@ impl<'a> OrderedEventAsserter<'a> {
         }
     }
 
+    pub fn state_went_into_attacking(
+        mut self,
+        attacker_id: CharEntityId,
+        attacked_id: CharEntityId,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+                attacker_id == *char_id
+                    && match to_status {
+                        CharState::Attacking { target, .. } => *target == attacked_id,
+                        _ => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No status change event was found from any to attacking for char({:?})",
+                attacker_id,
+            );
+        }
+        self
+    }
+
     pub fn state_went_into_casting(
         mut self,
         expected_char_id: CharEntityId,
@@ -226,6 +251,116 @@ impl<'a> OrderedEventAsserter<'a> {
         self
     }
 
+    pub fn basic_damage(
+        mut self,
+        expected_attacker: CharEntityId,
+        expected_attacked: CharEntityId,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::HpModification {
+                timestamp,
+                src,
+                dst,
+                result,
+            } => {
+                expected_attacker == *src
+                    && expected_attacked == *dst
+                    && match result.typ {
+                        HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                            HpModificationType::SpellDamage(_damage, _display_type) => false,
+                            HpModificationType::BasicDamage(_damage, _, _) => true,
+                            HpModificationType::Heal(_) => false,
+                            HpModificationType::Poison(_) => false,
+                        },
+                        HpModificationResultType::Blocked => false,
+                        HpModificationResultType::Absorbed => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No damage event was found: {:?} -> {:?}",
+                expected_attacker, expected_attacked,
+            );
+        }
+        self
+    }
+
+    pub fn heal_eq(
+        mut self,
+        expected_attacker: CharEntityId,
+        expected_attacked: CharEntityId,
+        expected_heal: u32,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::HpModification {
+                timestamp,
+                src,
+                dst,
+                result,
+            } => {
+                expected_attacker == *src
+                    && expected_attacked == *dst
+                    && match result.typ {
+                        HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                            HpModificationType::SpellDamage(_damage, _display_type) => false,
+                            HpModificationType::BasicDamage(damage, _, _) => false,
+                            HpModificationType::Heal(heal) => expected_heal == heal,
+                            HpModificationType::Poison(_) => false,
+                        },
+                        HpModificationResultType::Blocked => false,
+                        HpModificationResultType::Absorbed => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No damage event was found: {:?} -> {:?}, {}",
+                expected_attacker, expected_attacked, expected_heal,
+            );
+        }
+        self
+    }
+
+    pub fn basic_damage_eq(
+        mut self,
+        expected_attacker: CharEntityId,
+        expected_attacked: CharEntityId,
+        expected_dmg: u32,
+    ) -> OrderedEventAsserter<'a> {
+        if !self.search_event(|event| match event {
+            SystemEvent::HpModification {
+                timestamp,
+                src,
+                dst,
+                result,
+            } => {
+                expected_attacker == *src
+                    && expected_attacked == *dst
+                    && match result.typ {
+                        HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                            HpModificationType::SpellDamage(_damage, _display_type) => false,
+                            HpModificationType::BasicDamage(damage, _, _) => damage == expected_dmg,
+                            HpModificationType::Heal(_) => false,
+                            HpModificationType::Poison(_) => false,
+                        },
+                        HpModificationResultType::Blocked => false,
+                        HpModificationResultType::Absorbed => false,
+                    }
+            }
+            _ => false,
+        }) {
+            assert!(
+                false,
+                "No damage event was found: {:?} -> {:?}, {}",
+                expected_attacker, expected_attacked, expected_dmg,
+            );
+        }
+        self
+    }
+
     pub fn spell_damage(
         mut self,
         expected_attacker: CharEntityId,
@@ -240,15 +375,15 @@ impl<'a> OrderedEventAsserter<'a> {
             } => {
                 expected_attacker == *src
                     && expected_attacked == *dst
-                    && match result {
-                        HpModificationRequestResult::Ok(hp_mod_req) => match hp_mod_req {
-                            HpModificationRequestType::SpellDamage(_damage, _display_type) => true,
-                            HpModificationRequestType::BasicDamage(_, _, _) => false,
-                            HpModificationRequestType::Heal(_) => false,
-                            HpModificationRequestType::Poison(_) => false,
+                    && match result.typ {
+                        HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                            HpModificationType::SpellDamage(_damage, _display_type) => true,
+                            HpModificationType::BasicDamage(_, _, _) => false,
+                            HpModificationType::Heal(_) => false,
+                            HpModificationType::Poison(_) => false,
                         },
-                        HpModificationRequestResult::Blocked => false,
-                        HpModificationRequestResult::Absorbed => false,
+                        HpModificationResultType::Blocked => false,
+                        HpModificationResultType::Absorbed => false,
                     }
             }
             _ => false,

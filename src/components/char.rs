@@ -540,6 +540,7 @@ pub enum EntityTarget {
 
 const PERCENTAGE_FACTOR: i32 = 1000;
 
+// able to represent numbers in 0.1% discrete steps
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(from = "i32")]
 pub struct Percentage {
@@ -548,13 +549,11 @@ pub struct Percentage {
 
 impl From<i32> for Percentage {
     fn from(value: i32) -> Self {
-        Percentage(value)
+        percentage(value)
     }
 }
 
-// able to represent numbers in 0.1% discrete steps
-#[allow(non_snake_case)]
-pub fn Percentage(value: i32) -> Percentage {
+pub fn percentage(value: i32) -> Percentage {
     Percentage {
         value: value * PERCENTAGE_FACTOR,
     }
@@ -646,29 +645,29 @@ mod tests {
 
     #[test]
     fn test_percentages() {
-        assert_eq!(Percentage(70).increase_by(Percentage(10)).as_i16(), 77);
-        assert_eq!(Percentage(70).increase_by(Percentage(-10)).as_i16(), 63);
-        assert_eq!(Percentage(100).increase_by(Percentage(200)).as_i16(), 300);
-        assert_eq!(Percentage(10).add_me_to(200), 220);
-        assert_eq!(Percentage(70).add_me_to(600), 1020);
-        assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
-        assert_eq!(Percentage(-10).add_me_to(200), 180);
-        assert_eq!(Percentage(50).add_me_to(76), 114);
-        assert_eq!(Percentage(50).add_me_to(10_000), 15_000);
-        assert_eq!(Percentage(10).of(200), 20);
-        assert_eq!(Percentage(70).of(600), 420);
-        assert_eq!(Percentage(70).div(10).of(600), 42);
-        assert_eq!(Percentage(50).of(76), 38);
-        assert_eq!(Percentage(50).of(10_000), 5_000);
-        assert_eq!(Percentage(10).subtract_me_from(200), 180);
-        assert_eq!(Percentage(40).subtract_me_from(10_000), 6_000);
-        assert_eq!(Percentage(70).subtract_me_from(600), 180);
-        assert_eq!(Percentage(50).subtract_me_from(76), 38);
-        assert_eq!(Percentage(100).as_f32(), 1.0);
-        assert_eq!(Percentage(50).as_f32(), 0.5);
-        assert_eq!(Percentage(5).as_f32(), 0.05);
-        assert_eq!(Percentage(5).div(10).as_f32(), 0.005);
-        assert_eq!(Percentage(-5).div(10).as_f32(), -0.005);
+        assert_eq!(percentage(70).increase_by(percentage(10)).as_i16(), 77);
+        assert_eq!(percentage(70).increase_by(percentage(-10)).as_i16(), 63);
+        assert_eq!(percentage(100).increase_by(percentage(200)).as_i16(), 300);
+        assert_eq!(percentage(10).add_me_to(200), 220);
+        assert_eq!(percentage(70).add_me_to(600), 1020);
+        assert_eq!(percentage(70).div(10).add_me_to(600), 642);
+        assert_eq!(percentage(-10).add_me_to(200), 180);
+        assert_eq!(percentage(50).add_me_to(76), 114);
+        assert_eq!(percentage(50).add_me_to(10_000), 15_000);
+        assert_eq!(percentage(10).of(200), 20);
+        assert_eq!(percentage(70).of(600), 420);
+        assert_eq!(percentage(70).div(10).of(600), 42);
+        assert_eq!(percentage(50).of(76), 38);
+        assert_eq!(percentage(50).of(10_000), 5_000);
+        assert_eq!(percentage(10).subtract_me_from(200), 180);
+        assert_eq!(percentage(40).subtract_me_from(10_000), 6_000);
+        assert_eq!(percentage(70).subtract_me_from(600), 180);
+        assert_eq!(percentage(50).subtract_me_from(76), 38);
+        assert_eq!(percentage(100).as_f32(), 1.0);
+        assert_eq!(percentage(50).as_f32(), 0.5);
+        assert_eq!(percentage(5).as_f32(), 0.05);
+        assert_eq!(percentage(5).div(10).as_f32(), 0.005);
+        assert_eq!(percentage(-5).div(10).as_f32(), -0.005);
     }
 }
 
@@ -739,15 +738,15 @@ pub struct CharAttributesBonuses {
 impl CharAttributes {
     pub fn zero() -> CharAttributes {
         CharAttributes {
-            movement_speed: Percentage(0),
-            attack_range: Percentage(0),
-            attack_speed: Percentage(0),
+            movement_speed: percentage(0),
+            attack_range: percentage(0),
+            attack_speed: percentage(0),
             attack_damage: 0,
-            armor: Percentage(0),
-            healing: Percentage(0),
-            hp_regen: Percentage(0),
+            armor: percentage(0),
+            healing: percentage(0),
+            hp_regen: percentage(0),
             max_hp: 0,
-            mana_regen: Percentage(0),
+            mana_regen: percentage(0),
         }
     }
 
@@ -811,11 +810,11 @@ impl CharAttributes {
         for m in &modifiers.attack_speed {
             attr.attack_speed.apply(m);
         }
-        attr.attack_speed.limit(Percentage(-300), Percentage(500));
+        attr.attack_speed.limit(percentage(-300), percentage(500));
         for m in &modifiers.armor {
             attr.armor.apply(m);
         }
-        attr.armor.limit(Percentage(-100), Percentage(100));
+        attr.armor.limit(percentage(-100), percentage(100));
         for m in &modifiers.healing {
             attr.healing.apply(m);
         }

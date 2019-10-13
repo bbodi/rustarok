@@ -9,7 +9,7 @@ use crate::components::skills::skills::{
     WorldCollisions,
 };
 use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
@@ -177,7 +177,7 @@ impl SkillManifestation for BrutalSkillManifest {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                 area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                 source_entity_id: self.caster_entity_id,
-                typ: HpModificationRequestType::SpellDamage(600, DamageDisplayType::Combo(10)),
+                typ: HpModificationType::SpellDamage(600, DamageDisplayType::Combo(10)),
                 except: None,
             });
         }

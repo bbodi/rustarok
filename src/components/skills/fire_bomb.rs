@@ -9,7 +9,7 @@ use crate::components::status::status::{
     StatusNature, StatusUpdateResult,
 };
 use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequestType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
@@ -101,10 +101,7 @@ impl Status for FireBombStatus {
                 area_shape: area_shape.clone(),
                 area_isom: area_isom.clone(),
                 source_entity_id: self.caster_entity_id,
-                typ: HpModificationRequestType::SpellDamage(
-                    self.damage,
-                    DamageDisplayType::Combo(10),
-                ),
+                typ: HpModificationType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
                 except: None,
             });
             if self.spread_count < 1 {

@@ -7,7 +7,7 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
 use crate::components::{
-    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationRequestResult,
+    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
 };
 use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::audio::Sounds;
@@ -135,7 +135,7 @@ pub enum SystemEvent {
         timestamp: u64,
         src: CharEntityId,
         dst: CharEntityId,
-        result: HpModificationRequestResult,
+        result: HpModificationResult,
     },
 }
 
