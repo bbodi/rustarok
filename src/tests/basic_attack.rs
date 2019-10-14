@@ -5,6 +5,7 @@ use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::tests::setup_ecs_world;
+use nalgebra::Vector2;
 use std::time::Duration;
 
 #[test]

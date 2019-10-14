@@ -1,6 +1,9 @@
 package rustarok.render
 
-import org.khronos.webgl.*
+import org.khronos.webgl.WebGLBuffer
+import org.khronos.webgl.WebGLProgram
+import org.khronos.webgl.WebGLRenderingContext
+import org.khronos.webgl.WebGLUniformLocation
 import rustarok.*
 
 class HorizontalTextureRenderer(gl: WebGL2RenderingContext) {
@@ -24,12 +27,21 @@ class HorizontalTextureRenderer(gl: WebGL2RenderingContext) {
             matrix.rotate_around_y_mut(command.rotation_rad)
             gl.uniformMatrix4fv(shader.model_mat, false, matrix.buffer)
 
-            gl.uniform2f(shader.size, command.w, command.h)
-            gl.uniform4fv(shader.color, command.color)
-
             val texture =
                     get_or_load_server_texture(command.server_texture_id,
-                                               WebGLRenderingContext.NEAREST)
+                            WebGLRenderingContext.NEAREST)
+            val (w, h) = when (command.size) {
+                is TextureSize.Fixed -> {
+                    command.size.fixed to command.size.fixed
+                }
+                is TextureSize.Scaled -> {
+                    texture.w * command.size.scaled * ONE_SPRITE_PIXEL_SIZE_IN_3D to
+                            texture.h * command.size.scaled * ONE_SPRITE_PIXEL_SIZE_IN_3D
+                }
+            }
+            gl.uniform2f(shader.size, w, h)
+            gl.uniform4fv(shader.color, command.color)
+
             gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture.texture)
             gl.drawArrays(WebGLRenderingContext.TRIANGLE_STRIP, 0, 4)
         }
@@ -40,18 +52,18 @@ class HorizontalTextureRenderer(gl: WebGL2RenderingContext) {
     ) {
         gl.enableVertexAttribArray(shader.a_pos)
         gl.vertexAttribPointer(shader.a_pos,
-                               2,
-                               WebGLRenderingContext.FLOAT,
-                               false,
-                               4 * 4,
-                               0)
+                2,
+                WebGLRenderingContext.FLOAT,
+                false,
+                4 * 4,
+                0)
         gl.enableVertexAttribArray(shader.a_uv)
         gl.vertexAttribPointer(shader.a_uv,
-                               2,
-                               WebGLRenderingContext.FLOAT,
-                               false,
-                               4 * 4,
-                               2 * 4)
+                2,
+                WebGLRenderingContext.FLOAT,
+                false,
+                4 * 4,
+                2 * 4)
     }
 
 
@@ -133,14 +145,14 @@ void main() {
             }
         }
         return HorizTextureShader(program = program!!,
-                                  projection_mat = gl.getUniformLocation(program, "projection")!!,
-                                  view_mat = gl.getUniformLocation(program, "view")!!,
-                                  color = gl.getUniformLocation(program, "color")!!,
-                                  model_mat = gl.getUniformLocation(program, "model")!!,
-                                  size = gl.getUniformLocation(program, "size")!!,
-                                  a_pos = gl.getAttribLocation(program, "Position"),
-                                  texture = gl.getUniformLocation(program, "model_texture")!!,
-                                  a_uv = gl.getAttribLocation(program, "aTexCoord"))
+                projection_mat = gl.getUniformLocation(program, "projection")!!,
+                view_mat = gl.getUniformLocation(program, "view")!!,
+                color = gl.getUniformLocation(program, "color")!!,
+                model_mat = gl.getUniformLocation(program, "model")!!,
+                size = gl.getUniformLocation(program, "size")!!,
+                a_pos = gl.getAttribLocation(program, "Position"),
+                texture = gl.getUniformLocation(program, "model_texture")!!,
+                a_uv = gl.getAttribLocation(program, "aTexCoord"))
     }
 
     private data class HorizTextureShader(val program: WebGLProgram,

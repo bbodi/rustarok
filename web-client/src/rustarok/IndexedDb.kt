@@ -12,25 +12,19 @@ external interface IDBDatabase {
 
 }
 
-data class TextureEntry(val path: String, val hash: String, val count: Int)
 
 object IndexedDb {
     private val indexedDb: IDBFactory =
             js("window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB")
 
-    suspend fun collect_mismatched_textures(entries: Map<String, DatabaseTextureEntry>): ArrayList<String> {
+    suspend fun collect_mismatched_textures(entries: Map<String, TextureId>): ArrayList<String> {
         val db = open()
-        val tx = db.transaction("textures", "readonly")
-        val store = tx.objectStore("textures")
+        val tx = db.transaction("texture_data", "readonly")
+        val store = tx.objectStore("texture_data")
         val mismatched_textures = arrayListOf<String>()
         for (entry in entries) {
-            val client_entry: TextureEntry? = make_await { store.get(entry.key) }
-            if (client_entry != null) {
-                if (client_entry.count != entry.value.gl_textures.size ||
-                        client_entry.hash != entry.value.hash) {
-                    mismatched_textures.add(entry.key)
-                }
-            } else {
+            val client_entry: dynamic = make_await { store.get(entry.key) }
+            if (client_entry == null) {
                 mismatched_textures.add(entry.key)
             }
         }
@@ -43,11 +37,9 @@ object IndexedDb {
             req.onupgradeneeded = { event: dynamic ->
                 // Save the IDBDatabase interface
                 val db: dynamic = event.target.result;
-
-                val objectStore = db.createObjectStore("textures", object {
+                db.createObjectStore("texture_data", object {
                     val keyPath = "path"
                 })
-                db.createObjectStore("texture_data")
                 db.createObjectStore("models")
                 db.createObjectStore("vertex_arrays")
                 db.createObjectStore("effects")
@@ -61,29 +53,19 @@ object IndexedDb {
     }
 
     suspend fun store_textures(path: String,
-                               hash: String, count: Int,
-                               textures: List<Triple<Int, Int, Uint8Array>>): Promise<Array<out dynamic>> {
+                               texture: Triple<Int, Int, Uint8Array>): Promise<Array<out dynamic>> {
         val db = open()
-        val tx = db.transaction(arrayOf("textures", "texture_data"), "readwrite")
-        val texture_info_store = tx.objectStore("textures")
+        val tx = db.transaction(arrayOf("texture_data"), "readwrite")
         val texture_data_store = tx.objectStore("texture_data")
-        val promises = textures.withIndex().map { (texture_index, texture) ->
-            val key = "${path}_$texture_index"
-            to_promise<dynamic> {
-                texture_data_store.put(object {
-                    val w = texture.first
-                    val h = texture.second
-                    val raw = texture.third
-                }, key)
-            }
-        }.toTypedArray()
-        return Promise.all(promises + to_promise {
-            texture_info_store.put(object {
+        val promise = to_promise<dynamic> {
+            texture_data_store.put(object {
                 val path = path
-                val hash = hash
-                val count = count
+                val w = texture.first
+                val h = texture.second
+                val raw = texture.third
             })
-        })
+        }
+        return promise
     }
 
     suspend fun store_model(path: String,
@@ -160,11 +142,11 @@ object IndexedDb {
         }
     }
 
-    suspend fun get_texture(path: String, i: Int): StoredTexture? {
+    suspend fun get_texture(path: String): StoredTexture? {
         val db = open()
         val tx = db.transaction("texture_data", "readonly")
         val store = tx.objectStore("texture_data")
-        val sh = make_await<dynamic> { store.get("${path}_$i") }
+        val sh = make_await<dynamic> { store.get(path) }
         return if (sh != null) {
             StoredTexture(sh)
         } else {

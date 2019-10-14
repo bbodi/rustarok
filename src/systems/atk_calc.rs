@@ -286,7 +286,7 @@ impl AttackCalculation {
                 &*area_hpmod_req.area_shape,
                 &Isometry2::new(char_state.pos(), 0.0),
                 &ncollide2d::shape::Ball::new(1.0),
-                0.0,
+                0.1,
             );
             if coll_result == Proximity::Intersecting {
                 result_attacks.push(HpModificationRequest {

@@ -1,4 +1,5 @@
 use crate::asset::database::AssetDatabase;
+use crate::asset::gat::Gat;
 use crate::cam::Camera;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
@@ -81,6 +82,7 @@ impl RenderDesktopClientSystem {
                 entities,
                 sprite_storage,
                 asset_db,
+                //                &map_render_data.gat,
             );
         }
 
@@ -329,6 +331,7 @@ impl RenderDesktopClientSystem {
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
+        //        gat: &Gat,
     ) {
         // Draw players
         for (rendering_entity_id, animated_sprite, char_state) in
@@ -343,6 +346,21 @@ impl RenderDesktopClientSystem {
                 continue;
             }
 
+            // gat height calculation
+            //            let w = gat.width as usize;
+            //            let x = pos_2d.x;
+            //            let y = -pos_2d.y;
+            //            let index = (x.floor() as usize + y.floor() as usize * w);
+            //            let x = x - x.floor();
+            //            let y = y - y.floor();
+            //
+            //            let cell = &gat.cells[index];
+            //            let x1 = cell.cells[0] + (cell.cells[1] - cell.cells[0]) * x;
+            //            let x2 = cell.cells[2] + (cell.cells[3] - cell.cells[2]) * x;
+            //            let h = -(x1 + (x2 - x1) * y);
+            //            dbg!(h);
+            //            let pos_3d = Vector3::new(pos_2d.x, h + char_state.get_y(), pos_2d.y);
+
             let pos_3d = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
 
             let color = char_state.statuses.calc_render_color(sys_vars.time);
@@ -352,20 +370,6 @@ impl RenderDesktopClientSystem {
                     head_index,
                     sex,
                 } => {
-                    //                    let body_sprite = if char_state.statuses.is_mounted() {
-                    //                        let sprites = &sys_vars.assets.sprites;
-                    //                        &sprites
-                    //                            .mounted_character_sprites
-                    //                            .get(&char_state.job_id)
-                    //                            .and_then(|it| it.get(sex as usize))
-                    //                            .unwrap_or_else(|| {
-                    //                                let sprites = &sys_vars.assets.sprites.character_sprites;
-                    //                                &sprites[&job_sprite_id][sex as usize]
-                    //                            })
-                    //                    } else {
-                    //                        let sprites = &sys_vars.assets.sprites.character_sprites;
-                    //                        &sprites[&job_sprite_id][sex as usize]
-                    //                    };
                     let body_sprite = char_state
                         .statuses
                         .calc_body_sprite(sys_vars, char_state.job_id, sex)

@@ -5,7 +5,7 @@ use crate::systems::render::render_command::{
     Circle3dRenderCommand, HorizontalTexture3dRenderCommand, ModelRenderCommand,
     Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle2dRenderCommand,
     Rectangle3dRenderCommand, RenderCommandCollector, Sprite3dRenderCommand, Text2dRenderCommand,
-    Texture2dRenderCommand, Trimesh3dRenderCommand,
+    Texture2dRenderCommand, TextureSizeSetting, Trimesh3dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -254,9 +254,16 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_u32::<LittleEndian>(command.texture_id.as_u32())
                 .unwrap();
-            // TODO: asd
-            //            send_buffer.write_f32::<LittleEndian>(command.w).unwrap();
-            //            send_buffer.write_f32::<LittleEndian>(command.h).unwrap();
+            match command.size {
+                TextureSizeSetting::FixSize(fix) => {
+                    send_buffer.write_u32::<LittleEndian>(1).unwrap();
+                    send_buffer.write_f32::<LittleEndian>(fix).unwrap();
+                }
+                TextureSizeSetting::Scale(scale) => {
+                    send_buffer.write_u32::<LittleEndian>(2).unwrap();
+                    send_buffer.write_f32::<LittleEndian>(scale).unwrap();
+                }
+            }
         }
     }
 

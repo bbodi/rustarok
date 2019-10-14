@@ -292,7 +292,7 @@ impl RenderUI {
                     }),
                 )
                 .screen_pos(
-                    // TODO: asd, store the skill name w in the vec above
+                    // TODO: store the skill name w in the vec above
                     //                    input.last_mouse_x as i32 - texture.width / 2,
                     input.last_mouse_x as i32 - 30 / 2,
                     input.last_mouse_y as i32 + 32,

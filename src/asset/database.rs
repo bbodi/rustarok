@@ -1,10 +1,11 @@
 use crate::asset::texture::{GlTexture, TextureId};
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
+use std::os::raw::c_void;
 
 #[derive(Debug, Serialize)]
 struct TextureDatabase {
@@ -127,44 +128,43 @@ impl AssetDatabase {
     }
 
     pub fn copy_texture_into(&self, gl: &Gl, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
-        // TODO: asd
-        //        if let Some(texture_entry) = self.texture_db.entries.get(path_in_byte_form) {
-        //            let mut offset = 0;
-        //            dst_buf
-        //                .write_u16::<LittleEndian>(path_in_byte_form.len() as u16)
-        //                .unwrap();
-        //            offset += 2;
-        //            dst_buf.write(path_in_byte_form.as_bytes()).unwrap();
-        //            offset += path_in_byte_form.len();
-        //
-        //            dst_buf
-        //                .write_u16::<LittleEndian>(texture_entry.gl_textures.len() as u16)
-        //                .unwrap();
-        //            offset += 2;
-        //
-        //            for (texture_id, w, h) in &texture_entry.gl_textures {
-        //                dst_buf.write_u16::<LittleEndian>(*w as u16).unwrap();
-        //                offset += std::mem::size_of::<u16>();
-        //                dst_buf.write_u16::<LittleEndian>(*h as u16).unwrap();
-        //                offset += std::mem::size_of::<u16>();
-        //
-        //                let raw_size = std::mem::size_of::<u8>() * (*w as usize) * (*h as usize) * 4;
-        //                for _ in 0..raw_size {
-        //                    dst_buf.push(0)
-        //                }
-        //                unsafe {
-        //                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
-        //                    gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_id.0);
-        //                    gl.GetTexImage(
-        //                        MyGlEnum::TEXTURE_2D,
-        //                        0,
-        //                        MyGlEnum::RGBA,
-        //                        MyGlEnum::UNSIGNED_BYTE,
-        //                        dst_buf.as_mut_ptr().offset(offset as isize) as *mut c_void,
-        //                    );
-        //                }
-        //                offset += raw_size;
-        //            }
-        //        }
+        if let Some(texture_id) = self.texture_db.entries.get(path_in_byte_form) {
+            let texture_entry = &self.textures[texture_id.0];
+            let mut offset = 0;
+            dst_buf
+                .write_u16::<LittleEndian>(path_in_byte_form.len() as u16)
+                .unwrap();
+            offset += 2;
+            dst_buf.write(path_in_byte_form.as_bytes()).unwrap();
+            offset += path_in_byte_form.len();
+
+            dst_buf
+                .write_u16::<LittleEndian>(texture_entry.width as u16)
+                .unwrap();
+            offset += std::mem::size_of::<u16>();
+            dst_buf
+                .write_u16::<LittleEndian>(texture_entry.height as u16)
+                .unwrap();
+            offset += std::mem::size_of::<u16>();
+
+            let raw_size = std::mem::size_of::<u8>()
+                * (texture_entry.width as usize)
+                * (texture_entry.height as usize)
+                * 4;
+            for _ in 0..raw_size {
+                dst_buf.push(0)
+            }
+            unsafe {
+                gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_entry.id());
+                gl.GetTexImage(
+                    MyGlEnum::TEXTURE_2D,
+                    0,
+                    MyGlEnum::RGBA,
+                    MyGlEnum::UNSIGNED_BYTE,
+                    dst_buf.as_mut_ptr().offset(offset as isize) as *mut c_void,
+                );
+            }
+        }
     }
 }

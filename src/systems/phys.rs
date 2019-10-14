@@ -1,4 +1,5 @@
 use crate::components::char::CharacterStateComponent;
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 use nalgebra::Vector2;
@@ -13,12 +14,13 @@ impl<'a> specs::System<'a> for FrictionSystem {
         specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, MapRenderData>,
         specs::WriteStorage<'a, CharacterStateComponent>,
     );
 
     fn run(
         &mut self,
-        (mut physics_world, mut system_benchmark, sys_vars, mut char_storage): Self::SystemData,
+        (mut physics_world, mut system_benchmark, sys_vars, map_render_data, mut char_storage): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for char_state in (&mut char_storage).join() {

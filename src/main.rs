@@ -1,4 +1,5 @@
 extern crate actix_web;
+extern crate assert_approx_eq;
 extern crate byteorder;
 extern crate config;
 extern crate crossbeam_channel;
@@ -18,7 +19,6 @@ extern crate serde_json;
 extern crate specs;
 #[macro_use]
 extern crate specs_derive;
-extern crate assert_approx_eq;
 extern crate strum;
 extern crate strum_macros;
 extern crate sublime_fuzzy;
@@ -160,6 +160,7 @@ fn main() {
     let mut physics_world = PhysicEngine::new();
 
     let map_name = "prontera";
+    //    let map_name = "bat_a01"; // battle ground
     let map_render_data = load_map(
         &mut physics_world,
         &gl,
