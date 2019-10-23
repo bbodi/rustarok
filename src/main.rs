@@ -129,11 +129,14 @@ pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) a
 fn main() {
     log::info!("Loading config file config.toml");
     let config = AppConfig::new().expect("Could not load config file ('config.toml')");
-    let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
-    let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
-    watcher
-        .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
-        .unwrap();
+    let (mut runtime_conf_watcher_rx, mut watcher) = {
+        let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
+        let mut watcher = notify::watcher(tx.clone(), Duration::from_secs(2)).unwrap();
+        watcher
+            .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
+            .unwrap();
+        (runtime_conf_watcher_rx, watcher)
+    };
 
     simple_logging::log_to_stderr(
         LevelFilter::from_str(&config.log_level)
@@ -382,7 +385,6 @@ fn main() {
             ecs_world.read_resource::<DevConfig>().sleep_ms,
         ));
         let now = std::time::SystemTime::now();
-        let now_ms = get_current_ms(now);
         if now >= next_second {
             fps = fps_counter;
             fps_history.push(fps as f32);
@@ -416,7 +418,9 @@ fn main() {
         }
 
         // runtime configs
-        reload_configs_if_changed(&runtime_conf_watcher_rx, &mut ecs_world);
+        let ret = reload_configs_if_changed(runtime_conf_watcher_rx, watcher, &mut ecs_world);
+        runtime_conf_watcher_rx = ret.0;
+        watcher = ret.1;
     }
 }
 
@@ -600,11 +604,15 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
 }
 
 fn reload_configs_if_changed(
-    runtime_conf_watcher_rx: &crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
+    runtime_conf_watcher_rx: crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
+    watcher: notify::RecommendedWatcher,
     ecs_world: &mut specs::world::World,
+) -> (
+    crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
+    notify::RecommendedWatcher,
 ) {
-    match runtime_conf_watcher_rx.try_recv() {
-        Ok(_event) => {
+    return match runtime_conf_watcher_rx.try_recv() {
+        Ok(event) => {
             if let Ok(new_config) = DevConfig::new() {
                 for input in (&mut ecs_world.write_storage::<HumanInputComponent>()).join() {
                     input.cast_mode = new_config.cast_mode
@@ -620,8 +628,27 @@ fn reload_configs_if_changed(
             } else {
                 log::warn!("Config error");
             }
+            // On Linuxe, a "Remove" event is generated when a file is saved, which removes the active
+            // watcher, so this code creates a new one
+            if let Ok(notify::Event {
+                kind: notify::EventKind::Remove(..),
+                ..
+            }) = event
+            {
+                let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
+                let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
+                watcher
+                    .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
+                    .unwrap();
+                (runtime_conf_watcher_rx, watcher)
+            } else {
+                (runtime_conf_watcher_rx, watcher)
+            }
         }
-        _ => {}
+        Err(crossbeam_channel::TryRecvError::Empty) => (runtime_conf_watcher_rx, watcher),
+        Err(e) => {
+            panic!("{:?}", e);
+        }
     };
 }
 

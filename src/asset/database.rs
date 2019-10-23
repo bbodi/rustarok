@@ -62,7 +62,7 @@ impl AssetDatabase {
         }
     }
 
-    pub fn get_texture_id(&self, gl: &Gl, path: &str) -> Option<TextureId> {
+    pub fn get_texture_id(&self, path: &str) -> Option<TextureId> {
         let key = AssetDatabase::replace_non_ascii_chars(&path);
         return self.texture_db.entries.get(&key).map(|it| it.clone());
     }

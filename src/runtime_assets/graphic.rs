@@ -231,7 +231,7 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                         monster_id,
                         asset_loader
                             .load_spr_and_act(gl, &file_name, asset_db)
-                            .or_else(|e| {
+                            .or_else(|_e| {
                                 let file_name = format!(
                                     "data\\sprite\\¸ó½ºÅÍ\\{}",
                                     monster_id.to_string().to_lowercase()
@@ -302,7 +302,7 @@ pub fn load_skill_icons(
             continue;
         }
         let skill_icon = asset_db
-            .get_texture_id(gl, &def.get_icon_path())
+            .get_texture_id(&def.get_icon_path())
             .unwrap_or_else(|| {
                 asset_loader
                     .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_db)
@@ -404,7 +404,6 @@ pub fn load_texts(gl: &Gl, ttf_context: &Sdl2TtfContext, asset_db: &mut AssetDat
         );
     }
     STATUS_NAMES.iter().for_each(|name| {
-        let key = format!("outlinetext_{}", name);
         texts.custom_texts.insert(
             name.to_string(),
             Video::create_outline_text_texture(
@@ -418,7 +417,6 @@ pub fn load_texts(gl: &Gl, ttf_context: &Sdl2TtfContext, asset_db: &mut AssetDat
     });
 
     for skill in Skills::iter() {
-        let key = format!("outlinetext_{:?}", skill);
         let texture = Video::create_outline_text_texture(
             gl,
             &skill_name_font,

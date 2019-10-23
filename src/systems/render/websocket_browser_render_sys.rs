@@ -1,6 +1,7 @@
 use crate::components::BrowserClient;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectId;
+use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, HorizontalTexture3dRenderCommand, ModelRenderCommand,
     Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle2dRenderCommand,
@@ -269,7 +270,7 @@ impl WebSocketBrowserRenderSystem {
 
     fn send_trimesh_3d_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &[Vec<Trimesh3dRenderCommand>; 2],
+        render_commands: &[Vec<Trimesh3dRenderCommand>; VERTEX_ARRAY_COUNT],
     ) {
         let sizes = (render_commands[1].len() << 16) | render_commands[0].len();
         send_buffer.write_u32::<LittleEndian>(sizes as u32).unwrap();

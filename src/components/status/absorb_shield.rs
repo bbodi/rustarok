@@ -71,6 +71,27 @@ impl Status for AbsorbStatus {
         }
     }
 
+    fn hp_mod_is_calculated_but_not_applied_yet(
+        &mut self,
+        outcome: HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) -> HpModificationResult {
+        match outcome.typ {
+            HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
+                HpModificationType::BasicDamage(value, _, _)
+                | HpModificationType::SpellDamage(value, _)
+                | HpModificationType::Poison(value) => {
+                    self.absorbed_damage += value;
+                    return outcome.absorbed();
+                }
+                HpModificationType::Heal(_) => return outcome,
+            },
+            HpModificationResultType::Blocked | HpModificationResultType::Absorbed => {
+                return outcome
+            }
+        }
+    }
+
     fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
         false
     }
@@ -110,26 +131,5 @@ impl Status for AbsorbStatus {
 
     fn typ(&self) -> StatusNature {
         StatusNature::Supportive
-    }
-
-    fn hp_mod_is_calculated_but_not_applied_yet(
-        &mut self,
-        outcome: HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
-    ) -> HpModificationResult {
-        match outcome.typ {
-            HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
-                HpModificationType::BasicDamage(value, _, _)
-                | HpModificationType::SpellDamage(value, _)
-                | HpModificationType::Poison(value) => {
-                    self.absorbed_damage += value;
-                    return outcome.absorbed();
-                }
-                HpModificationType::Heal(_) => return outcome,
-            },
-            HpModificationResultType::Blocked | HpModificationResultType::Absorbed => {
-                return outcome
-            }
-        }
     }
 }

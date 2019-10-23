@@ -1,5 +1,4 @@
 use crate::asset::database::AssetDatabase;
-use crate::asset::gat::Gat;
 use crate::cam::Camera;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,

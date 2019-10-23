@@ -581,7 +581,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
 fun update_dom(state: AppState, renderer: Renderer) {
     if (state.name == ApppStateName.ReceivingRenderCommands) {
         document.getElementById("status_text").asDynamic().style.display = "none"
-        document.getElementById("main_canvas").asDynamic().style.display = "block"
+        document.getElementById("main_div").asDynamic().style.display = "block"
         start_frame(socket, renderer)
     } else {
         document.getElementById("status_text")!!.innerHTML = ""
@@ -882,6 +882,7 @@ private fun process_welcome_msg(result: dynamic): Job {
 
 var mouse_x = 0
 var mouse_y = 0
+const val FRAME_HISTORY_SIZE = 1024;
 
 fun start_frame(socket: WebSocket, renderer: Renderer) {
     console.log("start_frame")
@@ -896,33 +897,61 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
 
     var last_input_tick = 0.0
     var last_fps_tick = 0.0
+    var last_render_tick = 0.0
     var last_server_render_tick = 0.0
     val input_tickrate = 1000 / 20
+    var expected_fps = 1000.0 / 100.0
+    var render_per_second = 0
     var fps = 0
     var server_fps = 0
     var server_fps_counter = 0
+    var render_per_second_counter = 0;
     var fps_counter = 0;
+    val render_command_history = Array(FRAME_HISTORY_SIZE) { ArrayBuffer(0) }
     var tick = { s: Double ->
 
     }
     Input.register_event_handlers(canvas, document)
 
+    val PLAYBACK_TIME = 3
+    var playback_index = 0
+    var history_size = 0
+
     tick = { s: Double ->
-        fps_counter++
-        renderer.render(gl)
+        window.requestAnimationFrame(tick)
 
         val now = Date.now()
+        val elapsed_since_last_render = now - last_render_tick;
+        val frame_count = history_size - playback_index
+        if (elapsed_since_last_render > expected_fps) {
+            if (frame_count > PLAYBACK_TIME) {
+                renderer.clear()
+                parse_render_commands(render_command_history[playback_index % FRAME_HISTORY_SIZE], renderer)
+                ++playback_index
+                renderer.render(gl)
+                render_per_second_counter++
+                if (frame_count > PLAYBACK_TIME + 2 && fps > render_per_second && expected_fps > 5) {
+                    expected_fps -= 0.1
+                }
+            } else if (frame_count <= PLAYBACK_TIME) {
+                expected_fps += 0.1
+            }
+            last_render_tick = now - (elapsed_since_last_render % expected_fps)
+        }
+        fps_counter++
+
         if (now - last_input_tick > input_tickrate) {
             last_input_tick = now
             Input.send_input_data(socket)
         }
         if (now - last_fps_tick > 1000) {
             last_fps_tick = now
-            fps = fps_counter
+            render_per_second = render_per_second_counter
+            fps = fps_counter;
             fps_counter = 0
-            console.info("FPS: $fps, server_fps: $server_fps")
+            render_per_second_counter = 0
+            console.info("FPS: $fps, RPS: $render_per_second, server_fps: $server_fps, frame_count: $frame_count, expected_fps: ${1000.0/expected_fps}")
         }
-        window.requestAnimationFrame(tick)
     }
     window.requestAnimationFrame(tick)
 
@@ -934,24 +963,29 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
             server_fps = server_fps_counter
             server_fps_counter = 0
         }
-        val reader = BufferReader(it.data as ArrayBuffer)
-        renderer.clear()
-        VIEW_MATRIX = reader.next_4x4matrix()
-        NORMAL_MATRIX = reader.next_3x3matrix()
+        render_command_history[history_size % FRAME_HISTORY_SIZE] = it.data as ArrayBuffer
+        ++history_size
+        0
+    }
+}
 
-        while (reader.has_next()) {
-            parse_partial_circle_2d_render_commands(reader, renderer)
-            parse_texture2d_render_commands(reader, renderer)
-            parse_rectangle_2d_render_commands(reader, renderer)
-            parse_rectangle3d_render_commands(reader, renderer)
-            parse_circle3d_render_commands(reader, renderer)
-            parse_sprite_render_commands(reader, renderer)
-            parse_number_render_commands(reader, renderer)
-            parse_effect_3d_render_commands(reader, renderer)
-            parse_model3d_render_commands(reader, renderer)
-            parse_horizontal_texture_3d_commands(reader, renderer)
-            parse_trimesh_3d_commands(reader, renderer)
-        }
+private fun parse_render_commands(data: ArrayBuffer, renderer: Renderer) {
+    val reader = BufferReader(data)
+    VIEW_MATRIX = reader.next_4x4matrix()
+    NORMAL_MATRIX = reader.next_3x3matrix()
+
+    while (reader.has_next()) {
+        parse_partial_circle_2d_render_commands(reader, renderer)
+        parse_texture2d_render_commands(reader, renderer)
+        parse_rectangle_2d_render_commands(reader, renderer)
+        parse_rectangle3d_render_commands(reader, renderer)
+        parse_circle3d_render_commands(reader, renderer)
+        parse_sprite_render_commands(reader, renderer)
+        parse_number_render_commands(reader, renderer)
+        parse_effect_3d_render_commands(reader, renderer)
+        parse_model3d_render_commands(reader, renderer)
+        parse_horizontal_texture_3d_commands(reader, renderer)
+        parse_trimesh_3d_commands(reader, renderer)
     }
 }
 

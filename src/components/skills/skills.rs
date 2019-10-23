@@ -181,11 +181,11 @@ pub trait SkillDef {
     }
     fn render_target_selection(
         &self,
-        is_castable: bool,
-        skill_pos: &Vector2<f32>,
-        char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollector,
-        configs: &DevConfig,
+        _is_castable: bool,
+        _skill_pos: &Vector2<f32>,
+        _char_to_skill_dir: &Vector2<f32>,
+        _render_commands: &mut RenderCommandCollector,
+        _configs: &DevConfig,
     ) {
     }
 }

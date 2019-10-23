@@ -1,6 +1,13 @@
+use std::collections::HashMap;
+
+use nalgebra::{Matrix3, Matrix4, Point2, Rotation3, Vector3};
+use sdl2::ttf::Sdl2TtfContext;
+use specs::prelude::*;
+
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
 use crate::asset::texture::GlTexture;
+use crate::asset::AssetLoader;
 use crate::common::{rotate_vec2, v2_to_v3};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
@@ -15,10 +22,6 @@ use crate::systems::render::render_command::{
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::video::{ShaderProgram, VertexArray, VertexAttribDefinition, Video};
-use nalgebra::{Matrix3, Matrix4, Point2, Rotation3, Vector3};
-use sdl2::ttf::Sdl2TtfContext;
-use specs::prelude::*;
-use std::collections::HashMap;
 
 pub struct StrEffectCache {
     cache: HashMap<EffectFrameCacheKey, Option<EffectFrameCache>>,
@@ -49,11 +52,13 @@ impl StrEffectCache {
     }
 }
 
+pub const VERTEX_ARRAY_COUNT: usize = 3;
+
 pub struct OpenGlRenderSystem<'a, 'b> {
     centered_rectangle_vao: VertexArray,
     circle_vao: VertexArray,
     points_vao: VertexArray,
-    vaos: [VertexArray; 2],
+    vaos: [VertexArray; VERTEX_ARRAY_COUNT],
     points_buffer: Vec<[f32; 7]>,
     // damage rendering
     single_digit_u_coord: f32,
@@ -66,6 +71,7 @@ pub struct OpenGlRenderSystem<'a, 'b> {
 
     identity_mat: Matrix4<f32>,
     shaders: Shaders,
+    white_dummy_texture: GlTexture,
 }
 
 pub struct Fonts<'a, 'b> {
@@ -355,13 +361,42 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                         },
                     ],
                 );
-                [sanctuary_vao.clone(), sanctuary_vao]
+                let mesh = OpenGlRenderSystem::create_sphere_vao(1.0, 100, 100);
+                let coords: Vec<[f32; 9]> = mesh
+                    .iter()
+                    .map(|coord| {
+                        [
+                            coord[0], coord[1], coord[2], 1.0, 1.0, 1.0, 1.0, coord[3], coord[4],
+                        ]
+                    })
+                    .collect();
+                let sphere = VertexArray::new_static(
+                    &gl,
+                    MyGlEnum::TRIANGLES,
+                    coords,
+                    vec![
+                        VertexAttribDefinition {
+                            number_of_components: 3,
+                            offset_of_first_element: 0,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 4,
+                            offset_of_first_element: 3,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 7,
+                        },
+                    ],
+                );
+
+                [sanctuary_vao.clone(), sanctuary_vao, sphere]
             },
             centered_rectangle_vao: {
-                let bottom_left: [f32; 7] = [-0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0];
-                let top_left: [f32; 7] = [-0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0];
-                let top_right: [f32; 7] = [0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0];
-                let bottom_right: [f32; 7] = [0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0];
+                let bottom_left: [f32; 9] = [-0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0];
+                let top_left: [f32; 9] = [-0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0];
+                let top_right: [f32; 9] = [0.5, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0];
+                let bottom_right: [f32; 9] = [0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0];
                 VertexArray::new_static(
                     &gl,
                     MyGlEnum::LINE_LOOP,
@@ -374,6 +409,10 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                         VertexAttribDefinition {
                             number_of_components: 4,
                             offset_of_first_element: 3,
+                        },
+                        VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 7,
                         },
                     ],
                 )
@@ -396,10 +435,10 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
             ),
             circle_vao: {
                 let capsule_mesh = ncollide2d::procedural::circle(&1.0, 32);
-                let coords: Vec<[f32; 7]> = capsule_mesh
+                let coords: Vec<[f32; 9]> = capsule_mesh
                     .coords()
                     .iter()
-                    .map(|it| [it.x, 0.0, it.y, 1.0, 1.0, 1.0, 1.0])
+                    .map(|it| [it.x, 0.0, it.y, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
                     .collect();
                 VertexArray::new_static(
                     &gl,
@@ -414,12 +453,96 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                             number_of_components: 4,
                             offset_of_first_element: 3,
                         },
+                        VertexAttribDefinition {
+                            number_of_components: 2,
+                            offset_of_first_element: 7,
+                        },
                     ],
                 )
             },
             str_effect_cache,
             text_cache: HashMap::with_capacity(1024),
+            white_dummy_texture: {
+                let mut surface =
+                    sdl2::surface::Surface::new(1, 1, sdl2::pixels::PixelFormatEnum::RGBA32)
+                        .unwrap();
+                surface
+                    .fill_rect(None, sdl2::pixels::Color::RGBA(255, 255, 255, 255))
+                    .unwrap();
+                AssetLoader::create_texture_from_surface_inner(&gl, surface, MyGlEnum::LINEAR)
+            },
         }
+    }
+
+    fn create_sphere_vao(radius: f32, sector_count: i32, stack_count: i32) -> Vec<[f32; 5]> {
+        let length_inv = 1.0f32 / radius; // vertex normal
+
+        let sector_step = 2.0 * std::f32::consts::PI / sector_count as f32;
+        let stack_step = std::f32::consts::PI / stack_count as f32;
+
+        let mut vertices = Vec::with_capacity((stack_count * sector_count) as usize);
+        let mut uvs = Vec::with_capacity((stack_count * sector_count) as usize);
+
+        for i in 0..=stack_count {
+            let stack_angle = std::f32::consts::FRAC_PI_2 - i as f32 * stack_step; // starting from pi/2 to -pi/2
+            let xy = radius * stack_angle.cos(); // r * cos(u)
+            let z = radius * stack_angle.sin(); // r * sin(u)
+
+            // add (sector_count+1) vertices per stack
+            // the first and last vertices have same position and normal, but different tex coords
+            for j in 0..=sector_count {
+                let sector_angle = j as f32 * sector_step; // starting from 0 to 2pi
+
+                // vertex position (x, y, z)
+                let x = xy * sector_angle.cos(); // r * cos(u) * cos(v)
+                let y = xy * sector_angle.sin(); // r * cos(u) * sin(v)
+                vertices.push([x, y, z]);
+
+                // normalized vertex normal (nx, ny, nz)
+                //                let nx = x * length_inv;
+                //                let ny = y * length_inv;
+                //                let nz = z * length_inv;
+                //                normals.push_back(nx);
+                //                normals.push_back(ny);
+                //                normals.push_back(nz);
+
+                // vertex tex coord (s, t) range between [0, 1]
+                let s = j as f32 / sector_count as f32;
+                let t = i as f32 / stack_count as f32;
+                uvs.push([s, t]);
+            }
+        }
+        let mut vao = Vec::with_capacity((stack_count * sector_count * 3) as usize);
+        fn vertex(
+            vertices: &Vec<[f32; 3]>,
+            uvs: &Vec<[f32; 2]>,
+            vao: &mut Vec<[f32; 5]>,
+            index: usize,
+        ) {
+            let v = &vertices[index];
+            let uv = &uvs[index];
+            vao.push([v[0], v[1], v[2], uv[0], uv[1]]);
+        }
+        for i in 0..stack_count {
+            let mut k1 = (i * (sector_count + 1)) as usize;
+            let mut k2 = (k1 + sector_count as usize + 1) as usize;
+            for j in 0..sector_count {
+                if i != 0 {
+                    vertex(&vertices, &uvs, &mut vao, k1);
+                    vertex(&vertices, &uvs, &mut vao, k2);
+                    vertex(&vertices, &uvs, &mut vao, k1 + 1);
+                }
+
+                if i != stack_count - 1 {
+                    vertex(&vertices, &uvs, &mut vao, k1 + 1);
+                    vertex(&vertices, &uvs, &mut vao, k2);
+                    vertex(&vertices, &uvs, &mut vao, k2 + 1);
+                }
+                k1 += 1;
+                k2 += 1;
+            }
+        }
+        return vao;
     }
 
     #[inline]
@@ -979,6 +1102,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     .projection_mat
                     .set(gl, &sys_vars.matrices.projection);
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
+                shader.params.texture.set(gl, 0);
 
                 {
                     /////////////////////////////////
@@ -987,14 +1111,25 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let _stopwatch =
                         system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
 
-                    shader.params.scale.set(gl, &[1.0, 1.0, 1.0]);
-                    shader.params.color.set_f32(gl, &[1.0, 1.0, 1.0, 1.0]);
                     for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
                         let vao_bind = self.vaos[i].bind(&gl);
                         for command in commands {
-                            let mut matrix = Matrix4::<f32>::identity();
-                            matrix.prepend_translation_mut(&command.pos);
+                            let matrix = create_3d_pos_rot_matrix(
+                                &command.pos,
+                                &(Vector3::y(), command.rotation_rad),
+                            );
                             shader.params.model_mat.set(gl, &matrix);
+                            shader
+                                .params
+                                .scale
+                                .set(gl, &[command.scale, command.scale, command.scale]);
+                            shader.params.color.set(gl, &command.color);
+                            command
+                                .texture
+                                .map(|texture_id| asset_db.get_texture(texture_id))
+                                .unwrap_or(&self.white_dummy_texture)
+                                .bind(gl, MyGlEnum::TEXTURE0);
+                            if let Some(texture_id) = command.texture {}
                             vao_bind.draw(&gl);
                         }
                     }
@@ -1003,6 +1138,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let _stopwatch =
                         system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
                     let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind(&gl);
+                    // TODO: it calls activate texture, is it necessary to call it always?
+                    self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
                     for command in &render_commands.rectangle_3d_commands {
                         shader.params.color.set(gl, &command.color);
                         let mat = create_3d_pos_rot_matrix(
@@ -1025,6 +1162,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let _stopwatch =
                         system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
                     let vao_bind = self.circle_vao.bind(&gl);
+                    self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
                     for command in &render_commands.circle_3d_commands {
                         shader.params.color.set(gl, &command.color);
                         shader

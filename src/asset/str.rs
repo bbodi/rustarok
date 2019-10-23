@@ -149,9 +149,8 @@ impl StrFile {
                                 );
                                 asset_loader.backup_surface()
                             });
-                            let texture = asset_db
-                                .get_texture_id(gl, &texture_name)
-                                .unwrap_or_else(|| {
+                            let texture =
+                                asset_db.get_texture_id(&texture_name).unwrap_or_else(|| {
                                     AssetLoader::create_texture_from_surface(
                                         gl,
                                         &texture_name,

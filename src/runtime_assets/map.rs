@@ -346,7 +346,7 @@ pub fn load_map(
         .set_contact_model(Box::new(SignoriniModel::new()));
 
     let path = format!("data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\map\\{}.bmp", map_name);
-    let minimap_texture = asset_db.get_texture_id(gl, &path).unwrap_or_else(|| {
+    let minimap_texture = asset_db.get_texture_id(&path).unwrap_or_else(|| {
         let surface = asset_loader.load_sdl_surface(&path);
         log::trace!("Surface loaded: {}", path);
         let mut surface = surface.unwrap_or_else(|e| {
@@ -375,52 +375,52 @@ pub fn load_map(
     });
 
     // remove the the upper half of lamps on which Guards are standing
-    //    {
-    //        let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
-    //        let model_index = asset_db.get_model_index(lamp_name);
-    //        let model = asset_db.get_model(model_index);
-    //        let new_model = ModelRenderData {
-    //            bounding_box: model.bounding_box.clone(),
-    //            alpha: 255,
-    //            model: model
-    //                .model
-    //                .iter()
-    //                .map(|m| {
-    //                    m.iter()
-    //                        .filter(|m| {
-    //                            m.texture_name.ends_with("stone-down.bmp")
-    //                                || m.texture_name.ends_with("STONE-UP.BMP")
-    //                        })
-    //                        .map(|m| m.clone())
-    //                        .collect()
-    //                })
-    //                .collect(),
-    //        };
-    //        asset_db.register_model("half_lamp", new_model);
-    //        let new_model_index = dbg!(asset_db.get_model_index("half_lamp"));
-    //        // RIGHT TEAM GUARDS
-    //        // middle final 4 guards on lamps
-    //        model_instances[453].asset_db_model_index = new_model_index;
-    //        model_instances[454].asset_db_model_index = new_model_index;
-    //        model_instances[455].asset_db_model_index = new_model_index;
-    //        model_instances[456].asset_db_model_index = new_model_index;
-    //        // top, guard alone on lamp
-    //        model_instances[695].asset_db_model_index = new_model_index;
-    //        // top, two guards on lamps
-    //        model_instances[549].asset_db_model_index = new_model_index;
-    //        model_instances[550].asset_db_model_index = new_model_index;
-    //        // LEFT TEAM GUARDS
-    //        // middle final 4 guards on lamps
-    //        model_instances[457].asset_db_model_index = new_model_index;
-    //        model_instances[458].asset_db_model_index = new_model_index;
-    //        model_instances[459].asset_db_model_index = new_model_index;
-    //        model_instances[460].asset_db_model_index = new_model_index;
-    //        // top, guard alone on lamp
-    //        model_instances[712].asset_db_model_index = new_model_index;
-    //        // top, two guards on lamps
-    //        model_instances[536].asset_db_model_index = new_model_index;
-    //        model_instances[537].asset_db_model_index = new_model_index;
-    //    }
+    if map_name == "prontera" && !quick_loading {
+        let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
+        let model_index = asset_db.get_model_index(lamp_name);
+        let model = asset_db.get_model(model_index);
+        let new_model = ModelRenderData {
+            bounding_box: model.bounding_box.clone(),
+            alpha: 255,
+            model: model
+                .model
+                .iter()
+                .map(|m| {
+                    m.iter()
+                        .filter(|m| {
+                            m.texture_name.ends_with("stone-down.bmp")
+                                || m.texture_name.ends_with("STONE-UP.BMP")
+                        })
+                        .map(|m| m.clone())
+                        .collect()
+                })
+                .collect(),
+        };
+        asset_db.register_model("half_lamp", new_model);
+        let new_model_index = dbg!(asset_db.get_model_index("half_lamp"));
+        // RIGHT TEAM GUARDS
+        // middle final 4 guards on lamps
+        model_instances[453].asset_db_model_index = new_model_index;
+        model_instances[454].asset_db_model_index = new_model_index;
+        model_instances[455].asset_db_model_index = new_model_index;
+        model_instances[456].asset_db_model_index = new_model_index;
+        // top, guard alone on lamp
+        model_instances[695].asset_db_model_index = new_model_index;
+        // top, two guards on lamps
+        model_instances[549].asset_db_model_index = new_model_index;
+        model_instances[550].asset_db_model_index = new_model_index;
+        // LEFT TEAM GUARDS
+        // middle final 4 guards on lamps
+        model_instances[457].asset_db_model_index = new_model_index;
+        model_instances[458].asset_db_model_index = new_model_index;
+        model_instances[459].asset_db_model_index = new_model_index;
+        model_instances[460].asset_db_model_index = new_model_index;
+        // top, guard alone on lamp
+        model_instances[712].asset_db_model_index = new_model_index;
+        // top, two guards on lamps
+        model_instances[536].asset_db_model_index = new_model_index;
+        model_instances[537].asset_db_model_index = new_model_index;
+    }
 
     MapRenderData {
         gat,
