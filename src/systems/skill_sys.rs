@@ -24,7 +24,7 @@ impl<'a> specs::System<'a> for SkillSystem {
         (
             entities,
             mut char_storage,
-            mut system_vars,
+            mut sys_vars,
             collisions_resource,
             mut system_benchmark,
             mut physics_world,
@@ -37,7 +37,7 @@ impl<'a> specs::System<'a> for SkillSystem {
             skill.update(
                 entity_id,
                 &collisions_resource.collisions,
-                &mut system_vars,
+                &mut sys_vars,
                 &entities,
                 &mut char_storage,
                 &mut physics_world,

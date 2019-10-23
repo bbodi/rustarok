@@ -38,11 +38,11 @@ impl SkillDef for ExoSkeletonSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = system_vars.time;
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        let now = sys_vars.time;
         let configs = &ecs_world.read_resource::<DevConfig>().skills.exoskeleton;
         let duration_seconds = configs.duration_seconds;
-        system_vars
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,
@@ -52,7 +52,7 @@ impl SkillDef for ExoSkeletonSkill {
                     duration_seconds,
                     configs.armor,
                     configs.attack_range,
-                    configs.walking_speed,
+                    configs.movement_speed,
                     configs.attack_damage,
                     configs.attack_speed,
                 )),
@@ -71,7 +71,7 @@ struct ExoSkeletonStatus {
     until: ElapsedTime,
     armor: Percentage,
     attack_range: Percentage,
-    walking_speed: Percentage,
+    movement_speed: Percentage,
     attack_damage: Percentage,
     attack_speed: Percentage,
 }
@@ -82,7 +82,7 @@ impl ExoSkeletonStatus {
         duration: f32,
         armor: Percentage,
         attack_range: Percentage,
-        walking_speed: Percentage,
+        movement_speed: Percentage,
         attack_damage: Percentage,
         attack_speed: Percentage,
     ) -> ExoSkeletonStatus {
@@ -91,7 +91,7 @@ impl ExoSkeletonStatus {
             until: now.add_seconds(duration),
             armor,
             attack_range,
-            walking_speed,
+            movement_speed,
             attack_damage,
             attack_speed,
         }
@@ -105,11 +105,11 @@ impl Status for ExoSkeletonStatus {
 
     fn get_body_sprite<'a>(
         &self,
-        system_vars: &'a SystemVariables,
+        sys_vars: &'a SystemVariables,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
-        Some(&system_vars.assets.sprites.exoskeleton)
+        Some(&sys_vars.assets.sprites.exoskeleton)
     }
 
     fn on_apply(
@@ -118,8 +118,8 @@ impl Status for ExoSkeletonStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
             bullet_type: WeaponType::SilverBullet,
@@ -129,7 +129,7 @@ impl Status for ExoSkeletonStatus {
             StrEffectComponent {
                 effect_id: StrEffectType::Cart.into(),
                 pos: target_char.pos(),
-                start_time: system_vars.time,
+                start_time: sys_vars.time,
                 die_at: None,
                 play_mode: ActionPlayMode::Once,
             },
@@ -143,7 +143,7 @@ impl Status for ExoSkeletonStatus {
             self.until,
         );
         modifiers.change_walking_speed(
-            CharAttributeModifier::AddPercentage(self.walking_speed),
+            CharAttributeModifier::AddPercentage(self.movement_speed),
             self.started,
             self.until,
         );
@@ -169,12 +169,12 @@ impl Status for ExoSkeletonStatus {
         _self_char_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         _phyisic_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
-            target_char.basic_attack = BasicAttack::Melee;
+        if self.until.has_already_passed(sys_vars.time) {
+            target_char.basic_attack = BasicAttack::MeleeSimple;
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

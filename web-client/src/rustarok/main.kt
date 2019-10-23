@@ -38,6 +38,9 @@ class ServerTextureData(private val native: dynamic) {
 }
 
 class StoredTexture(private val native: dynamic) {
+    val path: String
+        get() = native.path
+
     val raw: Uint8Array
         get() = native.raw
 
@@ -103,17 +106,11 @@ class StrFile(
 )
 
 
-interface DatabaseTextureEntry {
-    val gl_textures: Array<ServerTextureData>
-    val hash: String
-}
-
 abstract external class WebGL2RenderingContext : WebGLRenderingContext
 
 val server_to_client_gl_indices = hashMapOf<Int, BrowserTextureData>()
-val path_to_server_gl_indices = hashMapOf<String, DatabaseTextureEntry>()
-val server_texture_index_to_path =
-        hashMapOf<Int, Triple<ServerTextureData, String, Int>>() // path, i
+val path_to_server_gl_indices = hashMapOf<String, TextureId>()
+val server_texture_index_to_path = hashMapOf<Int, String>()
 var canvas = document.getElementById("main_canvas") as HTMLCanvasElement
 private var gl: WebGL2RenderingContext = 0.asDynamic()
 
@@ -207,8 +204,7 @@ sealed class RenderCommand {
                                    val z: Float,
                                    val color: Float32Array,
                                    val rotation_rad: Float,
-                                   val w: Float,
-                                   val h: Float,
+                                   val size: TextureSize,
                                    val server_texture_id: Int
     ) : RenderCommand()
 
@@ -300,7 +296,7 @@ fun main() {
                     is AppCommand.TextureDownloaded -> {
                         state =
                                 state.copy(downloaded_textures = kotlin.math.min(state.downloaded_textures + 1,
-                                                                                 state.downloading_textures))
+                                        state.downloading_textures))
                         if (state.downloaded_textures >= state.downloading_textures) {
                             console.log("All textures have been downloaded")
 
@@ -311,7 +307,7 @@ fun main() {
                             }
 
                             app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingMissingEffects,
-                                                                           missing_effects.size))
+                                    missing_effects.size))
                             socket.send(JSON.stringify(object {
                                 val missing_effects = missing_effects
                             }))
@@ -374,16 +370,12 @@ private suspend fun process_handshake_packet(renderer: Renderer,
             console.info("Received missing textures")
             while (reader.has_next()) {
                 val path = reader.next_string_with_length()
-                val hash = reader.next_string_with_length()
-                val count = reader.next_u16()
-                console.info("Download $path with $count textures")
-                val textures = (0 until count).map {
-                    val w = reader.next_u16()
-                    val h = reader.next_u16()
-                    val raw_data = reader.read(w * h * 4)
-                    Triple(w, h, raw_data)
-                }
-                IndexedDb.store_textures(path, hash, count, textures).then {
+                console.info("Download $path")
+                val w = reader.next_u16()
+                val h = reader.next_u16()
+                val raw_data = reader.read(w * h * 4)
+
+                IndexedDb.store_textures(path, Triple(w, h, raw_data)).then {
                     console.info("Stored: $path")
                     app_state_channel.offer(AppCommand.TextureDownloaded())
                 }.catch {
@@ -414,12 +406,12 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                     mismatched_vertex_buffers.add("3d_ground")
                 } else {
                     renderer.ground_renderer.set_vertex_buffer(gl,
-                                                               ground_vertex_array_data.raw,
-                                                               ground_vertex_array_data.vertex_count)
+                            ground_vertex_array_data.raw,
+                            ground_vertex_array_data.vertex_count)
                 }
 
                 app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingGroundVertexBuffer,
-                                                               null))
+                        null))
                 socket.send(JSON.stringify(object {
                     val mismatched_vertex_buffers = mismatched_vertex_buffers
                 }))
@@ -449,15 +441,15 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                             val dst_alpha = reader.next_i32()
                             val texture_index = reader.next_u16()
                             StrKeyFrame(frame,
-                                        typ,
-                                        posx,
-                                        posy,
-                                        xy,
-                                        color,
-                                        angle,
-                                        src_alpha,
-                                        dst_alpha,
-                                        texture_index)
+                                    typ,
+                                    posx,
+                                    posy,
+                                    xy,
+                                    color,
+                                    angle,
+                                    src_alpha,
+                                    dst_alpha,
+                                    texture_index)
                         }.toTypedArray()
                         StrLayer(key_frames)
                     }.toTypedArray()
@@ -475,13 +467,13 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                 console.info("ground DONE")
                 reader.next_f32()
 
-                val model_name_to_index = welcome_msg.asset_database.model_name_to_index
+                val model_name_to_index = welcome_msg.asset_db.model_name_to_index
                 val model_names: Array<String> = js("Object").keys(model_name_to_index)
                 val map = hashMapOf<String, Int>()
                 for (model_name in model_names) {
                     map[model_name] = model_name_to_index[model_name]
                 }
-                welcome_msg.asset_database.model_name_to_index = map
+                welcome_msg.asset_db.model_name_to_index = map
                 val missing_models = map.filter { (model_name, _) ->
                     IndexedDb.get_model(model_name, 0) == null
                 }.map { it.key }
@@ -489,7 +481,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                     val missing_models = missing_models
                 }))
                 app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingModels,
-                                                               missing_models.size))
+                        missing_models.size))
             } else {
                 while (reader.has_next()) {
                     when (reader.next_u8()) {
@@ -499,11 +491,11 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                             val buffer_len = reader.next_u32()
                             val raw_data = reader.read(buffer_len)
                             IndexedDb.store_vertex_array("${map_name}_ground",
-                                                         vertex_count,
-                                                         raw_data).await()
+                                    vertex_count,
+                                    raw_data).await()
                             renderer.ground_renderer.set_vertex_buffer(gl,
-                                                                       raw_data,
-                                                                       vertex_count)
+                                    raw_data,
+                                    vertex_count)
                         }
                     }
                 }
@@ -518,7 +510,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
 
                 // prepare models
                 val model_name_to_index: Map<String, Int> =
-                        welcome_msg.asset_database.model_name_to_index
+                        welcome_msg.asset_db.model_name_to_index
 
                 val model_index_to_models =
                         Array<ModelData>(model_name_to_index.size) { 0.asDynamic() }
@@ -528,7 +520,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                         val data = IndexedDb.get_model(model_name, i) ?: break
                         val buffer = create_vertex_buffer(gl, data.raw)
                         model.nodes.add(ModelFace(
-                                path_to_server_gl_indices[data.texture_name]!!.gl_textures[0].server_gl_index,
+                                path_to_server_gl_indices[data.texture_name]!!.id,
                                 buffer,
                                 data.vertex_count
                         ))
@@ -539,7 +531,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
 
                 welcome_msg = null
                 app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingModelInstances,
-                                                               null))
+                        null))
                 socket.send(JSON.stringify(object {
                     val send_me_model_instances = true
                 }))
@@ -558,10 +550,10 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                             val raw_len = reader.next_u32()
                             val raw_data = reader.read(raw_len)
                             IndexedDb.store_model(model_name,
-                                                  index,
-                                                  vertex_count,
-                                                  texture_name,
-                                                  raw_data).await()
+                                    index,
+                                    vertex_count,
+                                    texture_name,
+                                    raw_data).await()
                             ++index
                         }
                     }
@@ -581,7 +573,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
                 val ready = true
             }))
             app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingRenderCommands,
-                                                           null))
+                    null))
         }
     }
 }
@@ -589,7 +581,7 @@ private suspend fun process_handshake_packet(renderer: Renderer,
 fun update_dom(state: AppState, renderer: Renderer) {
     if (state.name == ApppStateName.ReceivingRenderCommands) {
         document.getElementById("status_text").asDynamic().style.display = "none"
-        document.getElementById("main_canvas").asDynamic().style.display = "block"
+        document.getElementById("main_div").asDynamic().style.display = "block"
         start_frame(socket, renderer)
     } else {
         document.getElementById("status_text")!!.innerHTML = ""
@@ -610,9 +602,9 @@ fun create_vertex_buffer(gl: WebGL2RenderingContext, raw: Uint8Array): WebGLBuff
     gl.bindBuffer(WebGLRenderingContext.ARRAY_BUFFER, buffer)
     try {
         gl.bufferData(WebGLRenderingContext.ARRAY_BUFFER,
-                      Float32Array(raw.buffer.slice(raw.byteOffset,
-                                                    raw.byteOffset + raw.byteLength)),
-                      WebGLRenderingContext.STATIC_DRAW)
+                Float32Array(raw.buffer.slice(raw.byteOffset,
+                        raw.byteOffset + raw.byteLength)),
+                WebGLRenderingContext.STATIC_DRAW)
     } catch (e: Throwable) {
         js("debugger")
     }
@@ -656,7 +648,7 @@ private fun parse_sprite_render_commands(reader: BufferReader, renderer: Rendere
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
         val offset = Float32Array(arrayOf(reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                                          reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
+                reader.next_i16() * ONE_SPRITE_PIXEL_SIZE_IN_3D))
         val rot_radian = reader.next_f32()
         val x = reader.next_f32()
         val y = reader.next_f32()
@@ -737,6 +729,11 @@ private fun parse_circle3d_render_commands(reader: BufferReader, renderer: Rende
     }
 }
 
+sealed class TextureSize {
+    data class Fixed(val fixed: Float) : TextureSize()
+    data class Scaled(val scaled: Float) : TextureSize()
+}
+
 private fun parse_horizontal_texture_3d_commands(reader: BufferReader, renderer: Renderer) {
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
@@ -744,8 +741,11 @@ private fun parse_horizontal_texture_3d_commands(reader: BufferReader, renderer:
         val z = reader.next_f32()
         val rotation_rad = reader.next_f32()
         val texture_index = reader.next_u32()
-        val w = reader.next_f32()
-        val h = reader.next_f32()
+        val size_type = reader.next_u32()
+        val size = when (size_type) {
+            1 -> TextureSize.Fixed(reader.next_f32())
+            else -> TextureSize.Scaled(reader.next_f32())
+        }
 
         renderer.horizontal_texture_3d_commands.add(RenderCommand.HorizontalTexture3D(
                 color = color,
@@ -753,8 +753,7 @@ private fun parse_horizontal_texture_3d_commands(reader: BufferReader, renderer:
                 z = z,
                 rotation_rad = rotation_rad,
                 server_texture_id = texture_index,
-                w = w,
-                h = h
+                size = size
         ))
     }
 }
@@ -803,7 +802,7 @@ private fun parse_texture2d_render_commands(reader: BufferReader, renderer: Rend
     for (i in 0 until reader.next_u32()) {
         val color = reader.next_color4_u8()
         val offset = arrayOf(reader.next_i16(),
-                             reader.next_i16())
+                reader.next_i16())
         val rotation_rad = reader.next_f32()
         val x = reader.next_i16()
         val y = reader.next_i16()
@@ -821,6 +820,8 @@ private fun parse_texture2d_render_commands(reader: BufferReader, renderer: Rend
         ))
     }
 }
+
+data class TextureId(val id: Int)
 
 private var welcome_msg: dynamic = null
 private fun process_welcome_msg(result: dynamic): Job {
@@ -843,37 +844,31 @@ private fun process_welcome_msg(result: dynamic): Job {
             server_tile_color_texture_id = 0
     )
 
-    val texture_db = result.asset_database.texture_db.entries
+    val texture_db = result.asset_db.texture_db.entries
     val keys: Array<String> = js("Object").keys(texture_db)
-    val map = hashMapOf<String, DatabaseTextureEntry>()
+    val map = hashMapOf<String, TextureId>()
     for (key in keys) {
-        val databaseTextureEntry: DatabaseTextureEntry = texture_db[key]
-        for (i in databaseTextureEntry.gl_textures.indices) {
-            databaseTextureEntry.gl_textures[i] =
-                    ServerTextureData(databaseTextureEntry.gl_textures[i])
-        }
+        val databaseTextureEntry = TextureId(texture_db[key])
         map[key] = databaseTextureEntry
         path_to_server_gl_indices[key] = databaseTextureEntry
-        for ((i, glTexture) in databaseTextureEntry.gl_textures.withIndex()) {
-            server_texture_index_to_path[glTexture.server_gl_index] = Triple(glTexture, key, i)
-            when (key) {
-                "ground_texture_atlas" -> ground_render_command = ground_render_command.copy(
-                        server_texture_atlas_id = glTexture.server_gl_index
-                )
-                "ground_lightmap_texture" -> ground_render_command = ground_render_command.copy(
-                        server_lightmap_texture_id = glTexture.server_gl_index
-                )
-                "ground_tile_color_texture" -> ground_render_command = ground_render_command.copy(
-                        server_tile_color_texture_id = glTexture.server_gl_index
-                )
-            }
+        server_texture_index_to_path[databaseTextureEntry.id] = key
+        when (key) {
+            "ground_texture_atlas" -> ground_render_command = ground_render_command.copy(
+                    server_texture_atlas_id = databaseTextureEntry.id
+            )
+            "ground_lightmap_texture" -> ground_render_command = ground_render_command.copy(
+                    server_lightmap_texture_id = databaseTextureEntry.id
+            )
+            "ground_tile_color_texture" -> ground_render_command = ground_render_command.copy(
+                    server_tile_color_texture_id = databaseTextureEntry.id
+            )
         }
     }
     return GlobalScope.launch {
         val mismatched_textures = IndexedDb.collect_mismatched_textures(map)
         console.log(mismatched_textures)
         app_state_channel.offer(AppCommand.ChangeState(ApppStateName.ReceivingMismatchingTextures,
-                                                       mismatched_textures.size))
+                mismatched_textures.size))
         mismatched_textures.chunked(10).forEach { mismatched_textures_chunk ->
             socket.send(JSON.stringify(object {
                 val mismatched_textures = mismatched_textures_chunk
@@ -887,6 +882,7 @@ private fun process_welcome_msg(result: dynamic): Job {
 
 var mouse_x = 0
 var mouse_y = 0
+const val FRAME_HISTORY_SIZE = 1024;
 
 fun start_frame(socket: WebSocket, renderer: Renderer) {
     console.log("start_frame")
@@ -901,33 +897,61 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
 
     var last_input_tick = 0.0
     var last_fps_tick = 0.0
+    var last_render_tick = 0.0
     var last_server_render_tick = 0.0
-    var input_tickrate = 1000 / 20
+    val input_tickrate = 1000 / 20
+    var expected_fps = 1000.0 / 100.0
+    var render_per_second = 0
     var fps = 0
     var server_fps = 0
     var server_fps_counter = 0
+    var render_per_second_counter = 0;
     var fps_counter = 0;
+    val render_command_history = Array(FRAME_HISTORY_SIZE) { ArrayBuffer(0) }
     var tick = { s: Double ->
 
     }
     Input.register_event_handlers(canvas, document)
 
+    val PLAYBACK_TIME = 3
+    var playback_index = 0
+    var history_size = 0
+
     tick = { s: Double ->
-        fps_counter++
-        renderer.render(gl)
+        window.requestAnimationFrame(tick)
 
         val now = Date.now()
+        val elapsed_since_last_render = now - last_render_tick;
+        val frame_count = history_size - playback_index
+        if (elapsed_since_last_render > expected_fps) {
+            if (frame_count > PLAYBACK_TIME) {
+                renderer.clear()
+                parse_render_commands(render_command_history[playback_index % FRAME_HISTORY_SIZE], renderer)
+                ++playback_index
+                renderer.render(gl)
+                render_per_second_counter++
+                if (frame_count > PLAYBACK_TIME + 2 && fps > render_per_second && expected_fps > 5) {
+                    expected_fps -= 0.1
+                }
+            } else if (frame_count <= PLAYBACK_TIME) {
+                expected_fps += 0.1
+            }
+            last_render_tick = now - (elapsed_since_last_render % expected_fps)
+        }
+        fps_counter++
+
         if (now - last_input_tick > input_tickrate) {
             last_input_tick = now
             Input.send_input_data(socket)
         }
         if (now - last_fps_tick > 1000) {
             last_fps_tick = now
-            fps = fps_counter
+            render_per_second = render_per_second_counter
+            fps = fps_counter;
             fps_counter = 0
-            console.info("FPS: $fps, server_fps: $server_fps")
+            render_per_second_counter = 0
+            console.info("FPS: $fps, RPS: $render_per_second, server_fps: $server_fps, frame_count: $frame_count, expected_fps: ${1000.0/expected_fps}")
         }
-        window.requestAnimationFrame(tick)
     }
     window.requestAnimationFrame(tick)
 
@@ -939,84 +963,76 @@ fun start_frame(socket: WebSocket, renderer: Renderer) {
             server_fps = server_fps_counter
             server_fps_counter = 0
         }
-        val reader = BufferReader(it.data as ArrayBuffer)
-        renderer.clear()
-        VIEW_MATRIX = reader.next_4x4matrix()
-        NORMAL_MATRIX = reader.next_3x3matrix()
+        render_command_history[history_size % FRAME_HISTORY_SIZE] = it.data as ArrayBuffer
+        ++history_size
+        0
+    }
+}
 
-        while (reader.has_next()) {
-            parse_partial_circle_2d_render_commands(reader, renderer)
-            parse_texture2d_render_commands(reader, renderer)
-            parse_rectangle_2d_render_commands(reader, renderer)
-            parse_rectangle3d_render_commands(reader, renderer)
-            parse_circle3d_render_commands(reader, renderer)
-            parse_sprite_render_commands(reader, renderer)
-            parse_number_render_commands(reader, renderer)
-            parse_effect_3d_render_commands(reader, renderer)
-            parse_model3d_render_commands(reader, renderer)
-            parse_horizontal_texture_3d_commands(reader, renderer)
-            parse_trimesh_3d_commands(reader, renderer)
+private fun parse_render_commands(data: ArrayBuffer, renderer: Renderer) {
+    val reader = BufferReader(data)
+    VIEW_MATRIX = reader.next_4x4matrix()
+    NORMAL_MATRIX = reader.next_3x3matrix()
 
-//            renderer.texture2d_render_commands.add(RenderCommand.Texture2D(
-//                    color = COLOR_WHITE,
-//                    offset = arrayOf(0, 0),
-//                    rotation_rad = 0f,
-//                    x = mouse_x.toFloat(),
-//                    y = mouse_y.toFloat(),
-//                    server_texture_id = server_texture_id,
-//                    scale = 1f,
-//                    layer = 100
-//            ))
-        }
+    while (reader.has_next()) {
+        parse_partial_circle_2d_render_commands(reader, renderer)
+        parse_texture2d_render_commands(reader, renderer)
+        parse_rectangle_2d_render_commands(reader, renderer)
+        parse_rectangle3d_render_commands(reader, renderer)
+        parse_circle3d_render_commands(reader, renderer)
+        parse_sprite_render_commands(reader, renderer)
+        parse_number_render_commands(reader, renderer)
+        parse_effect_3d_render_commands(reader, renderer)
+        parse_model3d_render_commands(reader, renderer)
+        parse_horizontal_texture_3d_commands(reader, renderer)
+        parse_trimesh_3d_commands(reader, renderer)
     }
 }
 
 
-private suspend fun load_texture(glServerTexture: ServerTextureData,
-                                 path: String,
-                                 i: Int,
-                                 min_mag: Int): WebGLTexture? {
-    val raw_data = IndexedDb.get_texture(path, i) ?: return null
+private suspend fun load_texture(path: String,
+                                 min_mag: Int): Triple<WebGLTexture?, Int, Int> {
+    val raw_data = IndexedDb.get_texture(path) ?: return Triple(null, 0, 0)
     val texture_obj = gl.createTexture()!!
     gl.bindTexture(WebGLRenderingContext.TEXTURE_2D, texture_obj)
     gl.texParameteri(WebGLRenderingContext.TEXTURE_2D,
-                     WebGLRenderingContext.TEXTURE_MIN_FILTER,
-                     min_mag)
+            WebGLRenderingContext.TEXTURE_MIN_FILTER,
+            min_mag)
     gl.texParameteri(WebGLRenderingContext.TEXTURE_2D,
-                     WebGLRenderingContext.TEXTURE_MAG_FILTER,
-                     min_mag)
+            WebGLRenderingContext.TEXTURE_MAG_FILTER,
+            min_mag)
     gl.texParameteri(WebGLRenderingContext.TEXTURE_2D,
-                     WebGLRenderingContext.TEXTURE_WRAP_S,
-                     WebGLRenderingContext.CLAMP_TO_EDGE)
+            WebGLRenderingContext.TEXTURE_WRAP_S,
+            WebGLRenderingContext.CLAMP_TO_EDGE)
     gl.texParameteri(WebGLRenderingContext.TEXTURE_2D,
-                     WebGLRenderingContext.TEXTURE_WRAP_T,
-                     WebGLRenderingContext.CLAMP_TO_EDGE)
+            WebGLRenderingContext.TEXTURE_WRAP_T,
+            WebGLRenderingContext.CLAMP_TO_EDGE)
 
     val canvas = document.createElement("canvas") as HTMLCanvasElement
-    canvas.width = glServerTexture.width
-    canvas.height = glServerTexture.height
+    canvas.width = raw_data.w
+    canvas.height = raw_data.h
     val ctx = canvas.getContext("2d") as CanvasRenderingContext2D
     val imageData =
             ImageData(Uint8ClampedArray(raw_data.raw.buffer,
-                                        raw_data.raw.byteOffset,
-                                        raw_data.raw.byteLength),
-                      glServerTexture.width,
-                      glServerTexture.height)
+                    raw_data.raw.byteOffset,
+                    raw_data.raw.byteLength),
+                    raw_data.w,
+                    raw_data.h)
     ctx.putImageData(imageData,
-                     0.0, 0.0, 0.0, 0.0, canvas.width.toDouble(), canvas.height.toDouble());
+            0.0, 0.0, 0.0, 0.0, canvas.width.toDouble(), canvas.height.toDouble());
 
     // TODO: this is too slow
     val img = ctx.getImageData(0.0, 0.0, canvas.width.toDouble(), canvas.height.toDouble())
     gl.texImage2D(WebGLRenderingContext.TEXTURE_2D,
-                  level = 0,
-                  internalformat = WebGLRenderingContext.RGBA,
-                  width = glServerTexture.width,
-                  height = glServerTexture.height,
-                  border = 0,
-                  format = WebGLRenderingContext.RGBA,
-                  type = WebGLRenderingContext.UNSIGNED_BYTE,
-                  pixels = img.data)
-    return texture_obj
+            level = 0,
+            internalformat = WebGLRenderingContext.RGBA,
+            width = raw_data.w,
+            height = raw_data.h,
+            border = 0,
+            format = WebGLRenderingContext.RGBA,
+            type = WebGLRenderingContext.UNSIGNED_BYTE,
+            pixels = img.data)
+    return Triple(texture_obj, raw_data.w, raw_data.h)
 }
 
 fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTextureData {
@@ -1031,16 +1047,16 @@ fun get_or_load_server_texture(server_texture_id: Int, min_mag: Int): BrowserTex
             if (maybe == null) {
                 console.error("No path data for $server_texture_id")
             } else {
-                val (glTexture, path, i) = maybe
-                val new_texture_id = load_texture(glTexture, path, i, min_mag)
+                val path = maybe
+                val (new_texture_id, w, h) = load_texture(path, min_mag)
                 if (new_texture_id == null) {
-                    console.error("Texture was not found: $path, $i")
+                    console.error("Texture was not found: $path")
                 } else {
-                    console.log("Texture was loaded: $path, $i")
+                    console.log("Texture was loaded: $path")
                     server_to_client_gl_indices[server_texture_id] =
                             BrowserTextureData(new_texture_id,
-                                               glTexture.width.toFloat(),
-                                               glTexture.height.toFloat())
+                                    w.toFloat(),
+                                    h.toFloat())
                 }
             }
         }
@@ -1153,9 +1169,9 @@ class BufferReader(val buffer: ArrayBuffer) {
         val bytes = Uint8Array(buffer, offset, 4)
         val ret =
                 Float32Array(arrayOf(bytes[0].toFloat() / 255f,
-                                     bytes[1].toFloat() / 255f,
-                                     bytes[2].toFloat() / 255f,
-                                     bytes[3].toFloat() / 255f))
+                        bytes[1].toFloat() / 255f,
+                        bytes[2].toFloat() / 255f,
+                        bytes[3].toFloat() / 255f))
         offset += 4
         return ret
     }

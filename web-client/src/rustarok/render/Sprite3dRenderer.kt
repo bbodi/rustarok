@@ -64,7 +64,7 @@ class Sprite3dRenderer(gl: WebGL2RenderingContext) {
     fun render_numbers(gl: WebGL2RenderingContext, commands: List<RenderCommand.Number3D>) {
         gl.disable(WebGLRenderingContext.DEPTH_TEST)
         gl.bindTexture(WebGLRenderingContext.TEXTURE_2D,
-                       get_or_load_server_texture(path_to_server_gl_indices["assets/damage.bmp"]!!.gl_textures[0].server_gl_index,
+                       get_or_load_server_texture(path_to_server_gl_indices["assets/damage.bmp"]!!.id,
                                                   WebGLRenderingContext.NEAREST).texture
         )
         for (command in commands) {

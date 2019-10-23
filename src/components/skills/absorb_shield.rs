@@ -25,14 +25,14 @@ impl SkillDef for AbsorbShieldSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = system_vars.time;
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        let now = sys_vars.time;
         let duration_seconds = ecs_world
             .read_resource::<DevConfig>()
             .skills
             .absorb_shield
             .duration_seconds;
-        system_vars
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,

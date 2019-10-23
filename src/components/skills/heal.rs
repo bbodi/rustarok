@@ -4,7 +4,7 @@ use specs::LazyUpdate;
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 
-use crate::components::{AttackComponent, AttackType, SoundEffectComponent};
+use crate::components::{HpModificationRequest, HpModificationType, SoundEffectComponent};
 use crate::configs::DevConfig;
 use crate::systems::SystemVariables;
 
@@ -29,21 +29,21 @@ impl SkillDef for HealSkill {
         let target_entity_id = target_entity.unwrap();
         let entities = &ecs_world.entities();
         let updater = ecs_world.read_resource::<LazyUpdate>();
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let entity = entities.create();
         updater.insert(
             entity,
             SoundEffectComponent {
                 target_entity_id,
-                sound_id: system_vars.assets.sounds.heal,
+                sound_id: sys_vars.assets.sounds.heal,
                 pos: caster_pos,
-                start_time: system_vars.time,
+                start_time: sys_vars.time,
             },
         );
-        system_vars.attacks.push(AttackComponent {
+        sys_vars.hp_mod_requests.push(HpModificationRequest {
             src_entity: caster_entity_id,
             dst_entity: target_entity_id,
-            typ: AttackType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
+            typ: HpModificationType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
         });
         None
     }

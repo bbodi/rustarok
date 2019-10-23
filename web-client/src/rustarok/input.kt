@@ -70,7 +70,7 @@ object Input {
         e.stopPropagation()
 
         packet_write_i8(InputPacket.MouseWheel.ordinal + 1)
-        packet_write_i16(-e.asDynamic().deltaY / 100)
+        packet_write_i16(if (e.asDynamic().deltaY > 0) -1 else 1)
     }
 
 

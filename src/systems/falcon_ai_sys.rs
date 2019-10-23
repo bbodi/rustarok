@@ -165,7 +165,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
             controller_storage,
             mut system_benchmark,
             mut physics_world,
-            mut system_vars,
+            mut sys_vars,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FalconAiSystem");
@@ -182,8 +182,8 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                             let dir_3d =
                                 Vector3::new(owner.pos().x, FALCON_FLY_HEIGHT, owner.pos().y)
                                     - falcon.pos;
-                            falcon.acceleration = (falcon.acceleration + system_vars.dt.0 * 0.05)
-                                .min(0.03 * owner.calculated_attribs().walking_speed.as_f32());
+                            falcon.acceleration = (falcon.acceleration + sys_vars.dt.0 * 0.05)
+                                .min(0.03 * owner.calculated_attribs().movement_speed.as_f32());
                             falcon.pos += dir_3d * falcon.acceleration;
                             sprite.direction = NextActionApplierSystem::determine_dir(
                                 &owner.pos(),
@@ -193,7 +193,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                             if falcon.acceleration < 0.00001 || distance == 0.0 {
                                 falcon.acceleration = 0.0;
                             } else {
-                                falcon.acceleration -= system_vars.dt.0 * 0.1;
+                                falcon.acceleration -= sys_vars.dt.0 * 0.1;
                                 let dir = diff_v.normalize();
                                 falcon.pos += v2_to_v3(&dir) * falcon.acceleration;
                             }
@@ -209,10 +209,9 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     target_is_caught,
                     start_pos,
                 } => {
-                    let duration_percentage =
-                        system_vars.time.percentage_between(started_at, ends_at);
+                    let duration_percentage = sys_vars.time.percentage_between(started_at, ends_at);
 
-                    let pick_duration = (system_vars.time.as_f32() - started_at.as_f32()) / 0.3;
+                    let pick_duration = (sys_vars.time.as_f32() - started_at.as_f32()) / 0.3;
                     if pick_duration <= 1.0 {
                         if let Some(target) = char_storage.get(falcon.owner_entity_id.0) {
                             let target_pos = target.pos();
@@ -227,7 +226,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     } else if duration_percentage < 1.0 {
                         if !target_is_caught {
                             sprite.action_index = CharActionIndex::Idle as usize;
-                            system_vars.apply_statuses.push(
+                            sys_vars.apply_statuses.push(
                                 ApplyStatusComponent::from_secondary_status(
                                     falcon.owner_entity_id,
                                     falcon.owner_entity_id,
@@ -281,7 +280,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                         if distance > 2.0 {
                             let falcon_pos_2d = v3_to_v2(&falcon.pos);
                             let dir_3d = (diff_v).normalize();
-                            falcon.acceleration = 8.57 * system_vars.dt.0;
+                            falcon.acceleration = 8.57 * sys_vars.dt.0;
                             falcon.pos += dir_3d * falcon.acceleration;
                             sprite.direction = NextActionApplierSystem::determine_dir(
                                 &v3_to_v2(&target_pos),
@@ -291,7 +290,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                             if falcon.acceleration < 0.00001 || distance == 0.0 {
                                 falcon.acceleration = 0.0;
                             } else {
-                                falcon.acceleration -= system_vars.dt.0 * 0.1;
+                                falcon.acceleration -= sys_vars.dt.0 * 0.1;
                                 let dir = diff_v.normalize();
                                 falcon.pos += dir * falcon.acceleration;
                             }
@@ -321,8 +320,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     target_is_caught,
                     end_pos,
                 } => {
-                    let duration_percentage =
-                        system_vars.time.percentage_between(started_at, ends_at);
+                    let duration_percentage = sys_vars.time.percentage_between(started_at, ends_at);
                     // 30% of duration is to go for the ally
                     if duration_percentage <= 0.3 {
                         if let Some(target) = char_storage.get(target_id.0) {
@@ -354,7 +352,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                                         end_pos.y,
                                     ),
                                 };
-                                system_vars.apply_statuses.push(
+                                sys_vars.apply_statuses.push(
                                     ApplyStatusComponent::from_secondary_status(
                                         falcon.owner_entity_id,
                                         target_id,
@@ -408,8 +406,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                     start_pos,
                     end_pos,
                 } => {
-                    let duration_percentage =
-                        system_vars.time.percentage_between(started_at, ends_at);
+                    let duration_percentage = sys_vars.time.percentage_between(started_at, ends_at);
                     if duration_percentage <= 1.0 {
                         let line = end_pos - start_pos;
                         falcon.pos = start_pos + line * duration_percentage;

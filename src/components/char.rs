@@ -57,7 +57,7 @@ pub fn attach_human_player_components(
     char_entity_id: CharEntityId,
     controller_id: ControllerEntityId,
     updater: &LazyUpdate,
-    physic_world: &mut PhysicEngine,
+    physics_world: &mut PhysicEngine,
     projection_mat: Matrix4<f32>,
     pos2d: WorldCoord,
     sex: Sex,
@@ -68,46 +68,16 @@ pub fn attach_human_player_components(
 ) {
     CharacterEntityBuilder::new(char_entity_id, username)
         .insert_sprite_render_descr_component(updater)
-        .physics(
-            CharPhysicsEntityBuilder::new(pos2d)
+        .physics(pos2d, physics_world, |builder| {
+            builder
                 .collision_group(team.get_collision_group())
-                .circle(1.0),
-            physic_world,
-        )
-        .char_state(
-            CharStateComponentBuilder::new()
-                .outlook(CharOutlook::Player {
-                    sex,
-                    job_sprite_id: match job_id {
-                        JobId::WIZARD => JobSpriteId::WIZARD,
-                        JobId::CRUSADER => JobSpriteId::CRUSADER,
-                        JobId::SWORDMAN => JobSpriteId::SWORDMAN,
-                        JobId::ARCHER => JobSpriteId::ARCHER,
-                        JobId::ASSASSIN => JobSpriteId::ASSASSIN,
-                        JobId::KNIGHT => JobSpriteId::KNIGHT,
-                        JobId::SAGE => JobSpriteId::SAGE,
-                        JobId::ALCHEMIST => JobSpriteId::ALCHEMIST,
-                        JobId::BLACKSMITH => JobSpriteId::BLACKSMITH,
-                        JobId::PRIEST => JobSpriteId::PRIEST,
-                        JobId::MONK => JobSpriteId::MONK,
-                        JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
-                        JobId::ROGUE => JobSpriteId::ROGUE,
-                        JobId::HUNTER => JobSpriteId::HUNTER,
-                        JobId::TargetDummy => panic!(),
-                        JobId::HealingDummy => panic!(),
-                        JobId::MeleeMinion => panic!(),
-                        JobId::RangedMinion => panic!(),
-                        JobId::Turret => panic!(),
-                        JobId::Guard => panic!(),
-                        JobId::Barricade => panic!(),
-                    },
-                    head_index,
-                })
+                .circle(1.0)
+        })
+        .char_state(updater, dev_configs, |ch| {
+            ch.outlook_player(sex, JobSpriteId::from_job_id(job_id), head_index)
                 .job_id(job_id)
-                .team(team),
-            updater,
-            dev_configs,
-        );
+                .team(team)
+        });
 
     let mut human_player = HumanInputComponent::new(username);
     human_player.cast_mode = dev_configs.cast_mode;
@@ -285,6 +255,25 @@ impl CharStateComponentBuilder {
         self
     }
 
+    pub fn outlook_player(
+        mut self,
+        sex: Sex,
+        job_sprite_id: JobSpriteId,
+        head_index: usize,
+    ) -> CharStateComponentBuilder {
+        self.outlook = CharOutlook::Player {
+            sex,
+            job_sprite_id,
+            head_index,
+        };
+        self
+    }
+
+    pub fn outlook_monster(mut self, monster_id: MonsterId) -> CharStateComponentBuilder {
+        self.outlook = CharOutlook::Monster(monster_id);
+        self
+    }
+
     pub fn team(mut self, team: Team) -> CharStateComponentBuilder {
         self.team = team;
         self
@@ -334,12 +323,11 @@ impl CharacterEntityBuilder {
         self
     }
 
-    pub fn char_state(
-        self,
-        char_builder: CharStateComponentBuilder,
-        updater: &LazyUpdate,
-        dev_configs: &DevConfig,
-    ) {
+    pub fn char_state<F>(self, updater: &LazyUpdate, dev_configs: &DevConfig, char_builder_func: F)
+    where
+        F: Fn(CharStateComponentBuilder) -> CharStateComponentBuilder,
+    {
+        let char_builder = char_builder_func(CharStateComponentBuilder::new());
         updater.insert(
             self.char_id.0,
             CharacterStateComponent::new(
@@ -365,17 +353,22 @@ impl CharacterEntityBuilder {
         );
     }
 
-    pub fn physics(
+    pub fn physics<F>(
         mut self,
-        physics_builder: CharPhysicsEntityBuilder,
+        pos2d: WorldCoord,
         world: &mut PhysicEngine,
-    ) -> CharacterEntityBuilder {
+        phys_builder_fn: F,
+    ) -> CharacterEntityBuilder
+    where
+        F: Fn(CharPhysicsEntityBuilder) -> CharPhysicsEntityBuilder,
+    {
+        let physics_builder = phys_builder_fn(CharPhysicsEntityBuilder::new(pos2d));
         let body_handle = world.bodies.insert(
             RigidBodyDesc::new()
                 .user_data(self.char_id)
                 .gravity_enabled(false)
                 .status(physics_builder.body_status)
-                .linear_damping(5.0)
+                //                .linear_damping(5.0)
                 .set_translation(physics_builder.pos2d)
                 .build(),
         );
@@ -412,7 +405,7 @@ impl ComponentRadius {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vector2<f32>>,
     pub char_to_skill_dir_when_casted: Vector2<f32>,
@@ -423,7 +416,7 @@ pub struct CastingSkillData {
     pub skill: Skills,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CharState {
     Idle,
     Walking(Vector2<f32>),
@@ -445,13 +438,18 @@ unsafe impl Sync for CharState {}
 
 unsafe impl Send for CharState {}
 
-impl PartialEq for CharState {
-    fn eq(&self, other: &Self) -> bool {
+//impl PartialEq for CharState {
+//    fn eq(&self, other: &Self) -> bool {
+//        std::mem::discriminant(self) == std::mem::discriminant(other)
+//    }
+//}
+//impl Eq for CharState {}
+
+impl CharState {
+    pub fn discriminant_eq(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 }
-
-impl Eq for CharState {}
 
 impl CharState {
     pub fn is_attacking(&self) -> bool {
@@ -542,7 +540,8 @@ pub enum EntityTarget {
 
 const PERCENTAGE_FACTOR: i32 = 1000;
 
-#[derive(Copy, Clone, Debug, Deserialize)]
+// able to represent numbers in 0.1% discrete steps
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(from = "i32")]
 pub struct Percentage {
     value: i32,
@@ -550,13 +549,11 @@ pub struct Percentage {
 
 impl From<i32> for Percentage {
     fn from(value: i32) -> Self {
-        Percentage(value)
+        percentage(value)
     }
 }
 
-// able to represent numbers in 0.1% discrete steps
-#[allow(non_snake_case)]
-pub fn Percentage(value: i32) -> Percentage {
+pub fn percentage(value: i32) -> Percentage {
     Percentage {
         value: value * PERCENTAGE_FACTOR,
     }
@@ -607,6 +604,12 @@ impl Percentage {
         return num + (change as i32);
     }
 
+    pub fn of(&self, num: i32) -> i32 {
+        let f = PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return change as i32;
+    }
+
     pub fn subtract_me_from(&self, num: i32) -> i32 {
         let f = PERCENTAGE_FACTOR as i64;
         let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
@@ -642,24 +645,29 @@ mod tests {
 
     #[test]
     fn test_percentages() {
-        assert_eq!(Percentage(70).increase_by(Percentage(10)).as_i16(), 77);
-        assert_eq!(Percentage(70).increase_by(Percentage(-10)).as_i16(), 63);
-        assert_eq!(Percentage(100).increase_by(Percentage(200)).as_i16(), 300);
-        assert_eq!(Percentage(10).add_me_to(200), 220);
-        assert_eq!(Percentage(70).add_me_to(600), 1020);
-        assert_eq!(Percentage(70).div(10).add_me_to(600), 642);
-        assert_eq!(Percentage(-10).add_me_to(200), 180);
-        assert_eq!(Percentage(50).add_me_to(76), 114);
-        assert_eq!(Percentage(50).add_me_to(10_000), 15_000);
-        assert_eq!(Percentage(10).subtract_me_from(200), 180);
-        assert_eq!(Percentage(40).subtract_me_from(10_000), 6_000);
-        assert_eq!(Percentage(70).subtract_me_from(600), 180);
-        assert_eq!(Percentage(50).subtract_me_from(76), 38);
-        assert_eq!(Percentage(100).as_f32(), 1.0);
-        assert_eq!(Percentage(50).as_f32(), 0.5);
-        assert_eq!(Percentage(5).as_f32(), 0.05);
-        assert_eq!(Percentage(5).div(10).as_f32(), 0.005);
-        assert_eq!(Percentage(-5).div(10).as_f32(), -0.005);
+        assert_eq!(percentage(70).increase_by(percentage(10)).as_i16(), 77);
+        assert_eq!(percentage(70).increase_by(percentage(-10)).as_i16(), 63);
+        assert_eq!(percentage(100).increase_by(percentage(200)).as_i16(), 300);
+        assert_eq!(percentage(10).add_me_to(200), 220);
+        assert_eq!(percentage(70).add_me_to(600), 1020);
+        assert_eq!(percentage(70).div(10).add_me_to(600), 642);
+        assert_eq!(percentage(-10).add_me_to(200), 180);
+        assert_eq!(percentage(50).add_me_to(76), 114);
+        assert_eq!(percentage(50).add_me_to(10_000), 15_000);
+        assert_eq!(percentage(10).of(200), 20);
+        assert_eq!(percentage(70).of(600), 420);
+        assert_eq!(percentage(70).div(10).of(600), 42);
+        assert_eq!(percentage(50).of(76), 38);
+        assert_eq!(percentage(50).of(10_000), 5_000);
+        assert_eq!(percentage(10).subtract_me_from(200), 180);
+        assert_eq!(percentage(40).subtract_me_from(10_000), 6_000);
+        assert_eq!(percentage(70).subtract_me_from(600), 180);
+        assert_eq!(percentage(50).subtract_me_from(76), 38);
+        assert_eq!(percentage(100).as_f32(), 1.0);
+        assert_eq!(percentage(50).as_f32(), 0.5);
+        assert_eq!(percentage(5).as_f32(), 0.05);
+        assert_eq!(percentage(5).div(10).as_f32(), 0.005);
+        assert_eq!(percentage(-5).div(10).as_f32(), -0.005);
     }
 }
 
@@ -712,7 +720,7 @@ impl CharOutlook {
 pub struct CharAttributes {
     pub max_hp: i32,
     pub attack_damage: u16,
-    pub walking_speed: Percentage,
+    pub movement_speed: Percentage,
     pub attack_range: Percentage,
     pub attack_speed: Percentage,
     pub armor: Percentage,
@@ -730,15 +738,15 @@ pub struct CharAttributesBonuses {
 impl CharAttributes {
     pub fn zero() -> CharAttributes {
         CharAttributes {
-            walking_speed: Percentage(0),
-            attack_range: Percentage(0),
-            attack_speed: Percentage(0),
+            movement_speed: percentage(0),
+            attack_range: percentage(0),
+            attack_speed: percentage(0),
             attack_damage: 0,
-            armor: Percentage(0),
-            healing: Percentage(0),
-            hp_regen: Percentage(0),
+            armor: percentage(0),
+            healing: percentage(0),
+            hp_regen: percentage(0),
             max_hp: 0,
-            mana_regen: Percentage(0),
+            mana_regen: percentage(0),
         }
     }
 
@@ -751,7 +759,7 @@ impl CharAttributes {
             attrs: CharAttributes {
                 max_hp: self.max_hp - other.max_hp,
                 attack_damage: self.attack_damage - other.attack_damage,
-                walking_speed: self.walking_speed.subtract(other.walking_speed),
+                movement_speed: self.movement_speed.subtract(other.movement_speed),
                 attack_range: self.attack_range.subtract(other.attack_range),
                 attack_speed: self.attack_speed.subtract(other.attack_speed),
                 armor: (self.armor).subtract(other.armor),
@@ -793,8 +801,8 @@ impl CharAttributes {
             }
         }
 
-        for m in &modifiers.walking_speed {
-            attr.walking_speed.apply(m);
+        for m in &modifiers.movement_speed {
+            attr.movement_speed.apply(m);
         }
         for m in &modifiers.attack_range {
             attr.attack_range.apply(m);
@@ -802,11 +810,11 @@ impl CharAttributes {
         for m in &modifiers.attack_speed {
             attr.attack_speed.apply(m);
         }
-        attr.attack_speed.limit(Percentage(-300), Percentage(500));
+        attr.attack_speed.limit(percentage(-300), percentage(500));
         for m in &modifiers.armor {
             attr.armor.apply(m);
         }
-        attr.armor.limit(Percentage(-100), Percentage(100));
+        attr.armor.limit(percentage(-100), percentage(100));
         for m in &modifiers.healing {
             attr.healing.apply(m);
         }
@@ -879,7 +887,7 @@ impl BonusDurations {
 #[derive(Clone, Debug)]
 pub struct CharAttributeModifierCollector {
     max_hp: Vec<CharAttributeModifier>,
-    walking_speed: Vec<CharAttributeModifier>,
+    movement_speed: Vec<CharAttributeModifier>,
     attack_range: Vec<CharAttributeModifier>,
     attack_speed: Vec<CharAttributeModifier>,
     attack_damage: Vec<CharAttributeModifier>,
@@ -894,7 +902,7 @@ impl CharAttributeModifierCollector {
     pub fn new() -> CharAttributeModifierCollector {
         CharAttributeModifierCollector {
             max_hp: Vec::with_capacity(8),
-            walking_speed: Vec::with_capacity(8),
+            movement_speed: Vec::with_capacity(8),
             attack_range: Vec::with_capacity(8),
             attack_speed: Vec::with_capacity(8),
             attack_damage: Vec::with_capacity(8),
@@ -990,12 +998,12 @@ impl CharAttributeModifierCollector {
             &mut self.durations.walking_speed_bonus_started_at,
             &mut self.durations.walking_speed_bonus_ends_at,
         );
-        self.walking_speed.push(modifier);
+        self.movement_speed.push(modifier);
     }
 
     pub fn clear(&mut self) {
         self.max_hp.clear();
-        self.walking_speed.clear();
+        self.movement_speed.clear();
         self.attack_range.clear();
         self.attack_speed.clear();
         self.attack_damage.clear();
@@ -1227,7 +1235,7 @@ impl CharacterStateComponent {
                 JobId::Turret => BasicAttack::Ranged {
                     bullet_type: WeaponType::SilverBullet,
                 },
-                _ => BasicAttack::Melee,
+                _ => BasicAttack::MeleeSimple,
             },
             job_id,
             name,
@@ -1275,10 +1283,14 @@ impl CharacterStateComponent {
             .differences(&self.base_attributes, modifier_collector);
     }
 
+    pub fn get_status_count(&self) -> usize {
+        self.statuses.count()
+    }
+
     pub fn update_statuses(
         &mut self,
         self_char_id: CharEntityId,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
         phyisics_world: &mut PhysicEngine,
@@ -1290,7 +1302,7 @@ impl CharacterStateComponent {
             self_char_id,
             self,
             phyisics_world,
-            system_vars,
+            sys_vars,
             entities,
             updater,
         );
@@ -1324,8 +1336,8 @@ impl CharacterStateComponent {
         self.y
     }
 
-    pub fn state_has_changed(&mut self) -> bool {
-        return self.prev_state != self.state;
+    pub fn state_type_has_changed(&self) -> bool {
+        return !self.prev_state.discriminant_eq(&self.state);
     }
 
     pub fn save_prev_state(&mut self) {

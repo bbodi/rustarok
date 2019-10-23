@@ -8,7 +8,9 @@ use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
+};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -155,27 +157,27 @@ impl SkillManifestation for BrutalSkillManifest {
         &mut self,
         self_entity_id: Entity,
         _all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
-        if self.die_at.has_already_passed(system_vars.time) {
+        if self.die_at.has_already_passed(sys_vars.time) {
             updater.remove::<SkillManifestationComponent>(self_entity_id);
             for effect_id in &self.effect_ids {
                 updater.remove::<StrEffectComponent>(*effect_id);
             }
         } else {
-            if self.next_damage_at.has_not_passed_yet(system_vars.time) {
+            if self.next_damage_at.has_not_passed_yet(sys_vars.time) {
                 return;
             }
-            self.next_damage_at = system_vars.time.add_seconds(0.5);
-            system_vars.area_attacks.push(AreaAttackComponent {
+            self.next_damage_at = sys_vars.time.add_seconds(0.5);
+            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                 area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                 source_entity_id: self.caster_entity_id,
-                typ: AttackType::SpellDamage(600, DamageDisplayType::Combo(10)),
+                typ: HpModificationType::SpellDamage(600, DamageDisplayType::Combo(10)),
                 except: None,
             });
         }

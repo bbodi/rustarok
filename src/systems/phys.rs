@@ -1,12 +1,11 @@
 use crate::components::char::CharacterStateComponent;
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 use nalgebra::Vector2;
 use ncollide2d::narrow_phase::ContactEvent;
 use ncollide2d::query::Proximity;
 use specs::prelude::*;
-
-pub struct PhysCollisionCollectorSystem;
 
 pub struct FrictionSystem;
 
@@ -15,12 +14,13 @@ impl<'a> specs::System<'a> for FrictionSystem {
         specs::WriteExpect<'a, PhysicEngine>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, MapRenderData>,
         specs::WriteStorage<'a, CharacterStateComponent>,
     );
 
     fn run(
         &mut self,
-        (mut physics_world, mut system_benchmark, system_vars, mut char_storage): Self::SystemData,
+        (mut physics_world, mut system_benchmark, sys_vars, map_render_data, mut char_storage): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for char_state in (&mut char_storage).join() {
@@ -28,22 +28,22 @@ impl<'a> specs::System<'a> for FrictionSystem {
             if let Some(body) = body {
                 if char_state
                     .cannot_control_until
-                    .has_already_passed(system_vars.time)
+                    .has_already_passed(sys_vars.time)
                 {
                     body.set_linear_velocity(Vector2::zeros());
                 } else {
-                    // damping will solve this
-                    //                let linear = body.velocity().linear;
-                    //                if linear.x != 0.0 || linear.y != 0.0 {
-                    //                    let dir = linear.normalize();
-                    //                    let slowing_vector = body.velocity().linear - (dir * 1.0);
-                    //                    let len = slowing_vector.magnitude();
-                    //                    if len <= 0.001 {
-                    //                        body.set_linear_velocity(Vector2::zeros());
-                    //                    } else {
-                    //                        body.set_linear_velocity(slowing_vector);
-                    //                    }
-                    //                }
+                    // damping seems unpredicatble so I use this to stop arrived players
+                    let linear = body.velocity().linear;
+                    if linear.x != 0.0 || linear.y != 0.0 {
+                        let dir = linear.normalize();
+                        let slowing_vector = body.velocity().linear - (dir * 1.0);
+                        let len = slowing_vector.magnitude();
+                        if len <= 0.001 {
+                            body.set_linear_velocity(Vector2::zeros());
+                        } else {
+                            body.set_linear_velocity(slowing_vector);
+                        }
+                    }
                 }
                 let body_pos = body.position().translation.vector;
                 char_state.set_pos_dont_use_it(body_pos);
@@ -51,6 +51,8 @@ impl<'a> specs::System<'a> for FrictionSystem {
         }
     }
 }
+
+pub struct PhysCollisionCollectorSystem;
 
 impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
     type SystemData = (
@@ -67,13 +69,13 @@ impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
             _entities,
             mut physics_world,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             mut collisions_resource,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
-        physics_world.step(system_vars.dt.0);
+        physics_world.step(sys_vars.dt.0);
 
         for event in physics_world.geometrical_world.proximity_events() {
             let collider1 = physics_world.colliders.get(event.collider1).unwrap();

@@ -425,7 +425,7 @@ impl Rsm {
             .iter()
             .map(|texture_name| {
                 let path = format!("data\\texture\\{}", texture_name);
-                let ret = asset_db.get_texture_id(gl, &path).unwrap_or_else(|| {
+                let ret = asset_db.get_texture_id(&path).unwrap_or_else(|| {
                     let surface = asset_loader.load_sdl_surface(&path);
                     log::trace!("Surface loaded: {}", path);
                     let surface = surface.unwrap_or_else(|e| {

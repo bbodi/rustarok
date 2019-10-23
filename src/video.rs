@@ -120,7 +120,7 @@ impl Video {
             font.height(),
             outline_font.get_outline_width()
         );
-        return asset_db.get_texture_id(gl, &key).unwrap_or_else(|| {
+        return asset_db.get_texture_id(&key).unwrap_or_else(|| {
             let mut bg_surface = outline_font
                 .render(text)
                 .blended(sdl2::pixels::Color::RGBA(0, 0, 0, 255))
@@ -338,7 +338,7 @@ impl VertexArray {
                 MyGlEnum::ARRAY_BUFFER,                               // target
                 (vertices.len() * std::mem::size_of::<T>()) as isize, // size of data in bytes
                 vertices.as_ptr() as *const c_void,                   // pointer to data
-                MyGlEnum::STATIC_DRAW,                                // usage
+                usage,                                                // usage
             );
         }
         let mut vao: c_uint = 0;

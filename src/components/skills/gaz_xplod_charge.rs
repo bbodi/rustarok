@@ -13,7 +13,9 @@ use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
 };
 use crate::components::status::stun::StunStatus;
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType, StrEffectComponent};
+use crate::components::{
+    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
+};
 use crate::configs::{DevConfig, GazXplodiumChargeSkillConfigInner};
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
@@ -105,15 +107,15 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
         &mut self,
         self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
-        let now = system_vars.time;
+        let now = sys_vars.time;
 
-        let travel_duration_percentage = system_vars.time.percentage_between(
+        let travel_duration_percentage = sys_vars.time.percentage_between(
             self.started_at,
             self.started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds),
@@ -126,30 +128,30 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds)
                 .add_seconds(self.configs.detonation_duration);
-            if end_time.has_already_passed(system_vars.time) {
+            if end_time.has_already_passed(sys_vars.time) {
                 if let Some(caster) = char_storage.get(self.caster_id.0) {
                     let area_shape =
                         Box::new(ncollide2d::shape::Ball::new(self.configs.explosion_area));
                     let area_isom = Isometry2::new(self.end_pos, 0.0);
-                    system_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
                         source_entity_id: self.caster_id,
-                        typ: AttackType::SpellDamage(
+                        typ: HpModificationType::SpellDamage(
                             self.configs.damage,
                             DamageDisplayType::SingleNumber,
                         ),
                         except: None,
                     });
-                    system_vars
+                    sys_vars
                         .apply_area_statuses
                         .push(ApplyStatusInAreaComponent {
                             source_entity_id: self.caster_id,
                             status: ApplyStatusComponentPayload::from_secondary(Box::new(
                                 StunStatus {
                                     caster_entity_id: self.caster_id,
-                                    started: system_vars.time,
-                                    until: system_vars
+                                    started: sys_vars.time,
+                                    until: sys_vars
                                         .time
                                         .add_seconds(self.configs.stun_duration_seconds),
                                 },
@@ -165,7 +167,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         StrEffectComponent {
                             effect_id: StrEffectType::Explosion.into(),
                             pos: self.end_pos,
-                            start_time: system_vars.time,
+                            start_time: sys_vars.time,
                             die_at: None,
                             play_mode: ActionPlayMode::Once,
                         },

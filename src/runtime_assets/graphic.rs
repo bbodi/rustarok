@@ -1,5 +1,5 @@
 use crate::asset::database::AssetDatabase;
-use crate::asset::texture::{GlTexture, TextureId};
+use crate::asset::texture::{GlTexture, TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::asset::{AssetLoader, SpriteResource};
 use crate::common::measure_time;
 use crate::components::char::CharActionIndex;
@@ -18,7 +18,6 @@ use std::string::ToString;
 use strum::IntoEnumIterator;
 
 pub struct Texts {
-    // TODO: texture id instead?
     pub skill_name_texts: HashMap<Skills, TextureId>,
     pub skill_key_texts: HashMap<SkillKey, TextureId>,
     pub custom_texts: HashMap<String, TextureId>,
@@ -26,6 +25,20 @@ pub struct Texts {
     pub attack_blocked: TextureId,
     pub minus: TextureId,
     pub plus: TextureId,
+}
+
+impl Texts {
+    pub fn new_for_test() -> Texts {
+        Texts {
+            skill_name_texts: Default::default(),
+            skill_key_texts: Default::default(),
+            custom_texts: Default::default(),
+            attack_absorbed: DUMMY_TEXTURE_ID_FOR_TEST,
+            attack_blocked: DUMMY_TEXTURE_ID_FOR_TEST,
+            minus: DUMMY_TEXTURE_ID_FOR_TEST,
+            plus: DUMMY_TEXTURE_ID_FOR_TEST,
+        }
+    }
 }
 
 pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDatabase) -> Sprites {
@@ -218,7 +231,7 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                         monster_id,
                         asset_loader
                             .load_spr_and_act(gl, &file_name, asset_db)
-                            .or_else(|e| {
+                            .or_else(|_e| {
                                 let file_name = format!(
                                     "data\\sprite\\¸ó½ºÅÍ\\{}",
                                     monster_id.to_string().to_lowercase()
@@ -289,7 +302,7 @@ pub fn load_skill_icons(
             continue;
         }
         let skill_icon = asset_db
-            .get_texture_id(gl, &def.get_icon_path())
+            .get_texture_id(&def.get_icon_path())
             .unwrap_or_else(|| {
                 asset_loader
                     .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_db)
@@ -391,7 +404,6 @@ pub fn load_texts(gl: &Gl, ttf_context: &Sdl2TtfContext, asset_db: &mut AssetDat
         );
     }
     STATUS_NAMES.iter().for_each(|name| {
-        let key = format!("outlinetext_{}", name);
         texts.custom_texts.insert(
             name.to_string(),
             Video::create_outline_text_texture(
@@ -405,7 +417,6 @@ pub fn load_texts(gl: &Gl, ttf_context: &Sdl2TtfContext, asset_db: &mut AssetDat
     });
 
     for skill in Skills::iter() {
-        let key = format!("outlinetext_{:?}", skill);
         let texture = Video::create_outline_text_texture(
             gl,
             &skill_name_font,

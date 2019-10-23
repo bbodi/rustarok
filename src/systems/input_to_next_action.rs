@@ -4,6 +4,7 @@ use crate::components::controller::{
 };
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
+use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
@@ -21,6 +22,7 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
         specs::WriteStorage<'a, ControllerComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
         specs::ReadExpect<'a, SystemVariables>,
+        specs::ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
@@ -31,7 +33,8 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
             char_state_storage,
             mut controller_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
+            map_render_data,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("InputToNextActionSystem");
@@ -61,12 +64,12 @@ impl<'a> specs::System<'a> for InputToNextActionSystem {
                 input.last_mouse_y,
             );
 
-            controller.cell_below_cursor_walkable = system_vars.map_render_data.gat.is_walkable(
+            controller.cell_below_cursor_walkable = map_render_data.gat.is_walkable(
                 input.mouse_world_pos.x.max(0.0) as usize,
                 input.mouse_world_pos.y.abs() as usize,
             );
             let (cursor_frame, cursor_color) = InputToNextActionSystem::determine_cursor(
-                system_vars.time,
+                sys_vars.time,
                 controller,
                 &char_state_storage,
                 self_char_team,

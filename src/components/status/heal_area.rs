@@ -1,7 +1,7 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
-use crate::components::{AttackComponent, AttackType};
+use crate::components::{HpModificationRequest, HpModificationType};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -15,7 +15,7 @@ pub struct HealApplierArea {
     pub extents: Vector2<u16>,
     pub pos: Vector2<f32>,
     pub name: &'static str,
-    pub attack_type: AttackType,
+    pub attack_type: HpModificationType,
     pub interval: f32,
     pub caster_entity_id: CharEntityId,
     pub next_action_at: ElapsedTime,
@@ -24,7 +24,7 @@ pub struct HealApplierArea {
 impl HealApplierArea {
     pub fn new(
         name: &'static str,
-        attack_type: AttackType,
+        attack_type: HpModificationType,
         skill_center: &Vector2<f32>,
         size: Vector2<u16>,
         interval: f32,
@@ -52,13 +52,13 @@ impl SkillManifestation for HealApplierArea {
         &mut self,
         _self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         _updater: &mut LazyUpdate,
     ) {
-        if self.next_action_at.has_already_passed(system_vars.time) {
+        if self.next_action_at.has_already_passed(sys_vars.time) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = all_collisions_in_world
                 .iter()
@@ -72,12 +72,12 @@ impl SkillManifestation for HealApplierArea {
                     .user_data()
                     .map(|v| v.downcast_ref().unwrap())
                     .unwrap();
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: char_entity_id,
                     typ: self.attack_type,
                 });
-                self.next_action_at = system_vars.time.add_seconds(self.interval);
+                self.next_action_at = sys_vars.time.add_seconds(self.interval);
             }
         }
     }

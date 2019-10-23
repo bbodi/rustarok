@@ -10,7 +10,8 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
-    AreaAttackComponent, AttackComponent, AttackType, DamageDisplayType, StrEffectComponent,
+    AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
+    StrEffectComponent,
 };
 use crate::configs::{DevConfig, SkillConfigPyroBlastInner};
 use crate::effect::StrEffectType;
@@ -39,7 +40,7 @@ impl SkillDef for WizPyroBlastSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let configs = ecs_world
             .read_resource::<DevConfig>()
             .skills
@@ -47,7 +48,7 @@ impl SkillDef for WizPyroBlastSkill {
             .inner
             .clone();
 
-        system_vars
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,
@@ -61,7 +62,7 @@ impl SkillDef for WizPyroBlastSkill {
             caster_entity_id,
             caster_pos,
             target_entity.unwrap(),
-            system_vars.time,
+            sys_vars.time,
             &mut ecs_world.write_resource::<PhysicEngine>(),
             configs,
         )))
@@ -75,7 +76,7 @@ impl SkillDef for WizPyroBlastSkill {
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
@@ -84,11 +85,11 @@ impl SkillDef for WizPyroBlastSkill {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            system_vars,
+            sys_vars,
             render_commands,
             ActionPlayMode::Repeat,
         );
-        let casting_percentage = system_vars
+        let casting_percentage = sys_vars
             .time
             .percentage_between(casting_state.cast_started, casting_state.cast_ends);
 
@@ -103,7 +104,7 @@ impl SkillDef for WizPyroBlastSkill {
                         * casting_percentage)
                         .max(0.5),
                 )
-                .add(system_vars.assets.sprites.magic_target)
+                .add(sys_vars.assets.sprites.magic_target)
         }
         let anim_descr = SpriteRenderDescriptorComponent {
             action_index: 16,
@@ -114,9 +115,9 @@ impl SkillDef for WizPyroBlastSkill {
             fps_multiplier: 1.0,
         };
         render_action(
-            system_vars.time,
+            sys_vars.time,
             &anim_descr,
-            &system_vars.assets.sprites.effect_sprites.plasma,
+            &sys_vars.assets.sprites.effect_sprites.plasma,
             &(char_pos + casting_state.char_to_skill_dir_when_casted),
             [0, 0],
             false,
@@ -162,7 +163,7 @@ impl SkillManifestation for PyroBlastManifest {
         &mut self,
         self_entity_id: Entity,
         _all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         _physics_world: &mut PhysicEngine,
@@ -174,24 +175,24 @@ impl SkillManifestation for PyroBlastManifest {
             let distance = dir_vector.magnitude();
             if distance > 2.0 {
                 let dir_vector = dir_vector.normalize();
-                self.pos = self.pos + (dir_vector * system_vars.dt.0 * self.configs.moving_speed);
+                self.pos = self.pos + (dir_vector * sys_vars.dt.0 * self.configs.moving_speed);
             } else {
                 updater.remove::<SkillManifestationComponent>(self_entity_id);
-                system_vars.attacks.push(AttackComponent {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: self.target_entity_id,
-                    typ: AttackType::SpellDamage(
+                    typ: HpModificationType::SpellDamage(
                         self.configs.damage,
                         DamageDisplayType::SingleNumber,
                     ),
                 });
                 let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
                 let area_isom = Isometry2::new(target_pos, 0.0);
-                system_vars.area_attacks.push(AreaAttackComponent {
+                sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                     area_shape,
                     area_isom,
                     source_entity_id: self.caster_entity_id,
-                    typ: AttackType::SpellDamage(
+                    typ: HpModificationType::SpellDamage(
                         self.configs.secondary_damage,
                         DamageDisplayType::SingleNumber,
                     ),
@@ -202,7 +203,7 @@ impl SkillManifestation for PyroBlastManifest {
                     StrEffectComponent {
                         effect_id: StrEffectType::Explosion.into(),
                         pos: target_pos,
-                        start_time: system_vars.time,
+                        start_time: sys_vars.time,
                         die_at: None,
                         play_mode: ActionPlayMode::Once,
                     },
@@ -263,15 +264,15 @@ impl Status for PyroBlastTargetStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         render_commands
             .horizontal_texture_3d()
             .pos(&char_state.pos())
-            .rotation_rad(system_vars.time.0 % 6.28)
+            .rotation_rad(sys_vars.time.0 % 6.28)
             .fix_size(self.splash_radius * 2.0)
-            .add(system_vars.assets.sprites.magic_target);
+            .add(sys_vars.assets.sprites.magic_target);
     }
 
     fn typ(&self) -> StatusNature {

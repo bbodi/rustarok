@@ -1,11 +1,12 @@
 use crate::components::BrowserClient;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectId;
+use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, HorizontalTexture3dRenderCommand, ModelRenderCommand,
     Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle2dRenderCommand,
     Rectangle3dRenderCommand, RenderCommandCollector, Sprite3dRenderCommand, Text2dRenderCommand,
-    Texture2dRenderCommand, Trimesh3dRenderCommand,
+    Texture2dRenderCommand, TextureSizeSetting, Trimesh3dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -40,19 +41,19 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             render_commands_storage,
             mut browser_client_storage,
             mut system_benchmark,
-            system_vars,
+            sys_vars,
             dev_configs,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("WebSocketBrowserRenderSystem");
-        if system_vars.tick % dev_configs.network.send_render_data_every_nth_frame.max(1) != 0 {
+        if sys_vars.tick % dev_configs.network.send_render_data_every_nth_frame.max(1) != 0 {
             return;
         }
 
         for (render_commands, browser) in
             (&render_commands_storage, &mut browser_client_storage).join()
         {
-            if browser.next_send_at.has_not_passed_yet(system_vars.time) {
+            if browser.next_send_at.has_not_passed_yet(sys_vars.time) {
                 continue;
             }
             self.send_buffer.clear();
@@ -122,7 +123,7 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
             );
 
             browser.send_message(&self.send_buffer);
-            browser.update_sending_fps(system_vars.time);
+            browser.update_sending_fps(sys_vars.time);
         }
     }
 }
@@ -254,15 +255,22 @@ impl WebSocketBrowserRenderSystem {
             send_buffer
                 .write_u32::<LittleEndian>(command.texture_id.as_u32())
                 .unwrap();
-            // TODO: asd
-            //            send_buffer.write_f32::<LittleEndian>(command.w).unwrap();
-            //            send_buffer.write_f32::<LittleEndian>(command.h).unwrap();
+            match command.size {
+                TextureSizeSetting::FixSize(fix) => {
+                    send_buffer.write_u32::<LittleEndian>(1).unwrap();
+                    send_buffer.write_f32::<LittleEndian>(fix).unwrap();
+                }
+                TextureSizeSetting::Scale(scale) => {
+                    send_buffer.write_u32::<LittleEndian>(2).unwrap();
+                    send_buffer.write_f32::<LittleEndian>(scale).unwrap();
+                }
+            }
         }
     }
 
     fn send_trimesh_3d_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &[Vec<Trimesh3dRenderCommand>; 2],
+        render_commands: &[Vec<Trimesh3dRenderCommand>; VERTEX_ARRAY_COUNT],
     ) {
         let sizes = (render_commands[1].len() << 16) | render_commands[0].len();
         send_buffer.write_u32::<LittleEndian>(sizes as u32).unwrap();

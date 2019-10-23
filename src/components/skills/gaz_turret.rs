@@ -1,6 +1,6 @@
 use crate::components::char::{
-    CharOutlook, CharPhysicsEntityBuilder, CharStateComponentBuilder, CharacterEntityBuilder,
-    CharacterStateComponent, NpcComponent, TurretComponent, TurretControllerComponent,
+    CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent, TurretComponent,
+    TurretControllerComponent,
 };
 use crate::components::controller::{
     CharEntityId, ControllerComponent, ControllerEntityId, WorldCoord,
@@ -38,26 +38,22 @@ impl SkillDef for GazTurretSkill {
         {
             let entities = &ecs_world.entities();
             let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let system_vars = ecs_world.read_resource::<SystemVariables>();
+            let sys_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
             CharacterEntityBuilder::new(char_entity_id, "turret")
                 .insert_sprite_render_descr_component(updater)
                 .insert_turret_component(caster_entity_id, updater)
                 .physics(
-                    CharPhysicsEntityBuilder::new(skill_pos.unwrap())
-                        .collision_group(CollisionGroup::Turret)
-                        .circle(1.0),
+                    skill_pos.unwrap(),
                     &mut ecs_world.write_resource::<PhysicEngine>(),
+                    |builder| builder.collision_group(CollisionGroup::Turret).circle(1.0),
                 )
-                .char_state(
-                    CharStateComponentBuilder::new()
-                        .outlook(CharOutlook::Monster(MonsterId::Dimik))
+                .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+                    ch.outlook(CharOutlook::Monster(MonsterId::Dimik))
                         .job_id(JobId::Turret)
-                        .team(caster.team),
-                    updater,
-                    &ecs_world.read_resource::<DevConfig>(),
-                );
+                        .team(caster.team)
+                });
 
             let controller_id = ControllerEntityId(entities.create());
             updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));

@@ -2,6 +2,7 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
 use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
+use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
@@ -53,7 +54,7 @@ pub struct EffectFrameCacheKey {
 pub struct RenderCommandCollector {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,
-    pub(super) trimesh_3d_commands: [Vec<Trimesh3dRenderCommand>; 2],
+    pub(super) trimesh_3d_commands: [Vec<Trimesh3dRenderCommand>; VERTEX_ARRAY_COUNT],
     pub(super) rectangle_3d_commands: Vec<Rectangle3dRenderCommand>,
     pub(super) rectangle_2d_commands: VecDeque<Rectangle2dRenderCommand>,
     pub(super) point_2d_commands: Vec<Point2dRenderCommand>,
@@ -77,7 +78,11 @@ impl<'a> RenderCommandCollector {
             texture_2d_commands: Vec::with_capacity(128),
             text_2d_commands: Vec::with_capacity(128),
             rectangle_3d_commands: Vec::with_capacity(128),
-            trimesh_3d_commands: [Vec::with_capacity(128), Vec::with_capacity(128)],
+            trimesh_3d_commands: [
+                Vec::with_capacity(128),
+                Vec::with_capacity(128),
+                Vec::with_capacity(128),
+            ],
             rectangle_2d_commands: VecDeque::with_capacity(128),
             point_2d_commands: Vec::with_capacity(128),
             circle_3d_commands: Vec::with_capacity(128),
@@ -647,15 +652,24 @@ pub enum Font {
 pub enum Trimesh3dType {
     Sanctuary,
     Cylinder,
+    Sphere,
 }
 
 pub struct Trimesh3dRenderCommand {
     pub(super) pos: Vector3<f32>,
+    pub(super) color: [u8; 4],
+    pub(super) scale: f32,
+    pub(super) texture: Option<TextureId>,
+    pub(super) rotation_rad: f32,
 }
 
 pub struct Trimesh3dRenderCommandBuilder<'a> {
     collector: &'a mut RenderCommandCollector,
     pos: Vector3<f32>,
+    color: [u8; 4],
+    texture: Option<TextureId>,
+    scale: f32,
+    rotation_rad: f32,
 }
 
 impl<'a> Trimesh3dRenderCommandBuilder<'a> {
@@ -663,7 +677,38 @@ impl<'a> Trimesh3dRenderCommandBuilder<'a> {
         Trimesh3dRenderCommandBuilder {
             collector,
             pos: Vector3::zeros(),
+            color: [255, 255, 255, 255],
+            texture: None,
+            scale: 1.0,
+            rotation_rad: 0.0,
         }
+    }
+
+    pub fn color(&mut self, color: &[u8; 4]) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.color = *color;
+        self
+    }
+
+    pub fn texture(&mut self, texture_id: TextureId) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.texture = Some(texture_id);
+        self
+    }
+
+    pub fn color_rgb(&mut self, color: &[u8; 3]) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.color[0] = color[0];
+        self.color[1] = color[1];
+        self.color[2] = color[2];
+        self
+    }
+
+    pub fn scale(&mut self, scale: f32) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.scale = scale;
+        self
+    }
+
+    pub fn rotation_rad(&mut self, rotation_rad: f32) -> &'a mut Trimesh3dRenderCommandBuilder {
+        self.rotation_rad = rotation_rad;
+        self
     }
 
     pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Trimesh3dRenderCommandBuilder {
@@ -683,8 +728,13 @@ impl<'a> Trimesh3dRenderCommandBuilder<'a> {
     }
 
     pub fn add(&'a mut self, typ: Trimesh3dType) {
-        self.collector.trimesh_3d_commands[typ as usize]
-            .push(Trimesh3dRenderCommand { pos: self.pos });
+        self.collector.trimesh_3d_commands[typ as usize].push(Trimesh3dRenderCommand {
+            pos: self.pos,
+            color: self.color,
+            scale: self.scale,
+            texture: self.texture,
+            rotation_rad: self.rotation_rad,
+        });
     }
 }
 

@@ -43,11 +43,11 @@ impl Status for ArmorModifierStatus {
         _self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
@@ -98,11 +98,11 @@ impl Status for WalkingSpeedModifierStatus {
         _self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

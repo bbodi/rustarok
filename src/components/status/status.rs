@@ -1,15 +1,16 @@
 use crate::asset::SpriteResource;
 use crate::components::char::{
-    ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector, CharAttributes,
-    CharacterStateComponent, Percentage, Team,
+    percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
+    CharAttributes, CharacterStateComponent, Percentage, Team,
 };
 use crate::components::controller::CharEntityId;
-use crate::components::{ApplyForceComponent, AttackComponent, AttackType};
+use crate::components::{
+    ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationType,
+};
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::atk_calc::AttackOutcome;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::{Sex, SystemVariables};
@@ -33,7 +34,7 @@ pub trait Status: Any {
 
     fn get_body_sprite<'a>(
         &self,
-        system_vars: &'a SystemVariables,
+        sys_vars: &'a SystemVariables,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
@@ -46,8 +47,8 @@ pub trait Status: Any {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
     ) {
     }
 
@@ -85,8 +86,28 @@ pub trait Status: Any {
         StatusUpdateResult::KeepIt
     }
 
-    fn affect_incoming_damage(&mut self, outcome: AttackOutcome) -> AttackOutcome {
+    fn hp_mod_is_calculated_but_not_applied_yet(
+        &mut self,
+        outcome: HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) -> HpModificationResult {
         outcome
+    }
+
+    fn hp_mod_has_been_applied_on_me(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
+    }
+
+    fn hp_mod_has_been_applied_on_enemy(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
     }
 
     fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
@@ -124,7 +145,7 @@ pub enum MainStatusesIndex {
 }
 
 #[derive(Clone)]
-struct MountedStatus {
+pub struct MountedStatus {
     speedup: Percentage,
 }
 
@@ -200,16 +221,63 @@ impl Statuses {
         return allow;
     }
 
-    pub fn affect_incoming_damage(&mut self, mut outcome: AttackOutcome) -> AttackOutcome {
+    pub fn hp_mod_has_been_applied_on_enemy(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
         for status in self
             .statuses
             .iter_mut()
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            outcome = status.as_mut().unwrap().affect_incoming_damage(outcome);
+            status.as_mut().unwrap().hp_mod_has_been_applied_on_enemy(
+                self_id,
+                &outcome,
+                hp_mod_reqs,
+            );
+        }
+    }
+
+    pub fn hp_mod_is_calculated_but_not_applied_yet(
+        &mut self,
+        mut outcome: HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) -> HpModificationResult {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            outcome = status
+                .as_mut()
+                .unwrap()
+                .hp_mod_is_calculated_but_not_applied_yet(outcome, hp_mod_reqs);
         }
         return outcome;
+    }
+
+    pub fn hp_mod_has_been_applied_on_me(
+        &mut self,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+    ) {
+        for status in self
+            .statuses
+            .iter_mut()
+            .take(self.first_free_index)
+            .filter(|it| it.is_some())
+        {
+            status.as_mut().unwrap().hp_mod_has_been_applied_on_enemy(
+                self_id,
+                &outcome,
+                hp_mod_reqs,
+            );
+        }
     }
 
     pub fn update(
@@ -217,7 +285,7 @@ impl Statuses {
         self_char_id: CharEntityId,
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> u32 {
@@ -233,7 +301,7 @@ impl Statuses {
                 self_char_id,
                 char_state,
                 physics_world,
-                system_vars,
+                sys_vars,
                 entities,
                 updater,
             );
@@ -264,7 +332,7 @@ impl Statuses {
     pub fn render(
         &self,
         char_pos: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         let mut already_rendered = HashSet::with_capacity(self.statuses.len());
@@ -272,7 +340,7 @@ impl Statuses {
             let boxx = status.as_ref().unwrap();
             let type_id = boxx.deref().type_id();
             if !already_rendered.contains(&type_id) {
-                boxx.render(char_pos, system_vars, render_commands);
+                boxx.render(char_pos, sys_vars, render_commands);
                 already_rendered.insert(type_id);
             }
         }
@@ -285,53 +353,53 @@ impl Statuses {
             JobId::HUNTER => configs.stats.player.hunter.attributes.clone(),
             JobId::RangedMinion => configs.stats.minion.ranged.clone(),
             JobId::HealingDummy => CharAttributes {
-                walking_speed: Percentage(0),
-                attack_range: Percentage(0),
-                attack_speed: Percentage(0),
+                movement_speed: percentage(0),
+                attack_range: percentage(0),
+                attack_speed: percentage(0),
                 attack_damage: 0,
-                armor: Percentage(0),
-                healing: Percentage(100),
-                hp_regen: Percentage(0),
+                armor: percentage(0),
+                healing: percentage(100),
+                hp_regen: percentage(0),
                 max_hp: 1_000_000,
-                mana_regen: Percentage(0),
+                mana_regen: percentage(0),
             },
             JobId::TargetDummy => CharAttributes {
-                walking_speed: Percentage(0),
-                attack_range: Percentage(0),
-                attack_speed: Percentage(0),
+                movement_speed: percentage(0),
+                attack_range: percentage(0),
+                attack_speed: percentage(0),
                 attack_damage: 0,
-                armor: Percentage(0),
-                healing: Percentage(100),
-                hp_regen: Percentage(0),
+                armor: percentage(0),
+                healing: percentage(100),
+                hp_regen: percentage(0),
                 max_hp: 1_000_000,
-                mana_regen: Percentage(0),
+                mana_regen: percentage(0),
             },
             JobId::MeleeMinion => configs.stats.minion.melee.clone(),
             JobId::Turret => configs.skills.gaz_turret.turret.clone(),
             JobId::Barricade => {
                 let configs = &configs.skills.gaz_barricade;
                 CharAttributes {
-                    walking_speed: Percentage(0),
-                    attack_range: Percentage(0),
-                    attack_speed: Percentage(0),
+                    movement_speed: percentage(0),
+                    attack_range: percentage(0),
+                    attack_speed: percentage(0),
                     attack_damage: 0,
                     armor: configs.armor,
-                    healing: Percentage(0),
+                    healing: percentage(0),
                     hp_regen: configs.hp_regen,
                     max_hp: configs.max_hp,
-                    mana_regen: Percentage(10),
+                    mana_regen: percentage(10),
                 }
             }
             _ => CharAttributes {
-                walking_speed: Percentage(100),
-                attack_range: Percentage(100),
-                attack_speed: Percentage(100),
+                movement_speed: percentage(100),
+                attack_range: percentage(100),
+                attack_speed: percentage(100),
                 attack_damage: 76,
-                armor: Percentage(10),
-                healing: Percentage(100),
-                hp_regen: Percentage(100),
+                armor: percentage(10),
+                healing: percentage(100),
+                hp_regen: percentage(100),
                 max_hp: 2000,
-                mana_regen: Percentage(100),
+                mana_regen: percentage(100),
             },
         };
     }
@@ -354,7 +422,7 @@ impl Statuses {
 
     pub fn calc_body_sprite<'a>(
         &self,
-        system_vars: &'a SystemVariables,
+        sys_vars: &'a SystemVariables,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
@@ -368,7 +436,7 @@ impl Statuses {
             let body = status
                 .as_ref()
                 .unwrap()
-                .get_body_sprite(system_vars, job_id, sex);
+                .get_body_sprite(sys_vars, job_id, sex);
             if body.is_some() {
                 ret = body;
             }
@@ -454,7 +522,7 @@ impl Statuses {
             })
             .map(|(i, current_status)| (i, current_status.as_ref().unwrap().stack(&new_status)))
             .unwrap_or((0, StatusStackingResult::AddTheNewStatus));
-        match dbg!(stack_type) {
+        match stack_type {
             StatusStackingResult::Replace => {
                 self.statuses[current_index] = Some(new_status);
             }
@@ -515,7 +583,20 @@ impl Statuses {
         return std::mem::transmute::<_, &Box<T>>(boxx);
     }
 
-    pub fn get_status<F, T: 'static, R>(&self, func: F) -> Option<R>
+    pub fn get_status<T: 'static>(&self) -> Option<&T> {
+        let requested_type_id = TypeId::of::<T>();
+        for status in self.statuses.iter().filter(|it| it.is_some()) {
+            let boxx: &Box<dyn Status> = &status.as_ref().unwrap();
+            let type_id = boxx.as_ref().type_id();
+            if requested_type_id == type_id {
+                let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
+                return Some(param);
+            }
+        }
+        return None;
+    }
+
+    pub fn with_status<F, T: 'static, R>(&self, func: F) -> Option<R>
     where
         F: Fn(&T) -> R,
     {
@@ -529,6 +610,17 @@ impl Statuses {
             }
         }
         return None;
+    }
+
+    pub fn count(&self) -> usize {
+        let secondary_status_count = self.first_free_index - MAINSTATUSES_COUNT;
+        let main_status_count = self
+            .statuses
+            .iter()
+            .take(MAINSTATUSES_COUNT)
+            .filter(|it| it.is_some())
+            .count();
+        return main_status_count + secondary_status_count;
     }
 }
 
@@ -544,11 +636,11 @@ impl Status for MountedStatus {
 
     fn get_body_sprite<'a>(
         &self,
-        system_vars: &'a SystemVariables,
+        sys_vars: &'a SystemVariables,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
-        let sprites = &system_vars.assets.sprites;
+        let sprites = &sys_vars.assets.sprites;
         sprites
             .mounted_character_sprites
             .get(&job_id)
@@ -596,20 +688,20 @@ impl Status for PoisonStatus {
         self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.has_already_passed(system_vars.time) {
-                system_vars.attacks.push(AttackComponent {
+            if self.next_damage_at.has_already_passed(sys_vars.time) {
+                sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: self_char_id,
-                    typ: AttackType::Poison(30),
+                    typ: HpModificationType::Poison(30),
                 });
-                self.next_damage_at = system_vars.time.add_seconds(1.0);
+                self.next_damage_at = sys_vars.time.add_seconds(1.0);
             }
             StatusUpdateResult::KeepIt
         }
@@ -618,14 +710,14 @@ impl Status for PoisonStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Quagmire,
             self.started,
             &char_state.pos(),
-            system_vars,
+            sys_vars,
             render_commands,
             ActionPlayMode::Repeat,
         );

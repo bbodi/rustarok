@@ -659,7 +659,10 @@ impl<'a> ConsoleSystem<'a> {
         return None;
     }
 
-    pub fn init_commands(effect_names: Vec<String>) -> HashMap<String, CommandDefinition> {
+    pub fn init_commands(
+        effect_names: Vec<String>,
+        _map_names: Vec<String>,
+    ) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
         ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_pos());
@@ -817,7 +820,11 @@ impl CommandArguments {
     pub fn as_str(&self, index: usize) -> Option<&str> {
         self.args.get(index + 1).map(|it| {
             if it.qouted {
-                &it.text[1..it.text.len() - 1]
+                if it.text.as_bytes()[it.text.len() - 1] == '\"' as u8 {
+                    &it.text[1..it.text.len() - 1]
+                } else {
+                    &it.text[1..it.text.len()]
+                }
             } else {
                 it.text.as_str()
             }
@@ -1008,7 +1015,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
             input_storage,
             mut console_storage,
             mut render_collector_storage,
-            system_vars,
+            sys_vars,
             dev_configs,
         ): Self::SystemData,
     ) {
@@ -1019,7 +1026,7 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
         )
             .join()
         {
-            let now = system_vars.time;
+            let now = sys_vars.time;
             let console_color = dev_configs.console.color;
             let console_height = (VIDEO_HEIGHT / 3) as i32;
             let repeat_time = 0.1;
@@ -1031,9 +1038,9 @@ impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
                 if console.y_pos < console_height {
                     console.y_pos += 4;
                 }
-                if console.cursor_change.has_already_passed(system_vars.time) {
+                if console.cursor_change.has_already_passed(sys_vars.time) {
                     console.cursor_shown = !console.cursor_shown;
-                    console.cursor_change = system_vars.time.add_seconds(0.5);
+                    console.cursor_change = sys_vars.time.add_seconds(0.5);
                 }
 
                 if input.is_key_just_pressed(Scancode::Up) {

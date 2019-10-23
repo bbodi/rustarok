@@ -147,6 +147,7 @@ pub struct Trimesh3dShaderParameters {
     pub view_mat: ShaderParam4x4fv,
     pub color: ShaderParam4ubv,
     pub scale: ShaderParam3fv,
+    pub texture: ShaderParam1i,
 }
 
 impl Trimesh3dShaderParameters {
@@ -157,6 +158,7 @@ impl Trimesh3dShaderParameters {
             view_mat: ShaderParam4x4fv(Shader::get_location(gl, program_id, "view")),
             color: ShaderParam4ubv(Shader::get_location(gl, program_id, "global_color")),
             scale: ShaderParam3fv(Shader::get_location(gl, program_id, "scale")),
+            texture: ShaderParam1i(Shader::get_location(gl, program_id, "model_texture")),
         }
     }
 }

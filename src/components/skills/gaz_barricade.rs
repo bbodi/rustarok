@@ -1,6 +1,5 @@
 use crate::components::char::{
-    CharOutlook, CharPhysicsEntityBuilder, CharStateComponentBuilder, CharacterEntityBuilder,
-    CharacterStateComponent, NpcComponent,
+    CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent,
 };
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType, Skills};
@@ -23,6 +22,7 @@ impl SkillDef for GazBarricadeSkill {
     }
 
     // TODO 2 barricade ne lehessen egy kockán
+    // TODO: teamet a finishből szedje
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
@@ -38,7 +38,7 @@ impl SkillDef for GazBarricadeSkill {
         {
             let entities = &ecs_world.entities();
             let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let system_vars = ecs_world.read_resource::<SystemVariables>();
+            let sys_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
             let pos2d = {
@@ -48,20 +48,20 @@ impl SkillDef for GazBarricadeSkill {
             CharacterEntityBuilder::new(char_entity_id, "barricade")
                 .insert_sprite_render_descr_component(updater)
                 .physics(
-                    CharPhysicsEntityBuilder::new(pos2d)
-                        .collision_group(caster.team.get_barricade_collision_group())
-                        .rectangle(1.0, 1.0)
-                        .body_status(BodyStatus::Static),
+                    pos2d,
                     &mut ecs_world.write_resource::<PhysicEngine>(),
+                    |builder| {
+                        builder
+                            .collision_group(caster.team.get_barricade_collision_group())
+                            .rectangle(1.0, 1.0)
+                            .body_status(BodyStatus::Static)
+                    },
                 )
-                .char_state(
-                    CharStateComponentBuilder::new()
-                        .outlook(CharOutlook::Monster(MonsterId::Barricade))
+                .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+                    ch.outlook(CharOutlook::Monster(MonsterId::Barricade))
                         .job_id(JobId::Barricade)
-                        .team(caster.team),
-                    updater,
-                    &ecs_world.read_resource::<DevConfig>(),
-                );
+                        .team(caster.team)
+                });
         }
         None
     }

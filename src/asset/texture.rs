@@ -8,6 +8,8 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::AssetLoader;
 use crate::my_gl::{Gl, MyGlEnum};
 
+pub const DUMMY_TEXTURE_ID_FOR_TEST: TextureId = TextureId(0);
+
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct TextureId(pub(super) usize);
 

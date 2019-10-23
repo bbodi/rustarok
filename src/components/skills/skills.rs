@@ -8,7 +8,7 @@ use specs::prelude::*;
 use strum_macros::EnumIter;
 
 use crate::common::v2_to_v3;
-use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent};
+use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent, Team};
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
@@ -47,7 +47,7 @@ pub trait SkillManifestation {
         &mut self,
         entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
@@ -86,7 +86,7 @@ impl SkillManifestationComponent {
         &mut self,
         self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
@@ -96,7 +96,7 @@ impl SkillManifestationComponent {
         skill.update(
             self_entity_id,
             all_collisions_in_world,
-            system_vars,
+            sys_vars,
             entities,
             char_storage,
             physics_world,
@@ -125,6 +125,7 @@ pub struct FinishCast {
     pub skill: Skills,
     pub caster_entity_id: CharEntityId,
     pub caster_pos: WorldCoord,
+    pub caster_team: Team,
     pub skill_pos: Option<WorldCoord>,
     pub char_to_skill_dir: Vector2<f32>,
     pub target_entity: Option<CharEntityId>,
@@ -147,7 +148,7 @@ pub trait SkillDef {
         &self,
         char_pos: &Vector2<f32>,
         casting_state: &CastingSkillData,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
@@ -156,7 +157,7 @@ pub trait SkillDef {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            system_vars,
+            sys_vars,
             render_commands,
             ActionPlayMode::Repeat,
         );
@@ -172,19 +173,19 @@ pub trait SkillDef {
             if let Some(target_char) = char_storage.get(target_entity.0) {
                 render_commands
                     .horizontal_texture_3d()
-                    .rotation_rad(system_vars.time.0 % 6.28)
+                    .rotation_rad(sys_vars.time.0 % 6.28)
                     .pos(&target_char.pos())
-                    .add(system_vars.assets.sprites.magic_target)
+                    .add(sys_vars.assets.sprites.magic_target)
             }
         }
     }
     fn render_target_selection(
         &self,
-        is_castable: bool,
-        skill_pos: &Vector2<f32>,
-        char_to_skill_dir: &Vector2<f32>,
-        render_commands: &mut RenderCommandCollector,
-        configs: &DevConfig,
+        _is_castable: bool,
+        _skill_pos: &Vector2<f32>,
+        _char_to_skill_dir: &Vector2<f32>,
+        _render_commands: &mut RenderCommandCollector,
+        _configs: &DevConfig,
     ) {
     }
 }

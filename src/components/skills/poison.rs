@@ -28,10 +28,10 @@ impl SkillDef for PosionSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let entities = &ecs_world.entities();
         let updater = ecs_world.read_resource::<LazyUpdate>();
-        let now = system_vars.time;
+        let now = sys_vars.time;
         updater.insert(
             entities.create(),
             StrEffectComponent {
@@ -43,7 +43,7 @@ impl SkillDef for PosionSkill {
             },
         );
         let configs = &ecs_world.read_resource::<DevConfig>().skills.poison;
-        system_vars
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
                 caster_entity_id,

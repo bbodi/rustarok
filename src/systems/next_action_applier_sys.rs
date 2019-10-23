@@ -8,7 +8,7 @@ use crate::components::controller::{
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::configs::DevConfig;
 use crate::systems::render_sys::DIRECTION_TABLE;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use specs::prelude::*;
 
@@ -16,9 +16,7 @@ pub struct NextActionApplierSystem;
 
 impl<'a> specs::System<'a> for NextActionApplierSystem {
     type SystemData = (
-        specs::Entities<'a>,
         specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
         specs::WriteStorage<'a, ControllerComponent>,
         specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, DevConfig>,
@@ -28,17 +26,15 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
     fn run(
         &mut self,
         (
-            entities,
             mut char_state_storage,
-            mut sprite_storage,
             mut controller_storage,
-            system_vars,
+            sys_vars,
             dev_configs,
             mut system_benchmark,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("NextActionApplierSystem");
-        let now = system_vars.time;
+        let now = sys_vars.time;
         for controller in (&mut controller_storage).join() {
             let char_state = char_state_storage.get_mut(controller.controlled_entity.0);
 
@@ -77,19 +73,29 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                         )
                     }
                     None => false,
-                }
+                };
             }
         }
+    }
+}
 
+pub struct UpdateCharSpriteBasedOnStateSystem;
+
+impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
+    type SystemData = (
+        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+    );
+
+    fn run(&mut self, (char_state_storage, mut sprite_storage, sys_vars): Self::SystemData) {
         // update character's sprite based on its state
-        for (char_id, char_comp, sprite) in
-            (&entities, &mut char_state_storage, &mut sprite_storage).join()
-        {
+        for (char_comp, sprite) in (&char_state_storage, &mut sprite_storage).join() {
+            let now = sys_vars.time;
             // it was removed due to a bug in falcon carry
             //            if char_comp.statuses.can_be_controlled() == false {
             //                continue;
             //            }
-            let sprite: &mut SpriteRenderDescriptorComponent = sprite;
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();
@@ -99,15 +105,7 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                 CharState::Walking(_) => true,
                 _ => false,
             };
-            let state_has_changed = char_comp.state_has_changed();
-            if state_has_changed {
-                log::debug!(
-                    "{:?} state has changed {:?} ==> {:?}",
-                    char_id,
-                    prev_state,
-                    state
-                )
-            }
+            let state_has_changed = char_comp.state_type_has_changed();
             if (state_has_changed && state != CharState::Idle)
                 || (state == CharState::Idle && prev_animation_has_ended)
                 || (state == CharState::Idle && prev_animation_must_stop_at_end)
@@ -123,13 +121,13 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                 };
                 sprite.forced_duration = forced_duration;
                 sprite.fps_multiplier = if state.is_walking() {
-                    char_comp.calculated_attribs().walking_speed.as_f32()
+                    char_comp.calculated_attribs().movement_speed.as_f32()
                 } else {
                     1.0
                 };
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.assets.sprites, &state);
+                    .get_sprite_and_action_index(&sys_vars.assets.sprites, &state);
                 sprite.action_index = action_index;
                 sprite.animation_ends_at = now.add(forced_duration.unwrap_or_else(|| {
                     let duration = sprite_res.action.actions[action_index].duration;
@@ -142,11 +140,48 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
                 sprite.forced_duration = None;
                 let (sprite_res, action_index) = char_comp
                     .outlook
-                    .get_sprite_and_action_index(&system_vars.assets.sprites, &prev_state);
+                    .get_sprite_and_action_index(&sys_vars.assets.sprites, &prev_state);
                 let duration = sprite_res.action.actions[action_index].duration;
                 sprite.animation_ends_at = sprite.animation_started.add_seconds(duration);
             }
             sprite.direction = char_comp.dir();
+        }
+    }
+}
+
+pub struct SavePreviousCharStateSystem;
+
+impl<'a> specs::System<'a> for SavePreviousCharStateSystem {
+    type SystemData = (
+        specs::Entities<'a>,
+        specs::WriteStorage<'a, CharacterStateComponent>,
+        specs::ReadExpect<'a, SystemVariables>,
+        Option<specs::Write<'a, Vec<SystemEvent>>>,
+    );
+
+    fn run(&mut self, (entities, mut char_state_storage, sys_vars, mut events): Self::SystemData) {
+        for (char_id, char_comp) in (&entities, &mut char_state_storage).join() {
+            // TODO: if debug
+            let state_has_changed = char_comp.state_type_has_changed();
+            if state_has_changed {
+                let state: CharState = char_comp.state().clone();
+                let prev_state: CharState = char_comp.prev_state().clone();
+                if let Some(events) = &mut events {
+                    events.push(SystemEvent::CharStatusChange(
+                        sys_vars.tick,
+                        CharEntityId(char_id),
+                        prev_state.clone(),
+                        state.clone(),
+                    ));
+                }
+                log::debug!(
+                    "[{}] {:?} state has changed {:?} ==> {:?}",
+                    sys_vars.tick,
+                    char_id,
+                    prev_state,
+                    state
+                );
+            }
             char_comp.save_prev_state();
         }
     }
@@ -201,11 +236,15 @@ impl NextActionApplierSystem {
         if allowed && can_move {
             log::debug!("Casting request for '{:?}' was allowed", skill);
             let casting_time_seconds = skill_cast_attrs.casting_time;
+            dbg!(char_state.pos());
+            dbg!(target_pos);
             let (target_pos, dir_vector) = Skills::limit_vector_into_range(
                 &char_state.pos(),
                 &target_pos,
                 skill_cast_attrs.casting_range,
             );
+            dbg!(target_pos);
+            dbg!(dir_vector);
             let new_state = CharState::CastingSkill(CastingSkillData {
                 target_entity,
                 cast_started: now,

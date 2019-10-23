@@ -23,8 +23,8 @@ impl SkillDef for CureSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        system_vars
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        sys_vars
             .remove_statuses
             .push(RemoveStatusComponent::by_status_nature(
                 caster_entity_id,

@@ -40,7 +40,7 @@ impl<'a> specs::System<'a> for StunStatusSystem {
             entities,
             mut char_storage,
             stun_status_storage,
-            system_vars,
+            sys_vars,
             mut global_renderer,
             updater,
         ): Self::SystemData,
@@ -48,7 +48,7 @@ impl<'a> specs::System<'a> for StunStatusSystem {
         for (status_id, stun_status, char_state) in
             (&entities, &stun_status_storage, &mut char_storage).join()
         {
-            if stun_status.until.has_already_passed(system_vars.time) {
+            if stun_status.until.has_already_passed(sys_vars.time) {
                 updater.remove::<StunStatus>(status_id);
             } else {
                 let anim = SpriteRenderDescriptorComponent {
@@ -60,9 +60,9 @@ impl<'a> specs::System<'a> for StunStatusSystem {
                     fps_multiplier: 1.0,
                 };
                 render_action(
-                    system_vars.time,
+                    sys_vars.time,
                     &anim,
-                    &system_vars.assets.sprites.stun,
+                    &sys_vars.assets.sprites.stun,
                     &char_state.pos(),
                     [0, -100],
                     false,
@@ -97,8 +97,8 @@ impl Status for StunStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
     ) {
         target_char.set_state(CharState::StandBy, target_char.dir());
         let entity = entities.create();
@@ -106,9 +106,9 @@ impl Status for StunStatus {
             entity,
             SoundEffectComponent {
                 target_entity_id: self_entity_id,
-                sound_id: system_vars.assets.sounds.stun,
+                sound_id: sys_vars.assets.sounds.stun,
                 pos: target_char.pos(),
-                start_time: system_vars.time,
+                start_time: sys_vars.time,
             },
         );
     }
@@ -130,11 +130,11 @@ impl Status for StunStatus {
         self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         _entities: &specs::Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.until.has_already_passed(system_vars.time) {
+        if self.until.has_already_passed(sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
@@ -144,7 +144,7 @@ impl Status for StunStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         let anim = SpriteRenderDescriptorComponent {
@@ -156,9 +156,9 @@ impl Status for StunStatus {
             fps_multiplier: 1.0,
         };
         render_action(
-            system_vars.time,
+            sys_vars.time,
             &anim,
-            &system_vars.assets.sprites.stun,
+            &sys_vars.assets.sprites.stun,
             &char_state.pos(),
             [0, -100],
             false,

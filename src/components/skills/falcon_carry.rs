@@ -38,7 +38,7 @@ impl SkillDef for FalconCarrySkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let system_vars = ecs_world.read_resource::<SystemVariables>();
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
         let target_entity = target_entity.unwrap();
         let target_pos = {
@@ -71,7 +71,7 @@ impl SkillDef for FalconCarrySkill {
                             falcon.carry_owner(
                                 ControllerEntityId(entity_id),
                                 &target_pos,
-                                system_vars.time,
+                                sys_vars.time,
                                 configs.carry_owner_duration,
                                 sprite,
                             );
@@ -82,7 +82,7 @@ impl SkillDef for FalconCarrySkill {
                     falcon.carry_ally(
                         target_entity,
                         &target_pos,
-                        system_vars.time,
+                        sys_vars.time,
                         configs.carry_ally_duration,
                         sprite,
                     );
@@ -117,10 +117,10 @@ impl Status for FalconCarryStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
     ) {
-        target_char.set_noncollidable(physic_world);
+        target_char.set_noncollidable(physics_world);
         target_char.set_state(CharState::StandBy, 0);
     }
 
@@ -141,11 +141,11 @@ impl Status for FalconCarryStatus {
         self_char_id: CharEntityId,
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
-        if self.ends_at.has_already_passed(system_vars.time) {
+        if self.ends_at.has_already_passed(sys_vars.time) {
             char_state.set_collidable(physics_world);
             StatusUpdateResult::RemoveIt
         } else {
@@ -160,7 +160,7 @@ impl Status for FalconCarryStatus {
     fn render(
         &self,
         _char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
         if !self.carry_owner {
@@ -178,7 +178,7 @@ impl Status for FalconCarryStatus {
                 .color_rgb(&[0, 255, 0])
                 .scale(0.5)
                 .pos(&self.end_pos)
-                .add(system_vars.assets.sprites.falcon.textures[2])
+                .add(sys_vars.assets.sprites.falcon.textures[2])
         }
     }
 

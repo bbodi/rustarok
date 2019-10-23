@@ -55,7 +55,7 @@ impl RenderDesktopClientSystem {
         render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
         physics_world: &specs::ReadExpect<'a, PhysicEngine>,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
         char_state_storage: &specs::ReadStorage<'a, CharacterStateComponent>,
         entities: &specs::Entities<'a>,
@@ -66,6 +66,7 @@ impl RenderDesktopClientSystem {
         system_benchmark: &mut SystemFrameDurations,
         asset_db: &AssetDatabase,
         render_only_chars: bool,
+        map_render_data: &MapRenderData,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
         {
@@ -74,12 +75,13 @@ impl RenderDesktopClientSystem {
                 &camera,
                 controller,
                 render_commands,
-                system_vars,
+                sys_vars,
                 dev_configs,
                 char_state_storage,
                 entities,
                 sprite_storage,
                 asset_db,
+                //                &map_render_data.gat,
             );
         }
 
@@ -144,7 +146,7 @@ impl RenderDesktopClientSystem {
                     .map(|it| it.controlled_char.pos())
                     .as_ref(),
                 &camera.camera,
-                &system_vars.map_render_data,
+                &map_render_data,
                 asset_db,
                 render_commands,
             );
@@ -179,7 +181,7 @@ impl RenderDesktopClientSystem {
                                     .skill_cast_allowed_at
                                     .get(&skill)
                                     .unwrap_or(&ElapsedTime(0.0))
-                                    .has_already_passed(system_vars.time);
+                                    .has_already_passed(sys_vars.time);
                                 skill_def.render_target_selection(
                                     is_castable,
                                     &skill_3d_pos,
@@ -220,9 +222,9 @@ impl RenderDesktopClientSystem {
                                 fps_multiplier: 2.0,
                             };
                             render_action(
-                                system_vars.time,
+                                sys_vars.time,
                                 &cursor_anim_descr,
-                                &system_vars.assets.sprites.cursors,
+                                &sys_vars.assets.sprites.cursors,
                                 &pos,
                                 [0, 0],
                                 false,
@@ -239,9 +241,9 @@ impl RenderDesktopClientSystem {
 
         for skill in (&skill_storage).join() {
             skill.render(
-                system_vars.time,
-                system_vars.tick,
-                &system_vars.assets,
+                sys_vars.time,
+                sys_vars.tick,
+                &sys_vars.assets,
                 render_commands,
                 audio_commands,
             );
@@ -253,7 +255,7 @@ impl RenderDesktopClientSystem {
             for (entity_id, str_effect) in (entities, str_effect_storage).join() {
                 if str_effect
                     .die_at
-                    .map(|it| it.has_already_passed(system_vars.time))
+                    .map(|it| it.has_already_passed(sys_vars.time))
                     .unwrap_or(false)
                 {
                     updater.remove::<StrEffectComponent>(entity_id);
@@ -262,7 +264,7 @@ impl RenderDesktopClientSystem {
                         str_effect.effect_id,
                         str_effect.start_time,
                         &str_effect.pos,
-                        system_vars,
+                        sys_vars,
                         render_commands,
                         str_effect.play_mode,
                     );
@@ -271,23 +273,6 @@ impl RenderDesktopClientSystem {
                     }
                 }
             }
-        }
-        // TODO: into a separate system
-        {
-            //            let _stopwatch = system_benchmark.start_measurement("render.dyn_str_effect");
-            //            for (entity_id, str_effect) in (entities, dynamic_str_effect_storage).join() {
-            //                if str_effect.die_at.is_earlier_than(system_vars.time) {
-            //                    updater.remove::<StrEffectComponent>(entity_id);
-            //                } else {
-            //                    RenderDesktopClientSystem::render_str(
-            //                        str_effect.effect_type,
-            //                        str_effect.start_time,
-            //                        &str_effect.pos,
-            //                        system_vars,
-            //                        render_commands,
-            //                    );
-            //                }
-            //            }
         }
     }
 
@@ -339,12 +324,13 @@ impl RenderDesktopClientSystem {
         camera: &CameraComponent,
         controller: &mut Option<ControllerAndControlled>,
         render_commands: &mut RenderCommandCollector,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
+        //        gat: &Gat,
     ) {
         // Draw players
         for (rendering_entity_id, animated_sprite, char_state) in
@@ -359,34 +345,35 @@ impl RenderDesktopClientSystem {
                 continue;
             }
 
+            // gat height calculation
+            //            let w = gat.width as usize;
+            //            let x = pos_2d.x;
+            //            let y = -pos_2d.y;
+            //            let index = (x.floor() as usize + y.floor() as usize * w);
+            //            let x = x - x.floor();
+            //            let y = y - y.floor();
+            //
+            //            let cell = &gat.cells[index];
+            //            let x1 = cell.cells[0] + (cell.cells[1] - cell.cells[0]) * x;
+            //            let x2 = cell.cells[2] + (cell.cells[3] - cell.cells[2]) * x;
+            //            let h = -(x1 + (x2 - x1) * y);
+            //            dbg!(h);
+            //            let pos_3d = Vector3::new(pos_2d.x, h + char_state.get_y(), pos_2d.y);
+
             let pos_3d = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
 
-            let color = char_state.statuses.calc_render_color(system_vars.time);
+            let color = char_state.statuses.calc_render_color(sys_vars.time);
             match char_state.outlook {
                 CharOutlook::Player {
                     job_sprite_id,
                     head_index,
                     sex,
                 } => {
-                    //                    let body_sprite = if char_state.statuses.is_mounted() {
-                    //                        let sprites = &system_vars.assets.sprites;
-                    //                        &sprites
-                    //                            .mounted_character_sprites
-                    //                            .get(&char_state.job_id)
-                    //                            .and_then(|it| it.get(sex as usize))
-                    //                            .unwrap_or_else(|| {
-                    //                                let sprites = &system_vars.assets.sprites.character_sprites;
-                    //                                &sprites[&job_sprite_id][sex as usize]
-                    //                            })
-                    //                    } else {
-                    //                        let sprites = &system_vars.assets.sprites.character_sprites;
-                    //                        &sprites[&job_sprite_id][sex as usize]
-                    //                    };
                     let body_sprite = char_state
                         .statuses
-                        .calc_body_sprite(system_vars, char_state.job_id, sex)
+                        .calc_body_sprite(sys_vars, char_state.job_id, sex)
                         .unwrap_or(
-                            &system_vars.assets.sprites.character_sprites[&job_sprite_id]
+                            &sys_vars.assets.sprites.character_sprites[&job_sprite_id]
                                 [sex as usize],
                         );
                     let play_mode = if char_state.state().is_dead() {
@@ -395,7 +382,7 @@ impl RenderDesktopClientSystem {
                         ActionPlayMode::Repeat
                     };
                     let head_res = {
-                        let sprites = &system_vars.assets.sprites.head_sprites;
+                        let sprites = &sys_vars.assets.sprites.head_sprites;
                         &sprites[sex as usize][head_index]
                     };
 
@@ -414,7 +401,7 @@ impl RenderDesktopClientSystem {
                                     &[255, 0, 0, 179]
                                 };
                             let body_pos_offset = render_single_layer_action(
-                                system_vars.time,
+                                sys_vars.time,
                                 &animated_sprite,
                                 body_sprite,
                                 &pos_3d,
@@ -427,7 +414,7 @@ impl RenderDesktopClientSystem {
                             );
 
                             let _head_pos_offset = render_single_layer_action(
-                                system_vars.time,
+                                sys_vars.time,
                                 &animated_sprite,
                                 head_res,
                                 &pos_3d,
@@ -442,7 +429,7 @@ impl RenderDesktopClientSystem {
                     }
                     // todo: kell a body_pos_offset még mindig? (bounding rect)
                     let body_pos_offset = render_single_layer_action(
-                        system_vars.time,
+                        sys_vars.time,
                         &animated_sprite,
                         body_sprite,
                         &pos_3d,
@@ -459,12 +446,12 @@ impl RenderDesktopClientSystem {
 
                         render_command.project_to_screen(
                             &camera.view_matrix,
-                            &system_vars.matrices.projection,
+                            &sys_vars.matrices.projection,
                             &asset_db,
                         )
                     };
                     let _head_pos_offset = render_single_layer_action(
-                        system_vars.time,
+                        sys_vars.time,
                         &animated_sprite,
                         head_res,
                         &pos_3d,
@@ -480,7 +467,7 @@ impl RenderDesktopClientSystem {
                         let render_command = render_commands.get_last_billboard_command();
                         let head_bounding_rect = render_command.project_to_screen(
                             &camera.view_matrix,
-                            &system_vars.matrices.projection,
+                            &sys_vars.matrices.projection,
                             asset_db,
                         );
                         body_bounding_rect.merge(&head_bounding_rect);
@@ -498,9 +485,9 @@ impl RenderDesktopClientSystem {
                                 .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
-                            system_vars.time,
+                            sys_vars.time,
                             &body_bounding_rect,
-                            &system_vars.assets,
+                            &sys_vars.assets,
                             render_commands,
                         );
                     }
@@ -514,7 +501,7 @@ impl RenderDesktopClientSystem {
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
-                        let sprites = &system_vars.assets.sprites.monster_sprites;
+                        let sprites = &sys_vars.assets.sprites.monster_sprites;
                         &sprites[&monster_id]
                     };
                     let play_mode = if char_state.state().is_dead() {
@@ -537,7 +524,7 @@ impl RenderDesktopClientSystem {
                                     &[255, 0, 0, 179]
                                 };
                             let _pos_offset = render_single_layer_action(
-                                system_vars.time,
+                                sys_vars.time,
                                 &animated_sprite,
                                 body_res,
                                 &pos_3d,
@@ -551,7 +538,7 @@ impl RenderDesktopClientSystem {
                         }
                     }
                     let _pos_offset = render_single_layer_action(
-                        system_vars.time,
+                        sys_vars.time,
                         &animated_sprite,
                         body_res,
                         &pos_3d,
@@ -567,7 +554,7 @@ impl RenderDesktopClientSystem {
 
                         render_command.project_to_screen(
                             &camera.view_matrix,
-                            &system_vars.matrices.projection,
+                            &sys_vars.matrices.projection,
                             asset_db,
                         )
                     };
@@ -582,9 +569,9 @@ impl RenderDesktopClientSystem {
                                 .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
-                            system_vars.time,
+                            sys_vars.time,
                             &bounding_rect,
-                            &system_vars.assets,
+                            &sys_vars.assets,
                             render_commands,
                         );
                     }
@@ -603,7 +590,7 @@ impl RenderDesktopClientSystem {
                 skill.get_definition().render_casting(
                     &char_state.pos(),
                     &casting_info,
-                    system_vars,
+                    sys_vars,
                     dev_configs,
                     render_commands,
                     &char_state_storage,
@@ -612,7 +599,7 @@ impl RenderDesktopClientSystem {
 
             char_state
                 .statuses
-                .render(&char_state, system_vars, render_commands);
+                .render(&char_state, sys_vars, render_commands);
         }
     }
 }
@@ -644,6 +631,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
         specs::ReadExpect<'a, AssetDatabase>,
         specs::ReadStorage<'a, NpcComponent>,
         specs::ReadStorage<'a, BrowserClient>,
+        specs::ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
@@ -654,7 +642,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             sprite_storage,
             char_state_storage,
             mut controller_storage,
-            mut system_vars,
+            mut sys_vars,
             dev_configs,
             mut system_benchmark,
             skill_storage,
@@ -669,6 +657,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
             asset_db,
             npc_storage,
             browser_storage,
+            map_render_data,
         ): Self::SystemData,
     ) {
         let join = {
@@ -697,7 +686,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 });
 
             let render_only_chars = if let Some(browser) = browser_storage.get(controller_id.0) {
-                if browser.next_send_at.has_not_passed_yet(system_vars.time) {
+                if browser.next_send_at.has_not_passed_yet(sys_vars.time) {
                     // commands won't be sent to the client in this frame, so render only characters
                     // for getting their bounding rects
                     true
@@ -716,7 +705,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &mut render_commands,
                     &mut audio_commands,
                     &physics_world,
-                    &mut system_vars,
+                    &mut sys_vars,
                     &dev_configs,
                     &char_state_storage,
                     &entities,
@@ -727,6 +716,7 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &mut system_benchmark,
                     &asset_db,
                     render_only_chars,
+                    &map_render_data,
                 );
             }
 
@@ -751,8 +741,8 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                 controller_and_controlled
                     .as_ref()
                     .map(|it| it.controlled_char.team),
-                system_vars.time,
-                &system_vars.assets,
+                sys_vars.time,
+                &sys_vars.assets,
                 &updater,
                 render_commands,
             );
@@ -763,13 +753,14 @@ impl<'a> specs::System<'a> for RenderDesktopClientSystem {
                     &input,
                     &controller_and_controlled.controller,
                     &mut render_commands,
-                    &mut system_vars,
+                    &mut sys_vars,
                     &char_state_storage,
                     &npc_storage,
                     &entities,
                     &camera.camera.pos(),
                     browser_storage.get(controller_id.0).is_some(),
                     &asset_db,
+                    &map_render_data,
                 );
             }
         }
@@ -1449,7 +1440,7 @@ impl RenderDesktopClientSystem {
         effect: E,
         start_time: ElapsedTime,
         world_pos: &WorldCoord,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,
     ) -> bool
@@ -1457,10 +1448,10 @@ impl RenderDesktopClientSystem {
         E: Into<StrEffectId>,
     {
         let effect_id = effect.into();
-        let str_file = &system_vars.str_effects[effect_id.0];
+        let str_file = &sys_vars.str_effects[effect_id.0];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key as i32;
-        let real_index = system_vars
+        let real_index = sys_vars
             .time
             .elapsed_since(start_time)
             .div(seconds_needed_for_one_frame) as i32;

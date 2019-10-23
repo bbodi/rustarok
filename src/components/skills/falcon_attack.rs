@@ -10,7 +10,7 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::ApplyStatusComponent;
-use crate::components::{AttackComponent, AttackType, DamageDisplayType};
+use crate::components::{DamageDisplayType, HpModificationRequest, HpModificationType};
 use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
@@ -39,7 +39,7 @@ impl SkillDef for FalconAttackSkill {
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let system_vars = ecs_world.read_resource::<SystemVariables>();
+        let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
 
         let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
@@ -60,7 +60,7 @@ impl SkillDef for FalconAttackSkill {
                 }
                 let end_pos = caster_pos + (char_to_skill_dir * configs.attributes.casting_range);
                 falcon.set_state_to_attack(
-                    system_vars.time,
+                    sys_vars.time,
                     configs.duration_in_seconds,
                     caster_pos,
                     end_pos,
@@ -77,8 +77,8 @@ impl SkillDef for FalconAttackSkill {
                     start_pos: caster_pos,
                     path: end_pos - caster_pos,
                     rot_angle_in_rad: angle_in_rad,
-                    created_at: system_vars.time,
-                    die_at: system_vars.time.add_seconds(configs.duration_in_seconds),
+                    created_at: sys_vars.time,
+                    die_at: sys_vars.time.add_seconds(configs.duration_in_seconds),
                     falcon_collider_handle: coll_handle,
                     falcon_owner_id: caster_entity_id,
                     team: ecs_world
@@ -122,14 +122,14 @@ impl SkillManifestation for FalconAttackSkillManifestation {
         &mut self,
         self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
         let falcon_collider_handle = self.falcon_collider_handle;
-        if self.die_at.has_already_passed(system_vars.time) {
+        if self.die_at.has_already_passed(sys_vars.time) {
             physics_world.colliders.remove(falcon_collider_handle);
             updater.remove::<SkillManifestationComponent>(self_entity_id);
         } else {
@@ -149,27 +149,30 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                         {
                             continue;
                         }
-                        system_vars.attacks.push(AttackComponent {
+                        sys_vars.hp_mod_requests.push(HpModificationRequest {
                             src_entity: self.falcon_owner_id,
                             dst_entity: target_char_entity_id,
-                            typ: AttackType::SpellDamage(self.damage, DamageDisplayType::Combo(2)),
+                            typ: HpModificationType::SpellDamage(
+                                self.damage,
+                                DamageDisplayType::Combo(2),
+                            ),
                         });
-                        system_vars.apply_statuses.push(
-                            ApplyStatusComponent::from_secondary_status(
+                        sys_vars
+                            .apply_statuses
+                            .push(ApplyStatusComponent::from_secondary_status(
                                 self.falcon_owner_id,
                                 target_char_entity_id,
                                 Box::new(WalkingSpeedModifierStatus::new(
-                                    system_vars.time,
+                                    sys_vars.time,
                                     self.slow,
                                     self.slow_duration,
                                 )),
-                            ),
-                        );
+                            ));
                         self.damaged_entities.insert(target_char_entity_id);
                     }
                 }
             }
-            let duration_percentage = system_vars
+            let duration_percentage = sys_vars
                 .time
                 .percentage_between(self.created_at, self.die_at);
             let new_pos = self.start_pos + self.path * duration_percentage;

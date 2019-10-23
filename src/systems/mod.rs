@@ -1,23 +1,25 @@
 use crate::asset::str::StrFile;
-use crate::asset::texture::TextureId;
-use crate::asset::AssetLoader;
+use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
+use crate::components::char::CharState;
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
-use crate::components::{ApplyForceComponent, AreaAttackComponent, AttackComponent};
+use crate::components::{
+    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
+};
 use crate::consts::{JobId, JobSpriteId, MonsterId};
-use crate::my_gl::Gl;
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
-use crate::runtime_assets::map::MapRenderData;
-use crate::shaders::Shaders;
 use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
-use crate::{DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use crate::{
+    get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
+};
 use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 pub mod atk_calc;
 pub mod camera_system;
@@ -35,6 +37,7 @@ pub mod render;
 pub mod render_sys;
 pub mod skill_sys;
 pub mod sound_sys;
+pub mod spawn_entity_system;
 pub mod turret_ai_sys;
 pub mod ui;
 
@@ -70,9 +73,36 @@ pub struct Sprites {
     pub effect_sprites: EffectSprites,
 }
 
+impl Sprites {
+    pub fn new_for_test() -> Sprites {
+        Sprites {
+            cursors: SpriteResource::new_for_test(),
+            numbers: DUMMY_TEXTURE_ID_FOR_TEST,
+            magic_target: DUMMY_TEXTURE_ID_FOR_TEST,
+            fire_particle: DUMMY_TEXTURE_ID_FOR_TEST,
+            clock: DUMMY_TEXTURE_ID_FOR_TEST,
+            ginseng_bullet: SpriteResource::new_for_test(),
+            exoskeleton: SpriteResource::new_for_test(),
+            arrow: SpriteResource::new_for_test(),
+            falcon: SpriteResource::new_for_test(),
+            stun: SpriteResource::new_for_test(),
+            timefont: SpriteResource::new_for_test(),
+            character_sprites: HashMap::new(),
+            mounted_character_sprites: HashMap::new(),
+            head_sprites: [vec![], vec![]],
+            monster_sprites: HashMap::new(),
+            effect_sprites: EffectSprites {
+                torch: SpriteResource::new_for_test(),
+                fire_wall: SpriteResource::new_for_test(),
+                fire_ball: SpriteResource::new_for_test(),
+                plasma: SpriteResource::new_for_test(),
+            },
+        }
+    }
+}
+
 pub struct AssetResources {
     pub sprites: Sprites,
-    pub shaders: Shaders,
     pub texts: Texts,
     pub skill_icons: HashMap<Skills, TextureId>,
     pub status_icons: HashMap<&'static str, TextureId>,
@@ -98,72 +128,84 @@ impl RenderMatrices {
     }
 }
 
+#[derive(Debug)]
+pub enum SystemEvent {
+    CharStatusChange(u64, CharEntityId, CharState, CharState),
+    HpModification {
+        timestamp: u64,
+        src: CharEntityId,
+        dst: CharEntityId,
+        result: HpModificationResult,
+    },
+}
+
 pub struct SystemVariables {
-    pub gl: Gl,
     pub assets: AssetResources,
-    pub asset_loader: AssetLoader,
     pub tick: u64,
+    pub last_tick_time: u64,
     /// seconds the last frame required
     pub dt: DeltaTime,
     /// extract from the struct?
     pub time: ElapsedTime,
     pub matrices: RenderMatrices,
-    pub map_render_data: MapRenderData,
-    pub attacks: Vec<AttackComponent>,
-    pub area_attacks: Vec<AreaAttackComponent>,
+    pub hp_mod_requests: Vec<HpModificationRequest>,
+    pub area_hp_mod_requests: Vec<AreaAttackComponent>,
     pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
     pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
     pub str_effects: Vec<StrFile>,
+    pub fix_dt_for_test: f32,
 }
 
 impl SystemVariables {
     pub fn new(
         sprites: Sprites,
         texts: Texts,
-        shaders: Shaders,
         render_matrices: RenderMatrices,
-        map_render_data: MapRenderData,
         status_icons: HashMap<&'static str, TextureId>,
         skill_icons: HashMap<Skills, TextureId>,
         str_effects: Vec<StrFile>,
         sounds: Sounds,
-        asset_loader: AssetLoader,
-        gl: Gl,
+        fix_dt_for_test: f32,
     ) -> SystemVariables {
         SystemVariables {
             assets: AssetResources {
-                shaders,
                 sprites,
                 texts,
                 skill_icons,
                 status_icons,
                 sounds,
             },
-            asset_loader,
+            last_tick_time: get_current_ms(SystemTime::now()),
             tick: 1,
             dt: DeltaTime(0.0),
             time: ElapsedTime(0.0),
             matrices: render_matrices,
-            map_render_data,
-            attacks: Vec::with_capacity(128),
-            area_attacks: Vec::with_capacity(128),
+            hp_mod_requests: Vec::with_capacity(128),
+            area_hp_mod_requests: Vec::with_capacity(128),
             pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
             just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
             str_effects,
-            gl,
+            fix_dt_for_test,
         }
     }
 
-    pub fn update_timers(&mut self, dt: f32) {
+    pub fn update_timers(&mut self, now_ms: u64) {
+        let dt = if cfg!(test) {
+            self.fix_dt_for_test
+        } else {
+            let dt = (now_ms - self.last_tick_time) as f32 / 1000.0;
+            self.last_tick_time = now_ms;
+            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME)
+        };
         self.tick += 1;
-        self.dt.0 = dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
-        self.time.0 += dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME);
+        self.dt.0 = dt;
+        self.time.0 += dt;
     }
 }
 

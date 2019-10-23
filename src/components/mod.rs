@@ -1,16 +1,18 @@
 extern crate rand;
 
+use std::sync::Mutex;
+
+use nalgebra::{Isometry2, Vector2};
+use nphysics2d::object::DefaultBodyHandle;
+use specs::prelude::*;
+use websocket::stream::sync::TcpStream;
+
 use crate::components::char::ActionPlayMode;
 use crate::components::controller::{CharEntityId, WorldCoord};
 use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
 use crate::ElapsedTime;
-use nalgebra::{Isometry2, Vector2};
-use nphysics2d::object::DefaultBodyHandle;
-use specs::prelude::*;
-use std::sync::Mutex;
-use websocket::stream::sync::TcpStream;
 
 pub mod char;
 pub mod controller;
@@ -198,18 +200,77 @@ pub enum DamageDisplayType {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum AttackType {
-    Basic(u32, DamageDisplayType, WeaponType),
+pub enum HpModificationType {
+    BasicDamage(u32, DamageDisplayType, WeaponType),
     SpellDamage(u32, DamageDisplayType),
     Heal(u32),
     Poison(u32),
 }
 
 #[derive(Debug)]
-pub struct AttackComponent {
+pub struct HpModificationRequest {
     pub src_entity: CharEntityId,
     pub dst_entity: CharEntityId,
-    pub typ: AttackType,
+    pub typ: HpModificationType,
+}
+
+impl HpModificationRequest {
+    pub fn allow(self, dmg: u32) -> HpModificationResult {
+        HpModificationResult {
+            src_entity: self.src_entity,
+            dst_entity: self.dst_entity,
+            typ: HpModificationResultType::Ok(match self.typ {
+                HpModificationType::BasicDamage(_, display_type, weapon_type) => {
+                    HpModificationType::BasicDamage(dmg, display_type, weapon_type)
+                }
+                HpModificationType::SpellDamage(_, display_type) => {
+                    HpModificationType::SpellDamage(dmg, display_type)
+                }
+                HpModificationType::Heal(_) => HpModificationType::Heal(dmg),
+                HpModificationType::Poison(_) => HpModificationType::Poison(dmg),
+            }),
+        }
+    }
+
+    pub fn blocked(self) -> HpModificationResult {
+        HpModificationResult {
+            src_entity: self.src_entity,
+            dst_entity: self.dst_entity,
+            typ: HpModificationResultType::Blocked,
+        }
+    }
+
+    pub fn absorbed(self) -> HpModificationResult {
+        HpModificationResult {
+            src_entity: self.src_entity,
+            dst_entity: self.dst_entity,
+            typ: HpModificationResultType::Absorbed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct HpModificationResult {
+    pub src_entity: CharEntityId,
+    pub dst_entity: CharEntityId,
+    pub typ: HpModificationResultType,
+}
+
+impl HpModificationResult {
+    pub fn absorbed(self) -> HpModificationResult {
+        HpModificationResult {
+            src_entity: self.src_entity,
+            dst_entity: self.dst_entity,
+            typ: HpModificationResultType::Absorbed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum HpModificationResultType {
+    Ok(HpModificationType),
+    Blocked,
+    Absorbed,
 }
 
 // TODO: be static types for Cuboid area attack components, Circle, etc
@@ -217,7 +278,7 @@ pub struct AreaAttackComponent {
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
     pub source_entity_id: CharEntityId,
-    pub typ: AttackType,
+    pub typ: HpModificationType,
     pub except: Option<CharEntityId>,
 }
 

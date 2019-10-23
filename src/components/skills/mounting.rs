@@ -42,8 +42,8 @@ impl SkillDef for MountingSkill {
                 },
             );
         }
-        let mut system_vars = ecs_world.write_resource::<SystemVariables>();
-        system_vars
+        let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_main_status(
                 caster_entity_id,

@@ -157,7 +157,7 @@ pub struct ExoSkeletonSkillConfig {
     pub armor: Percentage,
     pub attack_damage: Percentage,
     pub attack_range: Percentage,
-    pub walking_speed: Percentage,
+    pub movement_speed: Percentage,
     pub attack_speed: Percentage,
 }
 

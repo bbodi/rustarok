@@ -12,7 +12,7 @@ use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTarge
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
 };
-use crate::components::{AreaAttackComponent, AttackType, DamageDisplayType};
+use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -48,14 +48,14 @@ impl SkillDef for AssaBladeDashSkill {
                 -angle
             };
 
-            let mut system_vars = ecs_world.write_resource::<SystemVariables>();
+            let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
             let configs = ecs_world
                 .read_resource::<DevConfig>()
                 .skills
                 .assa_blade_dash
                 .clone();
-            let now = system_vars.time;
-            system_vars
+            let now = sys_vars.time;
+            sys_vars
                 .apply_statuses
                 .push(ApplyStatusComponent::from_secondary_status(
                     caster_entity_id,
@@ -114,11 +114,11 @@ impl Status for AssaBladeDashStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        system_vars: &SystemVariables,
-        physic_world: &mut PhysicEngine,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
     ) {
         // allow to go through anything
-        target_char.set_noncollidable(physic_world);
+        target_char.set_noncollidable(physics_world);
     }
 
     fn can_target_move(&self) -> bool {
@@ -138,16 +138,16 @@ impl Status for AssaBladeDashStatus {
         self_char_id: CharEntityId,
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
-        system_vars: &mut SystemVariables,
+        sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
-            if self.ends_at.has_already_passed(system_vars.time) {
+            if self.ends_at.has_already_passed(sys_vars.time) {
                 char_state.set_collidable(physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
-                let duration_percentage = system_vars
+                let duration_percentage = sys_vars
                     .time
                     .percentage_between(self.started_at, self.ends_at);
                 let pos = if duration_percentage < 0.5 {
@@ -166,7 +166,7 @@ impl Status for AssaBladeDashStatus {
                 body.set_position(Isometry2::translation(pos.x, pos.y));
 
                 if !self.forward_damage_done && duration_percentage > 0.25 {
-                    system_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
                                 self.configs.attributes.width.unwrap_or(1.0),
@@ -175,7 +175,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(
+                        typ: HpModificationType::BasicDamage(
                             self.configs.first_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,
@@ -184,7 +184,7 @@ impl Status for AssaBladeDashStatus {
                     });
                     self.forward_damage_done = true;
                 } else if !self.backward_damage_done && duration_percentage > 0.75 {
-                    system_vars.area_attacks.push(AreaAttackComponent {
+                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
                             Vector2::new(
                                 self.configs.attributes.width.unwrap_or(1.0),
@@ -193,7 +193,7 @@ impl Status for AssaBladeDashStatus {
                         )),
                         area_isom: Isometry2::new(self.center, self.rot_radian),
                         source_entity_id: self.caster_entity_id,
-                        typ: AttackType::Basic(
+                        typ: HpModificationType::BasicDamage(
                             self.configs.second_damage,
                             DamageDisplayType::SingleNumber,
                             WeaponType::Sword,
@@ -212,10 +212,10 @@ impl Status for AssaBladeDashStatus {
     fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
-        let duration_percentage = system_vars
+        let duration_percentage = sys_vars
             .time
             .percentage_between(self.started_at, self.ends_at);
         match char_state.outlook {
@@ -225,11 +225,11 @@ impl Status for AssaBladeDashStatus {
                 sex,
             } => {
                 let body_sprite = {
-                    let sprites = &system_vars.assets.sprites.character_sprites;
+                    let sprites = &sys_vars.assets.sprites.character_sprites;
                     &sprites[&job_sprite_id][sex as usize]
                 };
                 let head_res = {
-                    let sprites = &system_vars.assets.sprites.head_sprites;
+                    let sprites = &sys_vars.assets.sprites.head_sprites;
                     &sprites[sex as usize][head_index]
                 };
                 for (pos, alpha, time_offset) in &[
@@ -259,7 +259,7 @@ impl Status for AssaBladeDashStatus {
                         }
                     };
                     let offset = render_single_layer_action(
-                        system_vars.time,
+                        sys_vars.time,
                         &anim_descr,
                         body_sprite,
                         &v2_to_v3(pos),
@@ -272,7 +272,7 @@ impl Status for AssaBladeDashStatus {
                     );
 
                     render_single_layer_action(
-                        system_vars.time,
+                        sys_vars.time,
                         &anim_descr,
                         head_res,
                         &v2_to_v3(pos),
@@ -287,7 +287,7 @@ impl Status for AssaBladeDashStatus {
             }
             CharOutlook::Monster(monster_id) => {
                 let body_res = {
-                    let sprites = &system_vars.assets.sprites.monster_sprites;
+                    let sprites = &sys_vars.assets.sprites.monster_sprites;
                     &sprites[&monster_id]
                 };
             }
