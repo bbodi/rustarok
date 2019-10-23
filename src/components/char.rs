@@ -704,7 +704,10 @@ impl CharOutlook {
             } => {
                 let sprites = &sprites.character_sprites;
                 (
-                    &sprites[&job_sprite_id][*sex as usize],
+                    // this function is used only for
+                    // getting animation duration information,
+                    // so color (the first array index) does not matter
+                    &sprites[&job_sprite_id][Team::Left as usize][*sex as usize],
                     char_state.get_sprite_index(false),
                 )
             }
@@ -1017,8 +1020,8 @@ impl CharAttributeModifierCollector {
 
 #[derive(Eq, Debug, PartialEq, Clone, Copy)]
 pub enum Team {
-    Left,
-    Right,
+    Left,  // red
+    Right, // blue
     Neutral,
     EnemyForAll,
     AllyForAll,
@@ -1077,6 +1080,10 @@ impl Team {
             Team::EnemyForAll => false,
             Team::AllyForAll => true,
         }
+    }
+
+    pub fn get_palette_index(&self, other_team: Team) -> usize {
+        self.is_ally_to(other_team) as usize
     }
 
     pub fn is_enemy_to(&self, other_team: Team) -> bool {

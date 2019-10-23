@@ -226,7 +226,7 @@ impl Status for AssaBladeDashStatus {
             } => {
                 let body_sprite = {
                     let sprites = &sys_vars.assets.sprites.character_sprites;
-                    &sprites[&job_sprite_id][sex as usize]
+                    &sprites[&job_sprite_id][1][sex as usize]
                 };
                 let head_res = {
                     let sprites = &sys_vars.assets.sprites.head_sprites;

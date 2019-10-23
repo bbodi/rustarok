@@ -66,7 +66,7 @@ pub struct Sprites {
     pub falcon: SpriteResource,
     pub stun: SpriteResource,
     pub timefont: SpriteResource,
-    pub character_sprites: HashMap<JobSpriteId, [SpriteResource; 2]>,
+    pub character_sprites: HashMap<JobSpriteId, [[SpriteResource; 2]; 2]>,
     pub mounted_character_sprites: HashMap<JobId, [SpriteResource; 2]>,
     pub head_sprites: [Vec<SpriteResource>; 2],
     pub monster_sprites: HashMap<MonsterId, SpriteResource>,

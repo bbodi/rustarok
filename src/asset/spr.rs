@@ -17,7 +17,7 @@ pub struct Frame {
 }
 
 impl SpriteFile {
-    pub(super) fn load(mut buf: BinaryReader) -> Self {
+    pub(super) fn load(mut buf: BinaryReader, palette: Option<(usize, &Vec<u8>)>) -> Self {
         let header = buf.string(2);
         let version = buf.next_u8() as f32 / 10.0 + buf.next_u8() as f32;
         if header != "SP" {
@@ -34,12 +34,13 @@ impl SpriteFile {
 
         let rgba_frames = SpriteFile::read_rgba_frames(&mut buf, rgba_frame_count);
 
-        let palette = if version > 1.0 {
+        let default_palette = if version > 1.0 {
             buf.skip(((buf.len() - 1024) - buf.tell()) as u32);
             buf.next(1024)
         } else {
             Vec::new()
         };
+        let palette = palette.map(|it| it.1).unwrap_or(&default_palette);
 
         let mut frames = Vec::with_capacity(indexed_frames.len() + rgba_frames.len());
 

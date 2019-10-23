@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::string::ToString;
+
+use encoding::types::Encoding;
+use encoding::DecoderTrap;
+use sdl2::ttf::Sdl2TtfContext;
+use strum::IntoEnumIterator;
+
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::{GlTexture, TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::asset::{AssetLoader, SpriteResource};
@@ -10,12 +18,6 @@ use crate::my_gl::{Gl, MyGlEnum};
 use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::{EffectSprites, Sprites};
 use crate::video::Video;
-use encoding::types::Encoding;
-use encoding::DecoderTrap;
-use sdl2::ttf::Sdl2TtfContext;
-use std::collections::HashMap;
-use std::string::ToString;
-use strum::IntoEnumIterator;
 
 pub struct Texts {
     pub skill_name_texts: HashMap<Skills, TextureId>,
@@ -119,64 +121,12 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                 mounted_sprites.insert(JobId::CRUSADER, [male, female]);
                 mounted_sprites
             },
-            character_sprites: PLAYABLE_CHAR_SPRITES
-                .iter()
-                .map(|job_sprite_id| {
-                    let job_file_name = &job_sprite_name_table[&job_sprite_id];
-                    let folder1 = encoding::all::WINDOWS_1252
-                        .decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict)
-                        .unwrap();
-                    let folder2 = encoding::all::WINDOWS_1252
-                        .decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict)
-                        .unwrap();
-                    let male_file_name = format!(
-                        "data\\sprite\\{}\\{}\\³²\\{}_³²",
-                        folder1, folder2, job_file_name
-                    );
-                    let female_file_name = format!(
-                        "data\\sprite\\{}\\{}\\¿©\\{}_¿©",
-                        folder1, folder2, job_file_name
-                    );
-                    let (male, female) = if !asset_loader
-                        .exists(&format!("{}.act", female_file_name))
-                    {
-                        let mut male = asset_loader
-                            .load_spr_and_act(gl, &male_file_name, asset_db)
-                            .expect(&format!("Failed loading {:?}", job_sprite_id));
-                        // for Idle action, character sprites contains head rotating animations, we don't need them
-                        male.action
-                            .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
-                        let female = male.clone();
-                        (male, female)
-                    } else if !asset_loader.exists(&format!("{}.act", male_file_name)) {
-                        let mut female = asset_loader
-                            .load_spr_and_act(gl, &female_file_name, asset_db)
-                            .expect(&format!("Failed loading {:?}", job_sprite_id));
-                        // for Idle action, character sprites contains head rotating animations, we don't need them
-                        female
-                            .action
-                            .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
-                        let male = female.clone();
-                        (male, female)
-                    } else {
-                        let mut male = asset_loader
-                            .load_spr_and_act(gl, &male_file_name, asset_db)
-                            .expect(&format!("Failed loading {:?}", job_sprite_id));
-                        // for Idle action, character sprites contains head rotating animations, we don't need them
-                        male.action
-                            .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
-                        let mut female = asset_loader
-                            .load_spr_and_act(gl, &female_file_name, asset_db)
-                            .expect(&format!("Failed loading {:?}", job_sprite_id));
-                        // for Idle action, character sprites contains head rotating animations, we don't need them
-                        female
-                            .action
-                            .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
-                        (male, female)
-                    };
-                    (*job_sprite_id, [male, female])
-                })
-                .collect::<HashMap<JobSpriteId, [SpriteResource; 2]>>(),
+            character_sprites: load_char_sprites(
+                gl,
+                asset_loader,
+                asset_db,
+                &job_sprite_name_table,
+            ),
             head_sprites: [
                 (1..=25)
                     .map(|i| {
@@ -268,6 +218,174 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
         elapsed.as_millis()
     );
     return sprites;
+}
+
+fn load_char_sprites(
+    gl: &Gl,
+    asset_loader: &AssetLoader,
+    asset_db: &mut AssetDatabase,
+    job_sprite_name_table: &HashMap<JobSpriteId, String>,
+) -> HashMap<JobSpriteId, [[SpriteResource; 2]; 2]> {
+    PLAYABLE_CHAR_SPRITES
+        .iter()
+        .map(|job_sprite_id| {
+            let job_file_name = &job_sprite_name_table[&job_sprite_id];
+            let folder1 = encoding::all::WINDOWS_1252
+                .decode(&[0xC0, 0xCE, 0xB0, 0xA3, 0xC1, 0xB7], DecoderTrap::Strict)
+                .unwrap();
+            let folder2 = encoding::all::WINDOWS_1252
+                .decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict)
+                .unwrap();
+            let male_file_path = format!(
+                "data\\sprite\\{}\\{}\\³²\\{}_³²",
+                folder1, folder2, job_file_name
+            );
+            let female_file_path = format!(
+                "data\\sprite\\{}\\{}\\¿©\\{}_¿©",
+                folder1, folder2, job_file_name
+            );
+
+            // order is red, blue
+            let (male_palette_ids, female_palette_ids) = match job_sprite_id {
+                JobSpriteId::CRUSADER => ([153, 152], [153, 152]),
+                JobSpriteId::SWORDMAN => ([153, 152], [153, 152]),
+                JobSpriteId::ARCHER => ([153, 152], [153, 152]),
+                JobSpriteId::ASSASSIN => ([153, 152], [153, 152]),
+                JobSpriteId::ROGUE => ([153, 152], [153, 152]),
+                JobSpriteId::KNIGHT => ([153, 152], [153, 152]),
+                JobSpriteId::WIZARD => ([153, 152], [153, 152]),
+                JobSpriteId::SAGE => ([153, 152], [153, 152]),
+                JobSpriteId::ALCHEMIST => ([153, 152], [153, 152]),
+                JobSpriteId::BLACKSMITH => ([153, 152], [153, 152]),
+                JobSpriteId::PRIEST => ([153, 152], [153, 152]),
+                JobSpriteId::MONK => ([153, 152], [153, 152]),
+                JobSpriteId::GUNSLINGER => ([153, 152], [153, 152]),
+                JobSpriteId::HUNTER => ([153, 152], [153, 152]),
+                _ => panic!(),
+            };
+
+            let (male_red, male_blue, female_red, female_blue) =
+                if !asset_loader.exists(&format!("{}.act", female_file_path)) {
+                    let mut male = asset_loader
+                        .load_spr_and_act(gl, &male_file_path, asset_db)
+                        .expect(&format!("Failed loading {:?}", job_sprite_id));
+                    // for Idle action, character sprites contains head rotating animations, we don't need them
+                    male.action
+                        .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                    let female = male.clone();
+                    (male.clone(), female.clone(), male, female)
+                } else if !asset_loader.exists(&format!("{}.act", male_file_path)) {
+                    let mut female = asset_loader
+                        .load_spr_and_act(gl, &female_file_path, asset_db)
+                        .expect(&format!("Failed loading {:?}", job_sprite_id));
+                    // for Idle action, character sprites contains head rotating animations, we don't need them
+                    female
+                        .action
+                        .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                    let male = female.clone();
+                    (male.clone(), female.clone(), male, female)
+                } else {
+                    let male_red = load_sprite(
+                        gl,
+                        &asset_loader,
+                        asset_db,
+                        &job_sprite_id,
+                        &job_file_name,
+                        &male_file_path,
+                        male_palette_ids[0],
+                    );
+                    let male_blue = load_sprite(
+                        gl,
+                        &asset_loader,
+                        asset_db,
+                        &job_sprite_id,
+                        &job_file_name,
+                        &male_file_path,
+                        male_palette_ids[1],
+                    );
+                    let female_red = load_sprite(
+                        gl,
+                        &asset_loader,
+                        asset_db,
+                        &job_sprite_id,
+                        &job_file_name,
+                        &female_file_path,
+                        female_palette_ids[0],
+                    );
+                    let female_blue = load_sprite(
+                        gl,
+                        &asset_loader,
+                        asset_db,
+                        &job_sprite_id,
+                        &job_file_name,
+                        &female_file_path,
+                        female_palette_ids[1],
+                    );
+                    (male_red, male_blue, female_red, female_blue)
+                };
+            (
+                *job_sprite_id,
+                [[male_red, female_red], [male_blue, female_blue]],
+            )
+        })
+        .collect::<HashMap<JobSpriteId, [[SpriteResource; 2]; 2]>>()
+}
+
+fn load_sprite(
+    gl: &Gl,
+    asset_loader: &AssetLoader,
+    asset_db: &mut AssetDatabase,
+    job_sprite_id: &JobSpriteId,
+    job_file_name: &str,
+    file_path: &str,
+    palette_id: usize,
+) -> SpriteResource {
+    let mut sprite_res = asset_loader
+        .load_spr_and_act_with_palette(
+            gl,
+            &file_path,
+            asset_db,
+            palette_id,
+            &load_palette(asset_loader, &job_sprite_id, job_file_name, palette_id),
+        )
+        .expect(&format!("Failed loading {:?}", job_sprite_id));
+    // for Idle action, character sprites contains head rotating animations, we don't need them
+    sprite_res
+        .action
+        .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+    sprite_res
+}
+
+fn load_palette(
+    asset_loader: &AssetLoader,
+    job_sprite_id: &JobSpriteId,
+    job_file_name: &str,
+    palette_id: usize,
+) -> Vec<u8> {
+    let palette = {
+        // for some jobs, the palette file name is truncated, so this
+        // code tries names one by one removing the last char in each
+        // iteration
+        let mut tmp_name: String = job_file_name.to_owned();
+        loop {
+            if tmp_name.is_empty() {
+                break Err("".to_owned());
+            }
+            let pal = asset_loader.get_content(&format!(
+                "data\\palette\\¸ö\\{}_³²_{}.pal",
+                tmp_name, palette_id
+            ));
+            if pal.is_ok() {
+                break pal;
+            }
+            tmp_name.pop();
+        }
+    }
+    .expect(&format!(
+        "Couldn't load palette file for {}, id: {}",
+        job_sprite_id, palette_id
+    ));
+    palette
 }
 
 pub fn load_status_icons(

@@ -88,6 +88,24 @@ impl JobSpriteId {
         }
     }
 }
+//½ÅÆÄÄÚÅ©·Ç¼¼ÀÌ´Õ_H_¿©
+// male: ¿©
+// female:
+
+//CRUSADER: Å©·ç¼¼ÀÌ´õ
+//SWORDMAN: °Ë»ç
+//ARCHER: ±Ã¼ö
+//ASSASSIN: ¾î¼¼½Å
+//ROGUE: ·Î±×
+//KNIGHT: ±â»ç
+//WIZARD: À§Àúµå
+//SAGE: ¼¼ÀÌÁö
+//ALCHEMIST: ¿¬±Ý¼ú»ç
+//BLACKSMITH: Á¦Ã¶°ø
+//PRIEST: ÇÁ¸®½ºÆ®
+//MONK: ¸ùÅ©
+//GUNSLINGER: °Ç³Ê
+//HUNTER: ÇåÅÍ
 
 #[derive(EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum JobSpriteId {
@@ -333,12 +351,7 @@ pub fn job_name_table() -> HashMap<JobSpriteId, String> {
             .decode(&[0xB0, 0xCB, 0xBB, 0xE7], DecoderTrap::Strict)
             .unwrap(),
     );
-    table.insert(
-        JobSpriteId::MAGICIAN,
-        encoding::all::WINDOWS_1252
-            .decode(&[0xB8, 0xB6, 0xB9, 0xFD, 0xBB, 0xE7], DecoderTrap::Strict)
-            .unwrap(),
-    );
+    table.insert(JobSpriteId::MAGICIAN, "¸¶¹Ý»Ç".to_owned());
     table.insert(
         JobSpriteId::ARCHER,
         encoding::all::WINDOWS_1252

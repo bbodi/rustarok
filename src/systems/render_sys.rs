@@ -369,13 +369,20 @@ impl RenderDesktopClientSystem {
                     head_index,
                     sex,
                 } => {
+                    // for spectators, left team is red, right is blue
+                    let viewer_team = controller
+                        .as_ref()
+                        .map(|it| it.controlled_char.team)
+                        .unwrap_or(Team::Right);
                     let body_sprite = char_state
                         .statuses
                         .calc_body_sprite(sys_vars, char_state.job_id, sex)
                         .unwrap_or(
                             &sys_vars.assets.sprites.character_sprites[&job_sprite_id]
+                                [viewer_team.get_palette_index(char_state.team)]
                                 [sex as usize],
                         );
+
                     let play_mode = if char_state.state().is_dead() {
                         ActionPlayMode::PlayThenHold
                     } else {

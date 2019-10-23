@@ -190,7 +190,7 @@ impl AssetLoader {
                 std::io::copy(&mut decoder, &mut out).unwrap();
                 return Ok(out);
             }
-            None => Err(format!("Could not load '{}'", file_name)),
+            None => Err(format!("No entry found in GRFs '{}'", file_name)),
         };
     }
 
@@ -414,14 +414,35 @@ impl AssetLoader {
         )
     }
 
+    pub fn load_spr_and_act_with_palette(
+        &self,
+        gl: &Gl,
+        path: &str,
+        asset_db: &mut AssetDatabase,
+        palette_index: usize,
+        palette: &Vec<u8>,
+    ) -> Result<SpriteResource, String> {
+        self.load_spr_and_act_inner(gl, path, asset_db, Some((palette_index, palette)))
+    }
+
     pub fn load_spr_and_act(
         &self,
         gl: &Gl,
         path: &str,
         asset_db: &mut AssetDatabase,
     ) -> Result<SpriteResource, String> {
+        self.load_spr_and_act_inner(gl, path, asset_db, None)
+    }
+
+    fn load_spr_and_act_inner(
+        &self,
+        gl: &Gl,
+        path: &str,
+        asset_db: &mut AssetDatabase,
+        palette: Option<(usize, &Vec<u8>)>,
+    ) -> Result<SpriteResource, String> {
         let content = self.get_content(&format!("{}.spr", path))?;
-        let frames: Vec<GlTexture> = SpriteFile::load(BinaryReader::from_vec(content))
+        let frames: Vec<GlTexture> = SpriteFile::load(BinaryReader::from_vec(content), palette)
             .frames
             .into_iter()
             .map(|frame| AssetLoader::texture_from_frame(gl, frame))
@@ -433,7 +454,15 @@ impl AssetLoader {
             .into_iter()
             .enumerate()
             .map(|(i, gl_texture)| {
-                asset_db.register_texture(&format!("{}_{}", &path.to_string(), i), gl_texture)
+                asset_db.register_texture(
+                    &format!(
+                        "{}_{}_{}",
+                        &path.to_string(),
+                        palette.map(|it| it.0).unwrap_or(0),
+                        i
+                    ),
+                    gl_texture,
+                )
             })
             .collect::<Vec<_>>();
 
