@@ -34,11 +34,13 @@ use crate::systems::console_system::{
     ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
+use crate::systems::input_sys_scancodes::ScancodeNames;
 use crate::systems::{Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
 use nalgebra::Vector2;
 use rand::Rng;
+use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -55,6 +57,63 @@ impl AutocompletionProvider for SpawnEffectAutocompletion {
         _input_storage: &specs::ReadStorage<HumanInputComponent>,
     ) -> Option<Vec<String>> {
         Some(self.effect_names.clone())
+    }
+}
+
+pub(super) fn cmd_toggle_console() -> CommandDefinition {
+    CommandDefinition {
+        name: "toggle_console".to_string(),
+        arguments: vec![],
+        autocompletion: BasicAutocompletionProvider::new(|index| None),
+        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+            let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
+            let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+            input_comp.is_console_open = !input_comp.is_console_open;
+            Ok(())
+        }),
+    }
+}
+
+pub(super) fn cmd_bind_key() -> CommandDefinition {
+    CommandDefinition {
+        name: "bind_key".to_string(),
+        arguments: vec![
+            ("key", CommandParamType::String, true),
+            ("script", CommandParamType::String, true),
+        ],
+        autocompletion: BasicAutocompletionProvider::new(|index| match index {
+            // todo: all commands
+            0 => Some(vec![]),
+            _ => None,
+        }),
+        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+            let script = args.as_str(1).unwrap();
+
+            let keys = args
+                .as_str(0)
+                .unwrap()
+                .split('+')
+                .map(|it| match it {
+                    "alt" => Ok(Scancode::LAlt),
+                    "ctrl" => Ok(Scancode::LCtrl),
+                    "shift" => Ok(Scancode::LShift),
+                    _ => ScancodeNames::from_str(it)
+                        .map(|name| Scancode::from_i32(name as i32).unwrap()),
+                })
+                .collect::<Result<Vec<Scancode>, strum::ParseError>>();
+            if let Ok(keys) = keys {
+                let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
+                let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+                let mut iter = keys.into_iter();
+                input_comp.key_bindings.push((
+                    [iter.next(), iter.next(), iter.next(), iter.next()],
+                    script.to_string(),
+                ));
+                Ok(())
+            } else {
+                Err(format!("unrecognizable key: {}", args.as_str(0).unwrap()))
+            }
+        }),
     }
 }
 
@@ -1238,6 +1297,56 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
                 Ok(())
             } else {
                 Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_clone_char() -> CommandDefinition {
+    CommandDefinition {
+        name: "clone".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
+        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+            let username = args.as_str(1);
+
+            let target_char_id = if let Some(username) = username {
+                ConsoleSystem::get_char_id_by_name(ecs_world, username)
+            } else {
+                Some(self_char_id)
+            };
+
+            if let Some(target_char_id) = target_char_id {
+                // create a new entity with the same outlook
+                let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+
+                let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+
+                let cloning_char = char_storage.get(target_char_id.0).unwrap();
+                let updater = &ecs_world.read_resource::<LazyUpdate>();
+                CharacterEntityBuilder::new(char_entity_id, "Clone")
+                    .insert_npc_component(updater)
+                    .insert_sprite_render_descr_component(updater)
+                    .physics(
+                        cloning_char.pos(),
+                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                        |builder| {
+                            builder
+                                .collision_group(cloning_char.team.get_collision_group())
+                                .circle(1.0)
+                        },
+                    )
+                    .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+                        ch.outlook(cloning_char.outlook.clone())
+                            .job_id(cloning_char.job_id)
+                            .team(cloning_char.team)
+                    });
+
+                Ok(())
+            } else {
+                Err("The character was not found".to_owned())
             }
         }),
     }

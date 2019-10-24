@@ -7,6 +7,7 @@ use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::ConsoleCommandBuffer;
 use nalgebra::{Matrix4, Point2, Point3, Vector2, Vector3, Vector4};
 use sdl2::keyboard::Scancode;
 use sdl2::mouse::{MouseButton, MouseWheelDirection};
@@ -263,13 +264,21 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
         specs::Entities<'a>,
         specs::WriteStorage<'a, HumanInputComponent>,
         specs::WriteStorage<'a, CameraComponent>,
+        specs::WriteExpect<'a, ConsoleCommandBuffer>,
         specs::ReadStorage<'a, BrowserClient>,
         specs::ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
-        (entities, mut input_storage, mut camera_storage, browser_storage, sys_vars): Self::SystemData,
+        (
+            entities,
+            mut input_storage,
+            mut camera_storage,
+            mut console_command_buffer,
+            browser_storage,
+            sys_vars,
+        ): Self::SystemData,
     ) {
         for (controller_id, input, camera) in
             (&entities, &mut input_storage, &mut camera_storage).join()
@@ -287,6 +296,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
             input.delta_mouse_y = 0;
             input.alt_down = false;
             input.ctrl_down = false;
+            input.shift_down = false;
             input.text = String::new();
             input.cleanup_released_keys();
             for event in events {
@@ -350,6 +360,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                                 input.ctrl_down = true;
                             }
+                            if keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                                input.shift_down = true;
+                            }
                         }
                     }
                     sdl2::event::Event::KeyUp {
@@ -367,6 +380,9 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                             if keymod.contains(sdl2::keyboard::Mod::LCTRLMOD) {
                                 input.ctrl_down = true;
                             }
+                            if keymod.contains(sdl2::keyboard::Mod::LSHIFTMOD) {
+                                input.shift_down = true;
+                            }
                         }
                     }
                     sdl2::event::Event::TextInput { text, .. } => {
@@ -376,6 +392,36 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
+            for key_binding in &input.key_bindings {
+                let (keys, script) = key_binding;
+                let mut need_alt = false;
+                let mut need_ctrl = false;
+                let mut need_shift = false;
+                let mut all_keys_down = keys.iter().take_while(|it| it.is_some()).all(|it| {
+                    let it = it.unwrap();
+                    match it {
+                        Scancode::LAlt => {
+                            need_alt = true;
+                            true
+                        }
+                        Scancode::LCtrl => {
+                            need_ctrl = true;
+                            true
+                        }
+                        Scancode::LShift => {
+                            need_shift = true;
+                            true
+                        }
+                        _ => input.is_key_just_pressed(it),
+                    }
+                });
+                all_keys_down &= need_alt == input.alt_down;
+                all_keys_down &= need_ctrl == input.ctrl_down;
+                all_keys_down &= need_shift == input.shift_down;
+                if all_keys_down {
+                    console_command_buffer.commands.push(script.clone());
+                }
+            }
             if input.is_key_just_pressed(Scancode::Grave)
                 && input.alt_down
                 && browser_storage.get(controller_id).is_none()

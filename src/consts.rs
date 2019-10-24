@@ -23,7 +23,7 @@ pub enum JobId {
     CRUSADER,
     SWORDMAN,
     ARCHER,
-    HUNTER,
+    RANGER,
     ASSASSIN,
     ROGUE,
     KNIGHT,
@@ -44,7 +44,7 @@ pub enum JobId {
     Guard,
 }
 
-pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 14] = [
+pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 13] = [
     JobSpriteId::CRUSADER,
     JobSpriteId::SWORDMAN,
     JobSpriteId::ARCHER,
@@ -58,7 +58,7 @@ pub const PLAYABLE_CHAR_SPRITES: [JobSpriteId; 14] = [
     JobSpriteId::PRIEST,
     JobSpriteId::MONK,
     JobSpriteId::GUNSLINGER,
-    JobSpriteId::HUNTER,
+    //    JobSpriteId::RANGER,
 ];
 
 impl JobSpriteId {
@@ -77,7 +77,7 @@ impl JobSpriteId {
             JobId::MONK => JobSpriteId::MONK,
             JobId::GUNSLINGER => JobSpriteId::GUNSLINGER,
             JobId::ROGUE => JobSpriteId::ROGUE,
-            JobId::HUNTER => JobSpriteId::HUNTER,
+            JobId::RANGER => JobSpriteId::RANGER,
             JobId::TargetDummy => panic!(),
             JobId::HealingDummy => panic!(),
             JobId::MeleeMinion => panic!(),

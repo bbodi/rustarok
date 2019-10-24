@@ -340,7 +340,7 @@ impl CharacterEntityBuilder {
                     JobId::MeleeMinion => CharType::Minion,
                     JobId::RangedMinion => CharType::Minion,
                     JobId::Turret => CharType::Minion,
-                    JobId::CRUSADER | JobId::SWORDMAN | JobId::ARCHER | JobId::HUNTER | JobId::ASSASSIN | JobId::ROGUE | JobId::KNIGHT | JobId::WIZARD | JobId::SAGE | JobId::ALCHEMIST | JobId::BLACKSMITH | JobId::PRIEST | JobId::MONK | JobId::GUNSLINGER =>
+                    JobId::CRUSADER | JobId::SWORDMAN | JobId::ARCHER | JobId::RANGER | JobId::ASSASSIN | JobId::ROGUE | JobId::KNIGHT | JobId::WIZARD | JobId::SAGE | JobId::ALCHEMIST | JobId::BLACKSMITH | JobId::PRIEST | JobId::MONK | JobId::GUNSLINGER =>
                         CharType::Player,
                     JobId::Barricade => CharType::Minion,
                 },
@@ -1236,7 +1236,7 @@ impl CharacterStateComponent {
                 JobId::RangedMinion => BasicAttack::Ranged {
                     bullet_type: WeaponType::Arrow,
                 },
-                JobId::HUNTER => BasicAttack::Ranged {
+                JobId::RANGER => BasicAttack::Ranged {
                     bullet_type: WeaponType::Arrow,
                 },
                 JobId::Turret => BasicAttack::Ranged {

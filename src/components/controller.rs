@@ -11,7 +11,7 @@ use strum_macros::Display;
 use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct KeyState {
     pub down: bool,
     pub just_pressed: bool,
@@ -255,8 +255,9 @@ pub struct HumanInputComponent {
     pub username: String,
     pub inputs: Vec<sdl2::event::Event>,
     skills_for_keys: [Option<Skills>; SKILLKEY_COUNT],
+    pub key_bindings: Vec<([Option<Scancode>; 4], String)>,
     pub cast_mode: CastMode,
-    keys: HashMap<Scancode, KeyState>,
+    keys: [KeyState; 284],
     keys_released_in_prev_frame: Vec<Scancode>,
     keys_pressed_in_prev_frame: Vec<Scancode>,
     pub text: String,
@@ -270,6 +271,7 @@ pub struct HumanInputComponent {
     pub right_mouse_released: bool,
     pub alt_down: bool,
     pub ctrl_down: bool,
+    pub shift_down: bool,
     pub last_mouse_x: u16,
     pub last_mouse_y: u16,
     pub delta_mouse_x: i32,
@@ -292,7 +294,6 @@ impl HumanInputComponent {
             inputs: vec![],
             skills_for_keys: Default::default(),
             camera_movement_mode: CameraMode::FollowChar,
-            keys: HumanInputComponent::init_keystates(),
             keys_released_in_prev_frame: vec![],
             keys_pressed_in_prev_frame: vec![],
             left_mouse_down: false,
@@ -303,6 +304,7 @@ impl HumanInputComponent {
             right_mouse_released: false,
             alt_down: false,
             ctrl_down: false,
+            shift_down: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
             mouse_world_pos: v2!(0, 0),
@@ -310,6 +312,8 @@ impl HumanInputComponent {
             delta_mouse_x: 0,
             delta_mouse_y: 0,
             text: String::new(),
+            keys: [KeyState::default(); 284],
+            key_bindings: Vec::with_capacity(64),
         }
     }
 
@@ -327,39 +331,39 @@ impl HumanInputComponent {
 
     pub fn cleanup_released_keys(&mut self) {
         for key in self.keys_released_in_prev_frame.drain(..) {
-            self.keys.get_mut(&key).unwrap().just_released = false;
+            self.keys[key as usize].just_released = false;
         }
         for key in self.keys_pressed_in_prev_frame.drain(..) {
-            self.keys.get_mut(&key).unwrap().just_pressed = false;
+            self.keys[key as usize].just_pressed = false;
         }
     }
 
     pub fn key_pressed(&mut self, key: Scancode) {
-        if self.keys.get_mut(&key).unwrap().pressed() {
+        if self.keys[key as usize].pressed() {
             self.keys_pressed_in_prev_frame.push(key);
         }
     }
 
     pub fn key_released(&mut self, key: Scancode) {
-        if self.keys.get_mut(&key).unwrap().released() {
+        if self.keys[key as usize].released() {
             self.keys_released_in_prev_frame.push(key);
         }
     }
 
     pub fn is_key_down(&self, key: Scancode) -> bool {
-        self.keys[&key].down
+        self.keys[key as usize].down
     }
 
     pub fn is_key_up(&self, key: Scancode) -> bool {
-        !self.keys[&key].down
+        !self.keys[key as usize].down
     }
 
     pub fn is_key_just_released(&self, key: Scancode) -> bool {
-        self.keys[&key].just_released
+        self.keys[key as usize].just_released
     }
 
     pub fn is_key_just_pressed(&self, key: Scancode) -> bool {
-        self.keys[&key].just_pressed
+        self.keys[key as usize].just_pressed
     }
 
     fn init_keystates() -> HashMap<Scancode, KeyState> {

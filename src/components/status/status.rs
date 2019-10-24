@@ -350,7 +350,7 @@ impl Statuses {
         return match job_id {
             JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
             JobId::GUNSLINGER => configs.stats.player.gunslinger.attributes.clone(),
-            JobId::HUNTER => configs.stats.player.hunter.attributes.clone(),
+            JobId::RANGER => configs.stats.player.hunter.attributes.clone(),
             JobId::RangedMinion => configs.stats.minion.ranged.clone(),
             JobId::HealingDummy => CharAttributes {
                 movement_speed: percentage(0),

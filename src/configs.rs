@@ -57,6 +57,7 @@ pub struct DevConfigNetwork {
 
 #[derive(Debug, Deserialize)]
 pub struct DevConfig {
+    pub execute_script: String,
     pub sleep_ms: u64,
     pub minions_enabled: bool,
     pub stats: DevConfigStats,

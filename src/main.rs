@@ -91,6 +91,9 @@ use crate::systems::{
 };
 use crate::video::{Video, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::web_server::start_web_server;
+use std::fs::File;
+use std::io::BufRead;
+use std::io::BufReader;
 
 #[macro_use]
 mod common;
@@ -180,6 +183,23 @@ fn main() {
 
     let mut ecs_world = create_ecs_world();
 
+    let command_buffer = {
+        let mut command_buffer = ConsoleCommandBuffer {
+            commands: Vec::with_capacity(8),
+        };
+        let file = File::open("init.cmd").unwrap();
+        let reader = BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line.unwrap();
+            if line.starts_with("//") || line.trim().is_empty() {
+                continue;
+            }
+            command_buffer.commands.push(line);
+        }
+        command_buffer
+    };
+
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
     let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_db);
     let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
@@ -210,6 +230,7 @@ fn main() {
     ecs_world.add_resource(map_render_data);
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
+    ecs_world.add_resource(command_buffer);
 
     ecs_world.add_resource(asset_db);
 
@@ -275,61 +296,6 @@ fn main() {
     let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
 
-    // Add static skill manifestations
-    {
-        for command in &[
-            "spawn_area poison 50 2 3 2000 500 251 -213",
-            "spawn_area absorb 50 2 3 2000 3000 255 -213",
-            "spawn_area firebomb 50 2 3 2000 2000 260 -213",
-            "spawn_area armor 70 2 3 2000 10000 265 -213",
-            "spawn_area armor -30 2 3 2000 10000 270 -213",
-            "spawn_area heal 50 2 3 500 0 273 -213",
-            "spawn_entity dummy_enemy left 1 217 -66",
-            "spawn_entity dummy_enemy left 1 219 -66",
-            "spawn_entity dummy_enemy left 1 221 -66",
-            "spawn_entity dummy_ally left 1 219 -71",
-            // RIGHT TEAM GUARDS
-            // middle final 4 guards on lamps
-            "spawn_entity guard right 1 246 -214 GEFFEN_MAGE_12 3.5",
-            "spawn_entity guard right 1 266 -214 GEFFEN_MAGE_12 3.5",
-            "spawn_entity guard right 1 246 -194 GEFFEN_MAGE_12 3.5",
-            "spawn_entity guard right 1 266 -194 GEFFEN_MAGE_12 3.5",
-            // middle, middle 3 guards on bridge
-            "spawn_entity guard right 1 195 -208 GEFFEN_MAGE_12 6",
-            "spawn_entity guard right 1 195 -204 GEFFEN_MAGE_12 6",
-            "spawn_entity guard right 1 195 -200 GEFFEN_MAGE_12 6",
-            // top, guard alone on lamp
-            "spawn_entity guard right 1 200 -326 GEFFEN_MAGE_12 3.5",
-            // top, two guards on lamps
-            "spawn_entity guard right 1 186 -299 GEFFEN_MAGE_12 3.5",
-            "spawn_entity guard right 1 200 -299 GEFFEN_MAGE_12 3.5",
-            // LEFT TEAM GUARDS
-            // middle final 4 guards on lamps
-            "spawn_entity guard left 1 66 -214 GEFFEN_MAGE_9 3.5",
-            "spawn_entity guard left 1 48 -214 GEFFEN_MAGE_9 3.5",
-            "spawn_entity guard left 1 66 -194 GEFFEN_MAGE_9 3.5",
-            "spawn_entity guard left 1 48 -194 GEFFEN_MAGE_9 3.5",
-            // middle, middle 3 guards on bridge
-            "spawn_entity guard left 1 117 -208 GEFFEN_MAGE_9 6",
-            "spawn_entity guard left 1 117 -204 GEFFEN_MAGE_9 6",
-            "spawn_entity guard left 1 117 -200 GEFFEN_MAGE_9 6",
-            // top, guard alone on lamp
-            "spawn_entity guard left 1 112 -326 GEFFEN_MAGE_9 3.5",
-            // top, two guards on lamps
-            "spawn_entity guard left 1 112 -299 GEFFEN_MAGE_9 3.5",
-            "spawn_entity guard left 1 126 -299 GEFFEN_MAGE_9 3.5",
-        ] {
-            execute_console_command(
-                command,
-                &command_defs,
-                &mut ecs_world,
-                desktop_client_char,
-                desktop_client_controller,
-            );
-            ecs_world.maintain();
-        }
-    }
-
     start_web_server();
 
     'running: loop {
@@ -342,7 +308,7 @@ fn main() {
             break 'running;
         }
 
-        run_console_commands(
+        execute_console_commands(
             &command_defs,
             &mut ecs_world,
             desktop_client_char,
@@ -652,22 +618,107 @@ fn reload_configs_if_changed(
     };
 }
 
-fn execute_console_command(
-    command: &str,
+pub struct ConsoleCommandBuffer {
+    commands: Vec<String>,
+}
+
+fn execute_console_commands(
     command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut specs::world::World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
 ) {
     {
-        let args = CommandArguments::new(command);
-        let command_def = &command_defs[args.get_command_name().unwrap()];
-        let _result = (command_def.action)(
-            desktop_client_controller,
-            desktop_client_char,
-            &args,
-            ecs_world,
-        );
+        let console_args = {
+            let mut storage = ecs_world.write_storage::<ConsoleComponent>();
+            let console = storage.get_mut(desktop_client_controller.0).unwrap();
+            std::mem::replace(&mut console.command_to_execute, None)
+        };
+        if let Some(cmd) = console_args {
+            execute_console_command(
+                cmd,
+                command_defs,
+                ecs_world,
+                desktop_client_char,
+                desktop_client_controller,
+            );
+        }
+    }
+
+    // run commands from key_bindings
+    {
+        let commands = {
+            let mut command_buffer = ecs_world.write_resource::<ConsoleCommandBuffer>();
+            std::mem::replace(&mut command_buffer.commands, Vec::with_capacity(8))
+        };
+        for command in commands.into_iter() {
+            let cmd = CommandArguments::new(&command);
+            execute_console_command(
+                cmd,
+                command_defs,
+                ecs_world,
+                desktop_client_char,
+                desktop_client_controller,
+            );
+        }
+    }
+    // run commands from config file, only 1 command per frame
+    {
+        let (line, skipped_line_count) = {
+            let dev_config = ecs_world.write_resource::<DevConfig>();
+            let without_useless_lines = dev_config
+                .execute_script
+                .lines()
+                .skip_while(|line| line.starts_with("//") || line.trim().is_empty())
+                .collect::<Vec<&str>>();
+            let first_line: Option<String> = without_useless_lines.get(0).map(|it| it.to_string());
+            let skipped_line_count =
+                dev_config.execute_script.lines().count() - without_useless_lines.len();
+            (first_line, skipped_line_count)
+        };
+        if let Some(command) = line {
+            let cmd = CommandArguments::new(&command);
+            execute_console_command(
+                cmd,
+                command_defs,
+                ecs_world,
+                desktop_client_char,
+                desktop_client_controller,
+            );
+            let mut dev_config = ecs_world.write_resource::<DevConfig>();
+            dev_config.execute_script = dev_config
+                .execute_script
+                .lines()
+                .skip(skipped_line_count + 1)
+                .collect::<Vec<&str>>()
+                .join("\n");
+        }
+    }
+
+    ecs_world.maintain();
+}
+
+fn execute_console_command(
+    cmd: CommandArguments,
+    command_defs: &HashMap<String, CommandDefinition>,
+    ecs_world: &mut specs::world::World,
+    desktop_client_char: CharEntityId,
+    desktop_client_controller: ControllerEntityId,
+) {
+    log::debug!("Execute command: {:?}", cmd);
+    let command_def = &command_defs[cmd.get_command_name().unwrap()];
+    if let Err(e) = (command_def.action)(
+        desktop_client_controller,
+        desktop_client_char,
+        &cmd,
+        ecs_world,
+    ) {
+        log::error!("Console error: {}", e);
+        ecs_world
+            .write_storage::<ConsoleComponent>()
+            .get_mut(desktop_client_controller.0)
+            .unwrap()
+            .error(&e);
     }
 }
 
@@ -694,34 +745,6 @@ fn execute_finished_skill_castings(ecs_world: &mut specs::world::World) {
                 skill_entity_id,
                 SkillManifestationComponent::new(skill_entity_id, manifestation),
             );
-        }
-    }
-}
-
-fn run_console_commands(
-    command_defs: &HashMap<String, CommandDefinition>,
-    ecs_world: &mut specs::world::World,
-    desktop_client_char: CharEntityId,
-    desktop_client_controller: ControllerEntityId,
-) {
-    let console_args = {
-        let mut storage = ecs_world.write_storage::<ConsoleComponent>();
-        let console = storage.get_mut(desktop_client_controller.0).unwrap();
-        std::mem::replace(&mut console.command_to_execute, None)
-    };
-    if let Some(args) = console_args {
-        let command_def = &command_defs[args.get_command_name().unwrap()];
-        if let Err(e) = (command_def.action)(
-            desktop_client_controller,
-            desktop_client_char,
-            &args,
-            ecs_world,
-        ) {
-            ecs_world
-                .write_storage::<ConsoleComponent>()
-                .get_mut(desktop_client_controller.0)
-                .unwrap()
-                .error(&e);
         }
     }
 }

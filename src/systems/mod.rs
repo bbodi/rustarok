@@ -29,6 +29,7 @@ pub mod console_system;
 pub mod falcon_ai_sys;
 pub mod frame_end_system;
 pub mod input_sys;
+pub mod input_sys_scancodes;
 pub mod input_to_next_action;
 pub mod minion_ai_sys;
 pub mod next_action_applier_sys;
