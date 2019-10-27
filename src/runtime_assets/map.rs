@@ -1,7 +1,7 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::gat::{CellType, Gat};
 use crate::asset::gnd::Gnd;
-use crate::asset::rsm::{BoundingBox, Rsm};
+use crate::asset::rsm::{BoundingBox, RsmNodeVertex};
 use crate::asset::rsw::{Rsw, WaterData};
 use crate::asset::texture::TextureId;
 use crate::asset::AssetLoader;
@@ -20,7 +20,6 @@ use nphysics2d::object::{
 };
 use nphysics2d::solver::SignoriniModel;
 use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
-use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy)]
 pub enum CollisionGroup {
@@ -75,6 +74,12 @@ pub struct ModelRenderData {
 
 pub type DataForRenderingSingleNode = Vec<SameTextureNodeFaces>;
 
+pub struct SameTextureNodeFacesRaw {
+    pub mesh: Vec<RsmNodeVertex>,
+    pub texture: TextureId,
+    pub texture_name: String, // todo: why does it store texture name?
+}
+
 #[derive(Clone)]
 pub struct SameTextureNodeFaces {
     pub vao: VertexArray,
@@ -99,7 +104,6 @@ pub fn load_map(
     map_name: &str,
     asset_loader: &AssetLoader,
     asset_db: &mut AssetDatabase,
-    quick_loading: bool,
 ) -> (MapRenderData) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
@@ -156,60 +160,11 @@ pub fn load_map(
     ////////////////////////////
     //// MODELS
     ////////////////////////////
-    {
-        let (elapsed, models) = measure_time(|| {
-            if !quick_loading {
-                let model_names: HashSet<_> =
-                    world.models.iter().map(|m| m.filename.clone()).collect();
-                return model_names
-                    .iter()
-                    .map(|filename| {
-                        let rsm = asset_loader.load_model(filename).unwrap();
-                        (filename.clone(), rsm)
-                    })
-                    .collect::<Vec<(String, Rsm)>>();
-            } else {
-                vec![]
-            }
-        });
-        log::info!("models[{}] loaded: {}ms", models.len(), elapsed.as_millis());
+    world.models.iter().for_each(|model| {
+        asset_loader.load_model2(&model.filename, asset_db).unwrap();
+    });
 
-        let (elapsed, model_render_datas) = measure_time(|| {
-            models
-                .iter()
-                .map(|(name, rsm)| {
-                    let textures =
-                        Rsm::load_textures(gl, &asset_loader, asset_db, &rsm.texture_names);
-                    log::trace!("{} textures loaded for model {}", textures.len(), name);
-                    let (data_for_rendering_full_model, bbox): (
-                        Vec<DataForRenderingSingleNode>,
-                        BoundingBox,
-                    ) = Rsm::generate_meshes_by_texture_id(
-                        gl,
-                        &rsm.bounding_box,
-                        rsm.shade_type,
-                        rsm.nodes.len() == 1,
-                        &rsm.nodes,
-                        &textures,
-                    );
-                    (
-                        name.clone(),
-                        ModelRenderData {
-                            bounding_box: bbox,
-                            alpha: rsm.alpha,
-                            model: data_for_rendering_full_model,
-                        },
-                    )
-                })
-                .collect::<HashMap<String, ModelRenderData>>()
-        });
-        log::info!("model_render_datas loaded: {}ms", elapsed.as_millis());
-        asset_db.register_models(model_render_datas);
-    };
-
-    let model_instances_iter = if quick_loading {
-        world.models.iter().take(0)
-    } else {
+    let model_instances_iter = {
         let len = world.models.len();
         world.models.iter().take(len)
     };
@@ -217,12 +172,12 @@ pub fn load_map(
         .map(|model_instance| {
             let mut only_translation_matrix: vek::Mat4<f32> = vek::Mat4::identity();
             {
-                let t = (model_instance.pos
+                let t = model_instance.pos
                     + Vector3::new(
                         ground_data.ground.width as f32,
                         0f32,
                         ground_data.ground.height as f32,
-                    ));
+                    );
                 only_translation_matrix.translate_3d((t.x, t.y, t.z));
             }
 
@@ -387,8 +342,9 @@ pub fn load_map(
         AssetLoader::create_texture_from_surface(gl, &path, surface, MyGlEnum::NEAREST, asset_db)
     });
 
+    // TODO
     // remove the the upper half of lamps on which Guards are standing
-    if map_name == "prontera" && !quick_loading {
+    if map_name == "prontera" {
         let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
         let model_index = asset_db.get_model_index(lamp_name);
         let model = asset_db.get_model(model_index);
@@ -410,7 +366,7 @@ pub fn load_map(
                 .collect(),
         };
         asset_db.register_model("half_lamp", new_model);
-        let new_model_index = dbg!(asset_db.get_model_index("half_lamp"));
+        let new_model_index = asset_db.get_model_index("half_lamp");
         // RIGHT TEAM GUARDS
         // middle final 4 guards on lamps
         model_instances[453].asset_db_model_index = new_model_index;

@@ -1,9 +1,9 @@
 
+# right gate: 250.0, -200.0
+start_pos_x = 238
+start_pos_y = -65
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
-log_level = "TRACE"
-
-# if true, many resources won't be loaded (static models, gat data etc)
-quick_startup = false
+log_level = "DEBUG"
 
 grf_paths = [
   "/media/sharp/9C16370C1636E744/Games/TalonRO/rdata.grf",

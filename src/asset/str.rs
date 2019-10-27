@@ -139,26 +139,21 @@ impl StrFile {
                                 root.to_str().unwrap().replace("/", "\\"),
                                 texture_name
                             );
-                            let surface = asset_loader.load_sdl_surface(&path);
-                            let surface = surface.unwrap_or_else(|e| {
-                                log::warn!(
-                                    "Missing texture when loading {}, path: {}, {}",
-                                    str_name,
-                                    path,
-                                    e
-                                );
-                                asset_loader.backup_surface()
+                            let texture = asset_db.get_texture_id(&path).unwrap_or_else(|| {
+                                asset_loader
+                                    .load_texture(gl, &path, MyGlEnum::NEAREST, asset_db)
+                                    .unwrap()
                             });
-                            let texture =
-                                asset_db.get_texture_id(&texture_name).unwrap_or_else(|| {
-                                    AssetLoader::create_texture_from_surface(
-                                        gl,
-                                        &texture_name,
-                                        surface,
-                                        MyGlEnum::NEAREST,
-                                        asset_db,
-                                    )
-                                });
+
+                            //                            let surface = surface.unwrap_or_else(|e| {
+                            //                                log::warn!(
+                            //                                    "Missing texture when loading {}, path: {}, {}",
+                            //                                    str_name,
+                            //                                    path,
+                            //                                    e
+                            //                                );
+                            //                                asset_loader.backup_surface()
+                            //                            });
                             textures.push(texture);
                             let size = texture_names_to_index.len();
                             texture_names_to_index.insert(texture_name.clone(), size);

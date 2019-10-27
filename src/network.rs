@@ -1,3 +1,4 @@
+use crate::configs::AppConfig;
 use crate::asset::database::AssetDatabase;
 use crate::common::v2;
 use crate::components::char::{attach_human_player_components, Team};
@@ -67,7 +68,7 @@ pub fn handle_new_connections(
     }
 }
 
-pub fn handle_client_handshakes(ecs_world: &mut World) {
+pub fn handle_client_handshakes(ecs_world: &mut World, appconfig: &AppConfig) {
     let projection_mat = ecs_world
         .read_resource::<SystemVariables>()
         .matrices
@@ -212,8 +213,8 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
                                 projection_mat,
                                 v2(
-                                    ecs_world.read_resource::<DevConfig>().start_pos_x,
-                                    ecs_world.read_resource::<DevConfig>().start_pos_y,
+                                    appconfig.start_pos_x,
+                                    appconfig.start_pos_y,
                                 ),
                                 Sex::Male,
                                 JobId::CRUSADER,

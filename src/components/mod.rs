@@ -136,8 +136,6 @@ pub enum FlyingNumberType {
     Heal,
     Block,
     Absorb,
-    Mana,
-    Crit,
 }
 
 impl FlyingNumberType {
@@ -163,8 +161,6 @@ impl FlyingNumberType {
             FlyingNumberType::Combo { .. } => [230, 230, 38],
             FlyingNumberType::Heal => [0, 255, 0],
             FlyingNumberType::Poison => [140, 0, 140],
-            FlyingNumberType::Mana => [0, 0, 255],
-            FlyingNumberType::Crit => [255, 255, 255],
             FlyingNumberType::Block => [255, 255, 255],
             FlyingNumberType::Absorb => [255, 255, 255],
         }

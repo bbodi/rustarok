@@ -7,7 +7,8 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
     pub log_level: String,
-    pub quick_startup: bool,
+    pub start_pos_x: f32,
+    pub start_pos_y: f32,
     pub grf_paths: Vec<String>,
 }
 
@@ -65,8 +66,6 @@ pub struct DevConfig {
     pub network: DevConfigNetwork,
     pub skills: SkillsConfig,
     pub cast_mode: CastMode,
-    pub start_pos_x: f32,
-    pub start_pos_y: f32,
 }
 
 #[derive(Debug, Deserialize)]

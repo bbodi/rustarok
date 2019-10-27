@@ -196,8 +196,11 @@ impl<'a> RenderCommandCollector {
             .push(*pos);
     }
 
-    pub fn get_last_billboard_command(&'a self) -> &'a Sprite3dRenderCommand {
-        return &self.sprite_3d_commands[self.sprite_3d_commands.len() - 1];
+    pub fn get_last_billboard_command(&'a self) -> Option<&'a Sprite3dRenderCommand> {
+        // TODO: remove this code, check the comment at 'let render_command = render_commands.get_last_billboard_command();'
+        return self
+            .sprite_3d_commands
+            .get((self.sprite_3d_commands.len() as i32 - 1).max(0) as usize);
     }
 }
 

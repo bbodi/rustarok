@@ -18,6 +18,7 @@ use crate::my_gl::{Gl, MyGlEnum};
 use crate::systems::console_commands::STATUS_NAMES;
 use crate::systems::{EffectSprites, Sprites};
 use crate::video::Video;
+use std::fmt::Write;
 
 pub struct Texts {
     pub skill_name_texts: HashMap<Skills, TextureId>,
@@ -44,6 +45,8 @@ impl Texts {
 }
 
 pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDatabase) -> Sprites {
+    let mut string_buffer = String::with_capacity(512);
+
     let (elapsed, sprites) = measure_time(|| {
         let job_sprite_name_table = job_name_table();
         let mut exoskeleton = asset_loader
@@ -99,6 +102,7 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                 )
                 .unwrap(),
             mounted_character_sprites: {
+                log::info!(">>> load mounted_character_sprites");
                 let mut mounted_sprites = HashMap::new();
                 let mounted_file_name = &job_sprite_name_table[&JobSpriteId::CRUSADER2];
                 let folder1 = encoding::all::WINDOWS_1252
@@ -107,10 +111,15 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                 let folder2 = encoding::all::WINDOWS_1252
                     .decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict)
                     .unwrap();
-                let male_file_name = format!(
-                    "data\\sprite\\{}\\{}\\³²\\{}_³²",
-                    folder1, folder2, mounted_file_name
-                );
+                let male_file_name = {
+                    string_buffer.clear();
+                    write!(
+                        &mut string_buffer,
+                        "data\\sprite\\{}\\{}\\³²\\{}_³²",
+                        folder1, folder2, mounted_file_name
+                    );
+                    &string_buffer
+                };
                 let mut male = asset_loader
                     .load_spr_and_act(gl, &male_file_name, asset_db)
                     .expect(&format!("Failed loading {:?}", JobSpriteId::CRUSADER2));
@@ -119,6 +128,7 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                     .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
                 let female = male.clone();
                 mounted_sprites.insert(JobId::CRUSADER, [male, female]);
+                log::info!("<<< load mounted_character_sprites");
                 mounted_sprites
             },
             character_sprites: load_char_sprites(
@@ -127,71 +137,8 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
                 asset_db,
                 &job_sprite_name_table,
             ),
-            head_sprites: [
-                (1..=25)
-                    .map(|i| {
-                        let male_file_name =
-                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²", i.to_string());
-                        let male = if asset_loader.exists(&(male_file_name.clone() + ".act")) {
-                            let mut head = asset_loader
-                                .load_spr_and_act(gl, &male_file_name, asset_db)
-                                .expect(&format!("Failed loading head({})", i));
-                            // for Idle action, character sprites contains head rotating animations, we don't need them
-                            head.action.remove_frames_in_every_direction(
-                                CharActionIndex::Idle as usize,
-                                1..,
-                            );
-                            Some(head)
-                        } else {
-                            None
-                        };
-                        male
-                    })
-                    .filter_map(|it| it)
-                    .collect::<Vec<SpriteResource>>(),
-                (1..=25)
-                    .map(|i| {
-                        let female_file_name =
-                            format!("data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©", i.to_string());
-                        let female = if asset_loader.exists(&(female_file_name.clone() + ".act")) {
-                            let mut head = asset_loader
-                                .load_spr_and_act(gl, &female_file_name, asset_db)
-                                .expect(&format!("Failed loading head({})", i));
-                            // for Idle action, character sprites contains head rotating animations, we don't need them
-                            head.action.remove_frames_in_every_direction(
-                                CharActionIndex::Idle as usize,
-                                1..,
-                            );
-                            Some(head)
-                        } else {
-                            None
-                        };
-                        female
-                    })
-                    .filter_map(|it| it)
-                    .collect::<Vec<SpriteResource>>(),
-            ],
-            monster_sprites: MonsterId::iter()
-                .map(|monster_id| {
-                    let file_name = format!(
-                        "data\\sprite\\npc\\{}",
-                        monster_id.to_string().to_lowercase()
-                    );
-                    (
-                        monster_id,
-                        asset_loader
-                            .load_spr_and_act(gl, &file_name, asset_db)
-                            .or_else(|_e| {
-                                let file_name = format!(
-                                    "data\\sprite\\¸ó½ºÅÍ\\{}",
-                                    monster_id.to_string().to_lowercase()
-                                );
-                                asset_loader.load_spr_and_act(gl, &file_name, asset_db)
-                            })
-                            .unwrap(),
-                    )
-                })
-                .collect::<HashMap<MonsterId, SpriteResource>>(),
+            head_sprites: load_head_sprites(gl, asset_loader, asset_db, &mut string_buffer),
+            monster_sprites: load_monster_sprites(gl, asset_loader, asset_db, &mut string_buffer),
             effect_sprites: EffectSprites {
                 torch: asset_loader
                     .load_spr_and_act(gl, "data\\sprite\\ÀÌÆÑÆ®\\torch_01", asset_db)
@@ -220,13 +167,144 @@ pub fn load_sprites(gl: &Gl, asset_loader: &AssetLoader, asset_db: &mut AssetDat
     return sprites;
 }
 
+fn load_monster_sprites(
+    gl: &Gl,
+    asset_loader: &AssetLoader,
+    asset_db: &mut AssetDatabase,
+    mut string_buffer: &mut String,
+) -> HashMap<MonsterId, SpriteResource> {
+    log::info!(">>> load_monster_sprites");
+    let sprites = MonsterId::iter()
+        .map(|monster_id| {
+            let file_name = {
+                string_buffer.clear();
+                write!(
+                    &mut string_buffer,
+                    "data\\sprite\\npc\\{}",
+                    monster_id.to_string().to_lowercase()
+                );
+                &string_buffer
+            };
+            (
+                monster_id,
+                asset_loader
+                    .load_spr_and_act(gl, &file_name, asset_db)
+                    .or_else(|_e| {
+                        let file_name = {
+                            string_buffer.clear();
+                            write!(
+                                &mut string_buffer,
+                                "data\\sprite\\¸ó½ºÅÍ\\{}",
+                                monster_id.to_string().to_lowercase()
+                            );
+                            &string_buffer
+                        };
+                        asset_loader.load_spr_and_act(gl, &file_name, asset_db)
+                    })
+                    .unwrap(),
+            )
+        })
+        .collect::<HashMap<MonsterId, SpriteResource>>();
+    log::info!("<<< load_monster_sprites");
+    return sprites;
+}
+
+fn load_head_sprites(
+    gl: &Gl,
+    asset_loader: &AssetLoader,
+    asset_db: &mut AssetDatabase,
+    string_buffer: &mut String,
+) -> [Vec<SpriteResource>; 2] {
+    log::info!(">>> load_head_sprites");
+    let sprites = [
+        (1..=25)
+            .map(|i| {
+                let male_file_name = {
+                    string_buffer.clear();
+                    write!(
+                        string_buffer,
+                        "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²",
+                        i.to_string()
+                    );
+                    &string_buffer
+                };
+                let male = if asset_loader.exists(&((*male_file_name).to_owned() + ".act")) {
+                    let mut head = asset_loader
+                        .load_spr_and_act(gl, male_file_name, asset_db)
+                        .expect(&format!("Failed loading head({})", i));
+                    // for Idle action, character sprites contains head rotating animations, we don't need them
+                    head.action
+                        .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                    Some(head)
+                } else {
+                    None
+                };
+                male
+            })
+            .filter_map(|it| it)
+            .collect::<Vec<SpriteResource>>(),
+        (1..=25)
+            .map(|i| {
+                let female_file_name = {
+                    string_buffer.clear();
+                    write!(
+                        string_buffer,
+                        "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©",
+                        i.to_string()
+                    );
+                    &string_buffer
+                };
+                let female = if asset_loader.exists(&((*female_file_name).to_owned() + ".act")) {
+                    let mut head = asset_loader
+                        .load_spr_and_act(gl, female_file_name, asset_db)
+                        .expect(&format!("Failed loading head({})", i));
+                    // for Idle action, character sprites contains head rotating animations, we don't need them
+                    head.action
+                        .remove_frames_in_every_direction(CharActionIndex::Idle as usize, 1..);
+                    Some(head)
+                } else {
+                    None
+                };
+                female
+            })
+            .filter_map(|it| it)
+            .collect::<Vec<SpriteResource>>(),
+    ];
+    log::info!("<<< load_head_sprites");
+    return sprites;
+}
+
 fn load_char_sprites(
     gl: &Gl,
     asset_loader: &AssetLoader,
     asset_db: &mut AssetDatabase,
     job_sprite_name_table: &HashMap<JobSpriteId, String>,
 ) -> HashMap<JobSpriteId, [[SpriteResource; 2]; 2]> {
-    PLAYABLE_CHAR_SPRITES
+    log::info!(">>> load_char_sprites");
+    let sprites = PLAYABLE_CHAR_SPRITES
+        .iter()
+        .map(|job_sprite_id| {
+            (
+                *job_sprite_id,
+                [
+                    [
+                        SpriteResource::new_for_test(),
+                        SpriteResource::new_for_test(),
+                    ],
+                    [
+                        SpriteResource::new_for_test(),
+                        SpriteResource::new_for_test(),
+                    ],
+                ],
+            )
+        })
+        .collect();
+    if true {
+        return sprites;
+    }
+    let mut string_buffer1 = String::with_capacity(512);
+    let mut string_buffer2 = String::with_capacity(512);
+    let sprites = PLAYABLE_CHAR_SPRITES
         .iter()
         .map(|job_sprite_id| {
             let job_file_name = &job_sprite_name_table[&job_sprite_id];
@@ -236,14 +314,24 @@ fn load_char_sprites(
             let folder2 = encoding::all::WINDOWS_1252
                 .decode(&[0xB8, 0xF6, 0xC5, 0xEB], DecoderTrap::Strict)
                 .unwrap();
-            let male_file_path = format!(
-                "data\\sprite\\{}\\{}\\³²\\{}_³²",
-                folder1, folder2, job_file_name
-            );
-            let female_file_path = format!(
-                "data\\sprite\\{}\\{}\\¿©\\{}_¿©",
-                folder1, folder2, job_file_name
-            );
+            let male_file_path = {
+                string_buffer1.clear();
+                write!(
+                    &mut string_buffer1,
+                    "data\\sprite\\{}\\{}\\³²\\{}_³²",
+                    folder1, folder2, job_file_name
+                );
+                &string_buffer1
+            };
+            let female_file_path = {
+                string_buffer2.clear();
+                write!(
+                    &mut string_buffer2,
+                    "data\\sprite\\{}\\{}\\¿©\\{}_¿©",
+                    folder1, folder2, job_file_name
+                );
+                &string_buffer2
+            };
 
             // order is red, blue
             let (male_palette_ids, female_palette_ids) = match job_sprite_id {
@@ -328,7 +416,9 @@ fn load_char_sprites(
                 [[male_red, female_red], [male_blue, female_blue]],
             )
         })
-        .collect::<HashMap<JobSpriteId, [[SpriteResource; 2]; 2]>>()
+        .collect::<HashMap<JobSpriteId, [[SpriteResource; 2]; 2]>>();
+    log::info!("<<< load_char_sprites");
+    return sprites;
 }
 
 fn load_sprite(
@@ -346,7 +436,7 @@ fn load_sprite(
             &file_path,
             asset_db,
             palette_id,
-            &load_palette(asset_loader, &job_sprite_id, job_file_name, palette_id),
+            load_palette(asset_loader, &job_sprite_id, job_file_name, palette_id),
         )
         .expect(&format!("Failed loading {:?}", job_sprite_id));
     // for Idle action, character sprites contains head rotating animations, we don't need them

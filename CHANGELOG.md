@@ -1,4 +1,11 @@
 
+#### 2019.10.27
+- Startup time optimization  
+Sprites and models are loaded on a background thread asynchronously. 
+    - old, debug mode: 24s
+    - old, release mode: ~3.5s (max value 6.1s)
+    - new, debug mode: 7.6s
+    - new, release mode: 2.7s (fairly stable, no fluctuations)
 
 #### 2019.10.24
 - Red and blue colors for all classes  

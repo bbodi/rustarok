@@ -6,8 +6,7 @@ use crate::systems::console_commands::{
     cmd_disable_collision, cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_get_server_fps,
     cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_remove_falcon,
     cmd_resurrect, cmd_set_damping, cmd_set_job, cmd_set_mass, cmd_set_outlook, cmd_set_pos,
-    cmd_set_server_fps, cmd_set_team, cmd_spawn_area, cmd_spawn_effect, cmd_spawn_entity,
-    cmd_toggle_console,
+    cmd_set_server_fps, cmd_set_team, cmd_spawn_area, cmd_spawn_entity, cmd_toggle_console,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
@@ -15,6 +14,8 @@ use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
+use serde::export::fmt::{Debug, Error};
+use serde::export::Formatter;
 use specs::prelude::*;
 use std::collections::HashMap;
 
@@ -670,7 +671,7 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_add_status());
         ConsoleSystem::add_command(&mut command_defs, cmd_list_players());
         ConsoleSystem::add_command(&mut command_defs, cmd_list_entities());
-        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_effect(effect_names));
+        //        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_effect(effect_names));
         ConsoleSystem::add_command(&mut command_defs, cmd_spawn_area());
         ConsoleSystem::add_command(&mut command_defs, cmd_spawn_entity());
         ConsoleSystem::add_command(&mut command_defs, cmd_heal());
@@ -714,9 +715,22 @@ pub enum CommandParamType {
     Float,
 }
 
-#[derive(Debug)]
 pub struct CommandArguments {
     args: Vec<CommandElement>,
+}
+
+impl Debug for CommandArguments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "Command({})",
+            self.args
+                .iter()
+                .map(|it| it.text.as_str())
+                .collect::<Vec<&str>>()
+                .join(",")
+        )
+    }
 }
 
 #[derive(Debug)]

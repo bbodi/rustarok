@@ -1,4 +1,5 @@
-use crate::asset::texture::{GlTexture, TextureId};
+use crate::asset::rsm::BoundingBox;
+use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::ModelRenderData;
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -30,7 +31,7 @@ impl AssetDatabase {
             },
             model_name_to_index: HashMap::with_capacity(512),
             models: Vec::with_capacity(512),
-            textures: Vec::with_capacity(1024),
+            textures: Vec::with_capacity(8192),
         }
     }
 
@@ -50,16 +51,20 @@ impl AssetDatabase {
         self.models.push(model);
     }
 
-    pub fn register_models(&mut self, models: HashMap<String, ModelRenderData>) {
-        self.models = Vec::with_capacity(models.len());
-        self.model_name_to_index = HashMap::with_capacity(models.len());
-        for (name, data) in models.into_iter() {
-            self.model_name_to_index.insert(
-                AssetDatabase::replace_non_ascii_chars(&name),
-                self.models.len(),
-            );
-            self.models.push(data);
-        }
+    pub fn reserve_model_slot(&mut self, name: &str) -> usize {
+        let model_index = self.models.len();
+        self.model_name_to_index
+            .insert(AssetDatabase::replace_non_ascii_chars(&name), model_index);
+        self.models.push(ModelRenderData {
+            bounding_box: BoundingBox::new(),
+            alpha: 0,
+            model: vec![],
+        });
+        return model_index;
+    }
+
+    pub fn fill_reserved_model_slot(&mut self, model_index: usize, data: ModelRenderData) {
+        self.models[model_index] = data;
     }
 
     pub fn get_texture_id(&self, path: &str) -> Option<TextureId> {
@@ -81,6 +86,23 @@ impl AssetDatabase {
         self.textures.push(gl_texture);
         self.texture_db.entries.insert(key, texture_id);
         return texture_id;
+    }
+
+    pub(super) fn reserve_texture_slot(&mut self, gl: &Gl, path: &str) -> TextureId {
+        let key = AssetDatabase::replace_non_ascii_chars(&path);
+        if self.texture_db.entries.contains_key(&key) {
+            panic!("Texture already exists with this name: {}", key);
+        }
+
+        let texture_id = TextureId(self.textures.len());
+        self.textures
+            .push(GlTexture::new(gl, GlNativeTextureId(0), 0, 0));
+        self.texture_db.entries.insert(key, texture_id);
+        return texture_id;
+    }
+
+    pub(super) fn fill_reserved_texture(&mut self, texture_id: TextureId, gl_texture: GlTexture) {
+        self.textures[texture_id.0] = gl_texture;
     }
 
     pub fn replace_non_ascii_chars(name: &str) -> String {

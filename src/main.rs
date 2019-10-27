@@ -143,12 +143,12 @@ fn main() {
         LevelFilter::from_str(&config.log_level)
             .expect("Unknown log level. Please set one of the following values for 'log_level' in 'config.toml': \"OFF\", \"ERROR\", \"WARN\", \"INFO\", \"DEBUG\", \"TRACE\"")
     );
-    log::info!("Loading GRF files");
+    log::info!(">>> Loading GRF files");
     let (elapsed, asset_loader) = measure_time(|| {
         AssetLoader::new(config.grf_paths.as_slice())
             .expect("Could not open asset files. Please configure them in 'config.toml'")
     });
-    log::info!("GRF loading: {}ms", elapsed.as_millis());
+    log::info!("<<< GRF loading: {}ms", elapsed.as_millis());
 
     let mut asset_db = AssetDatabase::new();
 
@@ -165,14 +165,15 @@ fn main() {
 
     let map_name = "prontera";
     //    let map_name = "bat_a01"; // battle ground
+    log::info!(">>> Loading map");
     let map_render_data = load_map(
         &mut physics_world,
         &gl,
         map_name,
         &asset_loader,
         &mut asset_db,
-        config.quick_startup,
     );
+    log::info!("<<< Loading map");
 
     let command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands(
         get_all_effect_names(&asset_loader),
@@ -199,9 +200,14 @@ fn main() {
     };
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string()).unwrap();
+    log::info!(">>> load_str_effects");
     let (str_effects, str_effect_cache) = load_str_effects(&gl, &asset_loader, &mut asset_db);
+    log::info!(">>> load_str_effects");
     let opengl_render_sys = OpenGlRenderSystem::new(gl.clone(), &ttf_context, str_effect_cache);
+    log::info!(">>> Load sounds");
     let (maybe_sound_system, sounds) = init_audio_and_load_sounds(&sdl_context, &asset_loader);
+    log::info!("<<< Load sounds");
+    log::info!(">>> Populate SystemVariables");
     let sys_vars = SystemVariables::new(
         load_sprites(&gl, &asset_loader, &mut asset_db),
         load_texts(&gl, &ttf_context, &mut asset_db),
@@ -212,7 +218,9 @@ fn main() {
         sounds,
         0.0, // fix dt, used only in tests
     );
+    log::info!("<<< Populate SystemVariables");
 
+    log::info!(">>> register systems");
     let mut ecs_dispatcher = {
         let console_sys = ConsoleSystem::new(&command_defs);
         register_systems(
@@ -222,9 +230,10 @@ fn main() {
             false,
         )
     };
+    log::info!("<<< register systems");
+    log::info!(">>> add resources");
     ecs_world.add_resource(sys_vars);
-    ecs_world.add_resource(asset_loader);
-    ecs_world.add_resource(gl);
+    ecs_world.add_resource(gl.clone());
     ecs_world.add_resource(map_render_data);
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
@@ -238,6 +247,9 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
+    log::info!("<<< add resources");
+
+    log::info!(">>> create player");
     let desktop_client_char = CharEntityId(ecs_world.create_entity().build());
     let desktop_client_controller = ControllerEntityId(ecs_world.create_entity().build());
     components::char::attach_human_player_components(
@@ -250,10 +262,7 @@ fn main() {
             .read_resource::<SystemVariables>()
             .matrices
             .projection,
-        v2(
-            ecs_world.read_resource::<DevConfig>().start_pos_x,
-            ecs_world.read_resource::<DevConfig>().start_pos_y,
-        ),
+        v2(config.start_pos_x, config.start_pos_y),
         Sex::Male,
         JobId::CRUSADER,
         1,
@@ -265,8 +274,8 @@ fn main() {
         .insert(desktop_client_controller.0, ConsoleComponent::new());
 
     // add falcon to it
-    let start_x = ecs_world.read_resource::<DevConfig>().start_pos_x;
-    let start_y = ecs_world.read_resource::<DevConfig>().start_pos_y;
+    let start_x = config.start_pos_x;
+    let start_y = config.start_pos_y;
     let _falcon_id = ecs_world
         .create_entity()
         .with(FalconComponent::new(desktop_client_char, start_x, start_y))
@@ -281,6 +290,7 @@ fn main() {
         .build();
 
     ecs_world.maintain();
+    log::info!("<<< create player");
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
@@ -291,15 +301,21 @@ fn main() {
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
+    log::info!(">>> bind websocket");
     let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
     websocket_server.set_nonblocking(true).unwrap();
+    log::info!("<<< bind websocket");
 
+    log::info!(">>> start webserver");
     start_web_server();
+    log::info!("<<< start webserver");
 
     'running: loop {
+        asset_loader.process_async_loading(&gl, &mut ecs_world.write_resource::<AssetDatabase>());
+
         handle_new_connections(map_name, &mut ecs_world, &mut websocket_server);
 
-        handle_client_handshakes(&mut ecs_world);
+        handle_client_handshakes(&mut ecs_world, &config);
 
         let quit = !update_desktop_inputs(&mut video, &mut ecs_world, desktop_client_controller);
         if quit {
@@ -333,14 +349,11 @@ fn main() {
                 &mut physics_world,
                 &ecs_world.read_resource::<Gl>(),
                 &new_map_name,
-                &ecs_world.read_resource::<AssetLoader>(),
+                &asset_loader,
                 &mut ecs_world.write_resource::<AssetDatabase>(),
-                config.quick_startup,
             );
             *ecs_world.write_resource::<MapRenderData>() = map_render_data;
             ecs_world.add_resource(physics_world);
-
-            // TODO
         }
 
         video.gl_swap_window();
