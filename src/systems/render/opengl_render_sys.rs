@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use nalgebra::{Matrix3, Matrix4, Point2, Rotation3, Vector3};
+use nalgebra::{Point2, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
 
@@ -8,7 +8,7 @@ use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
 use crate::asset::texture::GlTexture;
 use crate::asset::AssetLoader;
-use crate::common::{rotate_vec2, v2_to_v3};
+use crate::common::{rotate_vec2, v2_to_v3, Mat3, Mat4};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;
 use crate::effect::StrEffectId;
@@ -69,7 +69,7 @@ pub struct OpenGlRenderSystem<'a, 'b> {
     circle_vertex_arrays: Vec<VertexArray>,
     fonts: Fonts<'a, 'b>,
 
-    identity_mat: Matrix4<f32>,
+    identity_mat: Mat4,
     shaders: Shaders,
     white_dummy_texture: GlTexture,
 }
@@ -193,7 +193,7 @@ struct EffectFrameCache {
     pub pos_vao: VertexArray,
     pub offset: [f32; 2],
     pub color: [u8; 4],
-    pub rotation_matrix: Matrix4<f32>,
+    pub rotation_matrix: Mat4,
     pub src_alpha: MyGlBlendEnum,
     pub dst_alpha: MyGlBlendEnum,
     pub texture_index: usize,
@@ -238,7 +238,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
 
         OpenGlRenderSystem {
             shaders: load_shaders(&gl),
-            identity_mat: Matrix4::identity(),
+            identity_mat: Mat4::identity(),
             circle_vertex_arrays,
             fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
@@ -546,22 +546,22 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
     }
 
     #[inline]
-    fn create_translation_matrix_for_2d(screen_pos: &[i16; 2], layer: UiLayer2d) -> Matrix4<f32> {
+    fn create_translation_matrix_for_2d(screen_pos: &[i16; 2], layer: UiLayer2d) -> Mat4 {
         let t = Vector3::new(
             screen_pos[0] as f32,
             screen_pos[1] as f32,
             (layer as usize as f32) * 0.01,
         );
-        return Matrix4::new_translation(&t);
+        return Mat4::new_translation(&t);
     }
 
     fn render_ground(
         gl: &Gl,
         ground_shader: &ShaderProgram<GroundShaderParameters>,
-        projection_matrix: &Matrix4<f32>,
+        projection_matrix: &Mat4,
         map_render_data: &MapRenderData,
-        model_view: &Matrix4<f32>,
-        normal_matrix: &Matrix3<f32>,
+        model_view: &Mat4,
+        normal_matrix: &Mat3,
         asset_db: &AssetDatabase,
     ) {
         let shader = ground_shader.gl_use(gl);
@@ -861,7 +861,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader
                             .params
                             .model_mat
-                            .set(gl, &Matrix4::new_translation(&command.pos));
+                            .set(gl, &Mat4::new_translation(&command.pos));
                         shader.params.rot_mat.set(
                             gl,
                             &create_3d_rot_matrix(&(Vector3::z(), command.rot_radian)),
@@ -900,8 +900,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader
                             .params
                             .model_mat
-                            .set(gl, &Matrix4::new_translation(&command.pos));
-                        shader.params.rot_mat.set(gl, &Matrix4::identity());
+                            .set(gl, &Mat4::new_translation(&command.pos));
+                        shader.params.rot_mat.set(gl, &Mat4::identity());
                         shader.params.color.set(gl, &command.color);
 
                         self.create_number_vertex_array(&gl, command.value)
@@ -1168,7 +1168,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader
                             .params
                             .model_mat
-                            .set(gl, &Matrix4::new_translation(&command.pos));
+                            .set(gl, &Mat4::new_translation(&command.pos));
                         shader
                             .params
                             .scale

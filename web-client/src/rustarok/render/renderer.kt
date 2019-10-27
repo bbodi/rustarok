@@ -54,37 +54,28 @@ class Renderer(gl: WebGL2RenderingContext) {
     }
 
     fun render(gl: WebGL2RenderingContext) {
-
         ground_renderer.render_ground(gl, ground_render_command)
-
         sprite_3d_renderer.render_sprites(gl, sprite_render_commands, centered_sprite_vertex_buffer)
-
         sprite_3d_renderer.render_numbers(gl, number_render_commands)
-
         effect_3d_renderer.render_effects(gl, effect3d_render_commands, effects)
-
         model_renderer.render_models(gl,
                                      model3d_render_commands,
                                      ground_render_command,
                                      models,
                                      model_instances)
-
         trimesh_3d_renderer.render_all_trimeshes(
                 gl,
                 circle3d_render_commands,
                 rectangle3d_render_commands,
                 trimesh_3d_commands[0]
         );
-
         horizontal_texture_renderer.render(gl,
                                            horizontal_texture_3d_commands,
                                            centered_sprite_vertex_buffer)
-
         rectangle_2d_renderer.render_partial_circles(gl, partial_circle2d_render_commands)
         rectangle_2d_renderer.render_rectangles(gl,
                                                 rectangle2d_render_commands,
                                                 sprite_vertex_buffer)
-
         texture_2d_renderer.render_texture_2d(gl, texture2d_render_commands, sprite_vertex_buffer)
     }
 }

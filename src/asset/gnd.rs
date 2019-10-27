@@ -5,6 +5,7 @@ use sdl2::rect::Rect;
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::common::v3;
 use crate::my_gl::{Gl, MyGlEnum};
 
 pub struct Gnd {
@@ -94,7 +95,7 @@ impl Gnd {
         let mut mesh = Vec::<MeshVertex>::with_capacity((width * height * 3 * 6) as usize);
         let mut water = Vec::<WaterVertex>::with_capacity((width * height * 3 / 2 * 6) as usize);
 
-        let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
+        let mut v = v3(0.0, 0.0, 0.0);
         let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
         let mut rotate_around_x_axis = |mut pos: [f32; 3]| {
             v.x = pos[0];

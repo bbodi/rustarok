@@ -1,3 +1,4 @@
+use crate::common::{v2, Vec2, Vec2u};
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
@@ -13,7 +14,7 @@ use specs::{Entity, LazyUpdate};
 pub struct HealApplierArea {
     pub collider_handle: DefaultColliderHandle,
     pub extents: Vector2<u16>,
-    pub pos: Vector2<f32>,
+    pub pos: Vec2,
     pub name: &'static str,
     pub attack_type: HpModificationType,
     pub interval: f32,
@@ -25,14 +26,17 @@ impl HealApplierArea {
     pub fn new(
         name: &'static str,
         attack_type: HpModificationType,
-        skill_center: &Vector2<f32>,
-        size: Vector2<u16>,
+        skill_center: &Vec2,
+        size: Vec2u,
         interval: f32,
         caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> HealApplierArea {
-        let (collider_handle, _body_handle) =
-            physics_world.add_cuboid_skill_area(*skill_center, 0.0, v2!(size.x, size.y));
+        let (collider_handle, _body_handle) = physics_world.add_cuboid_skill_area(
+            *skill_center,
+            0.0,
+            v2(size.x as f32, size.y as f32),
+        );
 
         HealApplierArea {
             collider_handle,

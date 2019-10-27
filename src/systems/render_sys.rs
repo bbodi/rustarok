@@ -1,12 +1,13 @@
 use crate::asset::database::AssetDatabase;
 use crate::cam::Camera;
+use crate::common::Vec2;
 use crate::components::char::{
     ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, EntityTarget,
     NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
-    HumanInputComponent, PlayerIntention, SkillKey, WorldCoord,
+    HumanInputComponent, PlayerIntention, SkillKey,
 };
 use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
@@ -875,7 +876,7 @@ pub fn render_action(
     now: ElapsedTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
-    pos: &Vector2<f32>,
+    pos: &Vec2,
     pos_offset: [i32; 2],
     is_main: bool,
     size_multiplier: f32,
@@ -972,7 +973,7 @@ pub fn render_action(
 }
 
 fn render_models(
-    char_pos: Option<&Vector2<f32>>,
+    char_pos: Option<&Vec2>,
     camera: &Camera,
     map_render_data: &MapRenderData,
     asset_db: &AssetDatabase,
@@ -992,7 +993,7 @@ fn render_models(
                 || ((max.z < cam_pos.z - 70.0 || max.z > cam_pos.z + 5.0)
                     && (min.z < cam_pos.z - 70.0 || min.z > cam_pos.z + 5.0))
             {
-                continue;
+                //                continue;
             }
             let model_render_data = asset_db.get_model(model_instance.asset_db_model_index);
             let alpha = if let Some(char_pos) = char_pos {
@@ -1446,7 +1447,7 @@ impl RenderDesktopClientSystem {
     pub fn render_str<E>(
         effect: E,
         start_time: ElapsedTime,
-        world_pos: &WorldCoord,
+        world_pos: &Vec2,
         sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,

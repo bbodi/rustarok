@@ -1,7 +1,8 @@
+use crate::common::{v2, Vec2};
 use crate::components::char::{
     CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType, Skills};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
@@ -26,9 +27,9 @@ impl SkillDef for GazBarricadeSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -43,7 +44,7 @@ impl SkillDef for GazBarricadeSkill {
             updater.insert(char_entity_id.0, NpcComponent);
             let pos2d = {
                 let pos = skill_pos.unwrap();
-                Vector2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
+                Vec2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
             };
             CharacterEntityBuilder::new(char_entity_id, "barricade")
                 .insert_sprite_render_descr_component(updater)
@@ -73,15 +74,15 @@ impl SkillDef for GazBarricadeSkill {
     fn render_target_selection(
         &self,
         is_castable: bool,
-        skill_pos: &WorldCoord,
-        char_to_skill_dir: &Vector2<f32>,
+        skill_pos: &Vec2,
+        char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
-        let pos2d = { Vector2::new((skill_pos.x as i32) as f32, (skill_pos.y as i32) as f32) };
+        let pos2d = { Vec2::new((skill_pos.x as i32) as f32, (skill_pos.y as i32) as f32) };
         Skills::render_casting_box(
             is_castable,
-            &Vector2::new(1.0, 1.0),
+            &v2(1.0, 1.0),
             &pos2d,
             &Vector2::zeros(),
             render_commands,

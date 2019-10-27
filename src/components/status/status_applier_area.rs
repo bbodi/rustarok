@@ -1,3 +1,4 @@
+use crate::common::{v2, Vec2};
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
@@ -16,7 +17,7 @@ where
 {
     pub collider_handle: DefaultColliderHandle,
     pub extents: Vector2<u16>,
-    pub pos: Vector2<f32>,
+    pub pos: Vec2,
     pub name: String,
     pub status_creator: F,
     pub caster_entity_id: CharEntityId,
@@ -30,13 +31,16 @@ where
     pub fn new(
         name: String,
         status_creator: F,
-        skill_center: &Vector2<f32>,
+        skill_center: &Vec2,
         size: Vector2<u16>,
         caster_entity_id: CharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
-        let (collider_handle, _body_handle) =
-            physics_world.add_cuboid_skill_area(*skill_center, 0.0, v2!(size.x, size.y));
+        let (collider_handle, _body_handle) = physics_world.add_cuboid_skill_area(
+            *skill_center,
+            0.0,
+            v2(size.x as f32, size.y as f32),
+        );
         StatusApplierArea {
             collider_handle,
             name,

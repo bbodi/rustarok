@@ -1,16 +1,15 @@
-use nalgebra::{Vector2, Vector3};
 use specs::{Entity, LazyUpdate};
 
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharAttributes, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillManifestation, SkillManifestationComponent, WorldCollisions,
 };
 
-use crate::common::ElapsedTime;
+use crate::common::{v2, v3, ElapsedTime, Vec2};
 use crate::components::char::Percentage;
 use crate::components::{
     DamageDisplayType, HpModificationRequest, HpModificationType, SoundEffectComponent,
@@ -39,8 +38,8 @@ impl BasicAttack {
         &self,
         calculated_attribs: &CharAttributes,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        target_pos: Vector2<f32>,
+        caster_pos: Vec2,
+        target_pos: Vec2,
         target_entity_id: CharEntityId,
         sys_vars: &mut SystemVariables,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -98,9 +97,9 @@ pub enum WeaponType {
 
 struct BasicRangeAttackBullet {
     attack_speed: f32,
-    start_pos: WorldCoord,
-    target_pos: WorldCoord,
-    current_pos: WorldCoord,
+    start_pos: Vec2,
+    target_pos: Vec2,
+    current_pos: Vec2,
     caster_id: CharEntityId,
     target_id: CharEntityId,
     started_at: ElapsedTime,
@@ -112,10 +111,10 @@ struct BasicRangeAttackBullet {
 impl BasicRangeAttackBullet {
     fn new(
         attack_speed: f32,
-        start_pos: WorldCoord,
+        start_pos: Vec2,
         caster_id: CharEntityId,
         target_id: CharEntityId,
-        target_pos: WorldCoord,
+        target_pos: Vec2,
         now: ElapsedTime,
         bullet_type: WeaponType,
         now_tick: u64,
@@ -123,8 +122,8 @@ impl BasicRangeAttackBullet {
         BasicRangeAttackBullet {
             attack_speed,
             start_pos,
-            current_pos: Vector2::new(0.0, 0.0),
-            target_pos: Vector2::new(0.0, 0.0),
+            current_pos: v2(0.0, 0.0),
+            target_pos: v2(0.0, 0.0),
             caster_id,
             target_id,
             started_at: now,
@@ -227,7 +226,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
             now,
             &anim,
             spr,
-            &Vector3::new(self.current_pos.x, 2.0, self.current_pos.y),
+            &v3(self.current_pos.x, 2.0, self.current_pos.y),
             [0, 0],
             false,
             scale,

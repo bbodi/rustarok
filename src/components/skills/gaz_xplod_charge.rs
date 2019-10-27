@@ -1,11 +1,12 @@
-use nalgebra::{Isometry2, Vector2, Vector3};
+use nalgebra::{Isometry2, Vector3};
 use specs::{Entity, LazyUpdate};
 
 use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
+use crate::common::{v3, Vec2};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
@@ -38,9 +39,9 @@ impl SkillDef for GazXplodiumChargeSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -65,8 +66,8 @@ impl SkillDef for GazXplodiumChargeSkill {
 }
 
 struct GazXplodiumChargeSkillManifestation {
-    start_pos: WorldCoord,
-    end_pos: WorldCoord,
+    start_pos: Vec2,
+    end_pos: Vec2,
     current_pos: Vector3<f32>,
     current_target_pos: Vector3<f32>,
     caster_id: CharEntityId,
@@ -78,13 +79,13 @@ struct GazXplodiumChargeSkillManifestation {
 impl GazXplodiumChargeSkillManifestation {
     fn new(
         caster_id: CharEntityId,
-        start_pos: WorldCoord,
-        end_pos: WorldCoord,
+        start_pos: Vec2,
+        end_pos: Vec2,
         physics_world: &mut PhysicEngine,
         now: ElapsedTime,
         configs: GazXplodiumChargeSkillConfigInner,
     ) -> GazXplodiumChargeSkillManifestation {
-        let ctrl = v2_to_v3(&(start_pos - (end_pos - start_pos))) + v3!(0, 20.0, 0);
+        let ctrl = v2_to_v3(&(start_pos - (end_pos - start_pos))) + v3(0.0, 20.0, 0.0);
         GazXplodiumChargeSkillManifestation {
             start_pos,
             end_pos,
@@ -122,7 +123,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
         );
         if travel_duration_percentage < 1.0 {
             let pos = self.bezier.evaluate(travel_duration_percentage);
-            self.current_pos = v3!(pos.x, pos.y, pos.z);
+            self.current_pos = v3(pos.x, pos.y, pos.z);
         } else {
             let end_time = self
                 .started_at

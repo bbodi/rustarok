@@ -7,9 +7,9 @@ use serde::Deserialize;
 use specs::prelude::*;
 use strum_macros::EnumIter;
 
-use crate::common::v2_to_v3;
+use crate::common::{v2_to_v3, Vec2};
 use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
 use crate::components::skills::cure::CURE_SKILL;
@@ -124,10 +124,10 @@ unsafe impl Send for SkillManifestationComponent {}
 pub struct FinishCast {
     pub skill: Skills,
     pub caster_entity_id: CharEntityId,
-    pub caster_pos: WorldCoord,
+    pub caster_pos: Vec2,
     pub caster_team: Team,
-    pub skill_pos: Option<WorldCoord>,
-    pub char_to_skill_dir: Vector2<f32>,
+    pub skill_pos: Option<Vec2>,
+    pub char_to_skill_dir: Vec2,
     pub target_entity: Option<CharEntityId>,
 }
 
@@ -136,9 +136,9 @@ pub trait SkillDef {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<WorldCoord>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>>;
@@ -146,7 +146,7 @@ pub trait SkillDef {
     fn get_skill_target_type(&self) -> SkillTargetType;
     fn render_casting(
         &self,
-        char_pos: &Vector2<f32>,
+        char_pos: &Vec2,
         casting_state: &CastingSkillData,
         sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
@@ -182,8 +182,8 @@ pub trait SkillDef {
     fn render_target_selection(
         &self,
         _is_castable: bool,
-        _skill_pos: &Vector2<f32>,
-        _char_to_skill_dir: &Vector2<f32>,
+        _skill_pos: &Vec2,
+        _char_to_skill_dir: &Vec2,
         _render_commands: &mut RenderCommandCollector,
         _configs: &DevConfig,
     ) {
@@ -237,9 +237,9 @@ impl SkillDef for AttackMoveSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<WorldCoord>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -334,11 +334,7 @@ impl Skills {
         self.get_definition().get_skill_target_type()
     }
 
-    pub fn limit_vector_into_range(
-        char_pos: &Vector2<f32>,
-        mouse_pos: &WorldCoord,
-        range: f32,
-    ) -> (Vector2<f32>, Vector2<f32>) {
+    pub fn limit_vector_into_range(char_pos: &Vec2, mouse_pos: &Vec2, range: f32) -> (Vec2, Vec2) {
         let dir2d = mouse_pos - char_pos;
         let dir_vector = dir2d.normalize();
         let pos = char_pos + dir_vector * dir2d.magnitude().min(range);
@@ -347,9 +343,9 @@ impl Skills {
 
     pub fn render_casting_box(
         is_castable: bool,
-        casting_area_size: &Vector2<f32>,
-        skill_pos: &Vector2<f32>,
-        char_to_skill_dir: &Vector2<f32>,
+        casting_area_size: &Vec2,
+        skill_pos: &Vec2,
+        char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
     ) {
         let angle = char_to_skill_dir.angle(&Vector2::y());

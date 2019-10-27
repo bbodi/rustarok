@@ -1,5 +1,6 @@
 use crate::asset::gat::CellType;
 use crate::asset::AssetLoader;
+use crate::common::{v2, v2u, Vec2};
 use crate::components::char::Team;
 use crate::components::char::{
     attach_human_player_components, percentage, ActionPlayMode, CharActionIndex, CharOutlook,
@@ -7,7 +8,6 @@ use crate::components::char::{
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
-    WorldCoord,
 };
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::fire_bomb::FireBombStatus;
@@ -38,7 +38,6 @@ use crate::systems::input_sys_scancodes::ScancodeNames;
 use crate::systems::{Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
-use nalgebra::Vector2;
 use rand::Rng;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
@@ -433,7 +432,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             };
             let count = args.as_int(2).unwrap_or(1);
             let pos2d = match (args.as_int(3), args.as_int(4)) {
-                (Some(x), Some(y)) => v2!(x, y),
+                (Some(x), Some(y)) => v2(x as f32, y as f32),
                 _ => {
                     let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                     let hero_pos = {
@@ -454,7 +453,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             break (x, y);
                         }
                     };
-                    v2!(x, -y)
+                    v2(x, -y)
                 }
             };
             let outlook = args
@@ -506,7 +505,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
 
 fn create_guard(
     ecs_world: &mut World,
-    pos2d: WorldCoord,
+    pos2d: Vec2,
     team: Team,
     outlook: Option<CharOutlook>,
     y: f32,
@@ -538,7 +537,7 @@ fn create_guard(
 
 fn create_dummy(
     ecs_world: &mut World,
-    pos2d: WorldCoord,
+    pos2d: Vec2,
     job_id: JobId,
     outlook: Option<CharOutlook>,
 ) -> CharEntityId {
@@ -581,7 +580,7 @@ fn create_dummy(
 
 fn create_random_char_minion(
     ecs_world: &mut World,
-    pos2d: WorldCoord,
+    pos2d: Vec2,
     team: Team,
     job_id: JobId,
     outlook: Option<CharOutlook>,
@@ -856,7 +855,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                     let char_state = storage.get(self_char_id.0).unwrap();
                     (char_state.pos(), char_state.team)
                 };
-                (v2!(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
+                (v2(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
             };
             let area_status_id = ecs_world.create_entity().build();
             ecs_world
@@ -870,7 +869,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                 "Heal",
                                 HpModificationType::Heal(value.max(0) as u32),
                                 &pos,
-                                Vector2::new(width, height),
+                                v2u(width, height),
                                 interval,
                                 self_char_id,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -883,7 +882,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                     WeaponType::Sword,
                                 ),
                                 &pos,
-                                Vector2::new(width, height),
+                                v2u(width, height),
                                 interval,
                                 self_char_id,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -904,7 +903,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                                         .unwrap()
                                     },
                                     &pos,
-                                    Vector2::new(width, height),
+                                    v2u(width, height),
                                     self_char_id,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
                                 ))

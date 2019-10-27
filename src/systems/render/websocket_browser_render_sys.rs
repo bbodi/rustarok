@@ -1,3 +1,4 @@
+use crate::common::{Mat3, Mat4, Vec2};
 use crate::components::BrowserClient;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectId;
@@ -10,7 +11,6 @@ use crate::systems::render::render_command::{
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use byteorder::{LittleEndian, WriteBytesExt};
-use nalgebra::{Matrix3, Matrix4, Vector2};
 use specs::prelude::*;
 use std::collections::VecDeque;
 
@@ -162,13 +162,13 @@ impl WebSocketBrowserRenderSystem {
         }
     }
 
-    fn write3x3(send_buffer: &mut Vec<u8>, mat: &Matrix3<f32>) {
+    fn write3x3(send_buffer: &mut Vec<u8>, mat: &Mat3) {
         for v in mat.as_slice() {
             send_buffer.write_f32::<LittleEndian>(*v).unwrap();
         }
     }
 
-    fn write4x4(send_buffer: &mut Vec<u8>, mat: &Matrix4<f32>) {
+    fn write4x4(send_buffer: &mut Vec<u8>, mat: &Mat4) {
         for v in mat.as_slice() {
             send_buffer.write_f32::<LittleEndian>(*v).unwrap();
         }
@@ -202,7 +202,7 @@ impl WebSocketBrowserRenderSystem {
 
     fn send_3d_effect_commands(
         send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<(StrEffectId, i32, Vector2<f32>)>,
+        render_commands: &Vec<(StrEffectId, i32, Vec2)>,
     ) {
         send_buffer
             .write_u32::<LittleEndian>(render_commands.len() as u32)

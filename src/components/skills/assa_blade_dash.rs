@@ -1,12 +1,12 @@
 use nalgebra::{Isometry2, Vector2};
 use specs::{Entities, LazyUpdate};
 
-use crate::common::{v2_to_v3, ElapsedTime};
+use crate::common::{v2, v2_to_v3, ElapsedTime, Vec2};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharOutlook, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
@@ -31,9 +31,9 @@ impl SkillDef for AssaBladeDashSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -91,13 +91,13 @@ pub struct AssaBladeDashStatus {
     pub caster_entity_id: CharEntityId,
     pub started_at: ElapsedTime,
     pub ends_at: ElapsedTime,
-    pub start_pos: WorldCoord,
-    pub center: WorldCoord,
+    pub start_pos: Vec2,
+    pub center: Vec2,
     pub rot_radian: f32,
     pub half_duration: f32,
-    pub vector: WorldCoord,
-    pub shadow1_pos: WorldCoord,
-    pub shadow2_pos: WorldCoord,
+    pub vector: Vec2,
+    pub shadow1_pos: Vec2,
+    pub shadow2_pos: Vec2,
     pub forward_damage_done: bool,
     pub backward_damage_done: bool,
     pub configs: AssaBladeDashSkillConfig,
@@ -168,7 +168,7 @@ impl Status for AssaBladeDashStatus {
                 if !self.forward_damage_done && duration_percentage > 0.25 {
                     sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
-                            Vector2::new(
+                            v2(
                                 self.configs.attributes.width.unwrap_or(1.0),
                                 self.configs.attributes.casting_range,
                             ) / 2.0,
@@ -186,7 +186,7 @@ impl Status for AssaBladeDashStatus {
                 } else if !self.backward_damage_done && duration_percentage > 0.75 {
                     sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
                         area_shape: Box::new(ncollide2d::shape::Cuboid::new(
-                            Vector2::new(
+                            v2(
                                 self.configs.attributes.width.unwrap_or(1.0),
                                 self.configs.attributes.casting_range,
                             ) / 2.0,

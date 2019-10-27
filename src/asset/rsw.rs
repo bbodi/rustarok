@@ -1,4 +1,5 @@
 use crate::asset::BinaryReader;
+use crate::common::v3;
 use nalgebra::Vector3;
 use std::borrow::ToOwned;
 
@@ -203,13 +204,13 @@ impl Rsw {
                     block_type: if version >= 1.3 { buf.next_i32() } else { 0 },
                     filename: buf.string(80),
                     node_name: buf.string(80),
-                    pos: Vector3::<f32>::new(
+                    pos: v3(
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                     ),
-                    rot: Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32()),
-                    scale: Vector3::<f32>::new(
+                    rot: v3(buf.next_f32(), buf.next_f32(), buf.next_f32()),
+                    scale: v3(
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
@@ -217,7 +218,7 @@ impl Rsw {
                 }),
                 2 => lights.push(MapLight {
                     name: buf.string(80),
-                    pos: Vector3::<f32>::new(
+                    pos: v3(
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
@@ -228,7 +229,7 @@ impl Rsw {
                 3 => sounds.push(MapSound {
                     name: buf.string(80),
                     file: buf.string(80),
-                    pos: Vector3::<f32>::new(
+                    pos: v3(
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
@@ -241,7 +242,7 @@ impl Rsw {
                 }),
                 4 => effects.push(MapEffect {
                     name: buf.string(80),
-                    pos: Vector3::<f32>::new(
+                    pos: v3(
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,
                         buf.next_f32() / 5.0,

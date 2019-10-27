@@ -1,8 +1,9 @@
-use nalgebra::{Isometry2, Vector2};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate};
 
+use crate::common::{v2, Vec2};
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
@@ -27,9 +28,9 @@ impl SkillDef for SanctuarySkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -51,16 +52,16 @@ impl SkillDef for SanctuarySkill {
     fn render_target_selection(
         &self,
         is_castable: bool,
-        skill_pos: &Vector2<f32>,
-        char_to_skill_dir: &Vector2<f32>,
+        skill_pos: &Vec2,
+        char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
         Skills::render_casting_box(
             is_castable,
-            &Vector2::new(5.0, 5.0),
+            &v2(5.0, 5.0),
             skill_pos,
-            &v2!(0.0, 0.0),
+            &v2(0.0, 0.0),
             render_commands,
         );
     }
@@ -68,7 +69,7 @@ impl SkillDef for SanctuarySkill {
 
 pub struct SanctuarySkillManifest {
     pub caster_entity_id: CharEntityId,
-    pub pos: Vector2<f32>,
+    pub pos: Vec2,
     pub created_at: ElapsedTime,
     pub die_at: ElapsedTime,
     pub next_heal_at: ElapsedTime,
@@ -79,7 +80,7 @@ pub struct SanctuarySkillManifest {
 impl SanctuarySkillManifest {
     pub fn new(
         caster_entity_id: CharEntityId,
-        skill_center: &Vector2<f32>,
+        skill_center: &Vec2,
         heal: u32,
         heal_freq: f32,
         system_time: ElapsedTime,
@@ -116,7 +117,7 @@ impl SkillManifestation for SanctuarySkillManifest {
             }
             self.next_heal_at = sys_vars.time.add_seconds(self.heal_freq);
             sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
-                area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2!(2.5, 2.5))),
+                area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2(2.5, 2.5))),
                 area_isom: Isometry2::new(self.pos, 0.0),
                 source_entity_id: self.caster_entity_id,
                 typ: HpModificationType::Heal(self.heal),

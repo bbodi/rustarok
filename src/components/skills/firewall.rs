@@ -4,9 +4,9 @@ use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use specs::{Entity, LazyUpdate};
 
-use crate::common::rotate_vec2;
+use crate::common::{rotate_vec2, v2, Vec2, Vec2i};
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
     WorldCollisions,
@@ -35,9 +35,9 @@ impl SkillDef for FireWallSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -83,14 +83,14 @@ impl SkillDef for FireWallSkill {
     fn render_target_selection(
         &self,
         is_castable: bool,
-        skill_pos: &Vector2<f32>,
-        char_to_skill_dir: &Vector2<f32>,
+        skill_pos: &Vec2,
+        char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
         configs: &DevConfig,
     ) {
         Skills::render_casting_box(
             is_castable,
-            &Vector2::new(configs.skills.firewall.width as f32, 1.0),
+            &v2(configs.skills.firewall.width as f32, 1.0),
             skill_pos,
             char_to_skill_dir,
             render_commands,
@@ -102,8 +102,8 @@ pub struct PushBackWallSkill {
     caster_entity_id: CharEntityId,
     collider_handle: DefaultColliderHandle,
     effect_ids: Vec<Entity>,
-    extents: Vector2<u16>,
-    pos: Vector2<f32>,
+    extents: Vec2i,
+    pos: Vec2,
     rot_angle_in_rad: f32,
     created_at: ElapsedTime,
     die_at: ElapsedTime,
@@ -123,7 +123,7 @@ impl PushBackWallSkill {
         pushback_force: f32,
         force_duration_seconds: f32,
         physics_world: &mut PhysicEngine,
-        skill_center: &Vector2<f32>,
+        skill_center: &Vec2,
         rot_angle_in_rad: f32,
         system_time: ElapsedTime,
         tick: u64,
@@ -136,7 +136,7 @@ impl PushBackWallSkill {
             .map(|x| {
                 let x = x as f32;
                 let x = x - (width as f32 / 2.0);
-                skill_center + rotate_vec2(rot_angle_in_rad, &v2!(x, 0.0))
+                skill_center + rotate_vec2(rot_angle_in_rad, &v2(x, 0.0))
             })
             .map(|effect_coords| {
                 let effect_comp = StrEffectComponent {
@@ -152,9 +152,9 @@ impl PushBackWallSkill {
             })
             .collect();
 
-        let extents = Vector2::new(3, 1);
+        let extents = Vec2i::new(3, 1);
         let (collider_handle, _body_handle) =
-            physics_world.add_cuboid_skill_area(*skill_center, rot_angle_in_rad, v2!(3, 1));
+            physics_world.add_cuboid_skill_area(*skill_center, rot_angle_in_rad, v2(3.0, 1.0));
 
         PushBackWallSkill {
             caster_entity_id,
@@ -218,7 +218,7 @@ impl SkillManifestation for PushBackWallSkill {
                         }
                         let push_dir = self.pos - target_char.pos();
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
-                            v2!(1, 0) // "random"
+                            v2(1.0, 0.0) // "random"
                         } else {
                             -push_dir.normalize()
                         };

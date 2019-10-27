@@ -1,12 +1,11 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
+use crate::common::{v3, Mat3, Mat4, Vec3};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
 use crate::video::{VertexArray, VertexAttribDefinition};
-use nalgebra::{
-    Matrix3, Matrix4, Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3, Vector4,
-};
+use nalgebra::{Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector4};
 use std::collections::HashMap;
 
 fn init_vec<T, F>(size: u32, def: T, mut init_func: F) -> Vec<T>
@@ -44,45 +43,23 @@ pub struct RsmNodeVertex {
 
 #[derive(Debug, Clone)]
 pub struct BoundingBox {
-    pub min: Point3<f32>,
-    pub max: Point3<f32>,
-    pub range: Vector3<f32>,
-    pub center: Point3<f32>,
+    pub min: Vec3,
+    pub max: Vec3,
+    pub range: Vec3,
+    pub center: Vec3,
 }
 
 impl BoundingBox {
     fn new() -> BoundingBox {
         BoundingBox {
-            min: Point3::new(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
-            max: Point3::new(
+            min: v3(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
+            max: v3(
                 std::f32::NEG_INFINITY,
                 std::f32::NEG_INFINITY,
                 std::f32::NEG_INFINITY,
             ),
-            range: v3!(0.0, 0.0, 0.0),
-            center: Point3::new(0.0, 0.0, 0.0),
-        }
-    }
-
-    pub fn apply_matrix(&self, matrix: &Matrix4<f32>) -> BoundingBox {
-        let tmin = matrix.transform_point(&self.min);
-        let tmax = matrix.transform_point(&self.max);
-        let min = p3!(
-            tmin[0].min(tmax[0]),
-            tmin[1].min(tmax[1]),
-            tmin[2].max(tmax[2])
-        );
-        let max = p3!(
-            tmax[0].max(tmin[0]),
-            tmax[1].max(tmin[1]),
-            tmax[2].min(tmin[2])
-        );
-        let range = (max - min) / 2.0;
-        BoundingBox {
-            min,
-            max,
-            range,
-            center: min + range,
+            range: v3(0.0, 0.0, 0.0),
+            center: v3(0.0, 0.0, 0.0),
         }
     }
 }
@@ -92,14 +69,14 @@ pub struct RsmNode {
     pub name: String,
     pub parent_name: String,
     pub textures: Vec<u32>,
-    pub mat3: Matrix3<f32>,
-    pub matrix: Matrix4<f32>,
-    pub offset: Vector3<f32>,
-    pub pos: Vector3<f32>,
+    pub mat3: Mat3,
+    pub matrix: Mat4,
+    pub offset: Vec3,
+    pub pos: Vec3,
     pub rotangle: f32,
-    pub rotaxis: Vector3<f32>,
-    pub scale: Vector3<f32>,
-    pub vertices: Vec<Point3<f32>>,
+    pub rotaxis: Vec3,
+    pub scale: Vec3,
+    pub vertices: Vec<Vec3>,
     pub bounding_box: BoundingBox,
     pub mesh: Vec<RsmNodeVertex>,
     pub texture_vertices: Vec<f32>,
@@ -149,7 +126,7 @@ impl RsmNode {
             *item = buf.next_u32();
         });
 
-        let mat3 = Matrix3::<f32>::new(
+        let mat3 = Mat3::new(
             buf.next_f32(),
             buf.next_f32(),
             buf.next_f32(),
@@ -161,16 +138,15 @@ impl RsmNode {
             buf.next_f32(),
         )
         .transpose();
-        let offset = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
-        let pos = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
+        let offset = v3(buf.next_f32(), buf.next_f32(), buf.next_f32());
+        let pos = v3(buf.next_f32(), buf.next_f32(), buf.next_f32());
         let rotangle = buf.next_f32();
-        let rotaxis = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
-        let scale = Vector3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
+        let rotaxis = v3(buf.next_f32(), buf.next_f32(), buf.next_f32());
+        let scale = v3(buf.next_f32(), buf.next_f32(), buf.next_f32());
 
-        let vertices: Vec<Point3<f32>> =
-            init_vec(buf.next_u32(), Point3::<f32>::new(0.0, 0.0, 0.0), |item| {
-                *item = Point3::<f32>::new(buf.next_f32(), buf.next_f32(), buf.next_f32());
-            });
+        let vertices: Vec<Vec3> = init_vec(buf.next_u32(), v3(0.0, 0.0, 0.0), |item| {
+            *item = v3(buf.next_f32(), buf.next_f32(), buf.next_f32());
+        });
 
         let texture_vertices: Vec<f32> = {
             let mut texture_vertices: Vec<f32> = vec![0.0f32; buf.next_u32() as usize * 6];
@@ -243,7 +219,7 @@ impl RsmNode {
             faces,
             pos_key_frames,
             rot_key_frames,
-            matrix: Matrix4::identity(),
+            matrix: Mat4::identity(),
             mesh: Vec::new(), // dummy
             bounding_box: BoundingBox::new(),
         }
@@ -310,7 +286,7 @@ impl Rsm {
             main_node_index,
             &mut nodes,
             is_only,
-            &Matrix4::identity(),
+            &Mat4::identity(),
         );
 
         let mut bbox = BoundingBox::new();
@@ -450,7 +426,7 @@ impl Rsm {
         parent_node_index: usize,
         nodes: &mut Vec<RsmNode>,
         is_only: bool,
-        parent_matrix: &Matrix4<f32>,
+        parent_matrix: &Mat4,
     ) {
         let parent_node_name_of_parent = nodes[parent_node_index].parent_name.clone();
         {
@@ -474,7 +450,7 @@ impl Rsm {
         }
     }
 
-    fn calc_matrix(node: &RsmNode, parent_matrix: &Matrix4<f32>) -> Matrix4<f32> {
+    fn calc_matrix(node: &RsmNode, parent_matrix: &Mat4) -> Mat4 {
         let mut node_matrix = parent_matrix.clone();
 
         node_matrix.prepend_translation_mut(&node.pos);
@@ -505,7 +481,7 @@ impl Rsm {
         let mut bbox = BoundingBox::new();
 
         for vert in node.vertices.iter() {
-            let v = node_local_matrix.transform_point(&vert);
+            let v = node_local_matrix.transform_point(&Point3::new(vert.x, vert.y, vert.z));
             for i in 0..3 {
                 bbox.min[i] = v[i].min(bbox.min[i]);
                 bbox.max[i] = v[i].max(bbox.max[i]);
@@ -528,8 +504,8 @@ impl Rsm {
         let verts = &node.vertices;
         let tverts = &node.texture_vertices;
 
-        let mut matrix = Matrix4::<f32>::identity();
-        matrix.prepend_translation_mut(&Vector3::<f32>::new(
+        let mut matrix = Mat4::identity();
+        matrix.prepend_translation_mut(&v3(
             -model_bbox.center[0],
             -model_bbox.max[1],
             -model_bbox.center[2],
@@ -552,7 +528,7 @@ impl Rsm {
             }
             _/*NONE*/ => {
                 let normals = node.faces.iter().map(|_face| {
-                    v3!(-1.0f32, -1.0f32, -1.0f32)
+                    v3(-1.0f32, -1.0f32, -1.0f32)
                 }).collect();
                 Rsm::generate_mesh_flat(&matrix, faces, &verts, &tverts, normals)
             }
@@ -561,16 +537,17 @@ impl Rsm {
     }
 
     fn generate_mesh_flat(
-        matrix: &Matrix4<f32>,
+        matrix: &Mat4,
         faces: &[&NodeFace],
-        verts: &Vec<Point3<f32>>,
+        verts: &Vec<Vec3>,
         tverts: &Vec<f32>,
-        normals: Vec<Vector3<f32>>,
+        normals: Vec<Vec3>,
     ) -> Vec<RsmNodeVertex> {
         let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
         for (face, normal) in faces.iter().zip(normals) {
             for i in 0..3 {
-                let v = matrix.transform_point(&verts[face.vertex_index[i] as usize]);
+                let v = &verts[face.vertex_index[i] as usize];
+                let v = matrix.transform_point(&Point3::new(v.x, v.y, v.z));
                 let tid = face.texture_vertex_index[i] as usize * 6;
                 mesh.push(RsmNodeVertex {
                     pos: [v[0], v[1], v[2]],
@@ -583,17 +560,18 @@ impl Rsm {
     }
 
     fn generate_mesh_smooth(
-        matrix: &Matrix4<f32>,
+        matrix: &Mat4,
         faces: &[&NodeFace],
-        verts: &Vec<Point3<f32>>,
+        verts: &Vec<Vec3>,
         tverts: &Vec<f32>,
-        normal_groups: [Vec<Vector3<f32>>; 32],
+        normal_groups: [Vec<Vec3>; 32],
     ) -> Vec<RsmNodeVertex> {
         let mut mesh: Vec<RsmNodeVertex> = Vec::with_capacity(faces.len() * 3);
         for face in faces {
             let normals = &normal_groups[face.smooth_group as usize];
             for i in 0..3 {
-                let v = matrix.transform_point(&verts[face.vertex_index[i] as usize]);
+                let v = &verts[face.vertex_index[i] as usize];
+                let v = matrix.transform_point(&Point3::new(v.x, v.y, v.z));
                 let normal = &normals[face.vertex_index[i] as usize];
                 let tid = face.texture_vertex_index[i] as usize * 6;
                 mesh.push(RsmNodeVertex {
@@ -606,12 +584,8 @@ impl Rsm {
         return mesh;
     }
 
-    fn calc_flat_normals(node: &RsmNode) -> (Vec<Vector3<f32>>, [bool; 32]) {
-        pub fn triangle_normal(
-            p1: &Vector3<f32>,
-            p2: &Vector3<f32>,
-            p3: &Vector3<f32>,
-        ) -> Vector3<f32> {
+    fn calc_flat_normals(node: &RsmNode) -> (Vec<Vec3>, [bool; 32]) {
+        pub fn triangle_normal(p1: &Vec3, p2: &Vec3, p3: &Vec3) -> Vec3 {
             (p2 - p1).cross(&(p3 - p1)).normalize()
         }
         let mut group_used = [false; 32];
@@ -621,9 +595,9 @@ impl Rsm {
             .map(|face| {
                 group_used[face.smooth_group as usize] = true;
                 triangle_normal(
-                    &node.vertices[face.vertex_index[0] as usize].coords,
-                    &node.vertices[face.vertex_index[1] as usize].coords,
-                    &node.vertices[face.vertex_index[2] as usize].coords,
+                    &node.vertices[face.vertex_index[0] as usize],
+                    &node.vertices[face.vertex_index[1] as usize],
+                    &node.vertices[face.vertex_index[2] as usize],
                 )
             })
             .collect();
@@ -632,17 +606,17 @@ impl Rsm {
 
     fn calc_smooth_normals(
         node: &RsmNode,
-        normals: Vec<Vector3<f32>>,
+        normals: Vec<Vec3>,
         group_used: [bool; 32],
-    ) -> [Vec<Vector3<f32>>; 32] {
-        let mut group: [Vec<Vector3<f32>>; 32] = Default::default();
+    ) -> [Vec<Vec3>; 32] {
+        let mut group: [Vec<Vec3>; 32] = Default::default();
         for group_index in 0..32 {
             if !group_used[group_index] {
                 continue;
             }
             group[group_index].reserve(node.vertices.len());
             for vertex_index in 0..node.vertices.len() {
-                let mut grouped_normal = v3!(0.0f32, 0.0f32, 0.0f32);
+                let mut grouped_normal = v3(0.0f32, 0.0f32, 0.0f32);
                 for (face_index, face) in node.faces.iter().enumerate() {
                     if face.smooth_group as usize == group_index
                         && (face.vertex_index[0] == vertex_index as u16

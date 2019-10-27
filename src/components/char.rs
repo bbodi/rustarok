@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use nalgebra::{Matrix4, Vector2};
+use crate::common::{v2, Mat4, Vec2};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::object::{
@@ -13,7 +13,7 @@ use specs::prelude::*;
 use crate::asset::SpriteResource;
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
-    SkillKey, WorldCoord,
+    SkillKey,
 };
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
 use crate::components::skills::skills::Skills;
@@ -58,8 +58,8 @@ pub fn attach_human_player_components(
     controller_id: ControllerEntityId,
     updater: &LazyUpdate,
     physics_world: &mut PhysicEngine,
-    projection_mat: Matrix4<f32>,
-    pos2d: WorldCoord,
+    projection_mat: Mat4,
+    pos2d: Vec2,
     sex: Sex,
     job_id: JobId,
     head_index: usize,
@@ -110,7 +110,7 @@ pub fn attach_human_player_components(
 //}
 
 pub struct CharPhysicsEntityBuilder<'a> {
-    pos2d: WorldCoord,
+    pos2d: Vec2,
     self_group: CollisionGroup,
     collider_shape: ShapeHandle<f32>,
     blacklist_groups: &'a [CollisionGroup],
@@ -118,7 +118,7 @@ pub struct CharPhysicsEntityBuilder<'a> {
 }
 
 impl<'a> CharPhysicsEntityBuilder<'a> {
-    pub fn new(pos2d: WorldCoord) -> CharPhysicsEntityBuilder<'a> {
+    pub fn new(pos2d: Vec2) -> CharPhysicsEntityBuilder<'a> {
         CharPhysicsEntityBuilder {
             pos2d,
             self_group: CollisionGroup::StaticModel,
@@ -215,10 +215,8 @@ impl<'a> CharPhysicsEntityBuilder<'a> {
     }
 
     pub fn rectangle(mut self, w: f32, h: f32) -> CharPhysicsEntityBuilder<'a> {
-        self.collider_shape = ShapeHandle::new(ncollide2d::shape::Cuboid::new(Vector2::new(
-            w / 2.0,
-            h / 2.0,
-        )));
+        self.collider_shape =
+            ShapeHandle::new(ncollide2d::shape::Cuboid::new(v2(w / 2.0, h / 2.0)));
         self
     }
 }
@@ -355,7 +353,7 @@ impl CharacterEntityBuilder {
 
     pub fn physics<F>(
         mut self,
-        pos2d: WorldCoord,
+        pos2d: Vec2,
         world: &mut PhysicEngine,
         phys_builder_fn: F,
     ) -> CharacterEntityBuilder
@@ -407,8 +405,8 @@ impl ComponentRadius {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CastingSkillData {
-    pub target_area_pos: Option<Vector2<f32>>,
-    pub char_to_skill_dir_when_casted: Vector2<f32>,
+    pub target_area_pos: Option<Vec2>,
+    pub char_to_skill_dir_when_casted: Vec2,
     pub target_entity: Option<CharEntityId>,
     pub cast_started: ElapsedTime,
     pub cast_ends: ElapsedTime,
@@ -419,7 +417,7 @@ pub struct CastingSkillData {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CharState {
     Idle,
-    Walking(Vector2<f32>),
+    Walking(Vec2),
     Sitting,
     PickingItem,
     StandBy,
@@ -534,8 +532,8 @@ impl SpriteBoundingRect {
 #[derive(Debug, Clone)]
 pub enum EntityTarget {
     OtherEntity(CharEntityId),
-    Pos(WorldCoord),
-    PosWhileAttacking(WorldCoord, Option<CharEntityId>),
+    Pos(Vec2),
+    PosWhileAttacking(Vec2, Option<CharEntityId>),
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
@@ -1157,7 +1155,7 @@ pub struct CharacterStateComponent {
     pub name: String,
     // characters also has names so it is possible to follow them with a camera
     pub basic_attack: BasicAttack,
-    pos: WorldCoord,
+    pos: Vec2,
     y: f32,
     pub team: Team,
     pub target: Option<EntityTarget>,
@@ -1246,7 +1244,7 @@ impl CharacterStateComponent {
             },
             job_id,
             name,
-            pos: v2!(0, 0),
+            pos: v2(0.0, 0.0),
             y,
             team,
             typ: char_type,
@@ -1327,7 +1325,7 @@ impl CharacterStateComponent {
         }
     }
 
-    pub fn set_pos_dont_use_it(&mut self, pos: WorldCoord) {
+    pub fn set_pos_dont_use_it(&mut self, pos: Vec2) {
         self.pos = pos;
     }
 
@@ -1335,7 +1333,7 @@ impl CharacterStateComponent {
         self.y = y;
     }
 
-    pub fn pos(&self) -> WorldCoord {
+    pub fn pos(&self) -> Vec2 {
         self.pos
     }
 

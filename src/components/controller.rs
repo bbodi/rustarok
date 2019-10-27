@@ -1,8 +1,8 @@
 use crate::cam::Camera;
+use crate::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
 use crate::components::skills::skills::Skills;
 use crate::ElapsedTime;
-use nalgebra::{Matrix3, Matrix4, Point3, Vector2};
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
 use specs::prelude::*;
@@ -33,9 +33,6 @@ impl KeyState {
         return self.just_released;
     }
 }
-
-pub type ScreenCoords = Vector2<u16>;
-pub type WorldCoord = Vector2<f32>;
 
 #[derive(PartialEq, Eq, Copy, Clone, EnumIter, Display, Hash, EnumCount)]
 pub enum SkillKey {
@@ -73,14 +70,14 @@ impl SkillKey {
 
 #[derive(Clone, Debug)]
 pub enum PlayerIntention {
-    MoveTowardsMouse(WorldCoord),
+    MoveTowardsMouse(Vec2),
     /// Move to the coordination, or if an enemy stands there, attack her.
-    MoveTo(WorldCoord),
+    MoveTo(Vec2),
     Attack(CharEntityId),
     /// Move to the coordination, attack any enemy on the way.
-    AttackTowards(WorldCoord),
+    AttackTowards(Vec2),
     /// bool = is self cast
-    Casting(Skills, bool, WorldCoord),
+    Casting(Skills, bool, Vec2),
 }
 
 #[derive(PartialEq, Eq, Debug, Deserialize, Clone, Copy)]
@@ -158,8 +155,8 @@ impl ControllerComponent {
 #[derive(Component, Clone)]
 pub struct CameraComponent {
     pub followed_controller: Option<ControllerEntityId>,
-    pub view_matrix: Matrix4<f32>,
-    pub normal_matrix: Matrix3<f32>,
+    pub view_matrix: Mat4,
+    pub normal_matrix: Mat3,
     pub camera: Camera,
     pub yaw: f32,
     pub pitch: f32,
@@ -169,18 +166,18 @@ impl CameraComponent {
     const YAW: f32 = 270.0;
     const PITCH: f32 = -60.0;
     pub fn new(followed_controller: Option<ControllerEntityId>) -> CameraComponent {
-        let camera = Camera::new(Point3::new(0.0, 40.0, 0.0));
+        let camera = Camera::new(v3(0.0, 40.0, 0.0));
         return CameraComponent {
             followed_controller,
-            view_matrix: Matrix4::identity(), // it is filled before every frame
-            normal_matrix: Matrix3::identity(), // it is filled before every frame
+            view_matrix: Mat4::identity(), // it is filled before every frame
+            normal_matrix: Mat3::identity(), // it is filled before every frame
             camera,
             yaw: 0.0,
             pitch: 0.0,
         };
     }
 
-    pub fn reset_y_and_angle(&mut self, projection: &Matrix4<f32>) {
+    pub fn reset_y_and_angle(&mut self, projection: &Mat4) {
         self.pitch = CameraComponent::PITCH;
         self.yaw = CameraComponent::YAW;
         self.camera.set_y(40.0);
@@ -276,7 +273,7 @@ pub struct HumanInputComponent {
     pub last_mouse_y: u16,
     pub delta_mouse_x: i32,
     pub delta_mouse_y: i32,
-    pub mouse_world_pos: WorldCoord,
+    pub mouse_world_pos: Vec2,
 }
 
 impl Drop for HumanInputComponent {
@@ -307,7 +304,7 @@ impl HumanInputComponent {
             shift_down: false,
             last_mouse_x: 400,
             last_mouse_y: 300,
-            mouse_world_pos: v2!(0, 0),
+            mouse_world_pos: v2(0.0, 0.0),
             mouse_wheel: 0,
             delta_mouse_x: 0,
             delta_mouse_y: 0,
@@ -325,8 +322,8 @@ impl HumanInputComponent {
         self.skills_for_keys[skill_key as usize] = Some(skill);
     }
 
-    pub fn mouse_pos(&self) -> ScreenCoords {
-        Vector2::new(self.last_mouse_x, self.last_mouse_y)
+    pub fn mouse_pos(&self) -> Vec2u {
+        Vec2u::new(self.last_mouse_x, self.last_mouse_y)
     }
 
     pub fn cleanup_released_keys(&mut self) {

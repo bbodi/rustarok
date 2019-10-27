@@ -5,10 +5,11 @@ use crate::asset::rsm::{BoundingBox, Rsm};
 use crate::asset::rsw::{Rsw, WaterData};
 use crate::asset::texture::TextureId;
 use crate::asset::AssetLoader;
-use crate::common::measure_time;
+use crate::common::{measure_time, Mat4};
+use crate::common::{v2, v3, Vec2};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::{VertexArray, VertexAttribDefinition};
-use nalgebra::{Matrix4, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Point3, Rotation3, Vector2, Vector3};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::force_generator::DefaultForceGeneratorSet;
@@ -38,7 +39,7 @@ pub enum CollisionGroup {
 
 pub struct ModelInstance {
     pub asset_db_model_index: usize,
-    pub matrix: Matrix4<f32>,
+    pub matrix: Mat4,
     pub bottom_left_front: Vector3<f32>,
     pub top_right_back: Vector3<f32>,
 }
@@ -105,7 +106,7 @@ pub fn load_map(
     let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
     log::info!("gat loaded: {}ms", elapsed.as_millis());
 
-    let colliders: Vec<(Vector2<f32>, Vector2<f32>)> = gat
+    let colliders: Vec<(Vec2, Vec2)> = gat
         .rectangles
         .iter()
         .map(|cell| {
@@ -114,11 +115,11 @@ pub fn load_map(
             let x = cell.start_x as f32 + half_w;
             let half_h = cell.height as f32 / 2.0;
             let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
-            let half_extents = Vector2::new(half_w, half_h);
+            let half_extents = v2(half_w, half_h);
 
             let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
             let v = rot * Vector3::new(x, 0.0, y);
-            let v2 = Vector2::new(v.x, v.z);
+            let v2 = v2(v.x, v.z);
             let parent_rigid_body = RigidBodyDesc::new()
                 .translation(v2)
                 .gravity_enabled(false)
@@ -214,58 +215,53 @@ pub fn load_map(
     };
     let mut model_instances: Vec<ModelInstance> = model_instances_iter
         .map(|model_instance| {
-            let mut only_transition_matrix = Matrix4::<f32>::identity();
-            only_transition_matrix.prepend_translation_mut(
-                &(model_instance.pos
+            let mut only_translation_matrix: vek::Mat4<f32> = vek::Mat4::identity();
+            {
+                let t = (model_instance.pos
                     + Vector3::new(
                         ground_data.ground.width as f32,
                         0f32,
                         ground_data.ground.height as f32,
-                    )),
-            );
+                    ));
+                only_translation_matrix.translate_3d((t.x, t.y, t.z));
+            }
 
-            let mut instance_matrix = only_transition_matrix.clone();
-            // rot_z
-            let rotation = Rotation3::from_axis_angle(
-                &nalgebra::Unit::new_normalize(Vector3::z()),
-                model_instance.rot.z.to_radians(),
-            )
-            .to_homogeneous();
-            instance_matrix = instance_matrix * rotation;
-            // rot x
-            let rotation = Rotation3::from_axis_angle(
-                &nalgebra::Unit::new_normalize(Vector3::x()),
-                model_instance.rot.x.to_radians(),
-            )
-            .to_homogeneous();
-            instance_matrix = instance_matrix * rotation;
-            // rot y
-            let rotation = Rotation3::from_axis_angle(
-                &nalgebra::Unit::new_normalize(Vector3::y()),
-                model_instance.rot.y.to_radians(),
-            )
-            .to_homogeneous();
-            instance_matrix = instance_matrix * rotation;
+            let mut instance_matrix: vek::Mat4<f32> = only_translation_matrix.clone();
+            instance_matrix =
+                instance_matrix * vek::Mat4::rotation_z(model_instance.rot.z.to_radians());
+            instance_matrix =
+                instance_matrix * vek::Mat4::rotation_x(model_instance.rot.x.to_radians());
+            instance_matrix =
+                instance_matrix * vek::Mat4::rotation_y(model_instance.rot.y.to_radians());
 
-            instance_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
-            only_transition_matrix.prepend_nonuniform_scaling_mut(&model_instance.scale);
+            instance_matrix = instance_matrix
+                * vek::Mat4::scaling_3d((
+                    model_instance.scale.x,
+                    model_instance.scale.y,
+                    model_instance.scale.z,
+                ));
+            only_translation_matrix = only_translation_matrix
+                * vek::Mat4::scaling_3d((
+                    model_instance.scale.x,
+                    model_instance.scale.y,
+                    model_instance.scale.z,
+                ));
 
-            let rotation = Rotation3::from_axis_angle(
-                &nalgebra::Unit::new_normalize(Vector3::x()),
-                180f32.to_radians(),
-            )
-            .to_homogeneous();
-            instance_matrix = rotation * instance_matrix;
-            only_transition_matrix = rotation * only_transition_matrix;
+            instance_matrix.rotate_x(180f32.to_radians());
+            only_translation_matrix.rotate_x(180f32.to_radians());
 
             let model_db_index = asset_db.get_model_index(&model_instance.filename);
             let model_render_data = asset_db.get_model(model_db_index);
-            let tmin = only_transition_matrix
-                .transform_point(&model_render_data.bounding_box.min)
-                .coords;
-            let tmax = only_transition_matrix
-                .transform_point(&model_render_data.bounding_box.max)
-                .coords;
+            let tmin: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
+                model_render_data.bounding_box.min.x,
+                model_render_data.bounding_box.min.y,
+                model_render_data.bounding_box.min.z,
+            ));
+            let tmax: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
+                model_render_data.bounding_box.max.x,
+                model_render_data.bounding_box.max.y,
+                model_render_data.bounding_box.max.z,
+            ));
             let min = Vector3::new(
                 tmin[0].min(tmax[0]),
                 tmin[1].min(tmax[1]),
@@ -278,7 +274,24 @@ pub fn load_map(
             );
             ModelInstance {
                 asset_db_model_index: model_db_index,
-                matrix: instance_matrix,
+                matrix: Mat4::new(
+                    instance_matrix[(0, 0)],
+                    instance_matrix[(0, 1)],
+                    instance_matrix[(0, 2)],
+                    instance_matrix[(0, 3)],
+                    instance_matrix[(1, 0)],
+                    instance_matrix[(1, 1)],
+                    instance_matrix[(1, 2)],
+                    instance_matrix[(1, 3)],
+                    instance_matrix[(2, 0)],
+                    instance_matrix[(2, 1)],
+                    instance_matrix[(2, 2)],
+                    instance_matrix[(2, 3)],
+                    instance_matrix[(3, 0)],
+                    instance_matrix[(3, 1)],
+                    instance_matrix[(3, 2)],
+                    instance_matrix[(3, 3)],
+                ),
                 bottom_left_front: min,
                 top_right_back: max,
             }
@@ -451,11 +464,11 @@ fn load_ground(
     map_name: &str,
     gat: &Gat,
     water: &WaterData,
-    colliders: &Vec<(Vector2<f32>, Vector2<f32>)>,
+    colliders: &Vec<(Vec2, Vec2)>,
     asset_loader: &AssetLoader,
     asset_db: &mut AssetDatabase,
 ) -> GroundLoadResult {
-    let mut v = Vector3::<f32>::new(0.0, 0.0, 0.0);
+    let mut v = v3(0.0, 0.0, 0.0);
     let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
     let mut rotate_around_x_axis = |mut pos: Point3<f32>| {
         v.x = pos[0];
@@ -654,9 +667,9 @@ impl PhysicEngine {
 
     pub fn add_cuboid_skill_area(
         &mut self,
-        pos: Vector2<f32>,
+        pos: Vec2,
         rot_angle_in_rad: f32,
-        extent: Vector2<f32>,
+        extent: Vec2,
     ) -> (DefaultColliderHandle, DefaultBodyHandle) {
         let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(extent / 2.0));
         let body_handle = self.bodies.insert(

@@ -3,11 +3,12 @@ mod test_firewall;
 mod test_moving;
 
 use crate::assert_approx_eq::*;
+use crate::common::Vec2;
 use crate::components::char::Percentage;
 use crate::components::char::{
     CharState, CharacterEntityBuilder, CharacterStateComponent, EntityTarget, Team,
 };
-use crate::components::controller::{CharEntityId, EntitiesBelowCursor, WorldCoord};
+use crate::components::controller::{CharEntityId, EntitiesBelowCursor};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::components::{HpModificationResultType, HpModificationType};
@@ -438,7 +439,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
             .clear();
     }
 
-    pub fn create_char(&mut self, pos: WorldCoord, team: Team) -> CharEntityId {
+    pub fn create_char(&mut self, pos: Vec2, team: Team) -> CharEntityId {
         let char_id = CharEntityId(self.ecs_world.create_entity().build());
         {
             let updater = &self.ecs_world.read_resource::<LazyUpdate>();
@@ -461,7 +462,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         return char_id;
     }
 
-    pub fn create_barricade(&mut self, pos: WorldCoord, team: Team) {
+    pub fn create_barricade(&mut self, pos: Vec2, team: Team) {
         SpawnEntitySystem::create_barricade(
             &self.ecs_world.entities(),
             &self.ecs_world.read_resource::<LazyUpdate>(),
@@ -480,7 +481,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
             .push(apply_status);
     }
 
-    pub fn cast_skill_on_pos(&mut self, char_id: CharEntityId, skill: Skills, pos: WorldCoord) {
+    pub fn cast_skill_on_pos(&mut self, char_id: CharEntityId, skill: Skills, pos: Vec2) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
         let char_state = char_storage.get_mut(char_id.0).unwrap();
         dbg!(char_state.pos());
@@ -534,8 +535,8 @@ impl<'a, 'b> TestUtil<'a, 'b> {
 
     //    // test that a is faster than b
     //    TestUtil::assert_events(ecs_world)
-    //    .status_change_at(0, a, CharState::Idle, CharState::Walking(v2!(100, 100)))
-    //    .status_change_at(0, b, CharState::Idle, CharState::Walking(v2!(100, 100)))
+    //    .status_change_at(0, a, CharState::Idle, CharState::Walking(v2(100, 100)))
+    //    .status_change_at(0, b, CharState::Idle, CharState::Walking(v2(100, 100)))
     //    .status_change_at(50, a, Walk, CharState::Idle)
     //    .status_change_at(100, b, Walk, CharState::Idle);
     //    // no_damage_on(char_id)

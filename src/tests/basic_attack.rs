@@ -1,25 +1,24 @@
-use crate::common::ElapsedTime;
+use crate::common::{v2, ElapsedTime};
 use crate::components::char::{percentage, CharState, EntityTarget, Team};
 use crate::components::status::attack_heal_status::AttackHealStatus;
 use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::tests::setup_ecs_world;
-use nalgebra::Vector2;
 use std::time::Duration;
 
 #[test]
 fn basic_attack() {
     let mut test_util = setup_ecs_world();
 
-    let attacker_id = test_util.create_char(v2!(10, 10), Team::Left);
-    let attacked_id = test_util.create_char(v2!(10, 10), Team::Right);
+    let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
+    let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     test_util.set_char_target(attacker_id, EntityTarget::OtherEntity(attacked_id));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 
     // clicks away to stop attacking
-    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2!(20, 10)));
+    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2(20.0, 10.0)));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 
@@ -31,15 +30,15 @@ fn basic_attack() {
     test_util
         .assert_on_character(attacker_id)
         .has_max_hp()
-        .state(CharState::Walking(v2!(20, 10)));
+        .state(CharState::Walking(v2(20.0, 10.0)));
 }
 
 #[test]
 fn reflection() {
     let mut test_util = setup_ecs_world();
 
-    let attacker_id = test_util.create_char(v2!(10, 10), Team::Left);
-    let attacked_id = test_util.create_char(v2!(10, 10), Team::Right);
+    let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
+    let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     test_util.apply_status(
         attacked_id,
         ApplyStatusComponent::from_secondary_status(
@@ -58,7 +57,7 @@ fn reflection() {
     test_util.run_for(Duration::from_secs_f32(0.5));
 
     // clicks away to stop attacking
-    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2!(20, 10)));
+    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2(20.0, 10.0)));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 
@@ -70,7 +69,7 @@ fn reflection() {
     test_util
         .assert_on_character(attacker_id)
         .has_less_than_max_hp()
-        .state(CharState::Walking(v2!(20, 10)));
+        .state(CharState::Walking(v2(20.0, 10.0)));
 
     // 10% of the damage is reflected back
     test_util
@@ -82,8 +81,8 @@ fn reflection() {
 fn vampiric_attack() {
     let mut test_util = setup_ecs_world();
 
-    let attacker_id = test_util.create_char(v2!(10, 10), Team::Left);
-    let attacked_id = test_util.create_char(v2!(10, 10), Team::Right);
+    let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
+    let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     test_util.apply_status(
         attacked_id,
         ApplyStatusComponent::from_secondary_status(
@@ -101,7 +100,7 @@ fn vampiric_attack() {
     test_util.run_for(Duration::from_secs_f32(0.5));
 
     // clicks away to stop attacking
-    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2!(20, 10)));
+    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2(20.0, 10.0)));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 
@@ -113,7 +112,7 @@ fn vampiric_attack() {
     test_util
         .assert_on_character(attacker_id)
         .has_max_hp()
-        .state(CharState::Walking(v2!(20, 10)));
+        .state(CharState::Walking(v2(20.0, 10.0)));
 
     // 10% of the damage is healed on the attacked
     test_util
@@ -126,9 +125,9 @@ fn vampiric_attack() {
 fn sacrifice() {
     let mut test_util = setup_ecs_world();
 
-    let attacker_id = test_util.create_char(v2!(10, 10), Team::Left);
-    let attacked_id = test_util.create_char(v2!(10, 10), Team::Right);
-    let sacrifice_id = test_util.create_char(v2!(10, 10), Team::Right);
+    let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
+    let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
+    let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     test_util.apply_status(
         attacked_id,
         ApplyStatusComponent::from_secondary_status(
@@ -147,7 +146,7 @@ fn sacrifice() {
     test_util.run_for(Duration::from_secs_f32(0.5));
 
     // clicks away to stop attacking
-    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2!(20, 10)));
+    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2(20.0, 10.0)));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 
@@ -176,9 +175,9 @@ fn sacrifice() {
 fn sacrifice_100_percent() {
     let mut test_util = setup_ecs_world();
 
-    let attacker_id = test_util.create_char(v2!(10, 10), Team::Left);
-    let attacked_id = test_util.create_char(v2!(10, 10), Team::Right);
-    let sacrifice_id = test_util.create_char(v2!(10, 10), Team::Right);
+    let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
+    let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
+    let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     test_util.apply_status(
         attacked_id,
         ApplyStatusComponent::from_secondary_status(
@@ -197,7 +196,7 @@ fn sacrifice_100_percent() {
     test_util.run_for(Duration::from_secs_f32(0.5));
 
     // clicks away to stop attacking
-    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2!(20, 10)));
+    test_util.set_char_target(attacker_id, EntityTarget::Pos(v2(20.0, 10.0)));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
 

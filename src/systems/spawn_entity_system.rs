@@ -1,5 +1,6 @@
+use crate::common::Vec2;
 use crate::components::char::{CharOutlook, CharacterEntityBuilder, NpcComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::PhysicEngine;
@@ -9,7 +10,7 @@ use specs::prelude::*;
 use specs::LazyUpdate;
 
 pub enum SpawnEntityType {
-    Barricade { pos: WorldCoord, team: Team },
+    Barricade { pos: Vec2, team: Team },
 }
 
 #[derive(Component)]
@@ -65,7 +66,7 @@ impl SpawnEntitySystem {
         physics: &mut PhysicEngine,
         dev_configs: &DevConfig,
         team: Team,
-        pos2d: WorldCoord,
+        pos2d: Vec2,
     ) {
         let barricade_entity_id = CharEntityId(entities.create());
         updater.insert(barricade_entity_id.0, NpcComponent);

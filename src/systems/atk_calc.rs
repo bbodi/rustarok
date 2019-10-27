@@ -1,11 +1,12 @@
-use nalgebra::{Isometry2, Vector2};
+use nalgebra::Isometry2;
 use ncollide2d::query::Proximity;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
+use crate::common::Vec2;
 use crate::components::char::Percentage;
 use crate::components::char::{percentage, CharacterStateComponent};
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
@@ -378,7 +379,7 @@ impl AttackCalculation {
 
     pub fn make_sound(
         entities: &Entities,
-        pos: WorldCoord,
+        pos: Vec2,
         target_entity_id: CharEntityId,
         outcome: &HpModificationResult,
         now: ElapsedTime,
@@ -454,7 +455,7 @@ impl AttackCalculation {
         updater: &mut LazyUpdate,
         src_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
-        char_pos: &Vector2<f32>,
+        char_pos: &Vec2,
         sys_time: ElapsedTime,
     ) {
         let damage_entity = entities.create();

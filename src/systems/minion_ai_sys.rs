@@ -1,11 +1,10 @@
-use crate::common::v2_to_p2;
+use crate::common::{v2, v2_to_p2, Vec2};
 use crate::components::char::{CharacterStateComponent, EntityTarget, Team};
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoord,
+    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention,
 };
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
-use nalgebra::Vector2;
 use specs::prelude::*;
 
 pub struct MinionAiSystem;
@@ -24,7 +23,7 @@ impl MinionAiSystem {
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
-        center: &WorldCoord,
+        center: &Vec2,
         radius: f32,
         self_team: Team,
         except: CharEntityId,
@@ -131,9 +130,9 @@ impl<'a> specs::System<'a> for MinionAiSystem {
                                 }
                                 next_checkpoint
                             };
-                            Some(PlayerIntention::MoveTo(v2!(
-                                next_checkpoint[0],
-                                next_checkpoint[1]
+                            Some(PlayerIntention::MoveTo(v2(
+                                next_checkpoint[0] as f32,
+                                next_checkpoint[1] as f32,
                             )))
                         }
                     }

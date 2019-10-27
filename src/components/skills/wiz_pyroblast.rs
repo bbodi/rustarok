@@ -1,10 +1,11 @@
-use nalgebra::{Isometry2, Vector2};
+use nalgebra::Isometry2;
 use specs::{Entity, LazyUpdate, ReadStorage};
 
+use crate::common::{v2, Vec2};
 use crate::components::char::{
     ActionPlayMode, CastingSkillData, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
@@ -34,9 +35,9 @@ impl SkillDef for WizPyroBlastSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -74,7 +75,7 @@ impl SkillDef for WizPyroBlastSkill {
 
     fn render_casting(
         &self,
-        char_pos: &Vector2<f32>,
+        char_pos: &Vec2,
         casting_state: &CastingSkillData,
         sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
@@ -131,8 +132,8 @@ impl SkillDef for WizPyroBlastSkill {
 
 pub struct PyroBlastManifest {
     pub caster_entity_id: CharEntityId,
-    pub pos: WorldCoord,
-    pub target_last_pos: WorldCoord,
+    pub pos: Vec2,
+    pub target_last_pos: Vec2,
     pub target_entity_id: CharEntityId,
     pub created_at: ElapsedTime,
     pub configs: SkillConfigPyroBlastInner,
@@ -141,7 +142,7 @@ pub struct PyroBlastManifest {
 impl PyroBlastManifest {
     pub fn new(
         caster_entity_id: CharEntityId,
-        pos: WorldCoord,
+        pos: Vec2,
         target_entity_id: CharEntityId,
         created_at: ElapsedTime,
         physics_world: &mut PhysicEngine,
@@ -150,7 +151,7 @@ impl PyroBlastManifest {
         PyroBlastManifest {
             caster_entity_id,
             pos,
-            target_last_pos: Vector2::new(0.0, 0.0),
+            target_last_pos: v2(0.0, 0.0),
             target_entity_id,
             created_at,
             configs,

@@ -1,9 +1,10 @@
+use crate::common::Vec2;
 use crate::components::char::{
     CastingSkillData, CharState, CharacterStateComponent, EntityTarget,
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention, WorldCoord,
+    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention,
 };
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::configs::DevConfig;
@@ -193,7 +194,7 @@ impl NextActionApplierSystem {
         now: ElapsedTime,
         configs: &DevConfig,
         char_state: &mut CharacterStateComponent,
-        mouse_world_pos: &WorldCoord,
+        mouse_world_pos: &Vec2,
         entities_below_cursor: &EntitiesBelowCursor,
         self_char_id: CharEntityId,
         is_self_cast: bool,
@@ -279,7 +280,7 @@ impl NextActionApplierSystem {
         }
     }
 
-    pub fn determine_dir(&target_pos: &WorldCoord, pos: &WorldCoord) -> usize {
+    pub fn determine_dir(&target_pos: &Vec2, pos: &Vec2) -> usize {
         let dir_vec = target_pos - pos;
         // "- 90.0"
         // The calculated yaw for the camera are 90 at [0;1] and 180 at [1;0] etc,

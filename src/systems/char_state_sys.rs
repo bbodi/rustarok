@@ -1,10 +1,10 @@
 use specs::prelude::*;
 
-use crate::common::v2_to_p2;
+use crate::common::{v2_to_p2, Vec2};
 use crate::components::char::{
     CharState, CharacterStateComponent, EntityTarget, NpcComponent, Team,
 };
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
@@ -46,7 +46,7 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
         let all_char_data = {
-            let mut char_positions = HashMap::<CharEntityId, (WorldCoord, Team)>::new();
+            let mut char_positions = HashMap::<CharEntityId, (Vec2, Team)>::new();
             for (char_entity_id, char_comp) in (&entities, &char_state_storage).join() {
                 if char_comp.state().is_dead() {
                     continue;
@@ -241,8 +241,8 @@ impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
 
 impl CharacterStateUpdateSystem {
     pub fn get_closest_enemy_in_area(
-        char_positions: &HashMap<CharEntityId, (WorldCoord, Team)>,
-        center: &WorldCoord,
+        char_positions: &HashMap<CharEntityId, (Vec2, Team)>,
+        center: &Vec2,
         radius: f32,
         self_team: Team,
         except: CharEntityId,
@@ -268,7 +268,7 @@ impl CharacterStateUpdateSystem {
 
     fn act_based_on_target(
         now: ElapsedTime,
-        char_positions: &HashMap<CharEntityId, (WorldCoord, Team)>,
+        char_positions: &HashMap<CharEntityId, (Vec2, Team)>,
         char_comp: &mut CharacterStateComponent,
         target: &EntityTarget,
     ) {

@@ -1,12 +1,12 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::{GlTexture, TextureId};
 use crate::asset::AssetLoader;
+use crate::common::{Mat3, Mat4};
 use crate::my_gl::{Gl, MyGlEnum};
 use byteorder::{LittleEndian, WriteBytesExt};
 use imgui::ImGui;
 use imgui_opengl_renderer::Renderer;
 use imgui_sdl2::ImguiSdl2;
-use nalgebra::{Matrix3, Matrix4};
 use sdl2::render::BlendMode;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::Window;
@@ -153,9 +153,9 @@ impl Video {
     }
 }
 
-pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
+pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32) -> Mat4 {
     let two = 2.0;
-    let mut mat = Matrix4::<f32>::identity();
+    let mut mat = Mat4::identity();
 
     mat[(0, 0)] = two / (right - left);
     mat[(0, 3)] = -(right + left) / (right - left);
@@ -473,7 +473,7 @@ pub struct ActiveShaderProgram<'a, P> {
 
 pub struct ShaderParam3x3fv(pub c_int);
 impl ShaderParam3x3fv {
-    pub fn set(&self, gl: &Gl, matrix: &Matrix3<f32>) {
+    pub fn set(&self, gl: &Gl, matrix: &Mat3) {
         unsafe {
             gl.UniformMatrix3fv(
                 self.0,
@@ -582,7 +582,7 @@ impl ShaderParam1i {
 
 pub struct ShaderParam4x4fv(pub c_int);
 impl ShaderParam4x4fv {
-    pub fn set(&self, gl: &Gl, matrix: &Matrix4<f32>) {
+    pub fn set(&self, gl: &Gl, matrix: &Mat4) {
         unsafe {
             gl.UniformMatrix4fv(
                 self.0,

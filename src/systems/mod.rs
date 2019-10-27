@@ -1,5 +1,6 @@
 use crate::asset::str::StrFile;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
+use crate::common::Mat4;
 use crate::components::char::CharState;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, Skills};
@@ -16,7 +17,6 @@ use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{
     get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
 };
-use nalgebra::Matrix4;
 use nphysics2d::object::DefaultColliderHandle;
 use std::collections::HashMap;
 use std::time::{Instant, SystemTime};
@@ -111,14 +111,14 @@ pub struct AssetResources {
 }
 
 pub struct RenderMatrices {
-    pub projection: Matrix4<f32>,
-    pub ortho: Matrix4<f32>,
+    pub projection: Mat4,
+    pub ortho: Mat4,
 }
 
 impl RenderMatrices {
     pub fn new(fov: f32) -> RenderMatrices {
         RenderMatrices {
-            projection: Matrix4::new_perspective(
+            projection: Mat4::new_perspective(
                 VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
                 fov,
                 0.1f32,

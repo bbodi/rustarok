@@ -2,13 +2,14 @@ extern crate rand;
 
 use std::sync::Mutex;
 
-use nalgebra::{Isometry2, Vector2};
+use nalgebra::Isometry2;
 use nphysics2d::object::DefaultBodyHandle;
 use specs::prelude::*;
 use websocket::stream::sync::TcpStream;
 
+use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
@@ -96,7 +97,7 @@ pub struct FlyingNumberComponent {
     pub target_entity_id: CharEntityId,
     pub src_entity_id: CharEntityId,
     pub typ: FlyingNumberType,
-    pub start_pos: Vector2<f32>,
+    pub start_pos: Vec2,
     pub start_time: ElapsedTime,
     pub die_at: ElapsedTime,
     pub duration: f32,
@@ -106,14 +107,14 @@ pub struct FlyingNumberComponent {
 pub struct SoundEffectComponent {
     pub target_entity_id: CharEntityId,
     pub sound_id: SoundId,
-    pub pos: WorldCoord,
+    pub pos: Vec2,
     pub start_time: ElapsedTime,
 }
 
 #[derive(Component)]
 pub struct StrEffectComponent {
     pub effect_id: StrEffectId,
-    pub pos: WorldCoord,
+    pub pos: Vec2,
     pub start_time: ElapsedTime,
     pub die_at: Option<ElapsedTime>,
     pub play_mode: ActionPlayMode,
@@ -177,7 +178,7 @@ impl FlyingNumberComponent {
         src_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
         duration: f32,
-        start_pos: Vector2<f32>,
+        start_pos: Vec2,
         sys_time: ElapsedTime,
     ) -> FlyingNumberComponent {
         FlyingNumberComponent {
@@ -286,7 +287,7 @@ pub struct AreaAttackComponent {
 pub struct ApplyForceComponent {
     pub src_entity: CharEntityId,
     pub dst_entity: CharEntityId,
-    pub force: Vector2<f32>,
+    pub force: Vec2,
     pub body_handle: DefaultBodyHandle,
     pub duration: f32,
 }

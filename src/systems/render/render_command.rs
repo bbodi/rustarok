@@ -1,17 +1,18 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
+use crate::common::{v3, Mat3, Mat4, Vec2};
 use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
 use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
-use nalgebra::{Matrix3, Matrix4, Rotation3, Vector2, Vector3, Vector4};
+use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
-pub fn create_2d_pos_rot_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f32> {
-    let mut matrix = Matrix4::<f32>::identity();
-    matrix.prepend_translation_mut(&v3!(pos[0], pos[1], 0));
+pub fn create_2d_pos_rot_matrix(pos: &[i16; 2], rotation_rad: f32) -> Mat4 {
+    let mut matrix = Mat4::identity();
+    matrix.prepend_translation_mut(&v3(pos[0] as f32, pos[1] as f32, 0.0));
 
     let rotation =
         Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::z()), rotation_rad)
@@ -19,11 +20,8 @@ pub fn create_2d_pos_rot_matrix(pos: &[i16; 2], rotation_rad: f32) -> Matrix4<f3
     matrix * rotation
 }
 
-pub fn create_3d_pos_rot_matrix(
-    pos: &Vector3<f32>,
-    rotation_rad: &(Vector3<f32>, f32),
-) -> Matrix4<f32> {
-    let mut matrix = Matrix4::<f32>::identity();
+pub fn create_3d_pos_rot_matrix(pos: &Vector3<f32>, rotation_rad: &(Vector3<f32>, f32)) -> Mat4 {
+    let mut matrix = Mat4::identity();
     matrix.prepend_translation_mut(&pos);
     let rotation = Rotation3::from_axis_angle(
         &nalgebra::Unit::new_normalize(rotation_rad.0),
@@ -33,8 +31,8 @@ pub fn create_3d_pos_rot_matrix(
     return matrix * rotation;
 }
 
-pub fn create_3d_rot_matrix(rotation_rad: &(Vector3<f32>, f32)) -> Matrix4<f32> {
-    let matrix = Matrix4::<f32>::identity();
+pub fn create_3d_rot_matrix(rotation_rad: &(Vector3<f32>, f32)) -> Mat4 {
+    let matrix = Mat4::identity();
     let rotation = Rotation3::from_axis_angle(
         &nalgebra::Unit::new_normalize(rotation_rad.0),
         rotation_rad.1,
@@ -65,9 +63,9 @@ pub struct RenderCommandCollector {
     pub(super) number_3d_commands: Vec<Number3dRenderCommand>,
     pub(super) model_commands: Vec<ModelRenderCommand>,
     pub(super) effect_commands: HashMap<EffectFrameCacheKey, Vec<Vector2<f32>>>,
-    pub(super) effect_commands2: Vec<(StrEffectId, i32, Vector2<f32>)>,
-    pub view_matrix: Matrix4<f32>,
-    pub normal_matrix: Matrix3<f32>,
+    pub(super) effect_commands2: Vec<(StrEffectId, i32, Vec2)>,
+    pub view_matrix: Mat4,
+    pub normal_matrix: Mat3,
     pub yaw: f32,
 }
 
@@ -92,18 +90,13 @@ impl<'a> RenderCommandCollector {
             effect_commands: HashMap::with_capacity(128),
             effect_commands2: Vec::with_capacity(128),
             model_commands: Vec::with_capacity(128),
-            view_matrix: Matrix4::identity(),
-            normal_matrix: Matrix3::identity(),
+            view_matrix: Mat4::identity(),
+            normal_matrix: Mat3::identity(),
             yaw: 0.0,
         }
     }
 
-    pub fn set_view_matrix(
-        &mut self,
-        view_matrix: &Matrix4<f32>,
-        normal_matrix: &Matrix3<f32>,
-        yaw: f32,
-    ) {
+    pub fn set_view_matrix(&mut self, view_matrix: &Mat4, normal_matrix: &Mat3, yaw: f32) {
         self.view_matrix = *view_matrix;
         self.normal_matrix = *normal_matrix;
         self.yaw = yaw;
@@ -181,18 +174,13 @@ impl<'a> RenderCommandCollector {
         Texture2dRenderCommandCommandBuilder::new(self)
     }
 
-    pub fn add_effect_command2(
-        &'a mut self,
-        pos: &Vector2<f32>,
-        effect_id: StrEffectId,
-        key_index: i32,
-    ) {
+    pub fn add_effect_command2(&'a mut self, pos: &Vec2, effect_id: StrEffectId, key_index: i32) {
         self.effect_commands2.push((effect_id, key_index, *pos));
     }
 
     pub fn add_effect_command(
         &'a mut self,
-        pos: &Vector2<f32>,
+        pos: &Vec2,
         effect_id: StrEffectId,
         key_index: i32,
         layer_index: usize,
@@ -216,7 +204,7 @@ impl<'a> RenderCommandCollector {
 pub struct Common2DProperties {
     pub(super) color: [u8; 4],
     pub(super) scale: [f32; 2],
-    pub(super) matrix: Matrix4<f32>,
+    pub(super) matrix: Mat4,
     pub(super) layer: UiLayer2d,
 }
 
@@ -711,7 +699,7 @@ impl<'a> Trimesh3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Trimesh3dRenderCommandBuilder {
+    pub fn pos_2d(&mut self, pos: &Vec2) -> &'a mut Trimesh3dRenderCommandBuilder {
         self.pos.x = pos.x;
         self.pos.z = pos.y;
         self
@@ -784,7 +772,7 @@ impl<'a> Rectangle3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Rectangle3dRenderCommandBuilder {
+    pub fn pos_2d(&mut self, pos: &Vec2) -> &'a mut Rectangle3dRenderCommandBuilder {
         self.pos.x = pos.x;
         self.pos.z = pos.y;
         self
@@ -867,7 +855,7 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Circle3dRenderCommandBuilder {
+    pub fn pos_2d(&mut self, pos: &Vec2) -> &'a mut Circle3dRenderCommandBuilder {
         self.pos.x = pos.x;
         self.pos.z = pos.y;
         self
@@ -902,7 +890,7 @@ impl<'a> Circle3dRenderCommandBuilder<'a> {
 pub struct HorizontalTexture3dRenderCommand {
     pub color: [u8; 4],
     pub size: TextureSizeSetting,
-    pub pos: Vector2<f32>,
+    pub pos: Vec2,
     pub rotation_rad: f32,
     pub texture_id: TextureId,
 }
@@ -916,7 +904,7 @@ pub enum TextureSizeSetting {
 pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
     collector: &'a mut RenderCommandCollector,
     color: [u8; 4],
-    pos: Vector2<f32>,
+    pos: Vec2,
     size: TextureSizeSetting,
     rotation_rad: f32,
 }
@@ -960,7 +948,7 @@ impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos(&mut self, pos: &Vector2<f32>) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
+    pub fn pos(&mut self, pos: &Vec2) -> &'a mut HorizontalTexture3dRenderCommandBuilder {
         self.pos = *pos;
         self
     }
@@ -1002,8 +990,8 @@ pub struct Sprite3dRenderCommand {
 impl Sprite3dRenderCommand {
     pub fn project_to_screen(
         &self,
-        view: &Matrix4<f32>,
-        projection: &Matrix4<f32>,
+        view: &Mat4,
+        projection: &Mat4,
         asset_db: &AssetDatabase,
     ) -> SpriteBoundingRect {
         let texture = asset_db.get_texture(self.texture_id);
@@ -1029,7 +1017,7 @@ impl Sprite3dRenderCommand {
             dbg!(self.pos);
         }
 
-        let mut model_view = view * Matrix4::new_translation(&self.pos);
+        let mut model_view = view * Mat4::new_translation(&self.pos);
         Sprite3dRenderCommand::set_spherical_billboard(&mut model_view);
         fn sh(v: Vector4<f32>) -> [i32; 2] {
             let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
@@ -1052,7 +1040,7 @@ impl Sprite3dRenderCommand {
         };
     }
 
-    fn set_spherical_billboard(model_view: &mut Matrix4<f32>) {
+    fn set_spherical_billboard(model_view: &mut Mat4) {
         model_view[0] = 1.0;
         model_view[1] = 0.0;
         model_view[2] = 0.0;
@@ -1120,7 +1108,7 @@ impl<'a> Sprite3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Sprite3dRenderCommandBuilder {
+    pub fn pos_2d(&mut self, pos: &Vec2) -> &'a mut Sprite3dRenderCommandBuilder {
         self.pos.x = pos.x;
         self.pos.z = pos.y;
         self
@@ -1204,7 +1192,7 @@ impl<'a> Number3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn pos_2d(&mut self, pos: &Vector2<f32>) -> &'a mut Number3dRenderCommandBuilder {
+    pub fn pos_2d(&mut self, pos: &Vec2) -> &'a mut Number3dRenderCommandBuilder {
         self.pos.x = pos.x;
         self.pos.z = pos.y;
         self

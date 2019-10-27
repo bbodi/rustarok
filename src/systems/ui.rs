@@ -1,6 +1,5 @@
-use nalgebra::{Point3, Vector2};
-
 use crate::asset::database::AssetDatabase;
+use crate::common::{Vec2i, Vec3};
 use crate::components::char::{
     CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
@@ -34,7 +33,7 @@ impl RenderUI {
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
-        camera_pos: &Point3<f32>,
+        camera_pos: &Vec3,
         is_browser: bool,
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
@@ -115,7 +114,7 @@ impl RenderUI {
                 &sys_vars,
                 &controller.cursor_anim_descr,
                 &sys_vars.assets.sprites.cursors,
-                &Vector2::new(input.last_mouse_x as i32, input.last_mouse_y as i32),
+                &Vec2i::new(input.last_mouse_x as i16, input.last_mouse_y as i16),
                 &controller.cursor_color,
                 render_commands,
                 UiLayer2d::Cursor,
@@ -133,7 +132,7 @@ impl RenderUI {
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &specs::Entities,
-        camera_pos: &Point3<f32>,
+        camera_pos: &Vec3,
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
     ) {
@@ -536,7 +535,7 @@ fn render_action_2d(
     sys_vars: &SystemVariables,
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
-    pos: &Vector2<i32>,
+    pos: &Vec2i,
     color: &[u8; 3],
     render_commands: &mut RenderCommandCollector,
     layer: UiLayer2d,
@@ -572,7 +571,7 @@ fn render_action_2d(
 
         render_commands
             .sprite_2d()
-            .screen_pos(pos.x, pos.y)
+            .screen_pos(pos.x as i32, pos.y as i32)
             .scale(scale)
             .color_rgb(color)
             .flip_vertically(layer.is_mirror)

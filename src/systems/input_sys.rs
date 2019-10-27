@@ -1,14 +1,14 @@
+use crate::common::{v2, v3, Mat4, Vec2, Vec3};
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CameraComponent, CameraMode, ControllerEntityId, HumanInputComponent, PlayerIntention,
-    SkillKey, WorldCoord,
+    CameraComponent, CameraMode, ControllerEntityId, HumanInputComponent, PlayerIntention, SkillKey,
 };
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
 use crate::systems::SystemVariables;
 use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ConsoleCommandBuffer;
-use nalgebra::{Matrix4, Point2, Point3, Vector2, Vector3, Vector4};
+use nalgebra::Vector4;
 use sdl2::keyboard::Scancode;
 use sdl2::mouse::{MouseButton, MouseWheelDirection};
 use specs::prelude::*;
@@ -491,10 +491,7 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-    pub fn target_selection_or_casting(
-        skill: Skills,
-        mouse_pos: WorldCoord,
-    ) -> Option<PlayerIntention> {
+    pub fn target_selection_or_casting(skill: Skills, mouse_pos: Vec2) -> Option<PlayerIntention> {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_definition().get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
@@ -507,31 +504,32 @@ impl InputConsumerSystem {
     pub fn project_screen_pos_to_world_pos(
         x2d: u16,
         y2d: u16,
-        camera_pos: &Point3<f32>,
-        projection: &Matrix4<f32>,
-        view: &Matrix4<f32>,
-    ) -> WorldCoord {
-        let screen_point = Point2::new(x2d as f32, y2d as f32);
+        camera_pos: &Vec3,
+        projection: &Mat4,
+        view: &Mat4,
+    ) -> Vec2 {
+        let x = x2d as f32;
+        let y = y2d as f32;
 
         let ray_clip = Vector4::new(
-            2.0 * screen_point.x as f32 / VIDEO_WIDTH as f32 - 1.0,
-            1.0 - (2.0 * screen_point.y as f32) / VIDEO_HEIGHT as f32,
+            2.0 * x / VIDEO_WIDTH as f32 - 1.0,
+            1.0 - (2.0 * y) / VIDEO_HEIGHT as f32,
             -1.0,
             1.0,
         );
         let ray_eye = projection.try_inverse().unwrap() * ray_clip;
         let ray_eye = Vector4::new(ray_eye.x, ray_eye.y, -1.0, 0.0);
         let ray_world = view.try_inverse().unwrap() * ray_eye;
-        let ray_world = Vector3::new(ray_world.x, ray_world.y, ray_world.z).normalize();
+        let ray_world = v3(ray_world.x, ray_world.y, ray_world.z).normalize();
 
         let line_location = camera_pos;
-        let line_direction: Vector3<f32> = ray_world;
-        let plane_normal = Vector3::new(0.0, 1.0, 0.0);
-        let plane_point = Vector3::new(0.0, 0.0, 0.0);
-        let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location.coords))
+        let line_direction: Vec3 = ray_world;
+        let plane_normal = v3(0.0, 1.0, 0.0);
+        let plane_point = v3(0.0, 0.0, 0.0);
+        let t = (plane_normal.dot(&plane_point) - plane_normal.dot(&line_location))
             / plane_normal.dot(&line_direction);
         let world_pos = line_location + (line_direction.scale(t));
-        return v2!(world_pos.x, world_pos.z);
+        return v2(world_pos.x, world_pos.z);
     }
 }
 

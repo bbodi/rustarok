@@ -1,9 +1,9 @@
-use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
+use crate::common::{v2, v2_to_v3, v3, v3_to_v2, ElapsedTime, Vec2};
 use crate::components::char::{
     CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention, WorldCoord,
+    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention,
 };
 use crate::components::skills::falcon_carry::FalconCarryStatus;
 use crate::components::status::status::ApplyStatusComponent;
@@ -37,7 +37,7 @@ pub enum FalconState {
         started_at: ElapsedTime,
         ends_at: ElapsedTime,
         target_is_caught: bool,
-        end_pos: Vector2<f32>,
+        end_pos: Vec2,
     },
 }
 
@@ -68,7 +68,7 @@ impl FalconComponent {
     pub fn carry_owner(
         &mut self,
         owner_controller_id: ControllerEntityId,
-        target_pos: &WorldCoord,
+        target_pos: &Vec2,
         now: ElapsedTime,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
@@ -92,7 +92,7 @@ impl FalconComponent {
     pub fn carry_ally(
         &mut self,
         target_entity: CharEntityId,
-        target_pos: &WorldCoord,
+        target_pos: &Vec2,
         now: ElapsedTime,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
@@ -118,8 +118,8 @@ impl FalconComponent {
         &mut self,
         now: ElapsedTime,
         duration: f32,
-        start_pos: WorldCoord,
-        end_pos: WorldCoord,
+        start_pos: Vec2,
+        end_pos: Vec2,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
         match self.state {
@@ -258,16 +258,14 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                             controller_storage.get(owner_controller_id.0)
                         {
                             match controller.next_action {
-                                Some(PlayerIntention::MoveTo(pos)) => v3!(pos.x, y, pos.y),
-                                Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                                    v3!(pos.x, y, pos.y)
-                                }
+                                Some(PlayerIntention::MoveTo(pos)) => v3(pos.x, y, pos.y),
+                                Some(PlayerIntention::MoveTowardsMouse(pos)) => v3(pos.x, y, pos.y),
                                 _ => match controller.last_action {
-                                    Some(PlayerIntention::MoveTo(pos)) => v3!(pos.x, y, pos.y),
+                                    Some(PlayerIntention::MoveTo(pos)) => v3(pos.x, y, pos.y),
                                     Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                                        v3!(pos.x, y, pos.y)
+                                        v3(pos.x, y, pos.y)
                                     }
-                                    _ => v3!(falcon.pos.x, y, falcon.pos.z),
+                                    _ => v3(falcon.pos.x, y, falcon.pos.z),
                                 },
                             }
                         } else {
@@ -338,8 +336,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                         if !target_is_caught {
                             if let Some(owner) = char_storage.get(falcon.owner_entity_id.0) {
                                 let line = v3_to_v2(&falcon.pos) - owner.pos();
-                                let ctrl =
-                                    v3_to_v2(&falcon.pos) + (line * 0.2) + Vector2::new(5.0, 0.0);
+                                let ctrl = v3_to_v2(&falcon.pos) + (line * 0.2) + v2(5.0, 0.0);
                                 let ctrl = vek::Vec3::new(ctrl.x, 20.0, ctrl.y);
                                 let end_pos = owner.pos();
                                 sprite.action_index = CharActionIndex::Idle as usize;
@@ -379,7 +376,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                         }
                         let duration_percentage = (duration_percentage - 0.3) / 0.7;
                         let pos = falcon.bezier.evaluate(duration_percentage);
-                        falcon.pos = v3!(pos.x, pos.y, pos.z);
+                        falcon.pos = v3(pos.x, pos.y, pos.z);
                         if let Some(target) = char_storage.get_mut(target_id.0) {
                             let body = physics_world
                                 .bodies

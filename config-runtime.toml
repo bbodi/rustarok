@@ -1,5 +1,5 @@
 
-sleep_ms = 11
+sleep_ms = 5
 minions_enabled = false
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
 cast_mode = "Normal"
@@ -7,8 +7,7 @@ cast_mode = "Normal"
 start_pos_x = 238
 start_pos_y = -65
 
-execute_script = ''''''
-
+execute_script = ""
 [network]
     send_render_data_every_nth_frame = 1
 
@@ -27,8 +26,8 @@ execute_script = ''''''
         width = 3
 
     [skills.wiz_pyroblast]
-        casting_time = 3.0
-        cast_delay = 3.0
+        casting_time = 0.5
+        cast_delay = 0.0
         casting_range = 12
         damage = 10000
         secondary_damage = 5000

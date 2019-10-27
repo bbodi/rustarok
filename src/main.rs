@@ -31,7 +31,6 @@ use std::time::{Duration, SystemTime};
 
 use imgui::ImVec2;
 use log::LevelFilter;
-use nalgebra::{Matrix4, Vector2};
 use rand::Rng;
 use specs::prelude::*;
 use specs::Builder;
@@ -39,14 +38,13 @@ use specs::Join;
 
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
-use crate::common::{measure_time, DeltaTime, ElapsedTime};
+use crate::common::{measure_time, v2, DeltaTime, ElapsedTime, Mat4, Vec2};
 use crate::components::char::{
     CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
-    WorldCoord,
 };
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
@@ -252,9 +250,9 @@ fn main() {
             .read_resource::<SystemVariables>()
             .matrices
             .projection,
-        v2!(
+        v2(
             ecs_world.read_resource::<DevConfig>().start_pos_x,
-            ecs_world.read_resource::<DevConfig>().start_pos_y
+            ecs_world.read_resource::<DevConfig>().start_pos_y,
         ),
         Sex::Male,
         JobId::CRUSADER,
@@ -542,9 +540,9 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
         let char_entity_id = create_random_char_minion(
             ecs_world,
-            v2!(
-                MinionAiSystem::CHECKPOINTS[0][0],
-                MinionAiSystem::CHECKPOINTS[0][1]
+            v2(
+                MinionAiSystem::CHECKPOINTS[0][0] as f32,
+                MinionAiSystem::CHECKPOINTS[0][1] as f32,
             ),
             Team::Right,
         );
@@ -556,9 +554,9 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
         let entity_id = create_random_char_minion(
             ecs_world,
-            v2!(
-                MinionAiSystem::CHECKPOINTS[5][0],
-                MinionAiSystem::CHECKPOINTS[5][1]
+            v2(
+                MinionAiSystem::CHECKPOINTS[5][0] as f32,
+                MinionAiSystem::CHECKPOINTS[5][1] as f32,
             ),
             Team::Left,
         );
@@ -811,7 +809,7 @@ fn imgui_frame(
                     ecs_world
                         .write_resource::<SystemVariables>()
                         .matrices
-                        .projection = Matrix4::new_perspective(
+                        .projection = Mat4::new_perspective(
                         VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
                         *fov,
                         0.1f32,
@@ -946,7 +944,7 @@ fn imgui_frame(
 
 fn create_random_char_minion(
     ecs_world: &mut specs::world::World,
-    pos2d: WorldCoord,
+    pos2d: Vec2,
     team: Team,
 ) -> CharEntityId {
     let mut rng = rand::thread_rng();

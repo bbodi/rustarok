@@ -1,6 +1,14 @@
-use nalgebra::{Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use serde::Deserialize;
 use std::time::{Duration, Instant};
+
+pub type Mat3 = Matrix3<f32>;
+pub type Mat4 = Matrix4<f32>;
+
+pub type Vec2 = Vector2<f32>;
+pub type Vec3 = Vector3<f32>;
+pub type Vec2i = Vector2<i16>;
+pub type Vec2u = Vector2<u16>;
 
 pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     let start = Instant::now();
@@ -8,18 +16,19 @@ pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     (start.elapsed(), r)
 }
 
-#[macro_export]
-macro_rules! v2 {
-    ($x:expr, $y:expr) => {
-        Vector2::<f32>::new($x as f32, $y as f32)
-    };
+#[inline]
+pub fn v2(x: f32, y: f32) -> Vec2 {
+    Vec2::new(x, y)
 }
 
-#[macro_export]
-macro_rules! v3 {
-    ($x:expr, $y:expr, $z:expr) => {
-        Vector3::<f32>::new($x as f32, $y as f32, $z as f32)
-    };
+#[inline]
+pub fn v2u(x: u16, y: u16) -> Vec2u {
+    Vec2u::new(x, y)
+}
+
+#[inline]
+pub fn v3(x: f32, y: f32, z: f32) -> Vec3 {
+    Vec3::new(x, y, z)
 }
 
 #[macro_export]
@@ -36,32 +45,38 @@ macro_rules! p3 {
     };
 }
 
+#[inline]
 pub fn p3_to_p2(input: &Point3<f32>) -> Point2<f32> {
     Point2::new(input.x, input.z)
 }
 
-pub fn p3_to_v2(input: &Point3<f32>) -> Vector2<f32> {
-    v2!(input.x, input.z)
+#[inline]
+pub fn p3_to_v2(input: &Point3<f32>) -> Vec2 {
+    v2(input.x, input.z)
 }
 
-pub fn v2_to_p3(input: &Vector2<f32>) -> Point3<f32> {
+#[inline]
+pub fn v2_to_p3(input: &Vec2) -> Point3<f32> {
     p3!(input.x, 0.0, input.y)
 }
 
-pub fn v2_to_v3(input: &Vector2<f32>) -> Vector3<f32> {
+#[inline]
+pub fn v2_to_v3(input: &Vec2) -> Vector3<f32> {
     Vector3::new(input.x, 0.0, input.y)
 }
 
-pub fn v3_to_v2(input: &Vector3<f32>) -> Vector2<f32> {
-    Vector2::new(input.x, input.z)
+#[inline]
+pub fn v3_to_v2(input: &Vector3<f32>) -> Vec2 {
+    v2(input.x, input.z)
 }
 
-pub fn v2_to_p2(input: &Vector2<f32>) -> Point2<f32> {
+#[inline]
+pub fn v2_to_p2(input: &Vec2) -> Point2<f32> {
     Point2::new(input.x, input.y)
 }
 
-pub fn rotate_vec2(rad: f32, vec: &Vector2<f32>) -> Vector2<f32> {
-    let rot_matrix = Matrix4::<f32>::identity();
+pub fn rotate_vec2(rad: f32, vec: &Vec2) -> Vec2 {
+    let rot_matrix = Mat4::identity();
     let rotation = Rotation3::from_axis_angle(&nalgebra::Unit::new_normalize(Vector3::y()), rad)
         .to_homogeneous();
     let rot_matrix = rot_matrix * rotation;

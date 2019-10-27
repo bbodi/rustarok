@@ -1,4 +1,5 @@
 use crate::asset::database::AssetDatabase;
+use crate::common::v2;
 use crate::components::char::{attach_human_player_components, Team};
 use crate::components::controller::{CameraComponent, CharEntityId, ControllerEntityId};
 use crate::components::BrowserClient;
@@ -11,7 +12,6 @@ use crate::systems::{Sex, SystemVariables};
 use crate::video::VIDEO_HEIGHT;
 use crate::video::VIDEO_WIDTH;
 use byteorder::{LittleEndian, WriteBytesExt};
-use nalgebra::Vector2;
 use specs::prelude::*;
 use std::convert::TryInto;
 use std::io::Write;
@@ -211,9 +211,9 @@ pub fn handle_client_handshakes(ecs_world: &mut World) {
                                 &updater,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
                                 projection_mat,
-                                v2!(
+                                v2(
                                     ecs_world.read_resource::<DevConfig>().start_pos_x,
-                                    ecs_world.read_resource::<DevConfig>().start_pos_y
+                                    ecs_world.read_resource::<DevConfig>().start_pos_y,
                                 ),
                                 Sex::Male,
                                 JobId::CRUSADER,

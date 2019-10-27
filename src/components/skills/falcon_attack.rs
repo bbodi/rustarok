@@ -1,10 +1,10 @@
 use nalgebra::{Isometry2, Vector2};
 use specs::LazyUpdate;
 
-use crate::common::ElapsedTime;
+use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
-use crate::components::controller::{CharEntityId, WorldCoord};
+use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
@@ -33,9 +33,9 @@ impl SkillDef for FalconAttackSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: WorldCoord,
-        skill_pos: Option<Vector2<f32>>,
-        char_to_skill_dir: &Vector2<f32>,
+        caster_pos: Vec2,
+        skill_pos: Option<Vec2>,
+        char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -66,7 +66,7 @@ impl SkillDef for FalconAttackSkill {
                     end_pos,
                     sprite,
                 );
-                let extents = v2!(configs.attributes.width.unwrap(), 2.5);
+                let extents = v2(configs.attributes.width.unwrap(), 2.5);
 
                 let (coll_handle, _body_handle) = ecs_world
                     .write_resource::<PhysicEngine>()
@@ -103,9 +103,9 @@ impl SkillDef for FalconAttackSkill {
 
 struct FalconAttackSkillManifestation {
     damaged_entities: HashSet<CharEntityId>,
-    extents: Vector2<f32>,
-    start_pos: Vector2<f32>,
-    path: Vector2<f32>,
+    extents: Vec2,
+    start_pos: Vec2,
+    path: Vec2,
     rot_angle_in_rad: f32,
     created_at: ElapsedTime,
     die_at: ElapsedTime,
