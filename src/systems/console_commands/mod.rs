@@ -1,10 +1,9 @@
 use crate::asset::gat::CellType;
-use crate::asset::AssetLoader;
 use crate::common::{v2, v2u, Vec2};
 use crate::components::char::Team;
 use crate::components::char::{
-    attach_human_player_components, percentage, ActionPlayMode, CharActionIndex, CharOutlook,
-    CharState, CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
+    attach_human_player_components, percentage, CharActionIndex, CharOutlook, CharState,
+    CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
@@ -21,12 +20,9 @@ use crate::components::status::status::{
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
     BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
-    StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
-use crate::effect::StrEffectId;
-use crate::my_gl::Gl;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::console_system::{
     AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
@@ -625,47 +621,48 @@ fn create_random_char_minion(
     char_entity_id
 }
 
-pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
-    CommandDefinition {
-        name: "spawn_effect".to_string(),
-        arguments: vec![("effect_name", CommandParamType::String, true)],
-        autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let new_str_name = args.as_str(0).unwrap();
-            let effect_id = {
-                let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
-                let gl = &ecs_world.read_resource::<Gl>();
-                let asset_loader = &ecs_world.read_resource::<AssetLoader>();
-
-                asset_loader
-                    .load_effect(gl, new_str_name, &mut ecs_world.write_resource())
-                    .and_then(|str_file| {
-                        let new_id = StrEffectId(sys_vars.str_effects.len());
-                        sys_vars.str_effects.push(str_file);
-                        Ok(new_id)
-                    })
-            };
-            effect_id.and_then(|effect_id| {
-                let hero_pos = {
-                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(self_char_id.0).unwrap();
-                    char_state.pos()
-                };
-                ecs_world
-                    .create_entity()
-                    .with(StrEffectComponent {
-                        effect_id,
-                        pos: hero_pos,
-                        start_time: ElapsedTime(0.0),
-                        die_at: None,
-                        play_mode: ActionPlayMode::Repeat,
-                    })
-                    .build();
-                Ok(())
-            })
-        }),
-    }
-}
+//dynamic asset_loading is not supported currently (asset_loader cannot be shared between threads..)
+//pub(super) fn cmd_spawn_effect(effect_names: Vec<String>) -> CommandDefinition {
+//    CommandDefinition {
+//        name: "spawn_effect".to_string(),
+//        arguments: vec![("effect_name", CommandParamType::String, true)],
+//        autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
+//        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+//            let new_str_name = args.as_str(0).unwrap();
+//            let effect_id = {
+//                let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
+//                let gl = &ecs_world.read_resource::<Gl>();
+//                let asset_loader = &ecs_world.read_resource::<AssetLoader>();
+//
+//                asset_loader
+//                    .load_effect(gl, new_str_name, &mut ecs_world.write_resource())
+//                    .and_then(|str_file| {
+//                        let new_id = StrEffectId(sys_vars.str_effects.len());
+//                        sys_vars.str_effects.push(str_file);
+//                        Ok(new_id)
+//                    })
+//            };
+//            effect_id.and_then(|effect_id| {
+//                let hero_pos = {
+//                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
+//                    let char_state = storage.get(self_char_id.0).unwrap();
+//                    char_state.pos()
+//                };
+//                ecs_world
+//                    .create_entity()
+//                    .with(StrEffectComponent {
+//                        effect_id,
+//                        pos: hero_pos,
+//                        start_time: ElapsedTime(0.0),
+//                        die_at: None,
+//                        play_mode: ActionPlayMode::Repeat,
+//                    })
+//                    .build();
+//                Ok(())
+//            })
+//        }),
+//    }
+//}
 
 pub(super) fn cmd_list_players() -> CommandDefinition {
     CommandDefinition {

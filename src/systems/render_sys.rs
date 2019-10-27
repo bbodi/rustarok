@@ -94,48 +94,47 @@ impl RenderDesktopClientSystem {
             let _stopwatch = system_benchmark.start_measurement("render.draw_physics_coll");
             // Draw physics colliders
             for physics in (&char_state_storage).join() {
-                let radius =
-                    if let Some(collider) = physics_world.colliders.get(physics.collider_handle) {
-                        if collider.shape().is_shape::<ncollide2d::shape::Ball<f32>>() {
-                            let radius = collider
-                                .shape()
-                                .bounding_sphere(&Isometry2::new(Vector2::zeros(), 0.0))
-                                .radius();
-                            let pos = physics_world
-                                .bodies
-                                .rigid_body(physics.body_handle)
-                                .unwrap()
-                                .position()
-                                .translation
-                                .vector;
-                            render_commands
-                                .circle_3d()
-                                .radius(radius)
-                                .color(&[255, 0, 255, 255])
-                                .pos_2d(&pos)
-                                .y(0.05)
-                                .add();
-                        } else {
-                            let extents = collider
-                                .shape()
-                                .aabb(&Isometry2::new(Vector2::zeros(), 0.0))
-                                .extents();
-                            let pos = physics_world
-                                .bodies
-                                .rigid_body(physics.body_handle)
-                                .unwrap()
-                                .position()
-                                .translation
-                                .vector;
-                            render_commands
-                                .rectangle_3d()
-                                .pos_2d(&pos)
-                                .color(&[255, 0, 255, 255])
-                                .y(0.05)
-                                .size(extents.x, extents.y)
-                                .add();
-                        }
-                    };
+                if let Some(collider) = physics_world.colliders.get(physics.collider_handle) {
+                    if collider.shape().is_shape::<ncollide2d::shape::Ball<f32>>() {
+                        let radius = collider
+                            .shape()
+                            .bounding_sphere(&Isometry2::new(Vector2::zeros(), 0.0))
+                            .radius();
+                        let pos = physics_world
+                            .bodies
+                            .rigid_body(physics.body_handle)
+                            .unwrap()
+                            .position()
+                            .translation
+                            .vector;
+                        render_commands
+                            .circle_3d()
+                            .radius(radius)
+                            .color(&[255, 0, 255, 255])
+                            .pos_2d(&pos)
+                            .y(0.05)
+                            .add();
+                    } else {
+                        let extents = collider
+                            .shape()
+                            .aabb(&Isometry2::new(Vector2::zeros(), 0.0))
+                            .extents();
+                        let pos = physics_world
+                            .bodies
+                            .rigid_body(physics.body_handle)
+                            .unwrap()
+                            .position()
+                            .translation
+                            .vector;
+                        render_commands
+                            .rectangle_3d()
+                            .pos_2d(&pos)
+                            .color(&[255, 0, 255, 255])
+                            .y(0.05)
+                            .size(extents.x, extents.y)
+                            .add();
+                    }
+                };
             }
         }
 
@@ -451,12 +450,15 @@ impl RenderDesktopClientSystem {
 
                     let mut body_bounding_rect = {
                         let render_command = render_commands.get_last_billboard_command();
-
-                        render_command.project_to_screen(
-                            &camera.view_matrix,
-                            &sys_vars.matrices.projection,
-                            &asset_db,
-                        )
+                        if let Some(render_command) = render_command {
+                            render_command.project_to_screen(
+                                &camera.view_matrix,
+                                &sys_vars.matrices.projection,
+                                &asset_db,
+                            )
+                        } else {
+                            continue;
+                        }
                     };
                     let _head_pos_offset = render_single_layer_action(
                         sys_vars.time,
@@ -473,12 +475,14 @@ impl RenderDesktopClientSystem {
                     // TODO: heads are quite similar, use fixed pixel size for it and remove this projection?
                     {
                         let render_command = render_commands.get_last_billboard_command();
-                        let head_bounding_rect = render_command.project_to_screen(
-                            &camera.view_matrix,
-                            &sys_vars.matrices.projection,
-                            asset_db,
-                        );
-                        body_bounding_rect.merge(&head_bounding_rect);
+                        if let Some(render_command) = render_command {
+                            let head_bounding_rect = render_command.project_to_screen(
+                                &camera.view_matrix,
+                                &sys_vars.matrices.projection,
+                                asset_db,
+                            );
+                            body_bounding_rect.merge(&head_bounding_rect);
+                        }
                     };
 
                     // TODO: create a has_hp component and draw this on them only?
@@ -559,12 +563,15 @@ impl RenderDesktopClientSystem {
                     );
                     let bounding_rect = {
                         let render_command = render_commands.get_last_billboard_command();
-
-                        render_command.project_to_screen(
-                            &camera.view_matrix,
-                            &sys_vars.matrices.projection,
-                            asset_db,
-                        )
+                        if let Some(render_command) = render_command {
+                            render_command.project_to_screen(
+                                &camera.view_matrix,
+                                &sys_vars.matrices.projection,
+                                asset_db,
+                            )
+                        } else {
+                            continue;
+                        }
                     };
                     if !char_state.state().is_dead() {
                         self.draw_health_bar(
@@ -828,6 +835,7 @@ pub fn render_single_layer_action<'a>(
         }
     };
     let frame = &action.frames[frame_index];
+    // TODO collect the problematic sprites and remove the 'if' if possible
     if frame.layers.is_empty() {
         // e.g. not every sprite has death status
         return [0, 0];
@@ -1100,9 +1108,7 @@ impl DamageRenderSystem {
             | FlyingNumberType::Heal
             | FlyingNumberType::Damage
             | FlyingNumberType::SubCombo
-            | FlyingNumberType::Combo { .. }
-            | FlyingNumberType::Mana
-            | FlyingNumberType::Crit => digit_count as f32,
+            | FlyingNumberType::Combo { .. } => digit_count as f32,
             FlyingNumberType::Block => 100.0,
             FlyingNumberType::Absorb => 120.0,
         };
@@ -1150,7 +1156,7 @@ impl DamageRenderSystem {
 
         // TODO: don't render more than 1 damage in a single frame for the same target
         let (size, pos) = match number.typ {
-            FlyingNumberType::Heal | FlyingNumberType::Mana => {
+            FlyingNumberType::Heal => {
                 DamageRenderSystem::calc_heal_size_pos(char_state_storage, number, width, perc)
             }
             FlyingNumberType::Combo { .. } => {
@@ -1188,14 +1194,6 @@ impl DamageRenderSystem {
                 pos.z -= y_offset;
                 (1.0, pos)
             }
-            FlyingNumberType::Crit => {
-                let mut pos = Vector3::new(number.start_pos.x, 1.0, number.start_pos.y);
-                pos.y += 4.0 * perc;
-                pos.z -= 2.0 * perc;
-                pos.x += 2.0 * perc;
-                let size = (1.0 - perc) * 4.0;
-                (size, pos)
-            }
         };
         let alpha = match number.typ {
             FlyingNumberType::Combo { .. } => {
@@ -1227,9 +1225,7 @@ impl DamageRenderSystem {
             | FlyingNumberType::Heal
             | FlyingNumberType::Damage
             | FlyingNumberType::Combo { .. }
-            | FlyingNumberType::SubCombo
-            | FlyingNumberType::Mana
-            | FlyingNumberType::Crit => {
+            | FlyingNumberType::SubCombo => {
                 render_commands
                     .number_3d()
                     .scale(size * size_mult)

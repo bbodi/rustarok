@@ -3,7 +3,9 @@ use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::common::{v3, Mat3, Mat4, Vec3};
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::runtime_assets::map::{DataForRenderingSingleNode, SameTextureNodeFaces};
+use crate::runtime_assets::map::{
+    DataForRenderingSingleNode, SameTextureNodeFaces, SameTextureNodeFacesRaw,
+};
 use crate::video::{VertexArray, VertexAttribDefinition};
 use nalgebra::{Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector4};
 use std::collections::HashMap;
@@ -50,7 +52,7 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    fn new() -> BoundingBox {
+    pub fn new() -> BoundingBox {
         BoundingBox {
             min: v3(std::f32::INFINITY, std::f32::INFINITY, std::f32::INFINITY),
             max: v3(
@@ -314,15 +316,14 @@ impl Rsm {
     }
 
     pub fn generate_meshes_by_texture_id(
-        gl: &Gl,
         model_bbox: &BoundingBox,
         shade_type: i32,
         is_only: bool,
         nodes: &Vec<RsmNode>,
         textures: &Vec<(String, TextureId)>,
-    ) -> (Vec<DataForRenderingSingleNode>, BoundingBox) {
+    ) -> (Vec<Vec<SameTextureNodeFacesRaw>>, BoundingBox) {
         let mut real_bounding_box = BoundingBox::new();
-        let mut full_model_rendering_data: Vec<DataForRenderingSingleNode> = Vec::new();
+        let mut full_model_rendering_data: Vec<Vec<SameTextureNodeFacesRaw>> = Vec::new();
         for node in nodes {
             let faces_by_texture_id = {
                 let mut faces_by_texture_id: HashMap<u16, Vec<&NodeFace>> = HashMap::new();
@@ -334,7 +335,7 @@ impl Rsm {
                 }
                 faces_by_texture_id
             };
-            let vertices_per_texture_per_node: DataForRenderingSingleNode = faces_by_texture_id
+            let vertices_per_texture_per_node: Vec<SameTextureNodeFacesRaw> = faces_by_texture_id
                 .iter()
                 .map(|(&texture_index, faces)| {
                     // a node összes olyan face-e, akinek texture_index a texturája
@@ -353,31 +354,36 @@ impl Rsm {
                     }
 
                     let (name, gl_tex) = &textures[node.textures[texture_index as usize] as usize];
-                    let renderable = SameTextureNodeFaces {
-                        vao: VertexArray::new_static(
-                            gl,
-                            MyGlEnum::TRIANGLES,
-                            mesh,
-                            vec![
-                                VertexAttribDefinition {
-                                    number_of_components: 3,
-                                    offset_of_first_element: 0,
-                                },
-                                VertexAttribDefinition {
-                                    // normal
-                                    number_of_components: 3,
-                                    offset_of_first_element: 3,
-                                },
-                                VertexAttribDefinition {
-                                    // uv
-                                    number_of_components: 2,
-                                    offset_of_first_element: 6,
-                                },
-                            ],
-                        ),
+                    let renderable = SameTextureNodeFacesRaw {
+                        mesh,
                         texture: gl_tex.clone(),
                         texture_name: name.to_owned(),
                     };
+                    //                    SameTextureNodeFaces {
+                    //                        vao: VertexArray::new_static(
+                    //                            gl,
+                    //                            MyGlEnum::TRIANGLES,
+                    //                            mesh,
+                    //                            vec![
+                    //                                VertexAttribDefinition {
+                    //                                    number_of_components: 3,
+                    //                                    offset_of_first_element: 0,
+                    //                                },
+                    //                                VertexAttribDefinition {
+                    //                                    // normal
+                    //                                    number_of_components: 3,
+                    //                                    offset_of_first_element: 3,
+                    //                                },
+                    //                                VertexAttribDefinition {
+                    //                                    // uv
+                    //                                    number_of_components: 2,
+                    //                                    offset_of_first_element: 6,
+                    //                                },
+                    //                            ],
+                    //                        ),
+                    //                        texture: gl_tex.clone(),
+                    //                        texture_name: name.to_owned(),
+                    //                    }
                     renderable
                 })
                 .collect();
@@ -402,21 +408,10 @@ impl Rsm {
             .map(|texture_name| {
                 let path = format!("data\\texture\\{}", texture_name);
                 let ret = asset_db.get_texture_id(&path).unwrap_or_else(|| {
-                    let surface = asset_loader.load_sdl_surface(&path);
-                    log::trace!("Surface loaded: {}", path);
-                    let surface = surface.unwrap_or_else(|e| {
-                        log::warn!("Missing texture: {}, {}", path, e);
-                        asset_loader.backup_surface()
-                    });
-                    AssetLoader::create_texture_from_surface(
-                        gl,
-                        &path,
-                        surface,
-                        MyGlEnum::NEAREST,
-                        asset_db,
-                    )
+                    asset_loader
+                        .load_texture(gl, &path, MyGlEnum::NEAREST, asset_db)
+                        .unwrap()
                 });
-                log::trace!("Texture was created loaded: {}", path);
                 return (AssetDatabase::replace_non_ascii_chars(&path), ret);
             })
             .collect()

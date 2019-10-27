@@ -1,11 +1,8 @@
 
-sleep_ms = 5
+sleep_ms = 0
 minions_enabled = false
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
 cast_mode = "Normal"
-# right gate: 250.0, -200.0
-start_pos_x = 238
-start_pos_y = -65
 
 execute_script = ""
 [network]

@@ -7,6 +7,8 @@ use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 
+// Sprites are loaded based on the enum names, so non-camelcase names must be allowed
+#[allow(non_camel_case_types)]
 #[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum MonsterId {
     Baphomet,
