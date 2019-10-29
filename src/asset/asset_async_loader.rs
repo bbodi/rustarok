@@ -24,23 +24,23 @@ use crate::systems::{EffectSprites, Sprites};
 use nalgebra::{Point3, Rotation3};
 use sdl2::pixels::PixelFormatEnum;
 
-pub(super) struct BackgroundAssetLoader {
-    to_main_thread: Sender<FromBackgroundAssetLoaderMsg>,
+pub(super) struct BackgroundAssetLoader<'a> {
+    to_main_thread: Sender<FromBackgroundAssetLoaderMsg<'a>>,
     from_main_thread: Receiver<ToBackgroundAssetLoaderMsg>,
     grf_paths: Vec<String>,
     grf_entry_dict: HashMap<String, (usize, GrfEntry)>,
 }
 
-pub(super) struct SendableRawSdlSurface(pub *mut sdl2::sys::SDL_Surface);
+pub(super) struct SendableRawSdlSurface<'a>(pub &'a mut sdl2::sys::SDL_Surface);
 
-unsafe impl Send for SendableRawSdlSurface {}
+unsafe impl<'a> Send for SendableRawSdlSurface<'a> {}
 
-impl SendableRawSdlSurface {
-    fn new(sdl_surface: sdl2::surface::Surface) -> SendableRawSdlSurface {
+impl<'a> SendableRawSdlSurface<'a> {
+    fn new(sdl_surface: sdl2::surface::Surface<'a>) -> SendableRawSdlSurface<'a> {
         let ptr = sdl_surface.raw();
         // prevent drop
         std::mem::forget(sdl_surface);
-        SendableRawSdlSurface(ptr)
+        SendableRawSdlSurface(unsafe { &mut *ptr })
     }
 }
 
@@ -74,15 +74,15 @@ pub(super) enum ToBackgroundAssetLoaderMsg {
     },
 }
 
-pub(super) enum FromBackgroundAssetLoaderMsg {
+pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
     StartLoadingSpritesResponse {
         sprites: Sprites,
-        reserved_textures: Vec<ReservedTexturedata>,
+        reserved_textures: Vec<ReservedTexturedata<'a>>,
         texture_id_pool: Vec<TextureId>,
     },
     StartLoadingGroundResponse {
         ground_result: AsyncGroundLoadResult,
-        reserved_textures: Vec<ReservedTexturedata>,
+        reserved_textures: Vec<ReservedTexturedata<'a>>,
         texture_id_pool: Vec<TextureId>,
     },
     LoadTextureResponse {
@@ -103,10 +103,10 @@ pub(super) enum FromBackgroundAssetLoaderMsg {
     },
 }
 
-pub(super) struct ReservedTexturedata {
+pub(super) struct ReservedTexturedata<'a> {
     pub texture_id: TextureId,
     pub name: String,
-    pub raw_sdl_surface: SendableRawSdlSurface,
+    pub raw_sdl_surface: SendableRawSdlSurface<'a>,
     pub minmag: MyGlEnum,
 }
 
@@ -122,7 +122,7 @@ pub(super) struct AsyncGroundLoadResult {
     pub lightmap_texture: TextureId,
 }
 
-impl BackgroundAssetLoader {
+impl<'a> BackgroundAssetLoader<'a> {
     pub fn new(
         to_main_thread: Sender<FromBackgroundAssetLoaderMsg>,
         from_main_thread: Receiver<ToBackgroundAssetLoaderMsg>,
@@ -418,9 +418,9 @@ impl BackgroundAssetLoader {
         let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
 
         let texture_id = texture_id_pool.pop().unwrap();
-        let surface = unsafe {
+        let surface = {
             sdl2::surface::Surface::from_data(
-                lightmap.as_mut_slice(),
+                lightmap,
                 width as u32,
                 height as u32,
                 (width as u32) * 4,
@@ -428,7 +428,7 @@ impl BackgroundAssetLoader {
             )
             .unwrap()
         };
-        // clone this surface because the lightmap will be freed when load_ground exits.
+        //         clone this surface because the lightmap will be freed when load_ground exits.
         let mut cloned_surface =
             sdl2::surface::Surface::new(width as u32, height as u32, PixelFormatEnum::BGRA32)
                 .unwrap();

@@ -58,9 +58,9 @@ const GRF_FILELIST_TYPE_ENCRYPT_MIXED: u8 = 0x02;
 // encryption mode 1 (header DES only)
 const GRF_FILELIST_TYPE_ENCRYPT_HEADER: u8 = 0x04;
 
-pub struct AssetLoader {
+pub struct AssetLoader<'a> {
     to_2nd_thread: Sender<ToBackgroundAssetLoaderMsg>,
-    from_2nd_thread: Receiver<FromBackgroundAssetLoaderMsg>,
+    from_2nd_thread: Receiver<FromBackgroundAssetLoaderMsg<'a>>,
     entries: HashMap<String, (usize, GrfEntry)>,
     paths: Vec<String>,
 }
@@ -74,7 +74,7 @@ pub struct GrfEntry {
     offset: u32,
 }
 
-impl AssetLoader {
+impl<'a> AssetLoader<'a> {
     pub fn load_sprites(&self, gl: &Gl, asset_db: &mut AssetDatabase) {
         self.to_2nd_thread
             .send(ToBackgroundAssetLoaderMsg::StartLoadingSprites(
@@ -284,8 +284,9 @@ impl AssetLoader {
         reserved_textures: Vec<ReservedTexturedata>,
     ) -> () {
         for reserved_texture in reserved_textures.into_iter() {
-            let sdl_surface =
-                unsafe { sdl2::surface::Surface::from_ll(reserved_texture.raw_sdl_surface.0) };
+            let sdl_surface = unsafe {
+                sdl2::surface::Surface::from_ll(&mut *reserved_texture.raw_sdl_surface.0)
+            };
             let gl_texture = AssetLoader::create_texture_from_surface_inner(
                 gl,
                 sdl_surface,
@@ -299,7 +300,9 @@ impl AssetLoader {
         }
     }
 
-    pub fn new<P: AsRef<Path> + Clone>(paths: &[P]) -> Result<AssetLoader, std::io::Error> {
+    pub fn new<P: AsRef<Path> + Clone>(
+        paths: &[P],
+    ) -> Result<AssetLoader<'static>, std::io::Error> {
         let (to_main_thread, from_2nd_thread) = channel::<FromBackgroundAssetLoaderMsg>();
         let (to_2nd_thread, from_main_thread) = channel::<ToBackgroundAssetLoaderMsg>();
         let path_str: Vec<String> = paths

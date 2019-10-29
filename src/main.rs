@@ -4,10 +4,10 @@ extern crate byteorder;
 extern crate config;
 extern crate crossbeam_channel;
 extern crate encoding;
-#[macro_use]
-extern crate imgui;
-extern crate imgui_opengl_renderer;
-extern crate imgui_sdl2;
+//#[macro_use]
+//extern crate imgui;
+//extern crate imgui_opengl_renderer;
+//extern crate imgui_sdl2;
 extern crate libflate;
 extern crate log;
 extern crate nalgebra;
@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
-use imgui::ImVec2;
+//use imgui::ImVec2;
 use log::LevelFilter;
 use rand::Rng;
 use specs::prelude::*;
@@ -38,7 +38,7 @@ use specs::Join;
 
 use crate::asset::database::AssetDatabase;
 use crate::asset::{AssetLoader, SpriteResource};
-use crate::common::{measure_time, v2, DeltaTime, ElapsedTime, Mat4, Vec2};
+use crate::common::{measure_time, v2, DeltaTime, ElapsedTime, Vec2};
 use crate::components::char::{
     CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,
     SpriteRenderDescriptorComponent, Team,
@@ -343,31 +343,31 @@ fn main() {
         );
         run_main_frame(&mut ecs_world, &mut ecs_dispatcher);
 
-        let (new_map, show_cursor) = imgui_frame(
-            desktop_client_controller,
-            &mut video,
-            &mut ecs_world,
-            fps,
-            fps_history.as_slice(),
-            &mut fov,
-            &mut cam_angle,
-            &mut window_opened,
-            &system_frame_durations,
-        );
-        sdl_context.mouse().show_cursor(true); // show_cursor
-        if let Some(new_map_name) = new_map {
-            ecs_world.delete_all();
-            let mut physics_world = PhysicEngine::new();
-            let map_render_data = load_map(
-                &mut physics_world,
-                &ecs_world.read_resource::<Gl>(),
-                &new_map_name,
-                &asset_loader,
-                &mut ecs_world.write_resource::<AssetDatabase>(),
-            );
-            *ecs_world.write_resource::<MapRenderData>() = map_render_data;
-            ecs_world.add_resource(physics_world);
-        }
+        //        let (new_map, show_cursor) = imgui_frame(
+        //            desktop_client_controller,
+        //            &mut video,
+        //            &mut ecs_world,
+        //            fps,
+        //            fps_history.as_slice(),
+        //            &mut fov,
+        //            &mut cam_angle,
+        //            &mut window_opened,
+        //            &system_frame_durations,
+        //        );
+        //        sdl_context.mouse().show_cursor(true); // show_cursor
+        //        if let Some(new_map_name) = new_map {
+        //            ecs_world.delete_all();
+        //            let mut physics_world = PhysicEngine::new();
+        //            let map_render_data = load_map(
+        //                &mut physics_world,
+        //                &ecs_world.read_resource::<Gl>(),
+        //                &new_map_name,
+        //                &asset_loader,
+        //                &mut ecs_world.write_resource::<AssetDatabase>(),
+        //            );
+        //            *ecs_world.write_resource::<MapRenderData>() = map_render_data;
+        //            ecs_world.add_resource(physics_world);
+        //        }
 
         video.gl_swap_window();
 
@@ -531,7 +531,7 @@ fn update_desktop_inputs(
     let inputs = storage.get_mut(desktop_client_controller.0).unwrap();
 
     for event in video.event_pump.poll_iter() {
-        video.imgui_sdl2.handle_event(&mut video.imgui, &event);
+        //        video.imgui_sdl2.handle_event(&mut video.imgui, &event);
         match event {
             sdl2::event::Event::Quit { .. } => {
                 return false;
@@ -803,170 +803,170 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
     all_map_names
 }
 
-fn imgui_frame(
-    desktop_client_entity: ControllerEntityId,
-    video: &mut Video,
-    ecs_world: &mut specs::world::World,
-    fps: u64,
-    fps_history: &[f32],
-    fov: &mut f32,
-    cam_angle: &mut f32,
-    window_opened: &mut bool,
-    system_frame_durations: &SystemFrameDurations,
-) -> (Option<String>, bool) {
-    let ui = video.imgui_sdl2.frame(
-        &video.window,
-        &mut video.imgui,
-        &video.event_pump.mouse_state(),
-    );
-    let mut ret = (None, false); // (map, show_cursor)
-    {
-        // IMGUI
-        ui.window(im_str!("Graphic options"))
-            .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
-            .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
-            .opened(window_opened)
-            .build(|| {
-                ret.1 = ui.is_window_hovered();
-                if ui
-                    .slider_float(im_str!("Perspective"), fov, 0.1, std::f32::consts::PI)
-                    .build()
-                {
-                    ecs_world
-                        .write_resource::<SystemVariables>()
-                        .matrices
-                        .projection = Mat4::new_perspective(
-                        VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
-                        *fov,
-                        0.1f32,
-                        1000.0f32,
-                    );
-                }
-
-                if ui
-                    .slider_float(im_str!("Camera"), cam_angle, -120.0, 120.0)
-                    .build()
-                {
-                    let mut storage = ecs_world.write_storage::<CameraComponent>();
-                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
-                    controller.camera.rotate(*cam_angle, 270.0);
-                }
-
-                let map_render_data = &mut ecs_world.write_resource::<MapRenderData>();
-                ui.checkbox(
-                    im_str!("Use tile_colors"),
-                    &mut map_render_data.use_tile_colors,
-                );
-                if ui.checkbox(
-                    im_str!("Use use_lighting"),
-                    &mut map_render_data.use_lighting,
-                ) {
-                    map_render_data.use_lightmaps =
-                        map_render_data.use_lighting && map_render_data.use_lightmaps;
-                }
-                if ui.checkbox(im_str!("Use lightmaps"), &mut map_render_data.use_lightmaps) {
-                    map_render_data.use_lighting =
-                        map_render_data.use_lighting || map_render_data.use_lightmaps;
-                }
-                ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
-                ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
-
-                let camera = ecs_world
-                    .read_storage::<CameraComponent>()
-                    .get(desktop_client_entity.0)
-                    .unwrap()
-                    .clone();
-                let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-
-                {
-                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
-                    ui.text(im_str!(
-                        "Mouse world pos: {}, {}",
-                        controller.mouse_world_pos.x,
-                        controller.mouse_world_pos.y,
-                    ));
-                }
-
-                ui.drag_float3(
-                    im_str!("light_dir"),
-                    &mut map_render_data.rsw.light.direction,
-                )
-                .min(-1.0)
-                .max(1.0)
-                .speed(0.05)
-                .build();
-                ui.color_edit(
-                    im_str!("light_ambient"),
-                    &mut map_render_data.rsw.light.ambient,
-                )
-                .inputs(false)
-                .format(imgui::ColorFormat::Float)
-                .build();
-                ui.color_edit(
-                    im_str!("light_diffuse"),
-                    &mut map_render_data.rsw.light.diffuse,
-                )
-                .inputs(false)
-                .format(imgui::ColorFormat::Float)
-                .build();
-                ui.drag_float(
-                    im_str!("light_opacity"),
-                    &mut map_render_data.rsw.light.opacity,
-                )
-                .min(0.0)
-                .max(1.0)
-                .speed(0.05)
-                .build();
-
-                ui.text(im_str!(
-                    "Maps: {},{},{}",
-                    camera.camera.pos().x,
-                    camera.camera.pos().y,
-                    camera.camera.pos().z
-                ));
-                ui.text(im_str!("yaw: {}, pitch: {}", camera.yaw, camera.pitch));
-                ui.text(im_str!("FPS: {}", fps));
-
-                ui.plot_histogram(im_str!("FPS"), fps_history)
-                    .scale_min(100.0)
-                    .scale_max(145.0)
-                    .graph_size(ImVec2::new(0.0f32, 200.0f32))
-                    .build();
-                ui.text(im_str!("Systems[micro sec]: "));
-                for (sys_name, durations) in system_frame_durations.0.iter() {
-                    let diff = (durations.max / 100) as f32 / (durations.min / 100).max(1) as f32;
-
-                    let color = if diff < 1.5 && durations.avg < 5000 {
-                        (0.0, 1.0, 0.0, 1.0)
-                    } else if diff < 2.0 && durations.avg < 5000 {
-                        (1.0, 0.75, 0.0, 1.0)
-                    } else if diff < 2.5 && durations.avg < 5000 {
-                        (1.0, 0.5, 0.0, 1.0)
-                    } else if durations.avg < 5000 {
-                        (1.0, 0.25, 0.0, 1.0)
-                    } else {
-                        (1.0, 0.0, 0.0, 1.0)
-                    };
-                    ui.text_colored(
-                        color,
-                        im_str!(
-                            "{}: {}, {}, {}",
-                            sys_name,
-                            durations.min,
-                            durations.max,
-                            durations.avg
-                        ),
-                    );
-                }
-                let browser_storage = ecs_world.read_storage::<BrowserClient>();
-                for browser_client in browser_storage.join() {
-                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
-                }
-            });
-    }
-    video.renderer.render(ui);
-    return ret;
-}
+//fn imgui_frame(
+//    desktop_client_entity: ControllerEntityId,
+//    video: &mut Video,
+//    ecs_world: &mut specs::world::World,
+//    fps: u64,
+//    fps_history: &[f32],
+//    fov: &mut f32,
+//    cam_angle: &mut f32,
+//    window_opened: &mut bool,
+//    system_frame_durations: &SystemFrameDurations,
+//) -> (Option<String>, bool) {
+//    let ui = video.imgui_sdl2.frame(
+//        &video.window,
+//        &mut video.imgui,
+//        &video.event_pump.mouse_state(),
+//    );
+//    let mut ret = (None, false); // (map, show_cursor)
+//    {
+//        // IMGUI
+//        ui.window(im_str!("Graphic options"))
+//            .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
+//            .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
+//            .opened(window_opened)
+//            .build(|| {
+//                ret.1 = ui.is_window_hovered();
+//                if ui
+//                    .slider_float(im_str!("Perspective"), fov, 0.1, std::f32::consts::PI)
+//                    .build()
+//                {
+//                    ecs_world
+//                        .write_resource::<SystemVariables>()
+//                        .matrices
+//                        .projection = Mat4::new_perspective(
+//                        VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+//                        *fov,
+//                        0.1f32,
+//                        1000.0f32,
+//                    );
+//                }
+//
+//                if ui
+//                    .slider_float(im_str!("Camera"), cam_angle, -120.0, 120.0)
+//                    .build()
+//                {
+//                    let mut storage = ecs_world.write_storage::<CameraComponent>();
+//                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
+//                    controller.camera.rotate(*cam_angle, 270.0);
+//                }
+//
+//                let map_render_data = &mut ecs_world.write_resource::<MapRenderData>();
+//                ui.checkbox(
+//                    im_str!("Use tile_colors"),
+//                    &mut map_render_data.use_tile_colors,
+//                );
+//                if ui.checkbox(
+//                    im_str!("Use use_lighting"),
+//                    &mut map_render_data.use_lighting,
+//                ) {
+//                    map_render_data.use_lightmaps =
+//                        map_render_data.use_lighting && map_render_data.use_lightmaps;
+//                }
+//                if ui.checkbox(im_str!("Use lightmaps"), &mut map_render_data.use_lightmaps) {
+//                    map_render_data.use_lighting =
+//                        map_render_data.use_lighting || map_render_data.use_lightmaps;
+//                }
+//                ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
+//                ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
+//
+//                let camera = ecs_world
+//                    .read_storage::<CameraComponent>()
+//                    .get(desktop_client_entity.0)
+//                    .unwrap()
+//                    .clone();
+//                let mut storage = ecs_world.write_storage::<HumanInputComponent>();
+//
+//                {
+//                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
+//                    ui.text(im_str!(
+//                        "Mouse world pos: {}, {}",
+//                        controller.mouse_world_pos.x,
+//                        controller.mouse_world_pos.y,
+//                    ));
+//                }
+//
+//                ui.drag_float3(
+//                    im_str!("light_dir"),
+//                    &mut map_render_data.rsw.light.direction,
+//                )
+//                .min(-1.0)
+//                .max(1.0)
+//                .speed(0.05)
+//                .build();
+//                ui.color_edit(
+//                    im_str!("light_ambient"),
+//                    &mut map_render_data.rsw.light.ambient,
+//                )
+//                .inputs(false)
+//                .format(imgui::ColorFormat::Float)
+//                .build();
+//                ui.color_edit(
+//                    im_str!("light_diffuse"),
+//                    &mut map_render_data.rsw.light.diffuse,
+//                )
+//                .inputs(false)
+//                .format(imgui::ColorFormat::Float)
+//                .build();
+//                ui.drag_float(
+//                    im_str!("light_opacity"),
+//                    &mut map_render_data.rsw.light.opacity,
+//                )
+//                .min(0.0)
+//                .max(1.0)
+//                .speed(0.05)
+//                .build();
+//
+//                ui.text(im_str!(
+//                    "Maps: {},{},{}",
+//                    camera.camera.pos().x,
+//                    camera.camera.pos().y,
+//                    camera.camera.pos().z
+//                ));
+//                ui.text(im_str!("yaw: {}, pitch: {}", camera.yaw, camera.pitch));
+//                ui.text(im_str!("FPS: {}", fps));
+//
+//                ui.plot_histogram(im_str!("FPS"), fps_history)
+//                    .scale_min(100.0)
+//                    .scale_max(145.0)
+//                    .graph_size(ImVec2::new(0.0f32, 200.0f32))
+//                    .build();
+//                ui.text(im_str!("Systems[micro sec]: "));
+//                for (sys_name, durations) in system_frame_durations.0.iter() {
+//                    let diff = (durations.max / 100) as f32 / (durations.min / 100).max(1) as f32;
+//
+//                    let color = if diff < 1.5 && durations.avg < 5000 {
+//                        (0.0, 1.0, 0.0, 1.0)
+//                    } else if diff < 2.0 && durations.avg < 5000 {
+//                        (1.0, 0.75, 0.0, 1.0)
+//                    } else if diff < 2.5 && durations.avg < 5000 {
+//                        (1.0, 0.5, 0.0, 1.0)
+//                    } else if durations.avg < 5000 {
+//                        (1.0, 0.25, 0.0, 1.0)
+//                    } else {
+//                        (1.0, 0.0, 0.0, 1.0)
+//                    };
+//                    ui.text_colored(
+//                        color,
+//                        im_str!(
+//                            "{}: {}, {}, {}",
+//                            sys_name,
+//                            durations.min,
+//                            durations.max,
+//                            durations.avg
+//                        ),
+//                    );
+//                }
+//                let browser_storage = ecs_world.read_storage::<BrowserClient>();
+//                for browser_client in browser_storage.join() {
+//                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
+//                }
+//            });
+//    }
+//    video.renderer.render(ui);
+//    return ret;
+//}
 
 fn create_random_char_minion(
     ecs_world: &mut specs::world::World,

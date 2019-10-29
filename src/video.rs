@@ -4,9 +4,9 @@ use crate::asset::AssetLoader;
 use crate::common::{Mat3, Mat4};
 use crate::my_gl::{Gl, MyGlEnum};
 use byteorder::{LittleEndian, WriteBytesExt};
-use imgui::ImGui;
-use imgui_opengl_renderer::Renderer;
-use imgui_sdl2::ImguiSdl2;
+//use imgui::ImGui;
+//use imgui_opengl_renderer::Renderer;
+//use imgui_sdl2::ImguiSdl2;
 use sdl2::render::BlendMode;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::Window;
@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 pub struct Video {
     pub window: Window,
-    pub imgui: ImGui,
-    pub imgui_sdl2: ImguiSdl2,
-    pub renderer: Renderer,
+    //    pub imgui: ImGui,
+    //    pub imgui_sdl2: ImguiSdl2,
+    //    pub renderer: Renderer,
     pub event_pump: EventPump,
 }
 
@@ -41,18 +41,18 @@ impl Video {
             .build()
             .unwrap();
         let (gl, gl_context) = Gl::new(&video, &window, VIDEO_WIDTH as i32, VIDEO_HEIGHT as i32);
-        let mut imgui = imgui::ImGui::init();
-        imgui.set_ini_filename(None);
-        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
-        let renderer =
-            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+        //        let mut imgui = imgui::ImGui::init();
+        //        imgui.set_ini_filename(None);
+        //        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
+        //        let renderer =
+        //            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
         let event_pump = sdl_context.event_pump().unwrap();
         (
             Video {
                 window,
-                imgui,
-                imgui_sdl2,
-                renderer,
+                //                imgui,
+                //                imgui_sdl2,
+                //                renderer,
                 event_pump,
             },
             gl,
