@@ -361,66 +361,6 @@ impl Gnd {
         }
     }
 
-    pub fn create_lightmap_texture(
-        gl: &Gl,
-        lightmap: &Vec<u8>,
-        count: u32,
-        asset_db: &mut AssetDatabase,
-    ) -> TextureId {
-        let width = ((count as f32).sqrt().round() as u32 * 8).next_power_of_two();
-        let height = ((count as f32).sqrt().ceil() as u32 * 8).next_power_of_two();
-
-        AssetLoader::create_texture_from_data(
-            gl,
-            "ground_lightmap_texture",
-            lightmap,
-            width as i32,
-            height as i32,
-            asset_db,
-        )
-    }
-
-    pub fn create_tile_color_texture(
-        gl: &Gl,
-        tiles_color_buffer: &mut Vec<u8>,
-        width: u32,
-        height: u32,
-        asset_db: &mut AssetDatabase,
-    ) -> TextureId {
-        let tile_color_surface = sdl2::surface::Surface::from_data(
-            tiles_color_buffer,
-            width,
-            height,
-            4 * width,
-            PixelFormatEnum::BGRA32,
-        )
-        .unwrap();
-
-        let scaled_w = (width as u32).next_power_of_two();
-        let scaled_h = (height as u32).next_power_of_two();
-
-        let mut scaled_tiles_color_surface =
-            sdl2::surface::Surface::new(scaled_w, scaled_h, PixelFormatEnum::BGRA32)
-                .unwrap()
-                .convert(&tile_color_surface.pixel_format())
-                .unwrap();
-        tile_color_surface
-            .blit_scaled(
-                None,
-                &mut scaled_tiles_color_surface,
-                Rect::new(0, 0, scaled_w, scaled_h),
-            )
-            .unwrap();
-
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            "ground_tile_color_texture",
-            scaled_tiles_color_surface,
-            MyGlEnum::LINEAR,
-            asset_db,
-        );
-    }
-
     fn lightmap_atlas(
         i: u16,
         l_count_w: usize,
@@ -720,34 +660,7 @@ impl Gnd {
         (texture_names, texture_indices)
     }
 
-    pub fn create_gl_texture_atlas(
-        gl: &Gl,
-        asset_loader: &AssetLoader,
-        asset_db: &mut AssetDatabase,
-        texture_names: &Vec<String>,
-    ) -> TextureId {
-        let texture_surfaces: Vec<sdl2::surface::Surface> = texture_names
-            .iter()
-            .map(|texture_name| {
-                let path = format!("data\\texture\\{}", texture_name);
-                let surface = asset_loader.load_sdl_surface(&path);
-                surface.unwrap_or_else(|e| {
-                    log::warn!("Missing: {}, {}", path, e);
-                    asset_loader.backup_surface()
-                })
-            })
-            .collect();
-        let surface_atlas = Gnd::create_texture_atlas(texture_surfaces);
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            "ground_texture_atlas",
-            surface_atlas,
-            MyGlEnum::NEAREST,
-            asset_db,
-        );
-    }
-
-    fn create_texture_atlas(
+    pub fn create_texture_atlas(
         texture_surfaces: Vec<sdl2::surface::Surface>,
     ) -> sdl2::surface::Surface<'static> {
         let _width = (texture_surfaces.len() as f32).sqrt().round() as i32;

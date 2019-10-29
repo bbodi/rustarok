@@ -3,9 +3,7 @@ use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader};
 use crate::common::{v3, Mat3, Mat4, Vec3};
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::runtime_assets::map::{
-    DataForRenderingSingleNode, SameTextureNodeFaces, SameTextureNodeFacesRaw,
-};
+use crate::runtime_assets::map::SameTextureNodeFacesRaw;
 use crate::video::{VertexArray, VertexAttribDefinition};
 use nalgebra::{Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector4};
 use std::collections::HashMap;

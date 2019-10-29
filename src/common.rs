@@ -144,14 +144,6 @@ impl ElapsedTime {
         self.0 > other.0
     }
 
-    pub fn max(&self, other: ElapsedTime) -> ElapsedTime {
-        ElapsedTime(self.0.max(other.0))
-    }
-
-    pub fn min(&self, other: ElapsedTime) -> ElapsedTime {
-        ElapsedTime(self.0.min(other.0))
-    }
-
     pub fn as_f32(&self) -> f32 {
         self.0
     }

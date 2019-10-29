@@ -19,7 +19,7 @@ pub struct FileData {
     src: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WaterData {
     pub level: f32,
     pub typ: i32,

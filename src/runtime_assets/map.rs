@@ -1,15 +1,14 @@
 use crate::asset::database::AssetDatabase;
-use crate::asset::gat::{CellType, Gat};
-use crate::asset::gnd::Gnd;
+use crate::asset::gat::Gat;
 use crate::asset::rsm::{BoundingBox, RsmNodeVertex};
-use crate::asset::rsw::{Rsw, WaterData};
-use crate::asset::texture::TextureId;
+use crate::asset::rsw::Rsw;
+use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::asset::AssetLoader;
 use crate::common::{measure_time, Mat4};
-use crate::common::{v2, v3, Vec2};
+use crate::common::{v2, Vec2};
 use crate::my_gl::{Gl, MyGlEnum};
 use crate::video::{VertexArray, VertexAttribDefinition};
-use nalgebra::{Point3, Rotation3, Vector2, Vector3};
+use nalgebra::{Rotation3, Vector2, Vector3};
 use ncollide2d::pipeline::CollisionGroups;
 use ncollide2d::shape::ShapeHandle;
 use nphysics2d::force_generator::DefaultForceGeneratorSet;
@@ -45,7 +44,8 @@ pub struct ModelInstance {
 
 pub struct MapRenderData {
     pub gat: Gat,
-    pub gnd: Gnd,
+    pub ground_width: u32,
+    pub ground_height: u32,
     pub rsw: Rsw,
     pub use_tile_colors: bool,
     pub use_lightmaps: bool,
@@ -92,7 +92,8 @@ struct GroundLoadResult {
     ground_walkability_mesh: VertexArray,
     ground_walkability_mesh2: VertexArray,
     ground_walkability_mesh3: VertexArray,
-    ground: Gnd,
+    ground_width: u32,
+    ground_height: u32,
     texture_atlas: TextureId,
     tile_color_texture: TextureId,
     lightmap_texture: TextureId,
@@ -107,11 +108,11 @@ pub fn load_map(
 ) -> (MapRenderData) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
-    let (elapsed, gat) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
+    let (elapsed, (gat, rectangles)) = measure_time(|| asset_loader.load_gat(map_name).unwrap());
     log::info!("gat loaded: {}ms", elapsed.as_millis());
 
-    let colliders: Vec<(Vec2, Vec2)> = gat
-        .rectangles
+    log::info!("coliders");
+    let colliders: Vec<(Vec2, Vec2)> = rectangles
         .iter()
         .map(|cell| {
             let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
@@ -147,37 +148,66 @@ pub fn load_map(
         })
         .collect();
 
-    let ground_data = load_ground(
+    log::info!("load_ground");
+    //    let ground_data = load_ground(
+    //        gl,
+    //        map_name,
+    //        &gat,
+    //        rectangles,
+    //        &world.water,
+    //        &colliders,
+    //        asset_loader,
+    //        asset_db,
+    //    );
+    asset_loader.start_loading_ground(
         gl,
-        map_name,
-        &gat,
-        &world.water,
-        &colliders,
-        asset_loader,
         asset_db,
+        map_name,
+        rectangles,
+        gat.clone(),
+        world.water.clone(),
+        colliders.clone(),
     );
+
+    let dummy_vbo = VertexArray::new_static(
+        gl,
+        MyGlEnum::TRIANGLES,
+        vec![0.0, 0.0, 0.0],
+        vec![VertexAttribDefinition {
+            number_of_components: 3,
+            offset_of_first_element: 0,
+        }],
+    );
+    let ground_data = GroundLoadResult {
+        ground_vertex_array: dummy_vbo.clone(),
+        ground_walkability_mesh: dummy_vbo.clone(),
+        ground_walkability_mesh2: dummy_vbo.clone(),
+        ground_walkability_mesh3: dummy_vbo,
+        ground_width: 0,
+        ground_height: 0,
+        texture_atlas: DUMMY_TEXTURE_ID_FOR_TEST,
+        tile_color_texture: DUMMY_TEXTURE_ID_FOR_TEST,
+        lightmap_texture: DUMMY_TEXTURE_ID_FOR_TEST,
+    };
 
     ////////////////////////////
     //// MODELS
     ////////////////////////////
     world.models.iter().for_each(|model| {
-        asset_loader.load_model2(&model.filename, asset_db).unwrap();
+        asset_loader.load_model(&model.filename, asset_db).unwrap();
     });
 
     let model_instances_iter = {
         let len = world.models.len();
         world.models.iter().take(len)
     };
+
     let mut model_instances: Vec<ModelInstance> = model_instances_iter
         .map(|model_instance| {
             let mut only_translation_matrix: vek::Mat4<f32> = vek::Mat4::identity();
             {
                 let t = model_instance.pos
-                    + Vector3::new(
-                        ground_data.ground.width as f32,
-                        0f32,
-                        ground_data.ground.height as f32,
-                    );
+                    + Vector3::new((gat.width / 2) as f32, 0f32, (gat.height / 2) as f32);
                 only_translation_matrix.translate_3d((t.x, t.y, t.z));
             }
 
@@ -393,7 +423,8 @@ pub fn load_map(
 
     MapRenderData {
         gat,
-        gnd: ground_data.ground,
+        ground_width: ground_data.ground_width,
+        ground_height: ground_data.ground_height,
         rsw: world,
         ground_vertex_array: ground_data.ground_vertex_array,
         texture_atlas: ground_data.texture_atlas,
@@ -412,178 +443,6 @@ pub fn load_map(
         ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
         ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
         minimap_texture_id: minimap_texture,
-    }
-}
-
-fn load_ground(
-    gl: &Gl,
-    map_name: &str,
-    gat: &Gat,
-    water: &WaterData,
-    colliders: &Vec<(Vec2, Vec2)>,
-    asset_loader: &AssetLoader,
-    asset_db: &mut AssetDatabase,
-) -> GroundLoadResult {
-    let mut v = v3(0.0, 0.0, 0.0);
-    let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
-    let mut rotate_around_x_axis = |mut pos: Point3<f32>| {
-        v.x = pos[0];
-        v.y = pos[1];
-        v.z = pos[2];
-        v = rot * v;
-        pos[0] = v.x;
-        pos[1] = v.y;
-        pos[2] = v.z;
-        pos
-    };
-
-    let vertices: Vec<Point3<f32>> = gat
-        .rectangles
-        .iter()
-        .map(|cell| {
-            let x = cell.start_x as f32;
-            let x2 = (cell.start_x + cell.width) as f32;
-            let y = (cell.bottom - cell.height + 1) as f32;
-            let y2 = (cell.bottom + 1) as f32;
-            vec![
-                rotate_around_x_axis(Point3::new(x, -2.0, y2)),
-                rotate_around_x_axis(Point3::new(x2, -2.0, y2)),
-                rotate_around_x_axis(Point3::new(x, -2.0, y)),
-                rotate_around_x_axis(Point3::new(x, -2.0, y)),
-                rotate_around_x_axis(Point3::new(x2, -2.0, y2)),
-                rotate_around_x_axis(Point3::new(x2, -2.0, y)),
-            ]
-        })
-        .flatten()
-        .collect();
-
-    let vertices2: Vec<Point3<f32>> = gat
-        .cells
-        .iter()
-        .enumerate()
-        .map(|(i, cell)| {
-            let x = (i as u32 % gat.width) as f32;
-            let y = (i as u32 / gat.width) as f32;
-            if cell.cell_type & CellType::Walkable as u8 == 0 {
-                vec![
-                    rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 1.0)),
-                    rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 1.0)),
-                    rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 0.0)),
-                    rotate_around_x_axis(Point3::new(x + 0.0, -1.0, y + 0.0)),
-                    rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 1.0)),
-                    rotate_around_x_axis(Point3::new(x + 1.0, -1.0, y + 0.0)),
-                ]
-            } else {
-                vec![]
-            }
-        })
-        .flatten()
-        .collect();
-    let ground_walkability_mesh = VertexArray::new_static(
-        gl,
-        MyGlEnum::TRIANGLES,
-        vertices,
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    );
-    let ground_walkability_mesh2 = VertexArray::new_static(
-        gl,
-        MyGlEnum::TRIANGLES,
-        vertices2,
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    );
-    let vertices: Vec<Point3<f32>> = colliders
-        .iter()
-        .map(|(extents, pos)| {
-            let x = pos.x - extents.x;
-            let x2 = pos.x + extents.x;
-            let y = pos.y - extents.y;
-            let y2 = pos.y + extents.y;
-            vec![
-                Point3::new(x, 3.0, y2),
-                Point3::new(x2, 3.0, y2),
-                Point3::new(x, 3.0, y),
-                Point3::new(x, 3.0, y),
-                Point3::new(x2, 3.0, y2),
-                Point3::new(x2, 3.0, y),
-            ]
-        })
-        .flatten()
-        .collect();
-    let ground_walkability_mesh3 = VertexArray::new_static(
-        gl,
-        MyGlEnum::TRIANGLES,
-        vertices,
-        vec![VertexAttribDefinition {
-            number_of_components: 3,
-            offset_of_first_element: 0,
-        }],
-    );
-    let (elapsed, mut ground) = measure_time(|| {
-        asset_loader
-            .load_gnd(map_name, water.level, water.wave_height)
-            .unwrap()
-    });
-    log::info!("gnd loaded: {}ms", elapsed.as_millis());
-    let (elapsed, texture_atlas) = measure_time(|| {
-        Gnd::create_gl_texture_atlas(gl, &asset_loader, asset_db, &ground.texture_names)
-    });
-    log::info!("gnd texture_atlas loaded: {}ms", elapsed.as_millis());
-
-    let tile_color_texture = Gnd::create_tile_color_texture(
-        gl,
-        &mut ground.tiles_color_image,
-        ground.width,
-        ground.height,
-        asset_db,
-    );
-    let lightmap_texture =
-        Gnd::create_lightmap_texture(gl, &ground.lightmap_image, ground.lightmaps.count, asset_db);
-    let ground_vertex_array = VertexArray::new_static(
-        gl,
-        MyGlEnum::TRIANGLES,
-        std::mem::replace(&mut ground.mesh, vec![]),
-        vec![
-            VertexAttribDefinition {
-                number_of_components: 3,
-                offset_of_first_element: 0,
-            },
-            VertexAttribDefinition {
-                // normals
-                number_of_components: 3,
-                offset_of_first_element: 3,
-            },
-            VertexAttribDefinition {
-                // texcoords
-                number_of_components: 2,
-                offset_of_first_element: 6,
-            },
-            VertexAttribDefinition {
-                // lightmap_coord
-                number_of_components: 2,
-                offset_of_first_element: 8,
-            },
-            VertexAttribDefinition {
-                // tile color coordinate
-                number_of_components: 2,
-                offset_of_first_element: 10,
-            },
-        ],
-    );
-    GroundLoadResult {
-        ground_vertex_array,
-        ground_walkability_mesh,
-        ground_walkability_mesh2,
-        ground_walkability_mesh3,
-        ground,
-        texture_atlas,
-        tile_color_texture,
-        lightmap_texture,
     }
 }
 

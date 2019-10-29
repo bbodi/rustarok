@@ -155,8 +155,8 @@ impl RenderUI {
             .add(map_render_data.minimap_texture_id);
         let minimap_w = (minimap_texture.width as f32 * scale) as i32
             - ((52.0 + 45.0 + 6.0 + 7.0) * scale) as i32;
-        let real_to_map_scale_w = minimap_w as f32 / (map_render_data.gnd.width * 2) as f32;
-        let real_to_map_scale_h = minimap_h as f32 / (map_render_data.gnd.height * 2) as f32;
+        let real_to_map_scale_w = minimap_w as f32 / (map_render_data.ground_width * 2) as f32;
+        let real_to_map_scale_h = minimap_h as f32 / (map_render_data.ground_height * 2) as f32;
         for (entity_id, char_state) in (entities, char_state_storage).join() {
             let entity_id = CharEntityId(entity_id);
             let head_index = if npc_storage.get(entity_id.0).is_none() {
@@ -179,7 +179,7 @@ impl RenderUI {
 
             let (char_x, char_y) = {
                 let char_pos = char_state.pos();
-                let char_y = (map_render_data.gnd.height * 2) as f32 + char_pos.y;
+                let char_y = (map_render_data.ground_height * 2) as f32 + char_pos.y;
                 (char_pos.x, char_y)
             };
 
@@ -251,7 +251,7 @@ impl RenderUI {
         );
 
         let h = right_bottom.y - right_top.y;
-        let letf_bottom_y = (map_render_data.gnd.height * 2) as f32 + left_bottom.y;
+        let letf_bottom_y = (map_render_data.ground_height * 2) as f32 + left_bottom.y;
         render_commands
             .rectangle_2d()
             .screen_pos(

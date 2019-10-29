@@ -28,7 +28,7 @@ pub const VIDEO_HEIGHT: u32 = 768;
 
 impl Video {
     pub fn init(sdl_context: &sdl2::Sdl) -> (Video, Gl, sdl2::video::GLContext) {
-        sdl_context.mouse().show_cursor(false);
+        sdl_context.mouse().show_cursor(true); // false
         let video = sdl_context.video().unwrap();
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);

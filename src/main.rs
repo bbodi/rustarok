@@ -50,15 +50,13 @@ use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
-use crate::my_gl::Gl;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
 use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::effect::load_str_effects;
-use crate::runtime_assets::graphic::{
-    load_skill_icons, load_sprites, load_status_icons, load_texts,
-};
+use crate::runtime_assets::graphic::{load_skill_icons, load_status_icons, load_texts};
 use crate::runtime_assets::map::{load_map, CollisionGroup, MapRenderData, PhysicEngine};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
@@ -85,7 +83,7 @@ use crate::systems::sound_sys::SoundSystem;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
-    CollisionsFromPrevFrame, RenderMatrices, Sex, SystemFrameDurations, SystemVariables,
+    CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations, SystemVariables,
 };
 use crate::video::{Video, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::web_server::start_web_server;
@@ -163,6 +161,15 @@ fn main() {
 
     let mut physics_world = PhysicEngine::new();
 
+    // dummy texture
+    AssetLoader::create_texture_from_surface(
+        &gl,
+        "dummy",
+        asset_loader.backup_surface(),
+        MyGlEnum::NEAREST,
+        &mut asset_db,
+    );
+
     let map_name = "prontera";
     //    let map_name = "bat_a01"; // battle ground
     log::info!(">>> Loading map");
@@ -209,7 +216,7 @@ fn main() {
     log::info!("<<< Load sounds");
     log::info!(">>> Populate SystemVariables");
     let sys_vars = SystemVariables::new(
-        load_sprites(&gl, &asset_loader, &mut asset_db),
+        Sprites::new_for_test(),
         load_texts(&gl, &ttf_context, &mut asset_db),
         render_matrices,
         load_status_icons(&gl, &asset_loader, &mut asset_db),
@@ -233,6 +240,7 @@ fn main() {
     log::info!("<<< register systems");
     log::info!(">>> add resources");
     ecs_world.add_resource(sys_vars);
+    asset_loader.load_sprites(&gl, &mut asset_db);
     ecs_world.add_resource(gl.clone());
     ecs_world.add_resource(map_render_data);
     ecs_world.add_resource(DevConfig::new().unwrap());
@@ -311,7 +319,12 @@ fn main() {
     log::info!("<<< start webserver");
 
     'running: loop {
-        asset_loader.process_async_loading(&gl, &mut ecs_world.write_resource::<AssetDatabase>());
+        asset_loader.process_async_loading(
+            &gl,
+            &mut ecs_world.write_resource::<SystemVariables>(),
+            &mut ecs_world.write_resource::<AssetDatabase>(),
+            &mut ecs_world.write_resource::<MapRenderData>(),
+        );
 
         handle_new_connections(map_name, &mut ecs_world, &mut websocket_server);
 
@@ -341,7 +354,7 @@ fn main() {
             &mut window_opened,
             &system_frame_durations,
         );
-        sdl_context.mouse().show_cursor(show_cursor);
+        sdl_context.mouse().show_cursor(true); // show_cursor
         if let Some(new_map_name) = new_map {
             ecs_world.delete_all();
             let mut physics_world = PhysicEngine::new();

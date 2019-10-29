@@ -10,9 +10,10 @@ use crate::components::status::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
 };
-use crate::consts::{JobId, JobSpriteId, MonsterId};
+use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
+use crate::strum::IntoEnumIterator;
 use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{
     get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
@@ -89,10 +90,32 @@ impl Sprites {
             falcon: SpriteResource::new_for_test(),
             stun: SpriteResource::new_for_test(),
             timefont: SpriteResource::new_for_test(),
-            character_sprites: HashMap::new(),
+            character_sprites: PLAYABLE_CHAR_SPRITES
+                .iter()
+                .map(|job_sprite_id| {
+                    (
+                        *job_sprite_id,
+                        [
+                            [
+                                SpriteResource::new_for_test(),
+                                SpriteResource::new_for_test(),
+                            ],
+                            [
+                                SpriteResource::new_for_test(),
+                                SpriteResource::new_for_test(),
+                            ],
+                        ],
+                    )
+                })
+                .collect(),
             mounted_character_sprites: HashMap::new(),
-            head_sprites: [vec![], vec![]],
-            monster_sprites: HashMap::new(),
+            head_sprites: [
+                vec![SpriteResource::new_for_test(); 10],
+                vec![SpriteResource::new_for_test(); 10],
+            ],
+            monster_sprites: MonsterId::iter()
+                .map(|id| (id, SpriteResource::new_for_test()))
+                .collect(),
             effect_sprites: EffectSprites {
                 torch: SpriteResource::new_for_test(),
                 fire_wall: SpriteResource::new_for_test(),

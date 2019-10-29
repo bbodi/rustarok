@@ -69,30 +69,4 @@ impl GlTexture {
             gl.BindTexture(MyGlEnum::TEXTURE_2D, self.context.native_id);
         }
     }
-
-    pub fn from_file<P: AsRef<Path>>(gl: &Gl, path: P, asset_db: &mut AssetDatabase) -> TextureId
-    where
-        P: Display,
-    {
-        use sdl2::image::LoadSurface;
-        let mut surface = sdl2::surface::Surface::from_file(&path).unwrap();
-        let mut optimized_surf = sdl2::surface::Surface::new(
-            surface.width(),
-            surface.height(),
-            sdl2::pixels::PixelFormatEnum::RGBA32,
-        )
-        .unwrap();
-        surface
-            .set_color_key(true, sdl2::pixels::Color::RGB(255, 0, 255))
-            .unwrap();
-        surface.blit(None, &mut optimized_surf, None).unwrap();
-        log::trace!("Texture from file --> {}", &path);
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            &path.to_string(),
-            optimized_surf,
-            MyGlEnum::NEAREST,
-            asset_db,
-        );
-    }
 }

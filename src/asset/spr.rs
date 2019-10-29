@@ -31,7 +31,7 @@ impl SpriteFile {
 
     pub(super) fn load(
         mut buf: BinaryReader,
-        palette: Option<(usize, Vec<u8>)>,
+        palette: Option<Vec<u8>>,
         version: f32,
         indexed_frame_count: usize,
         rgba_frame_count: u16,
@@ -51,7 +51,7 @@ impl SpriteFile {
             } else {
                 Vec::new()
             };
-            palette.map(|it| it.1).unwrap_or(default_palette)
+            palette.map(|it| it).unwrap_or(default_palette)
         };
 
         let mut frames = Vec::with_capacity(indexed_frames.len() + rgba_frames.len());

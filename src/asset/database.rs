@@ -101,8 +101,38 @@ impl AssetDatabase {
         return texture_id;
     }
 
-    pub(super) fn fill_reserved_texture(&mut self, texture_id: TextureId, gl_texture: GlTexture) {
+    pub(super) fn reserve_texture_slots(&mut self, gl: &Gl, count: usize) -> Vec<TextureId> {
+        (0..count)
+            .map(|it| {
+                let texture_id = TextureId(self.textures.len());
+                self.textures
+                    .push(GlTexture::new(gl, GlNativeTextureId(0), 0, 0));
+                texture_id
+            })
+            .collect()
+    }
+
+    pub(super) fn fill_reserved_texture_slot(
+        &mut self,
+        texture_id: TextureId,
+        gl_texture: GlTexture,
+    ) {
         self.textures[texture_id.0] = gl_texture;
+    }
+
+    pub(super) fn fill_bulk_reserved_texture_slot(
+        &mut self,
+        texture_id: TextureId,
+        gl_texture: GlTexture,
+        name: String,
+    ) {
+        self.textures[texture_id.0] = gl_texture;
+
+        let key = AssetDatabase::replace_non_ascii_chars(&name);
+        if self.texture_db.entries.contains_key(&key) {
+            panic!("Texture already exists with this name: {}", key);
+        }
+        self.texture_db.entries.insert(key, texture_id);
     }
 
     pub fn replace_non_ascii_chars(name: &str) -> String {

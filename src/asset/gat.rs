@@ -11,20 +11,19 @@ pub enum CellType {
     Snipable = 1 << 3,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GatCell {
     pub cells: [f32; 4],
     pub cell_type: u8,
 }
 
 // GroundAltitude
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Gat {
     pub width: u32,
     pub height: u32,
     pub cells: Vec<GatCell>,
     pub version: f32,
-    pub rectangles: Vec<BlockingRectangle>,
 }
 
 impl Gat {
@@ -56,7 +55,7 @@ pub struct BlockingRectangle {
 }
 
 impl Gat {
-    pub(super) fn load(mut buf: BinaryReader, map_name: &str) -> Self {
+    pub(super) fn load(mut buf: BinaryReader, map_name: &str) -> (Self, Vec<BlockingRectangle>) {
         let header = buf.string(4);
         if header != "GRAT" {
             panic!("Invalig GAT header: {}", header);
@@ -122,13 +121,15 @@ impl Gat {
             rectangles
         };
 
-        Gat {
-            width,
-            height,
-            cells,
-            version,
+        (
+            Gat {
+                width,
+                height,
+                cells,
+                version,
+            },
             rectangles,
-        }
+        )
     }
 
     fn merge_cells_into_convex_rectangles(

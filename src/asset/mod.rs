@@ -1,26 +1,3 @@
-use crate::asset::act::{Action, ActionFile, ActionFrame};
-use crate::asset::database::AssetDatabase;
-use crate::asset::gat::Gat;
-use crate::asset::gnd::Gnd;
-use crate::asset::rsm::{BoundingBox, Rsm};
-use crate::asset::rsw::Rsw;
-use crate::asset::spr::{SprFrame, SpriteFile};
-use crate::asset::str::StrFile;
-use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId};
-use crate::my_gl::{Gl, MyGlEnum};
-use crate::runtime_assets::map::{
-    DataForRenderingSingleNode, ModelRenderData, SameTextureNodeFaces, SameTextureNodeFacesRaw,
-};
-use crate::systems::sound_sys::SoundId;
-use crate::video::{VertexArray, VertexAttribDefinition};
-use byteorder::WriteBytesExt;
-use byteorder::{LittleEndian, ReadBytesExt};
-use encoding::types::Encoding;
-use encoding::DecoderTrap;
-use libflate::zlib::Decoder;
-use sdl2::image::ImageRWops;
-use sdl2::mixer::LoaderRWops;
-use sdl2::pixels::PixelFormatEnum;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
@@ -29,10 +6,37 @@ use std::io::SeekFrom;
 use std::ops::*;
 use std::os::raw::c_void;
 use std::path::Path;
-use std::str::MatchIndices;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+use byteorder::WriteBytesExt;
+use byteorder::{LittleEndian, ReadBytesExt};
+use encoding::types::Encoding;
+use encoding::DecoderTrap;
+use libflate::zlib::Decoder;
+use sdl2::image::ImageRWops;
+use sdl2::mixer::LoaderRWops;
+use sdl2::pixels::PixelFormatEnum;
+
+use crate::asset::act::{Action, ActionFile, ActionFrame};
+use crate::asset::asset_async_loader::{
+    BackgroundAssetLoader, FromBackgroundAssetLoaderMsg, ReservedTexturedata,
+    ToBackgroundAssetLoaderMsg,
+};
+use crate::asset::database::AssetDatabase;
+use crate::asset::gat::{BlockingRectangle, Gat};
+use crate::asset::gnd::Gnd;
+use crate::asset::rsm::Rsm;
+use crate::asset::rsw::{Rsw, WaterData};
+use crate::asset::str::StrFile;
+use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
+use crate::common::Vec2;
+use crate::my_gl::{Gl, MyGlEnum};
+use crate::runtime_assets::map::{MapRenderData, ModelRenderData, SameTextureNodeFaces};
+use crate::systems::SystemVariables;
+use crate::video::{VertexArray, VertexAttribDefinition};
+
 pub mod act;
+pub mod asset_async_loader;
 pub mod database;
 pub mod gat;
 pub mod gnd;
@@ -70,168 +74,47 @@ pub struct GrfEntry {
     offset: u32,
 }
 
-struct BackgroundAssetLoader;
-
-enum ToBackgroundAssetLoaderMsg {
-    LoadRoSpr {
-        texture_ids: Vec<TextureId>,
-        reader: BinaryReader,
-        version: f32,
-        indexed_frame_count: usize,
-        rgba_frame_count: u16,
-        palette: Option<(usize, Vec<u8>)>,
-    },
-    LoadTexture {
-        texture_id: TextureId,
-        minmag: MyGlEnum,
-        grf_entry: GrfEntry,
-        grf_index: usize,
-        file_name_for_debug: String,
-    },
-    LoadModelPart1 {
-        model_index: usize,
-        grf_entry: GrfEntry,
-        grf_index: usize,
-        file_name_for_debug: String,
-    },
-    LoadModelPart2 {
-        textures: Vec<(String, TextureId)>,
-        rsm: Rsm,
-        model_index: usize,
-    },
-}
-
-enum FromBackgroundAssetLoaderMsg {
-    LoadSprResponse {
-        texture_ids: Vec<TextureId>,
-        frames: Vec<SprFrame>,
-    },
-    LoadTextureResponse {
-        texture_id: TextureId,
-        minmag: MyGlEnum,
-        content: Vec<u8>,
-        file_name: String,
-    },
-    LoadModelPart1Response {
-        rsm: Rsm,
-        model_index: usize,
-    },
-    LoadModelPart2Response {
-        data_for_rendering_full_model: Vec<Vec<SameTextureNodeFacesRaw>>,
-        bbox: BoundingBox,
-        alpha: u8,
-        model_index: usize,
-    },
-}
-
-impl BackgroundAssetLoader {
-    fn run(
-        to_main_thread: Sender<FromBackgroundAssetLoaderMsg>,
-        from_main_thread: Receiver<ToBackgroundAssetLoaderMsg>,
-        grf_paths: Vec<String>,
-    ) {
-        loop {
-            let msg = from_main_thread.recv().unwrap();
-            match msg {
-                ToBackgroundAssetLoaderMsg::LoadRoSpr {
-                    texture_ids,
-                    reader,
-                    version,
-                    indexed_frame_count,
-                    rgba_frame_count,
-                    palette,
-                } => {
-                    let frames = SpriteFile::load(
-                        reader,
-                        palette,
-                        version,
-                        indexed_frame_count,
-                        rgba_frame_count,
-                    )
-                    .frames;
-                    to_main_thread.send(FromBackgroundAssetLoaderMsg::LoadSprResponse {
-                        texture_ids,
-                        frames,
-                    });
-                }
-                ToBackgroundAssetLoaderMsg::LoadTexture {
-                    texture_id,
-                    minmag,
-                    grf_entry,
-                    grf_index,
-                    file_name_for_debug: file_name_for_debug,
-                } => {
-                    let content = AssetLoader::get_content2(
-                        &grf_paths[grf_index],
-                        &grf_entry,
-                        &file_name_for_debug,
-                    );
-                    to_main_thread.send(FromBackgroundAssetLoaderMsg::LoadTextureResponse {
-                        texture_id,
-                        minmag,
-                        content,
-                        file_name: file_name_for_debug,
-                    });
-                }
-                ToBackgroundAssetLoaderMsg::LoadModelPart1 {
-                    model_index,
-                    grf_entry,
-                    grf_index,
-                    file_name_for_debug,
-                } => {
-                    let content = AssetLoader::get_content2(
-                        &grf_paths[grf_index],
-                        &grf_entry,
-                        &file_name_for_debug,
-                    );
-                    let rsm = Rsm::load(BinaryReader::from_vec(content));
-                    to_main_thread.send(FromBackgroundAssetLoaderMsg::LoadModelPart1Response {
-                        rsm,
-                        model_index,
-                    });
-                }
-                ToBackgroundAssetLoaderMsg::LoadModelPart2 {
-                    textures,
-                    rsm,
-                    model_index,
-                } => {
-                    let (data_for_rendering_full_model, bbox): (
-                        Vec<Vec<SameTextureNodeFacesRaw>>,
-                        BoundingBox,
-                    ) = Rsm::generate_meshes_by_texture_id(
-                        &rsm.bounding_box,
-                        rsm.shade_type,
-                        rsm.nodes.len() == 1,
-                        &rsm.nodes,
-                        &textures,
-                    );
-                    to_main_thread.send(FromBackgroundAssetLoaderMsg::LoadModelPart2Response {
-                        alpha: rsm.alpha,
-                        data_for_rendering_full_model,
-                        bbox,
-                        model_index,
-                    });
-                }
-            }
-        }
-    }
-}
-
 impl AssetLoader {
-    pub fn process_async_loading(&self, gl: &Gl, asset_db: &mut AssetDatabase) {
+    pub fn load_sprites(&self, gl: &Gl, asset_db: &mut AssetDatabase) {
+        self.to_2nd_thread
+            .send(ToBackgroundAssetLoaderMsg::StartLoadingSprites(
+                asset_db.reserve_texture_slots(gl, 10_000),
+            ));
+    }
+
+    pub fn start_loading_ground(
+        &self,
+        gl: &Gl,
+        asset_db: &mut AssetDatabase,
+        map_name: &str,
+        rectangles: Vec<BlockingRectangle>,
+        gat: Gat,
+        water: WaterData,
+        colliders: Vec<(Vec2, Vec2)>,
+    ) {
+        let texture_id_pool = asset_db.reserve_texture_slots(gl, 3);
+        self.to_2nd_thread
+            .send(ToBackgroundAssetLoaderMsg::StartLoadingGnd {
+                texture_id_pool,
+                map_name: map_name.to_string(),
+                rectangles: rectangles,
+                gat,
+                water,
+                colliders,
+            });
+    }
+
+    pub fn process_async_loading(
+        &self,
+        gl: &Gl,
+        sys_vars: &mut SystemVariables,
+        asset_db: &mut AssetDatabase,
+        map_render_data: &mut MapRenderData,
+    ) {
         loop {
             let msg = self.from_2nd_thread.try_recv();
             if let Ok(msg) = msg {
                 match msg {
-                    FromBackgroundAssetLoaderMsg::LoadSprResponse {
-                        texture_ids,
-                        frames,
-                    } => {
-                        let textures = frames.into_iter().enumerate().for_each(|(i, frame)| {
-                            let texture = AssetLoader::sdl_surface_from_frame(gl, frame);
-                            asset_db.fill_reserved_texture(texture_ids[i], texture);
-                        });
-                    }
                     FromBackgroundAssetLoaderMsg::LoadTextureResponse {
                         texture_id,
                         minmag,
@@ -244,7 +127,7 @@ impl AssetLoader {
 
                         let gl_texture =
                             AssetLoader::create_texture_from_surface_inner(gl, surface, minmag);
-                        asset_db.fill_reserved_texture(texture_id, gl_texture);
+                        asset_db.fill_reserved_texture_slot(texture_id, gl_texture);
                     }
                     FromBackgroundAssetLoaderMsg::LoadModelPart1Response { rsm, model_index } => {
                         let textures = Rsm::load_textures(gl, self, asset_db, &rsm.texture_names);
@@ -303,10 +186,116 @@ impl AssetLoader {
                         };
                         asset_db.fill_reserved_model_slot(model_index, model_render_data);
                     }
+                    FromBackgroundAssetLoaderMsg::StartLoadingSpritesResponse {
+                        sprites,
+                        reserved_textures,
+                        texture_id_pool,
+                    } => {
+                        sys_vars.assets.sprites = sprites;
+                        log::info!("{} Sprites has been loaded", reserved_textures.len());
+                        log::info!("{} Unused texture slot", texture_id_pool.len());
+                        AssetLoader::set_reserved_textures(gl, asset_db, reserved_textures)
+                    }
+                    FromBackgroundAssetLoaderMsg::StartLoadingGroundResponse {
+                        ground_result,
+                        reserved_textures,
+                        texture_id_pool,
+                    } => {
+                        map_render_data.ground_width = ground_result.ground_width;
+                        map_render_data.ground_height = ground_result.ground_height;
+                        map_render_data.ground_vertex_array = VertexArray::new_static(
+                            gl,
+                            MyGlEnum::TRIANGLES,
+                            ground_result.ground_vertex_array,
+                            vec![
+                                VertexAttribDefinition {
+                                    number_of_components: 3,
+                                    offset_of_first_element: 0,
+                                },
+                                VertexAttribDefinition {
+                                    // normals
+                                    number_of_components: 3,
+                                    offset_of_first_element: 3,
+                                },
+                                VertexAttribDefinition {
+                                    // texcoords
+                                    number_of_components: 2,
+                                    offset_of_first_element: 6,
+                                },
+                                VertexAttribDefinition {
+                                    // lightmap_coord
+                                    number_of_components: 2,
+                                    offset_of_first_element: 8,
+                                },
+                                VertexAttribDefinition {
+                                    // tile color coordinate
+                                    number_of_components: 2,
+                                    offset_of_first_element: 10,
+                                },
+                            ],
+                        );
+                        map_render_data.ground_walkability_mesh = VertexArray::new_static(
+                            gl,
+                            MyGlEnum::TRIANGLES,
+                            ground_result.ground_walkability_mesh,
+                            vec![VertexAttribDefinition {
+                                number_of_components: 3,
+                                offset_of_first_element: 0,
+                            }],
+                        );
+                        map_render_data.ground_walkability_mesh2 = VertexArray::new_static(
+                            gl,
+                            MyGlEnum::TRIANGLES,
+                            ground_result.ground_walkability_mesh2,
+                            vec![VertexAttribDefinition {
+                                number_of_components: 3,
+                                offset_of_first_element: 0,
+                            }],
+                        );
+                        map_render_data.ground_walkability_mesh3 = VertexArray::new_static(
+                            gl,
+                            MyGlEnum::TRIANGLES,
+                            ground_result.ground_walkability_mesh3,
+                            vec![VertexAttribDefinition {
+                                number_of_components: 3,
+                                offset_of_first_element: 0,
+                            }],
+                        );
+                        map_render_data.texture_atlas = ground_result.texture_atlas;
+                        map_render_data.tile_color_texture = ground_result.tile_color_texture;
+                        map_render_data.lightmap_texture = ground_result.lightmap_texture;
+                        log::info!(
+                            "load ground: {} Sprites has been loaded",
+                            reserved_textures.len()
+                        );
+                        log::info!("load ground: {} Unused texture slot", texture_id_pool.len());
+                        AssetLoader::set_reserved_textures(gl, asset_db, reserved_textures)
+                    }
                 }
             } else {
                 break;
             }
+        }
+    }
+
+    fn set_reserved_textures(
+        gl: &Gl,
+        asset_db: &mut AssetDatabase,
+        reserved_textures: Vec<ReservedTexturedata>,
+    ) -> () {
+        for reserved_texture in reserved_textures.into_iter() {
+            let sdl_surface =
+                unsafe { sdl2::surface::Surface::from_ll(reserved_texture.raw_sdl_surface.0) };
+            let gl_texture = AssetLoader::create_texture_from_surface_inner(
+                gl,
+                sdl_surface,
+                reserved_texture.minmag,
+            );
+            asset_db.fill_bulk_reserved_texture_slot(
+                reserved_texture.texture_id,
+                gl_texture,
+                reserved_texture.name,
+            );
         }
     }
 
@@ -317,10 +306,6 @@ impl AssetLoader {
             .iter()
             .map(|path| path.as_ref().to_str().unwrap().to_owned())
             .collect();
-        let cloned_path_str = path_str.clone();
-        std::thread::spawn(move || {
-            BackgroundAssetLoader::run(to_main_thread, from_main_thread, cloned_path_str);
-        });
 
         let entries = if let Ok(mut cache_file) = File::open("grf.cache") {
             let count = cache_file.read_u32::<LittleEndian>().unwrap() as usize;
@@ -399,6 +384,17 @@ impl AssetLoader {
                 }
             }
         };
+        let cloned_path_str = path_str.clone();
+        let cloned_entries = entries.clone();
+        std::thread::spawn(move || {
+            BackgroundAssetLoader::new(
+                to_main_thread,
+                from_main_thread,
+                cloned_path_str,
+                cloned_entries,
+            )
+            .run();
+        });
         Ok(AssetLoader {
             to_2nd_thread,
             paths: path_str,
@@ -485,10 +481,6 @@ impl AssetLoader {
         missing_texture
     }
 
-    pub fn exists(&self, file_name: &str) -> bool {
-        self.entries.get(file_name).is_some()
-    }
-
     pub fn get_entry_names(&self) -> Vec<String> {
         self.entries.keys().map(|it| it.to_owned()).collect()
     }
@@ -559,17 +551,13 @@ impl AssetLoader {
         return Ok(Rsw::load(BinaryReader::from_vec(content)));
     }
 
-    pub fn load_gat(&self, map_name: &str) -> Result<Gat, String> {
+    pub fn load_gat(&self, map_name: &str) -> Result<(Gat, Vec<BlockingRectangle>), String> {
         let file_name = format!("data\\{}.gat", map_name);
         let content = self.get_content(&file_name)?;
         return Ok(Gat::load(BinaryReader::from_vec(content), map_name));
     }
 
-    pub fn load_model2(
-        &self,
-        model_name: &str,
-        asset_db: &mut AssetDatabase,
-    ) -> Result<(), String> {
+    pub fn load_model(&self, model_name: &str, asset_db: &mut AssetDatabase) -> Result<(), String> {
         let file_name = format!("data\\model\\{}", model_name);
         let model_index = asset_db.reserve_model_slot(&model_name);
         if let Some((grf_index, entry)) = self.entries.get(&file_name) {
@@ -584,27 +572,6 @@ impl AssetLoader {
         } else {
             return Err(format!("No entry found in GRFs '{}'", file_name));
         }
-    }
-
-    pub fn load_model(&self, model_name: &str) -> Result<Rsm, String> {
-        let file_name = format!("data\\model\\{}", model_name);
-        let content = self.get_content(&file_name)?;
-        return Ok(Rsm::load(BinaryReader::from_vec(content)));
-    }
-
-    pub fn load_gnd(
-        &self,
-        map_name: &str,
-        water_level: f32,
-        water_height: f32,
-    ) -> Result<Gnd, String> {
-        let file_name = format!("data\\{}.gnd", map_name);
-        let content = self.get_content(&file_name)?;
-        return Ok(Gnd::load(
-            BinaryReader::from_vec(content),
-            water_level,
-            water_height,
-        ));
     }
 
     pub fn load_wav(&self, path: &str) -> Result<sdl2::mixer::Chunk, String> {
@@ -655,25 +622,6 @@ impl AssetLoader {
         let ret = AssetLoader::create_texture_from_surface_inner(gl, surface, min_mag);
         log::trace!("Texture was created: {}", name);
         return asset_db.register_texture(&name, ret);
-    }
-
-    pub fn create_texture_from_data(
-        gl: &Gl,
-        name: &str,
-        data: &Vec<u8>,
-        width: i32,
-        height: i32,
-        asset_db: &mut AssetDatabase,
-    ) -> TextureId {
-        let texture = AssetLoader::create_gl_texture(
-            gl,
-            width,
-            height,
-            data.as_ptr() as *const c_void,
-            MyGlEnum::LINEAR,
-        );
-
-        return asset_db.register_texture(&name, texture);
     }
 
     pub fn create_texture_from_surface_inner(
@@ -775,98 +723,6 @@ impl AssetLoader {
             return Err(format!("No entry found in GRFs '{}'", texture_path));
         }
     }
-
-    pub fn load_spr_and_act_with_palette(
-        &self,
-        gl: &Gl,
-        path: &str,
-        asset_db: &mut AssetDatabase,
-        palette_index: usize,
-        palette: Vec<u8>,
-    ) -> Result<SpriteResource, String> {
-        self.load_spr_and_act_inner(gl, path, asset_db, Some((palette_index, palette)))
-    }
-
-    pub fn load_spr_and_act(
-        &self,
-        gl: &Gl,
-        path: &str,
-        asset_db: &mut AssetDatabase,
-    ) -> Result<SpriteResource, String> {
-        self.load_spr_and_act_inner(gl, path, asset_db, None)
-    }
-
-    fn load_spr_and_act_inner(
-        &self,
-        gl: &Gl,
-        path: &str,
-        asset_db: &mut AssetDatabase,
-        palette: Option<(usize, Vec<u8>)>,
-    ) -> Result<SpriteResource, String> {
-        let content = self.get_content(&format!("{}.spr", path))?;
-        let mut reader = BinaryReader::from_vec(content);
-        let (version, indexed_frame_count, rgba_frame_count) = SpriteFile::read_header(&mut reader);
-        let texture_ids = (0..(indexed_frame_count + rgba_frame_count as usize))
-            .map(|it| {
-                asset_db.reserve_texture_slot(
-                    gl,
-                    &format!(
-                        "{}_{}_{}",
-                        &path.to_string(),
-                        palette.as_ref().map(|it| it.0).unwrap_or(0),
-                        it
-                    ),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        self.to_2nd_thread
-            .send(ToBackgroundAssetLoaderMsg::LoadRoSpr {
-                texture_ids: texture_ids.clone(),
-                reader,
-                version,
-                indexed_frame_count,
-                rgba_frame_count,
-                palette,
-            });
-        // if !fast_loading {process_async_loading join}
-
-        let content = self.get_content(&format!("{}.act", path))?;
-        let action = ActionFile::load(BinaryReader::from_vec(content));
-        return Ok(SpriteResource {
-            action,
-            textures: texture_ids,
-        });
-    }
-
-    fn sdl_surface_from_frame(gl: &Gl, mut frame: crate::asset::spr::SprFrame) -> GlTexture {
-        let frame_surface = sdl2::surface::Surface::from_data(
-            &mut frame.data,
-            frame.width as u32,
-            frame.height as u32,
-            (4 * frame.width) as u32,
-            PixelFormatEnum::RGBA32,
-        )
-        .unwrap();
-
-        let mut opengl_surface = sdl2::surface::Surface::new(
-            frame.width as u32,
-            frame.height as u32,
-            PixelFormatEnum::RGBA32,
-        )
-        .unwrap();
-
-        let dst_rect = sdl2::rect::Rect::new(0, 0, frame.width as u32, frame.height as u32);
-        frame_surface
-            .blit(None, &mut opengl_surface, dst_rect)
-            .unwrap();
-
-        return AssetLoader::create_texture_from_surface_inner(
-            gl,
-            opengl_surface,
-            MyGlEnum::NEAREST,
-        );
-    }
 }
 
 #[derive(Clone)]
@@ -892,7 +748,7 @@ impl SpriteResource {
                     .collect(),
                 sounds: vec![],
             },
-            textures: vec![],
+            textures: vec![DUMMY_TEXTURE_ID_FOR_TEST],
         }
     }
 }

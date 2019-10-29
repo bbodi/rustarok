@@ -1,5 +1,11 @@
 
 #### 2019.10.27
+- Startup time optimization
+    - Ground is loaded on a second thread as well
+    - debug startup: ~5s
+    - release startup: ~1.9s
+    
+#### 2019.10.27
 - Startup time optimization  
 Sprites and models are loaded on a background thread asynchronously. 
     - old, debug mode: 24s

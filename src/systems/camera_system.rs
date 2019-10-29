@@ -89,15 +89,17 @@ impl<'a> specs::System<'a> for CameraSystem {
 
             if camera.camera.pos().x < 0.0 {
                 camera.camera.set_x(0.0);
-            } else if camera.camera.pos().x > map_render_data.gnd.width as f32 * 2.0 {
-                camera.camera.set_x(map_render_data.gnd.width as f32 * 2.0);
+            } else if camera.camera.pos().x > map_render_data.ground_width as f32 * 2.0 {
+                camera
+                    .camera
+                    .set_x(map_render_data.ground_width as f32 * 2.0);
             }
             if camera.camera.pos().z > 0.0 {
                 camera.camera.set_z(0.0);
-            } else if camera.camera.pos().z < -(map_render_data.gnd.height as f32 * 2.0) {
+            } else if camera.camera.pos().z < -(map_render_data.ground_height as f32 * 2.0) {
                 camera
                     .camera
-                    .set_z(-(map_render_data.gnd.height as f32 * 2.0));
+                    .set_z(-(map_render_data.ground_height as f32 * 2.0));
             }
 
             camera.view_matrix = camera.camera.create_view_matrix();
