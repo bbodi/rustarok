@@ -25,9 +25,8 @@ use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::console_system::{
-    AutocompletionProvider, AutocompletionProviderWithUsernameCompletion,
-    BasicAutocompletionProvider, CommandDefinition, CommandParamType, ConsoleComponent,
-    ConsoleEntry, ConsoleSystem, ConsoleWordType,
+    AutocompletionProviderWithUsernameCompletion, BasicAutocompletionProvider, CommandDefinition,
+    CommandParamType, ConsoleComponent, ConsoleEntry, ConsoleSystem, ConsoleWordType,
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::input_sys_scancodes::ScancodeNames;
@@ -41,26 +40,12 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
 
-struct SpawnEffectAutocompletion {
-    effect_names: Vec<String>,
-}
-
-impl AutocompletionProvider for SpawnEffectAutocompletion {
-    fn get_autocompletion_list(
-        &self,
-        _param_index: usize,
-        _input_storage: &specs::ReadStorage<HumanInputComponent>,
-    ) -> Option<Vec<String>> {
-        Some(self.effect_names.clone())
-    }
-}
-
 pub(super) fn cmd_toggle_console() -> CommandDefinition {
     CommandDefinition {
         name: "toggle_console".to_string(),
         arguments: vec![],
-        autocompletion: BasicAutocompletionProvider::new(|index| None),
-        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+        autocompletion: BasicAutocompletionProvider::new(|_index| None),
+        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
             let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
             let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
             input_comp.is_console_open = !input_comp.is_console_open;
@@ -81,7 +66,7 @@ pub(super) fn cmd_bind_key() -> CommandDefinition {
             0 => Some(vec![]),
             _ => None,
         }),
-        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let script = args.as_str(1).unwrap();
 
             let keys = args
@@ -1156,7 +1141,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
             let username = args.as_str(0).unwrap();
             let target_entity_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
             if let Some(target_char_id) = target_entity_id {
-                let (pos2d, team) = {
+                let pos2d = {
                     // remove death status (that is the only status a death character has)
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let char_state = char_storage.get_mut(target_char_id.0).unwrap();
@@ -1165,7 +1150,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
 
                     // give him max hp/sp
                     char_state.hp = char_state.calculated_attribs().max_hp;
-                    (char_state.pos(), char_state.team)
+                    char_state.pos()
                 };
 
                 // give him back it's physic component
@@ -1233,7 +1218,7 @@ pub(super) fn cmd_get_server_fps() -> CommandDefinition {
         name: "get_server_fps".to_string(),
         arguments: vec![("username", CommandParamType::String, true)],
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |index, username_completor, input_storage| Some(username_completor(input_storage)),
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
         action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
             let username = args.as_str(0).unwrap();
@@ -1305,7 +1290,7 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
+        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
             let username = args.as_str(1);
 
             let target_char_id = if let Some(username) = username {
@@ -1364,12 +1349,16 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
                 // TODO: skills should be reassigned as well
                 ecs_world
                     .write_storage::<ControllerComponent>()
-                    .remove(self_controller_id.0);
+                    .remove(self_controller_id.0)
+                    .expect("");
 
-                ecs_world.write_storage::<ControllerComponent>().insert(
-                    self_controller_id.0,
-                    ControllerComponent::new(target_char_id),
-                );
+                ecs_world
+                    .write_storage::<ControllerComponent>()
+                    .insert(
+                        self_controller_id.0,
+                        ControllerComponent::new(target_char_id),
+                    )
+                    .expect("");
 
                 // set camera to follow target
                 ecs_world
@@ -1683,7 +1672,7 @@ pub(super) fn cmd_remove_falcon() -> CommandDefinition {
                     }
                 }
                 if let Some(falcon_id) = delete_falcon_id {
-                    ecs_world.delete_entity(falcon_id);
+                    ecs_world.delete_entity(falcon_id).expect("");
                     return Ok(());
                 } else {
                     Err("The user does not have a falcon".to_owned())

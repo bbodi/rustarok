@@ -2,11 +2,8 @@ use nalgebra::{Rotation3, Vector3};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 
-use crate::asset::database::AssetDatabase;
-use crate::asset::texture::TextureId;
-use crate::asset::{AssetLoader, BinaryReader};
+use crate::asset::BinaryReader;
 use crate::common::v3;
-use crate::my_gl::{Gl, MyGlEnum};
 
 pub struct Gnd {
     pub version: f32,

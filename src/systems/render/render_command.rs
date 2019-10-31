@@ -204,13 +204,6 @@ impl<'a> RenderCommandCollector {
     }
 }
 
-pub struct Common2DProperties {
-    pub(super) color: [u8; 4],
-    pub(super) scale: [f32; 2],
-    pub(super) matrix: Mat4,
-    pub(super) layer: UiLayer2d,
-}
-
 pub struct Rectangle2dRenderCommand {
     pub(super) color: [u8; 4],
     pub(super) width: u16,
@@ -230,6 +223,7 @@ pub struct Rectangle2dCommandBuilder<'a> {
     layer: UiLayer2d,
 }
 
+#[allow(dead_code)]
 impl<'a> Rectangle2dCommandBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollector) -> Rectangle2dCommandBuilder {
         Rectangle2dCommandBuilder {
@@ -326,6 +320,7 @@ pub struct Point2dCommandBuilder<'a> {
     layer: UiLayer2d,
 }
 
+#[allow(dead_code)]
 impl<'a> Point2dCommandBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollector) -> Point2dCommandBuilder {
         Point2dCommandBuilder {
@@ -382,6 +377,7 @@ pub struct PartialCircl2dBuilder<'a> {
     layer: UiLayer2d,
 }
 
+#[allow(dead_code)]
 impl<'a> PartialCircl2dBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollector) -> PartialCircl2dBuilder {
         PartialCircl2dBuilder {
@@ -476,6 +472,7 @@ pub struct Texture2dRenderCommandCommandBuilder<'a> {
     flip_vertically: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> Texture2dRenderCommandCommandBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollector) -> Texture2dRenderCommandCommandBuilder {
         Texture2dRenderCommandCommandBuilder {
@@ -574,6 +571,7 @@ pub struct Text2dRenderCommandBuilder<'a> {
     outline: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> Text2dRenderCommandBuilder<'a> {
     pub fn new(collector: &mut RenderCommandCollector) -> Text2dRenderCommandBuilder {
         Text2dRenderCommandBuilder {
@@ -631,6 +629,7 @@ impl<'a> Text2dRenderCommandBuilder<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum Font {
     Small,
     SmallBold,
@@ -640,6 +639,7 @@ pub enum Font {
     BigBold,
 }
 
+#[allow(dead_code)]
 pub enum Trimesh3dType {
     Sanctuary,
     Cylinder,
@@ -663,6 +663,7 @@ pub struct Trimesh3dRenderCommandBuilder<'a> {
     rotation_rad: f32,
 }
 
+#[allow(dead_code)]
 impl<'a> Trimesh3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> Trimesh3dRenderCommandBuilder {
         Trimesh3dRenderCommandBuilder {
@@ -746,6 +747,7 @@ pub struct Rectangle3dRenderCommandBuilder<'a> {
     height: f32,
 }
 
+#[allow(dead_code)]
 impl<'a> Rectangle3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> Rectangle3dRenderCommandBuilder {
         Rectangle3dRenderCommandBuilder {
@@ -831,6 +833,7 @@ pub struct Circle3dRenderCommandBuilder<'a> {
     radius: f32,
 }
 
+#[allow(dead_code)]
 impl<'a> Circle3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> Circle3dRenderCommandBuilder {
         Circle3dRenderCommandBuilder {
@@ -912,6 +915,7 @@ pub struct HorizontalTexture3dRenderCommandBuilder<'a> {
     rotation_rad: f32,
 }
 
+#[allow(dead_code)]
 impl<'a> HorizontalTexture3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> HorizontalTexture3dRenderCommandBuilder {
         HorizontalTexture3dRenderCommandBuilder {
@@ -1066,6 +1070,7 @@ pub struct Sprite3dRenderCommandBuilder<'a> {
     flip_vertically: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> Sprite3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> Sprite3dRenderCommandBuilder {
         Sprite3dRenderCommandBuilder {
@@ -1151,7 +1156,6 @@ pub struct Number3dRenderCommand {
     pub(super) scale: f32,
     pub(super) pos: Vector3<f32>,
     pub(super) value: u32,
-    pub(super) digit_count: u8,
 }
 
 pub struct Number3dRenderCommandBuilder<'a> {
@@ -1162,6 +1166,7 @@ pub struct Number3dRenderCommandBuilder<'a> {
     scale: f32,
 }
 
+#[allow(dead_code)]
 impl<'a> Number3dRenderCommandBuilder<'a> {
     fn new(collector: &mut RenderCommandCollector) -> Number3dRenderCommandBuilder {
         Number3dRenderCommandBuilder {
@@ -1216,7 +1221,7 @@ impl<'a> Number3dRenderCommandBuilder<'a> {
         self
     }
 
-    pub fn add(&'a mut self, value: u32, digit_count: u8) {
+    pub fn add(&'a mut self, value: u32) {
         self.collector
             .number_3d_commands
             .push(Number3dRenderCommand {
@@ -1224,7 +1229,6 @@ impl<'a> Number3dRenderCommandBuilder<'a> {
                 scale: self.scale,
                 pos: self.pos,
                 value,
-                digit_count,
             });
     }
 }

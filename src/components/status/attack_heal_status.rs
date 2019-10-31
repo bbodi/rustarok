@@ -24,6 +24,8 @@ pub struct AttackHealStatus {
     pub heal: Percentage,
 }
 
+// TODO:
+#[allow(dead_code)]
 impl AttackHealStatus {
     pub fn new(heal: Percentage, now: ElapsedTime, duration: f32) -> AttackHealStatus {
         AttackHealStatus {
@@ -43,7 +45,7 @@ impl Status for AttackHealStatus {
 
     fn update(
         &mut self,
-        self_char_id: CharEntityId,
+        _self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
@@ -72,7 +74,7 @@ impl Status for AttackHealStatus {
     ) {
         match outcome.typ {
             HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
-                HpModificationType::BasicDamage(value, _, weapon_type) => {
+                HpModificationType::BasicDamage(value, _, _weapon_type) => {
                     let healed_amount = self.heal.of(value as i32) as u32;
                     self.healed_amount += healed_amount;
                     hp_mod_reqs.push(HpModificationRequest {

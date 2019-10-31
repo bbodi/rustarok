@@ -236,14 +236,6 @@ impl HpModificationRequest {
             typ: HpModificationResultType::Blocked,
         }
     }
-
-    pub fn absorbed(self) -> HpModificationResult {
-        HpModificationResult {
-            src_entity: self.src_entity,
-            dst_entity: self.dst_entity,
-            typ: HpModificationResultType::Absorbed,
-        }
-    }
 }
 
 #[derive(Debug)]

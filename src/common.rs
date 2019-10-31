@@ -46,11 +46,6 @@ macro_rules! p3 {
 }
 
 #[inline]
-pub fn p3_to_p2(input: &Point3<f32>) -> Point2<f32> {
-    Point2::new(input.x, input.z)
-}
-
-#[inline]
 pub fn p3_to_v2(input: &Point3<f32>) -> Vec2 {
     v2(input.x, input.z)
 }

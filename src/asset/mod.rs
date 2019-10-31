@@ -24,9 +24,7 @@ use crate::asset::asset_async_loader::{
 };
 use crate::asset::database::AssetDatabase;
 use crate::asset::gat::{BlockingRectangle, Gat};
-use crate::asset::gnd::Gnd;
-use crate::asset::rsm::Rsm;
-use crate::asset::rsw::{Rsw, WaterData};
+use crate::asset::rsw::{Rsw, RswModelInstance, WaterData};
 use crate::asset::str::StrFile;
 use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::common::Vec2;
@@ -79,7 +77,8 @@ impl<'a> AssetLoader<'a> {
         self.to_2nd_thread
             .send(ToBackgroundAssetLoaderMsg::StartLoadingSprites(
                 asset_db.reserve_texture_slots(gl, 10_000),
-            ));
+            ))
+            .expect("");
     }
 
     pub fn start_loading_ground(
@@ -101,7 +100,8 @@ impl<'a> AssetLoader<'a> {
                 gat,
                 water,
                 colliders,
-            });
+            })
+            .expect("");
     }
 
     pub fn process_async_loading(
@@ -129,72 +129,80 @@ impl<'a> AssetLoader<'a> {
                             AssetLoader::create_texture_from_surface_inner(gl, surface, minmag);
                         asset_db.fill_reserved_texture_slot(texture_id, gl_texture);
                     }
-                    FromBackgroundAssetLoaderMsg::LoadModelPart1Response { rsm, model_index } => {
-                        let textures = Rsm::load_textures(gl, self, asset_db, &rsm.texture_names);
-
-                        self.to_2nd_thread
-                            .send(ToBackgroundAssetLoaderMsg::LoadModelPart2 {
-                                textures,
-                                rsm,
-                                model_index,
-                            });
-                    }
-                    FromBackgroundAssetLoaderMsg::LoadModelPart2Response {
-                        data_for_rendering_full_model,
-                        bbox,
-                        alpha,
-                        model_index,
-                    } => {
-                        let data_for_rendering_full_model = data_for_rendering_full_model
-                            .into_iter()
-                            .map(|it| {
-                                it.into_iter()
-                                    .map(|it| {
-                                        SameTextureNodeFaces {
-                                            vao: VertexArray::new_static(
-                                                gl,
-                                                MyGlEnum::TRIANGLES,
-                                                it.mesh,
-                                                vec![
-                                                    VertexAttribDefinition {
-                                                        number_of_components: 3,
-                                                        offset_of_first_element: 0,
-                                                    },
-                                                    VertexAttribDefinition {
-                                                        // normal
-                                                        number_of_components: 3,
-                                                        offset_of_first_element: 3,
-                                                    },
-                                                    VertexAttribDefinition {
-                                                        // uv
-                                                        number_of_components: 2,
-                                                        offset_of_first_element: 6,
-                                                    },
-                                                ],
-                                            ),
-                                            texture: it.texture,
-                                            texture_name: it.texture_name,
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .collect::<Vec<_>>();
-                        let model_render_data = ModelRenderData {
-                            bounding_box: bbox,
-                            alpha,
-                            model: data_for_rendering_full_model,
-                        };
-                        asset_db.fill_reserved_model_slot(model_index, model_render_data);
-                    }
                     FromBackgroundAssetLoaderMsg::StartLoadingSpritesResponse {
                         sprites,
                         reserved_textures,
                         texture_id_pool,
                     } => {
                         sys_vars.assets.sprites = sprites;
-                        log::info!("{} Sprites has been loaded", reserved_textures.len());
+                        log::info!("{} Sprites have been loaded", reserved_textures.len());
                         log::info!("{} Unused texture slot", texture_id_pool.len());
                         AssetLoader::set_reserved_textures(gl, asset_db, reserved_textures)
+                    }
+                    FromBackgroundAssetLoaderMsg::LoadModelPart1Response {
+                        models,
+                        model_instances,
+                        reserved_textures,
+                        texture_id_pool,
+                        model_id_pool,
+                    } => {
+                        log::info!("{} Models have been loaded", model_id_pool.len());
+                        log::info!(
+                            "{} Model textures have been loaded",
+                            reserved_textures.len()
+                        );
+                        log::info!("{} Unused texture slot", texture_id_pool.len());
+
+                        models.into_iter().for_each(|(model_name, model)| {
+                            let same_node_faces: Vec<Vec<SameTextureNodeFaces>> = model
+                                .data_for_rendering_full_model
+                                .into_iter()
+                                .map(|it| {
+                                    it.into_iter()
+                                        .map(|it| {
+                                            SameTextureNodeFaces {
+                                                vao: VertexArray::new_static(
+                                                    gl,
+                                                    MyGlEnum::TRIANGLES,
+                                                    it.mesh,
+                                                    vec![
+                                                        VertexAttribDefinition {
+                                                            number_of_components: 3,
+                                                            offset_of_first_element: 0,
+                                                        },
+                                                        VertexAttribDefinition {
+                                                            // normal
+                                                            number_of_components: 3,
+                                                            offset_of_first_element: 3,
+                                                        },
+                                                        VertexAttribDefinition {
+                                                            // uv
+                                                            number_of_components: 2,
+                                                            offset_of_first_element: 6,
+                                                        },
+                                                    ],
+                                                ),
+                                                texture: it.texture,
+                                                texture_name: it.texture_name,
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>();
+                            let model_render_data = ModelRenderData {
+                                bounding_box: model.bbox,
+                                alpha: model.alpha,
+                                model: same_node_faces,
+                            };
+
+                            asset_db.fill_bulk_reserved_model_slot(
+                                model.model_id,
+                                model_render_data,
+                                model_name,
+                            );
+                        });
+                        AssetLoader::set_reserved_textures(gl, asset_db, reserved_textures);
+                        map_render_data.model_instances = model_instances;
                     }
                     FromBackgroundAssetLoaderMsg::StartLoadingGroundResponse {
                         ground_result,
@@ -265,7 +273,7 @@ impl<'a> AssetLoader<'a> {
                         map_render_data.tile_color_texture = ground_result.tile_color_texture;
                         map_render_data.lightmap_texture = ground_result.lightmap_texture;
                         log::info!(
-                            "load ground: {} Sprites has been loaded",
+                            "load ground: {} textures have been loaded",
                             reserved_textures.len()
                         );
                         log::info!("load ground: {} Unused texture slot", texture_id_pool.len());
@@ -320,7 +328,7 @@ impl<'a> AssetLoader<'a> {
                 }
                 let mut name = String::from_utf8(vec![b'X'; len.unwrap() as usize]).unwrap();
                 unsafe {
-                    cache_file.read_exact(name.as_bytes_mut());
+                    cache_file.read_exact(name.as_bytes_mut()).expect("");
                 }
                 let grf_index = cache_file.read_u8().unwrap() as usize;
                 let entry = GrfEntry {
@@ -345,7 +353,7 @@ impl<'a> AssetLoader<'a> {
                     let entries: HashMap<String, (usize, GrfEntry)> = readers
                         .into_iter()
                         .enumerate()
-                        .map(|(file_index, mut buf)| {
+                        .map(|(file_index, buf)| {
                             AssetLoader::read_grf_entries(paths, file_index, buf)
                         })
                         .flatten()
@@ -560,21 +568,23 @@ impl<'a> AssetLoader<'a> {
         return Ok(Gat::load(BinaryReader::from_vec(content), map_name));
     }
 
-    pub fn load_model(&self, model_name: &str, asset_db: &mut AssetDatabase) -> Result<(), String> {
-        let file_name = format!("data\\model\\{}", model_name);
-        let model_index = asset_db.reserve_model_slot(&model_name);
-        if let Some((grf_index, entry)) = self.entries.get(&file_name) {
-            self.to_2nd_thread
-                .send(ToBackgroundAssetLoaderMsg::LoadModelPart1 {
-                    model_index,
-                    grf_entry: entry.clone(),
-                    grf_index: *grf_index,
-                    file_name_for_debug: file_name,
-                });
-            return Ok(());
-        } else {
-            return Err(format!("No entry found in GRFs '{}'", file_name));
-        }
+    pub fn start_loading_models(
+        &self,
+        gl: &Gl,
+        rsw_model_instances: Vec<RswModelInstance>,
+        asset_db: &mut AssetDatabase,
+        map_width: u32,
+        map_height: u32,
+    ) {
+        self.to_2nd_thread
+            .send(ToBackgroundAssetLoaderMsg::LoadModelPart1 {
+                model_id_pool: asset_db.reserve_model_slots(500),
+                texture_id_pool: asset_db.reserve_texture_slots(gl, 500),
+                rsw_model_instances,
+                map_width,
+                map_height,
+            })
+            .expect("");
     }
 
     pub fn load_wav(&self, path: &str) -> Result<sdl2::mixer::Chunk, String> {
@@ -665,9 +675,9 @@ impl<'a> AssetLoader<'a> {
     ) -> GlTexture {
         let mut texture_native_id = GlNativeTextureId(0);
         unsafe {
-            gl.GenTextures(1, &mut texture_native_id.0);
-            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_native_id);
-            gl.TexImage2D(
+            gl.gen_textures(1, &mut texture_native_id.0);
+            gl.bind_texture(MyGlEnum::TEXTURE_2D, texture_native_id);
+            gl.tex_image2d(
                 MyGlEnum::TEXTURE_2D,
                 0,                     // Pyramid level (for mip-mapping) - 0 is the top level
                 MyGlEnum::RGBA as i32, // Internal colour format to convert to
@@ -679,32 +689,32 @@ impl<'a> AssetLoader<'a> {
                 ptr,
             );
 
-            gl.TexParameteri(
+            gl.tex_parameteri(
                 MyGlEnum::TEXTURE_2D,
                 MyGlEnum::TEXTURE_MIN_FILTER,
                 min_mag as i32,
             );
-            gl.TexParameteri(
+            gl.tex_parameteri(
                 MyGlEnum::TEXTURE_2D,
                 MyGlEnum::TEXTURE_MAG_FILTER,
                 min_mag as i32,
             );
-            gl.TexParameteri(
+            gl.tex_parameteri(
                 MyGlEnum::TEXTURE_2D,
                 MyGlEnum::TEXTURE_WRAP_S,
                 MyGlEnum::CLAMP_TO_EDGE as i32,
             );
-            gl.TexParameteri(
+            gl.tex_parameteri(
                 MyGlEnum::TEXTURE_2D,
                 MyGlEnum::TEXTURE_WRAP_T,
                 MyGlEnum::CLAMP_TO_EDGE as i32,
             );
-            gl.GenerateMipmap(MyGlEnum::TEXTURE_2D);
+            gl.generate_mipmap(MyGlEnum::TEXTURE_2D);
         }
         return GlTexture::new(gl, texture_native_id, w, h);
     }
 
-    pub fn load_texture(
+    pub fn start_loading_texture(
         &self,
         gl: &Gl,
         texture_path: &str,
@@ -720,7 +730,8 @@ impl<'a> AssetLoader<'a> {
                     grf_entry: (*entry).clone(),
                     grf_index: *grf_index,
                     file_name_for_debug: texture_path.to_string(),
-                });
+                })
+                .expect("");
             return Ok(texture_id);
         } else {
             return Err(format!("No entry found in GRFs '{}'", texture_path));
@@ -739,7 +750,7 @@ impl SpriteResource {
         SpriteResource {
             action: ActionFile {
                 actions: (1..80)
-                    .map(|it| Action {
+                    .map(|_| Action {
                         frames: vec![ActionFrame {
                             layers: vec![],
                             sound: 0,

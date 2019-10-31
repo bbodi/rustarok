@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -11,15 +11,15 @@ use crate::asset::act::ActionFile;
 use crate::asset::gat::{BlockingRectangle, CellType, Gat};
 use crate::asset::gnd::{Gnd, MeshVertex};
 use crate::asset::rsm::{BoundingBox, Rsm};
-use crate::asset::rsw::WaterData;
+use crate::asset::rsw::{RswModelInstance, WaterData};
 use crate::asset::spr::SpriteFile;
 use crate::asset::texture::TextureId;
 use crate::asset::{AssetLoader, BinaryReader, GrfEntry, SpriteResource};
-use crate::common::{measure_time, v3, Vec2, Vec3};
+use crate::common::{measure_time, v3, Mat4, Vec2, Vec3};
 use crate::components::char::CharActionIndex;
 use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::my_gl::MyGlEnum;
-use crate::runtime_assets::map::SameTextureNodeFacesRaw;
+use crate::runtime_assets::map::{ModelInstance, SameTextureNodeFacesRaw};
 use crate::systems::{EffectSprites, Sprites};
 use nalgebra::{Point3, Rotation3};
 use sdl2::pixels::PixelFormatEnum;
@@ -54,15 +54,11 @@ pub(super) enum ToBackgroundAssetLoaderMsg {
         file_name_for_debug: String,
     },
     LoadModelPart1 {
-        model_index: usize,
-        grf_entry: GrfEntry,
-        grf_index: usize,
-        file_name_for_debug: String,
-    },
-    LoadModelPart2 {
-        textures: Vec<(String, TextureId)>,
-        rsm: Rsm,
-        model_index: usize,
+        model_id_pool: Vec<usize>,
+        texture_id_pool: Vec<TextureId>,
+        rsw_model_instances: Vec<RswModelInstance>,
+        map_width: u32,
+        map_height: u32,
     },
     StartLoadingGnd {
         texture_id_pool: Vec<TextureId>,
@@ -92,14 +88,11 @@ pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
         file_name: String,
     },
     LoadModelPart1Response {
-        rsm: Rsm,
-        model_index: usize,
-    },
-    LoadModelPart2Response {
-        data_for_rendering_full_model: Vec<Vec<SameTextureNodeFacesRaw>>,
-        bbox: BoundingBox,
-        alpha: u8,
-        model_index: usize,
+        models: HashMap<String, ModelLoadingData>,
+        model_instances: Vec<ModelInstance>,
+        reserved_textures: Vec<ReservedTexturedata<'a>>,
+        texture_id_pool: Vec<TextureId>,
+        model_id_pool: Vec<usize>,
     },
 }
 
@@ -120,6 +113,13 @@ pub(super) struct AsyncGroundLoadResult {
     pub texture_atlas: TextureId,
     pub tile_color_texture: TextureId,
     pub lightmap_texture: TextureId,
+}
+
+pub(super) struct ModelLoadingData {
+    pub model_id: usize,
+    pub data_for_rendering_full_model: Vec<Vec<SameTextureNodeFacesRaw>>,
+    pub bbox: BoundingBox,
+    pub alpha: u8,
 }
 
 impl<'a> BackgroundAssetLoader<'a> {
@@ -146,7 +146,7 @@ impl<'a> BackgroundAssetLoader<'a> {
                     minmag,
                     grf_entry,
                     grf_index,
-                    file_name_for_debug: file_name_for_debug,
+                    file_name_for_debug,
                 } => {
                     let content = AssetLoader::get_content2(
                         &self.grf_paths[grf_index],
@@ -159,58 +159,101 @@ impl<'a> BackgroundAssetLoader<'a> {
                             minmag,
                             content,
                             file_name: file_name_for_debug,
-                        });
+                        })
+                        .expect("");
                 }
                 ToBackgroundAssetLoaderMsg::LoadModelPart1 {
-                    model_index,
-                    grf_entry,
-                    grf_index,
-                    file_name_for_debug,
+                    mut model_id_pool,
+                    rsw_model_instances,
+                    mut texture_id_pool,
+                    map_width,
+                    map_height,
                 } => {
-                    let content = AssetLoader::get_content2(
-                        &self.grf_paths[grf_index],
-                        &grf_entry,
-                        &file_name_for_debug,
-                    );
-                    let rsm = Rsm::load(BinaryReader::from_vec(content));
-                    self.to_main_thread.send(
-                        FromBackgroundAssetLoaderMsg::LoadModelPart1Response { rsm, model_index },
-                    );
-                }
-                ToBackgroundAssetLoaderMsg::LoadModelPart2 {
-                    textures,
-                    rsm,
-                    model_index,
-                } => {
-                    let (data_for_rendering_full_model, bbox): (
-                        Vec<Vec<SameTextureNodeFacesRaw>>,
-                        BoundingBox,
-                    ) = Rsm::generate_meshes_by_texture_id(
-                        &rsm.bounding_box,
-                        rsm.shade_type,
-                        rsm.nodes.len() == 1,
-                        &rsm.nodes,
-                        &textures,
-                    );
-                    self.to_main_thread.send(
-                        FromBackgroundAssetLoaderMsg::LoadModelPart2Response {
-                            alpha: rsm.alpha,
-                            data_for_rendering_full_model,
-                            bbox,
-                            model_index,
-                        },
-                    );
+                    let mut reserved_textures = Vec::<ReservedTexturedata>::with_capacity(1000);
+                    let mut texture_map = HashMap::<String, TextureId>::with_capacity(128);
+                    let model_names: HashSet<_> = rsw_model_instances
+                        .iter()
+                        .map(|m| m.filename.clone())
+                        .collect();
+                    let models: HashMap<String, ModelLoadingData> = model_names
+                        .into_iter()
+                        .map(|model_name| {
+                            let file_name = format!("data\\model\\{}", model_name);
+                            let content = self.get_content(&file_name).unwrap();
+                            let model_id = model_id_pool.pop().unwrap();
+                            let rsm = Rsm::load(BinaryReader::from_vec(content));
+                            let textures: Vec<(String, TextureId)> = rsm
+                                .texture_names
+                                .iter()
+                                .map(|texture_name| {
+                                    let texture_id = texture_map
+                                        .entry(texture_name.to_string())
+                                        .or_insert_with(|| {
+                                            let path = format!("data\\texture\\{}", texture_name);
+                                            self.load_texture(
+                                                &path,
+                                                MyGlEnum::NEAREST,
+                                                &mut texture_id_pool,
+                                                &mut reserved_textures,
+                                            )
+                                            .unwrap()
+                                        });
+                                    (texture_name.to_string(), *texture_id)
+                                })
+                                .collect::<Vec<_>>();
+                            let (data_for_rendering_full_model, bbox): (
+                                Vec<Vec<SameTextureNodeFacesRaw>>,
+                                BoundingBox,
+                            ) = Rsm::generate_meshes_by_texture_id(
+                                &rsm.bounding_box,
+                                rsm.shade_type,
+                                rsm.nodes.len() == 1,
+                                &rsm.nodes,
+                                &textures,
+                            );
+                            (
+                                model_name,
+                                ModelLoadingData {
+                                    model_id,
+                                    data_for_rendering_full_model,
+                                    bbox,
+                                    alpha: rsm.alpha,
+                                },
+                            )
+                        })
+                        .collect();
+                    //
+                    let model_instances = rsw_model_instances
+                        .into_iter()
+                        .map(|rsw_model_instance| {
+                            BackgroundAssetLoader::to_model_instance(
+                                rsw_model_instance,
+                                &models,
+                                map_width,
+                                map_height,
+                            )
+                        })
+                        .collect();
+                    self.to_main_thread
+                        .send(FromBackgroundAssetLoaderMsg::LoadModelPart1Response {
+                            models,
+                            model_instances,
+                            reserved_textures,
+                            texture_id_pool,
+                            model_id_pool,
+                        })
+                        .expect("");
                 }
                 ToBackgroundAssetLoaderMsg::StartLoadingSprites(mut texture_id_pool) => {
                     let mut reserved_textures = Vec::<ReservedTexturedata>::with_capacity(8_000);
                     let sprites = self.load_sprites(&mut texture_id_pool, &mut reserved_textures);
-                    self.to_main_thread.send(
-                        FromBackgroundAssetLoaderMsg::StartLoadingSpritesResponse {
+                    self.to_main_thread
+                        .send(FromBackgroundAssetLoaderMsg::StartLoadingSpritesResponse {
                             sprites,
                             reserved_textures,
                             texture_id_pool,
-                        },
-                    );
+                        })
+                        .expect("");
                 }
                 ToBackgroundAssetLoaderMsg::StartLoadingGnd {
                     mut texture_id_pool,
@@ -230,15 +273,93 @@ impl<'a> BackgroundAssetLoader<'a> {
                         &mut texture_id_pool,
                         &mut reserved_textures,
                     );
-                    self.to_main_thread.send(
-                        FromBackgroundAssetLoaderMsg::StartLoadingGroundResponse {
+                    self.to_main_thread
+                        .send(FromBackgroundAssetLoaderMsg::StartLoadingGroundResponse {
                             ground_result: result,
                             reserved_textures,
                             texture_id_pool,
-                        },
-                    );
+                        })
+                        .expect("");
                 }
             }
+        }
+    }
+
+    fn to_model_instance(
+        model_instance: RswModelInstance,
+        models: &HashMap<String, ModelLoadingData>,
+        map_width: u32,
+        map_height: u32,
+    ) -> ModelInstance {
+        let mut only_translation_matrix: vek::Mat4<f32> = vek::Mat4::identity();
+        {
+            let t = model_instance.pos + Vec3::new(map_width as f32, 0f32, map_height as f32);
+            only_translation_matrix.translate_3d((t.x, t.y, t.z));
+        }
+
+        let mut instance_matrix: vek::Mat4<f32> = only_translation_matrix.clone();
+        instance_matrix *= vek::Mat4::rotation_z(model_instance.rot.z.to_radians());
+        instance_matrix *= vek::Mat4::rotation_x(model_instance.rot.x.to_radians());
+        instance_matrix *= vek::Mat4::rotation_y(model_instance.rot.y.to_radians());
+
+        instance_matrix *= vek::Mat4::scaling_3d((
+            model_instance.scale.x,
+            model_instance.scale.y,
+            model_instance.scale.z,
+        ));
+        only_translation_matrix *= vek::Mat4::scaling_3d((
+            model_instance.scale.x,
+            model_instance.scale.y,
+            model_instance.scale.z,
+        ));
+
+        instance_matrix.rotate_x(180f32.to_radians());
+        only_translation_matrix.rotate_x(180f32.to_radians());
+
+        let model_data = models.get(&model_instance.filename).expect("");
+        let model_bb = &model_data.bbox;
+        let tmin: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
+            model_bb.min.x,
+            model_bb.min.y,
+            model_bb.min.z,
+        ));
+        let tmax: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
+            model_bb.max.x,
+            model_bb.max.y,
+            model_bb.max.z,
+        ));
+        let min = Vec3::new(
+            tmin[0].min(tmax[0]),
+            tmin[1].min(tmax[1]),
+            tmin[2].max(tmax[2]),
+        );
+        let max = Vec3::new(
+            tmax[0].max(tmin[0]),
+            tmax[1].max(tmin[1]),
+            tmax[2].min(tmin[2]),
+        );
+        ModelInstance {
+            asset_db_model_index: model_data.model_id,
+            matrix: Mat4::new(
+                instance_matrix[(0, 0)],
+                instance_matrix[(0, 1)],
+                instance_matrix[(0, 2)],
+                instance_matrix[(0, 3)],
+                instance_matrix[(1, 0)],
+                instance_matrix[(1, 1)],
+                instance_matrix[(1, 2)],
+                instance_matrix[(1, 3)],
+                instance_matrix[(2, 0)],
+                instance_matrix[(2, 1)],
+                instance_matrix[(2, 2)],
+                instance_matrix[(2, 3)],
+                instance_matrix[(3, 0)],
+                instance_matrix[(3, 1)],
+                instance_matrix[(3, 2)],
+                instance_matrix[(3, 3)],
+            ),
+            bottom_left_front: min,
+            top_right_back: max,
         }
     }
 
@@ -664,10 +785,7 @@ impl<'a> BackgroundAssetLoader<'a> {
         texture_id_pool: &mut Vec<TextureId>,
         reserved_textures: &mut Vec<ReservedTexturedata>,
     ) -> Result<TextureId, String> {
-        if let Some((grf_index, entry)) =
-            self.grf_entry_dict.get(&texture_path.to_ascii_lowercase())
-        {
-            let content = self.get_content(texture_path).unwrap();
+        if let Ok(content) = self.get_content(texture_path) {
             let surface =
                 AssetLoader::load_sdl_surface2(content, texture_path.ends_with(".tga")).unwrap();
             let texture_id = texture_id_pool.pop().unwrap();
@@ -812,7 +930,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                             string_buffer,
                             "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\³²\\{}_³²",
                             i.to_string()
-                        );
+                        )
+                        .expect("");
                         &string_buffer
                     };
                     let male = if self.exists(&((*male_file_name).to_owned() + ".act")) {
@@ -838,7 +957,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                             string_buffer,
                             "data\\sprite\\ÀÎ°£Á·\\¸Ó¸®Åë\\¿©\\{}_¿©",
                             i.to_string()
-                        );
+                        )
+                        .expect("");
                         &string_buffer
                     };
                     let female = if self.exists(&((*female_file_name).to_owned() + ".act")) {
@@ -876,7 +996,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                         &mut string_buffer,
                         "data\\sprite\\npc\\{}",
                         monster_id.to_string().to_lowercase()
-                    );
+                    )
+                    .expect("");
                     &string_buffer
                 };
                 (
@@ -889,7 +1010,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                                     &mut string_buffer,
                                     "data\\sprite\\¸ó½ºÅÍ\\{}",
                                     monster_id.to_string().to_lowercase()
-                                );
+                                )
+                                .expect("");
                                 &string_buffer
                             };
                             self.load_spr_and_act(&file_name, texture_id_pool, reserved_textures)
@@ -928,7 +1050,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                         &mut string_buffer1,
                         "data\\sprite\\{}\\{}\\³²\\{}_³²",
                         folder1, folder2, job_file_name
-                    );
+                    )
+                    .expect("");
                     &string_buffer1
                 };
                 let female_file_path = {
@@ -937,7 +1060,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                         &mut string_buffer2,
                         "data\\sprite\\{}\\{}\\¿©\\{}_¿©",
                         folder1, folder2, job_file_name
-                    );
+                    )
+                    .expect("");
                     &string_buffer2
                 };
 

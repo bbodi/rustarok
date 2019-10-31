@@ -329,7 +329,7 @@ impl CharacterStateUpdateSystem {
                     );
                 }
             }
-            EntityTarget::PosWhileAttacking(pos, current_target) => {}
+            EntityTarget::PosWhileAttacking(_pos, _current_target) => {}
         }
     }
 }

@@ -199,7 +199,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                             }
                         }
                     } else {
-                        entities.delete(falcon_id);
+                        entities.delete(falcon_id).expect("");
                     }
                 }
                 FalconState::CarryOwner {
@@ -220,7 +220,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                                     - start_pos;
                             falcon.pos = start_pos + line * pick_duration;
                         } else {
-                            entities.delete(falcon_id);
+                            entities.delete(falcon_id).expect("");
                             return;
                         }
                     } else if duration_percentage < 1.0 {
@@ -269,7 +269,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                                 },
                             }
                         } else {
-                            entities.delete(falcon_id);
+                            entities.delete(falcon_id).expect("");
                             return;
                         };
                         falcon.pos.y = y;
@@ -370,7 +370,7 @@ impl<'a> specs::System<'a> for FalconAiSystem {
                                     end_pos,
                                 }
                             } else {
-                                entities.delete(falcon_id);
+                                entities.delete(falcon_id).expect("");
                                 return;
                             }
                         }

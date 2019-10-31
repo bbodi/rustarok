@@ -8,7 +8,6 @@ use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTarge
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
-use crate::systems::SystemVariables;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -24,10 +23,10 @@ impl SkillDef for GazTurretSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
+        _caster_pos: Vec2,
         skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
@@ -36,7 +35,6 @@ impl SkillDef for GazTurretSkill {
         {
             let entities = &ecs_world.entities();
             let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let sys_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
             CharacterEntityBuilder::new(char_entity_id, "turret")
@@ -76,9 +74,9 @@ impl SkillDef for GazDestroyTurretSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
+        _caster_pos: Vec2,
+        _skill_pos: Option<Vec2>,
+        _char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
@@ -119,9 +117,9 @@ impl SkillDef for GazTurretTargetSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
+        _caster_pos: Vec2,
+        _skill_pos: Option<Vec2>,
+        _char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {

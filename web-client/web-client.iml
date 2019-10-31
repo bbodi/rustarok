@@ -12,8 +12,6 @@
   </component>
   <component name="NewModuleRootManager">
     <output url="file://$MODULE_DIR$/../web_server/lib" />
-    <output-test url="file://$MODULE_DIR$/../out/test/web-client" />
-    <exclude-output />
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" type="kotlin-source" />
     </content>

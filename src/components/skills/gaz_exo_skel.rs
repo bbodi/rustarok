@@ -30,10 +30,10 @@ impl SkillDef for ExoSkeletonSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _caster_pos: Vec2,
+        _skill_pos: Option<Vec2>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
@@ -104,20 +104,20 @@ impl Status for ExoSkeletonStatus {
     fn get_body_sprite<'a>(
         &self,
         sys_vars: &'a SystemVariables,
-        job_id: JobId,
-        sex: Sex,
+        _job_id: JobId,
+        _sex: Sex,
     ) -> Option<&'a SpriteResource> {
         Some(&sys_vars.assets.sprites.exoskeleton)
     }
 
     fn on_apply(
         &mut self,
-        self_entity_id: CharEntityId,
+        _self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
         sys_vars: &SystemVariables,
-        physics_world: &mut PhysicEngine,
+        _physics_world: &mut PhysicEngine,
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
             bullet_type: WeaponType::SilverBullet,

@@ -234,14 +234,15 @@ impl SkillDef for AttackMoveSkill {
         ""
     }
 
+    // TODO: paraméterek ki structba
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
-        ecs_world: &mut World,
+        _caster_entity_id: CharEntityId,
+        _caster_pos: Vec2,
+        _skill_pos: Option<Vec2>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
+        _ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         None
     }
@@ -326,14 +327,6 @@ impl Skills {
         }
     }
 
-    fn get_icon_path(&self) -> &'static str {
-        self.get_definition().get_icon_path()
-    }
-
-    fn get_skill_target_type(&self) -> SkillTargetType {
-        self.get_definition().get_skill_target_type()
-    }
-
     pub fn limit_vector_into_range(char_pos: &Vec2, mouse_pos: &Vec2, range: f32) -> (Vec2, Vec2) {
         let dir2d = mouse_pos - char_pos;
         let dir_vector = dir2d.normalize();
@@ -400,6 +393,7 @@ impl Skills {
 }
 
 #[derive(Eq, PartialEq)]
+#[allow(dead_code)]
 pub enum SkillTargetType {
     /// casts immediately
     NoTarget,

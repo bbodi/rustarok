@@ -77,10 +77,11 @@ fn first_char_is_twice_as_fast_as_second() {
     test_util.set_char_target(a_id, EntityTarget::Pos(v2(10.0, 30.0)));
     test_util.set_char_target(b_id, EntityTarget::Pos(v2(13.0, 30.0)));
 
-    test_util.apply_status(
+    test_util.apply_status(ApplyStatusComponent::from_main_status(
         b_id,
-        ApplyStatusComponent::from_main_status(b_id, b_id, MainStatuses::Mounted),
-    );
+        b_id,
+        MainStatuses::Mounted,
+    ));
 
     // it needs one frame for setting its state to Walking
     test_util.run_frames_n_times(1);
@@ -120,18 +121,15 @@ fn many_chars_with_different_movement_speed() {
             let x = 10 + 3 * i;
             let char_id = test_util.create_char(v2(x as f32, 10.0), Team::Right);
             test_util.set_char_target(char_id, EntityTarget::Pos(v2(x as f32, 10.0 + distance)));
-            test_util.apply_status(
+            test_util.apply_status(ApplyStatusComponent::from_secondary_status(
                 char_id,
-                ApplyStatusComponent::from_secondary_status(
-                    char_id,
-                    char_id,
-                    Box::new(WalkingSpeedModifierStatus::new(
-                        ElapsedTime(0.0),
-                        percentage(i),
-                        1000.0,
-                    )),
-                ),
-            );
+                char_id,
+                Box::new(WalkingSpeedModifierStatus::new(
+                    ElapsedTime(0.0),
+                    percentage(i),
+                    1000.0,
+                )),
+            ));
             char_id
         })
         .collect::<Vec<_>>();

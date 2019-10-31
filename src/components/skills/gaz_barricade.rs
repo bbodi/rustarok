@@ -1,16 +1,11 @@
 use crate::common::{v2, Vec2};
-use crate::components::char::{
-    CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent,
-};
+use crate::components::char::{CharacterStateComponent, NpcComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType, Skills};
 use crate::configs::DevConfig;
-use crate::consts::{JobId, MonsterId};
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
-use crate::systems::SystemVariables;
+use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use nalgebra::Vector2;
-use nphysics2d::object::BodyStatus;
 use specs::LazyUpdate;
 
 pub struct GazBarricadeSkill;
@@ -24,13 +19,14 @@ impl SkillDef for GazBarricadeSkill {
 
     // TODO 2 barricade ne lehessen egy kockán
     // TODO: teamet a finishből szedje
+    // TODO: ezeket a paramétereket pakold egy structba és 1 paramétert adj át (undorito h 90%ban valamelyik apram nincs használva)
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
+        _caster_pos: Vec2,
         skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
@@ -39,30 +35,21 @@ impl SkillDef for GazBarricadeSkill {
         {
             let entities = &ecs_world.entities();
             let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let sys_vars = ecs_world.read_resource::<SystemVariables>();
             let char_entity_id = CharEntityId(entities.create());
             updater.insert(char_entity_id.0, NpcComponent);
             let pos2d = {
                 let pos = skill_pos.unwrap();
                 Vec2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
             };
-            CharacterEntityBuilder::new(char_entity_id, "barricade")
-                .insert_sprite_render_descr_component(updater)
-                .physics(
-                    pos2d,
-                    &mut ecs_world.write_resource::<PhysicEngine>(),
-                    |builder| {
-                        builder
-                            .collision_group(caster.team.get_barricade_collision_group())
-                            .rectangle(1.0, 1.0)
-                            .body_status(BodyStatus::Static)
-                    },
-                )
-                .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-                    ch.outlook(CharOutlook::Monster(MonsterId::Barricade))
-                        .job_id(JobId::Barricade)
-                        .team(caster.team)
-                });
+
+            SpawnEntitySystem::create_barricade(
+                entities,
+                &updater,
+                &mut ecs_world.write_resource(),
+                &ecs_world.read_resource(),
+                caster.team,
+                pos2d,
+            );
         }
         None
     }
@@ -75,9 +62,9 @@ impl SkillDef for GazBarricadeSkill {
         &self,
         is_castable: bool,
         skill_pos: &Vec2,
-        char_to_skill_dir: &Vec2,
+        _char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        configs: &DevConfig,
+        _configs: &DevConfig,
     ) {
         let pos2d = { Vec2::new((skill_pos.x as i32) as f32, (skill_pos.y as i32) as f32) };
         Skills::render_casting_box(

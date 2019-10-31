@@ -25,9 +25,11 @@ pub struct ReflectDamageStatus {
     pub reflected_amount: Percentage,
 }
 
+// TODO:
+#[allow(dead_code)]
 impl ReflectDamageStatus {
     pub fn new(
-        self_entity_id: CharEntityId,
+        _self_entity_id: CharEntityId,
         reflected_amount: Percentage,
         now: ElapsedTime,
         duration: f32,
@@ -49,7 +51,7 @@ impl Status for ReflectDamageStatus {
 
     fn update(
         &mut self,
-        self_char_id: CharEntityId,
+        _self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,

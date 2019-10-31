@@ -55,13 +55,16 @@ impl AudioCommandCollectorComponent {
 }
 
 pub struct SoundSystem {
-    sdl_audio: sdl2::AudioSubsystem,
+    _sdl_audio: sdl2::AudioSubsystem,
     sounds: SoundChunkStore,
 }
 
 impl SoundSystem {
     pub fn new(sdl_audio: sdl2::AudioSubsystem, sounds: SoundChunkStore) -> SoundSystem {
-        return SoundSystem { sdl_audio, sounds };
+        return SoundSystem {
+            _sdl_audio: sdl_audio,
+            sounds,
+        };
     }
 }
 

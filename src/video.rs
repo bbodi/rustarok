@@ -76,25 +76,6 @@ impl Video {
         ttf_context.load_font(font_path, size)
     }
 
-    pub fn create_text_texture<'a, 'b>(
-        gl: &Gl,
-        font: &sdl2::ttf::Font<'a, 'b>,
-        text: &str,
-        asset_db: &mut AssetDatabase,
-    ) -> TextureId {
-        let surface = font
-            .render(text)
-            .blended(sdl2::pixels::Color::RGBA(255, 255, 255, 255))
-            .unwrap();
-        return AssetLoader::create_texture_from_surface(
-            gl,
-            &format!("text_{}", text),
-            surface,
-            MyGlEnum::LINEAR,
-            asset_db,
-        );
-    }
-
     pub fn create_text_texture_inner<'a, 'b>(
         gl: &Gl,
         font: &sdl2::ttf::Font<'a, 'b>,
@@ -181,7 +162,7 @@ pub struct VertexArrayBind<'a> {
 impl<'a> VertexArrayBind<'a> {
     pub fn draw(&self, gl: &Gl) {
         unsafe {
-            gl.DrawArrays(
+            gl.draw_arrays(
                 self.vertex_array.draw_mode,           // mode
                 0,                                     // starting index in the enabled arrays
                 self.vertex_array.vertex_count as i32, // number of indices to be rendered
@@ -199,9 +180,9 @@ impl<'a> Drop for VertexArrayBind<'a> {
                 .iter()
                 .enumerate()
             {
-                self.gl_for_drop.DisableVertexAttribArray(i as u32);
+                self.gl_for_drop.disable_vertex_attrib_array(i as u32);
             }
-            self.gl_for_drop.BindVertexArray(0);
+            self.gl_for_drop.bind_vertex_array(0);
         }
     }
 }
@@ -216,9 +197,9 @@ struct VertexArrayResource {
 impl Drop for VertexArrayResource {
     fn drop(&mut self) {
         unsafe {
-            self.gl_for_drop.DeleteBuffers(1, &self.buffer_id);
+            self.gl_for_drop.delete_buffers(1, &self.buffer_id);
             self.gl_for_drop
-                .DeleteVertexArrays(1, &self.vertex_array_id);
+                .delete_vertex_arrays(1, &self.vertex_array_id);
         }
     }
 }
@@ -234,18 +215,19 @@ pub struct VertexArray {
 }
 
 impl VertexArray {
+    #[allow(dead_code)]
     pub fn vertex_count(&self) -> usize {
         self.vertex_count
     }
 
     pub fn bind(&self, gl: &Gl) -> VertexArrayBind {
         unsafe {
-            gl.BindVertexArray(self.buffers.vertex_array_id);
-            gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, self.buffers.buffer_id);
+            gl.bind_vertex_array(self.buffers.vertex_array_id);
+            gl.bind_buffer(MyGlEnum::ARRAY_BUFFER, self.buffers.buffer_id);
 
             for (i, def) in self.vertex_attrib_pointer_defs.iter().enumerate() {
-                gl.EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
-                gl.VertexAttribPointer(
+                gl.enable_vertex_attrib_array(i as u32); // this is "layout (location = 0)" in vertex shader
+                gl.vertex_attrib_pointer(
                     i as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
                     MyGlEnum::FLOAT, // data type
@@ -264,12 +246,12 @@ impl VertexArray {
 
     pub fn bind_dynamic<T>(&mut self, gl: &Gl, vertices: &[T]) -> VertexArrayBind {
         unsafe {
-            gl.BindVertexArray(self.buffers.vertex_array_id);
-            gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, self.buffers.buffer_id);
+            gl.bind_vertex_array(self.buffers.vertex_array_id);
+            gl.bind_buffer(MyGlEnum::ARRAY_BUFFER, self.buffers.buffer_id);
 
             for (i, def) in self.vertex_attrib_pointer_defs.iter().enumerate() {
-                gl.EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
-                gl.VertexAttribPointer(
+                gl.enable_vertex_attrib_array(i as u32); // this is "layout (location = 0)" in vertex shader
+                gl.vertex_attrib_pointer(
                     i as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
                     MyGlEnum::FLOAT, // data type
@@ -279,7 +261,7 @@ impl VertexArray {
                 );
             }
 
-            gl.BufferData(
+            gl.buffer_data(
                 MyGlEnum::ARRAY_BUFFER,                               // target
                 (vertices.len() * std::mem::size_of::<T>()) as isize, // size of data in bytes
                 vertices.as_ptr() as *const c_void,                   // pointer to data
@@ -332,9 +314,9 @@ impl VertexArray {
         let vertex_count = vertices.len();
         let mut vbo: c_uint = 0;
         unsafe {
-            gl.GenBuffers(1, &mut vbo);
-            gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, vbo);
-            gl.BufferData(
+            gl.gen_buffers(1, &mut vbo);
+            gl.bind_buffer(MyGlEnum::ARRAY_BUFFER, vbo);
+            gl.buffer_data(
                 MyGlEnum::ARRAY_BUFFER,                               // target
                 (vertices.len() * std::mem::size_of::<T>()) as isize, // size of data in bytes
                 vertices.as_ptr() as *const c_void,                   // pointer to data
@@ -344,13 +326,13 @@ impl VertexArray {
         let mut vao: c_uint = 0;
         let stride = (std::mem::size_of::<T>()) as c_int;
         unsafe {
-            gl.GenVertexArrays(1, &mut vao);
-            gl.BindVertexArray(vao);
-            gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, vbo);
+            gl.gen_vertex_arrays(1, &mut vao);
+            gl.bind_vertex_array(vao);
+            gl.bind_buffer(MyGlEnum::ARRAY_BUFFER, vbo);
 
             for (i, def) in definitions.iter().enumerate() {
-                gl.EnableVertexAttribArray(i as u32); // this is "layout (location = 0)" in vertex shader
-                gl.VertexAttribPointer(
+                gl.enable_vertex_attrib_array(i as u32); // this is "layout (location = 0)" in vertex shader
+                gl.vertex_attrib_pointer(
                     i as u32, // index of the generic vertex attribute ("layout (location = 0)")
                     def.number_of_components as i32,
                     MyGlEnum::FLOAT, // data type
@@ -362,8 +344,8 @@ impl VertexArray {
         }
 
         unsafe {
-            gl.BindBuffer(MyGlEnum::ARRAY_BUFFER, 0);
-            gl.BindVertexArray(0);
+            gl.bind_buffer(MyGlEnum::ARRAY_BUFFER, 0);
+            gl.bind_vertex_array(0);
         }
         let p = vertices.as_mut_ptr();
         let len = vertices.len() * std::mem::size_of::<T>();
@@ -393,7 +375,7 @@ pub struct Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
-            self.gl_for_drop.DeleteShader(self.id);
+            self.gl_for_drop.delete_shader(self.id);
         }
     }
 }
@@ -402,11 +384,11 @@ impl Shader {
     fn get_program_err(gl: &Gl, program_id: c_uint) -> String {
         let mut len: c_int = 0;
         unsafe {
-            gl.GetProgramiv(program_id, MyGlEnum::INFO_LOG_LENGTH, &mut len);
+            gl.get_programiv(program_id, MyGlEnum::INFO_LOG_LENGTH, &mut len);
         }
         let error = create_whitespace_cstring_with_len(len as usize);
         unsafe {
-            gl.GetProgramInfoLog(
+            gl.get_program_info_log(
                 program_id,
                 len,
                 std::ptr::null_mut(),
@@ -419,8 +401,8 @@ impl Shader {
     pub fn get_location(gl: &Gl, program_id: c_uint, name: &str) -> c_int {
         let cname = CString::new(name).expect("expected uniform name to have no nul bytes");
         unsafe {
-            let ret =
-                gl.GetUniformLocation(program_id, cname.as_bytes_with_nul().as_ptr() as *const i8);
+            let ret = gl
+                .get_uniform_location(program_id, cname.as_bytes_with_nul().as_ptr() as *const i8);
             assert_ne!(ret, -1, "{}", name);
             return ret;
         }
@@ -428,23 +410,23 @@ impl Shader {
 
     pub fn from_source(gl: &Gl, source: &str, kind: MyGlEnum) -> Result<Shader, String> {
         let c_str: &CStr = &CString::new(source).unwrap();
-        let id = unsafe { gl.CreateShader(kind) };
+        let id = unsafe { gl.create_shader(kind) };
         unsafe {
-            gl.ShaderSource(id, 1, &c_str.as_ptr(), std::ptr::null());
-            gl.CompileShader(id);
+            gl.shader_source(id, 1, &c_str.as_ptr(), std::ptr::null());
+            gl.compile_shader(id);
         }
         let mut success: c_int = 1;
         unsafe {
-            gl.GetShaderiv(id, MyGlEnum::COMPILE_STATUS, &mut success);
+            gl.get_shaderiv(id, MyGlEnum::COMPILE_STATUS, &mut success);
         }
         if success == 0 {
             let mut len: c_int = 0;
             unsafe {
-                gl.GetShaderiv(id, MyGlEnum::INFO_LOG_LENGTH, &mut len);
+                gl.get_shaderiv(id, MyGlEnum::INFO_LOG_LENGTH, &mut len);
             }
             let mut buffer = Vec::<u8>::with_capacity(len as usize);
             unsafe {
-                gl.GetShaderInfoLog(
+                gl.get_shader_info_log(
                     id,
                     len,
                     std::ptr::null_mut(),
@@ -467,6 +449,7 @@ impl Shader {
 }
 
 pub struct ActiveShaderProgram<'a, P> {
+    #[allow(dead_code)]
     id: c_uint,
     pub params: &'a P,
 }
@@ -475,7 +458,7 @@ pub struct ShaderParam3x3fv(pub c_int);
 impl ShaderParam3x3fv {
     pub fn set(&self, gl: &Gl, matrix: &Mat3) {
         unsafe {
-            gl.UniformMatrix3fv(
+            gl.uniform_matrix3fv(
                 self.0,
                 1,           // count
                 false as u8, // transpose
@@ -489,20 +472,7 @@ pub struct ShaderParam3fv(pub c_int);
 impl ShaderParam3fv {
     pub fn set(&self, gl: &Gl, vector: &[f32; 3]) {
         unsafe {
-            gl.Uniform3fv(
-                self.0,
-                1, // count
-                vector.as_ptr() as *const f32,
-            );
-        }
-    }
-}
-
-pub struct ShaderParam4fv(pub c_int);
-impl ShaderParam4fv {
-    pub fn set(&self, gl: &Gl, vector: &[f32; 4]) {
-        unsafe {
-            gl.Uniform4fv(
+            gl.uniform3fv(
                 self.0,
                 1, // count
                 vector.as_ptr() as *const f32,
@@ -515,7 +485,7 @@ pub struct ShaderParam4ubv(pub c_int);
 impl ShaderParam4ubv {
     pub fn set(&self, gl: &Gl, vector: &[u8; 4]) {
         unsafe {
-            gl.Uniform4fv(
+            gl.uniform4fv(
                 self.0,
                 1, // count
                 vec![
@@ -529,9 +499,10 @@ impl ShaderParam4ubv {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_f32(&self, gl: &Gl, vector: &[f32; 4]) {
         unsafe {
-            gl.Uniform4fv(
+            gl.uniform4fv(
                 self.0,
                 1, // count
                 vector.as_ptr() as *const f32,
@@ -544,7 +515,7 @@ pub struct ShaderParam2fv(pub c_int);
 impl ShaderParam2fv {
     pub fn set(&self, gl: &Gl, vector: &[f32; 2]) {
         unsafe {
-            gl.Uniform2fv(
+            gl.uniform2fv(
                 self.0,
                 1, // count
                 vector.as_ptr() as *const f32,
@@ -557,7 +528,7 @@ pub struct ShaderParam2i(pub c_int);
 impl ShaderParam2i {
     pub fn set(&self, gl: &Gl, a: c_int, b: c_int) {
         unsafe {
-            gl.Uniform2i(self.0, a, b);
+            gl.uniform2i(self.0, a, b);
         }
     }
 }
@@ -566,7 +537,7 @@ pub struct ShaderParam1f(pub c_int);
 impl ShaderParam1f {
     pub fn set(&self, gl: &Gl, value: f32) {
         unsafe {
-            gl.Uniform1f(self.0, value);
+            gl.uniform1f(self.0, value);
         }
     }
 }
@@ -575,7 +546,7 @@ pub struct ShaderParam1i(pub c_int);
 impl ShaderParam1i {
     pub fn set(&self, gl: &Gl, value: c_int) {
         unsafe {
-            gl.Uniform1i(self.0, value);
+            gl.uniform1i(self.0, value);
         }
     }
 }
@@ -584,7 +555,7 @@ pub struct ShaderParam4x4fv(pub c_int);
 impl ShaderParam4x4fv {
     pub fn set(&self, gl: &Gl, matrix: &Mat4) {
         unsafe {
-            gl.UniformMatrix4fv(
+            gl.uniform_matrix4fv(
                 self.0,
                 1,           // count
                 false as u8, // transpose
@@ -605,21 +576,21 @@ impl<P> ShaderProgram<P> {
     where
         F: Fn(c_uint) -> P,
     {
-        let program_id = unsafe { gl.CreateProgram() };
+        let program_id = unsafe { gl.create_program() };
 
         for shader in shaders {
             unsafe {
-                gl.AttachShader(program_id, shader.id());
+                gl.attach_shader(program_id, shader.id());
             }
         }
 
         unsafe {
-            gl.LinkProgram(program_id);
+            gl.link_program(program_id);
         }
 
         let mut success: c_int = 1;
         unsafe {
-            gl.GetProgramiv(program_id, MyGlEnum::LINK_STATUS, &mut success);
+            gl.get_programiv(program_id, MyGlEnum::LINK_STATUS, &mut success);
         }
 
         if success == 0 {
@@ -628,7 +599,7 @@ impl<P> ShaderProgram<P> {
 
         for shader in shaders {
             unsafe {
-                gl.DetachShader(program_id, shader.id());
+                gl.detach_shader(program_id, shader.id());
             }
         }
 
@@ -641,23 +612,19 @@ impl<P> ShaderProgram<P> {
 
     pub fn gl_use(&self, gl: &Gl) -> ActiveShaderProgram<P> {
         unsafe {
-            gl.UseProgram(self.id);
+            gl.use_program(self.id);
         }
         ActiveShaderProgram {
             id: self.id,
             params: &self.params,
         }
     }
-
-    pub fn id(&self) -> c_uint {
-        self.id
-    }
 }
 
 impl<P> Drop for ShaderProgram<P> {
     fn drop(&mut self) {
         unsafe {
-            self.gl_for_drop.DeleteProgram(self.id);
+            self.gl_for_drop.delete_program(self.id);
         }
     }
 }

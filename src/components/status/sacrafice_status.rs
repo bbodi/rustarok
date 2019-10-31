@@ -25,6 +25,8 @@ pub struct SacrificeStatus {
     pub sacrifice: Percentage,
 }
 
+// TODO
+#[allow(dead_code)]
 impl SacrificeStatus {
     pub fn new(
         sacrifice_caster_id: CharEntityId,
@@ -50,7 +52,7 @@ impl Status for SacrificeStatus {
 
     fn update(
         &mut self,
-        self_char_id: CharEntityId,
+        _self_char_id: CharEntityId,
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,

@@ -44,13 +44,13 @@ use crate::components::char::{
     SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    CameraComponent, CharEntityId, ControllerEntityId, HumanInputComponent,
 };
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{BrowserClient, MinionComponent};
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
-use crate::my_gl::{Gl, MyGlEnum};
+use crate::my_gl::MyGlEnum;
 use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
@@ -80,12 +80,11 @@ use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRender
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::sound_sys::SoundSystem;
-use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations, SystemVariables,
 };
-use crate::video::{Video, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::Video;
 use crate::web_server::start_web_server;
 use std::fs::File;
 use std::io::BufRead;
@@ -150,9 +149,9 @@ fn main() {
 
     let mut asset_db = AssetDatabase::new();
 
-    let mut fov = 0.638;
-    let mut window_opened = false;
-    let mut cam_angle = -60.0;
+    let fov = 0.638;
+    let _window_opened = false;
+    let _cam_angle = -60.0;
     let render_matrices = RenderMatrices::new(fov);
 
     let sdl_context = sdl2::init().unwrap();
@@ -305,7 +304,7 @@ fn main() {
         .unwrap();
     let mut next_minion_spawn = ElapsedTime(2.0);
     let mut fps_counter: u64 = 0;
-    let mut fps: u64 = 0;
+    let mut fps: u64;
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
@@ -317,6 +316,12 @@ fn main() {
     log::info!(">>> start webserver");
     start_web_server();
     log::info!("<<< start webserver");
+
+    ecs_world
+        .write_storage::<ConsoleComponent>()
+        .get_mut(desktop_client_controller.0)
+        .unwrap()
+        .print("Start");
 
     'running: loop {
         asset_loader.process_async_loading(
@@ -497,7 +502,6 @@ fn register_systems<'a, 'b>(
                 "collision_collector",
                 &["char_state_update"],
             )
-            .with(SpawnEntitySystem, "spawn_entity_sys", &[])
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem::new(), "attack_sys", &["collision_collector"]);
         if let Some(console_system) = console_system {
@@ -564,7 +568,7 @@ fn send_ping_packets(ecs_world: &mut specs::world::World) -> () {
 
 fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
     {
-        let char_entity_id = create_random_char_minion(
+        let entity_id = create_random_char_minion(
             ecs_world,
             v2(
                 MinionAiSystem::CHECKPOINTS[0][0] as f32,
@@ -572,10 +576,10 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
             ),
             Team::Right,
         );
-        ecs_world
-            .create_entity()
-            .with(ControllerComponent::new(char_entity_id))
-            .with(MinionComponent { fountain_up: false });
+        let mut storage = ecs_world.write_storage();
+        storage
+            .insert(entity_id.0, MinionComponent { fountain_up: false })
+            .unwrap();
     }
     {
         let entity_id = create_random_char_minion(
@@ -889,7 +893,7 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
 //
 //                ui.drag_float3(
 //                    im_str!("light_dir"),
-//                    &mut map_render_data.rsw.light.direction,
+//                    &mut map_render_data.light.direction,
 //                )
 //                .min(-1.0)
 //                .max(1.0)
@@ -897,21 +901,21 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
 //                .build();
 //                ui.color_edit(
 //                    im_str!("light_ambient"),
-//                    &mut map_render_data.rsw.light.ambient,
+//                    &mut map_render_data.light.ambient,
 //                )
 //                .inputs(false)
 //                .format(imgui::ColorFormat::Float)
 //                .build();
 //                ui.color_edit(
 //                    im_str!("light_diffuse"),
-//                    &mut map_render_data.rsw.light.diffuse,
+//                    &mut map_render_data.light.diffuse,
 //                )
 //                .inputs(false)
 //                .format(imgui::ColorFormat::Float)
 //                .build();
 //                ui.drag_float(
 //                    im_str!("light_opacity"),
-//                    &mut map_render_data.rsw.light.opacity,
+//                    &mut map_render_data.light.opacity,
 //                )
 //                .min(0.0)
 //                .max(1.0)

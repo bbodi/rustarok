@@ -5,7 +5,7 @@ use sdl2::ttf::Sdl2TtfContext;
 use strum::IntoEnumIterator;
 
 use crate::asset::database::AssetDatabase;
-use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
+use crate::asset::texture::TextureId;
 use crate::asset::AssetLoader;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skills::Skills;
@@ -23,20 +23,6 @@ pub struct Texts {
     pub plus: TextureId,
 }
 
-impl Texts {
-    pub fn new_for_test() -> Texts {
-        Texts {
-            skill_name_texts: Default::default(),
-            skill_key_texts: Default::default(),
-            custom_texts: Default::default(),
-            attack_absorbed: DUMMY_TEXTURE_ID_FOR_TEST,
-            attack_blocked: DUMMY_TEXTURE_ID_FOR_TEST,
-            minus: DUMMY_TEXTURE_ID_FOR_TEST,
-            plus: DUMMY_TEXTURE_ID_FOR_TEST,
-        }
-    }
-}
-
 pub fn load_status_icons(
     gl: &Gl,
     asset_loader: &AssetLoader,
@@ -46,7 +32,7 @@ pub fn load_status_icons(
     status_icons.insert(
         "shield",
         asset_loader
-            .load_texture(
+            .start_loading_texture(
                 gl,
                 "data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\item\\pa_shieldchain.bmp",
                 MyGlEnum::NEAREST,
@@ -72,7 +58,7 @@ pub fn load_skill_icons(
             .get_texture_id(&def.get_icon_path())
             .unwrap_or_else(|| {
                 asset_loader
-                    .load_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_db)
+                    .start_loading_texture(gl, def.get_icon_path(), MyGlEnum::NEAREST, asset_db)
                     .unwrap()
             });
         skill_icons.insert(skill, skill_icon);

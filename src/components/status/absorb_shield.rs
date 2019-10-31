@@ -74,7 +74,7 @@ impl Status for AbsorbStatus {
     fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
         outcome: HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) -> HpModificationResult {
         match outcome.typ {
             HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {

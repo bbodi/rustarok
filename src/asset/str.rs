@@ -141,7 +141,7 @@ impl StrFile {
                             );
                             let texture = asset_db.get_texture_id(&path).unwrap_or_else(|| {
                                 asset_loader
-                                    .load_texture(gl, &path, MyGlEnum::NEAREST, asset_db)
+                                    .start_loading_texture(gl, &path, MyGlEnum::NEAREST, asset_db)
                                     .unwrap()
                             });
 

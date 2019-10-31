@@ -141,7 +141,7 @@ impl<'a> specs::System<'a> for MinionAiSystem {
                 }
             } else {
                 // the char might have died, remove the controller entity
-                entities.delete(controller_id.0);
+                entities.delete(controller_id.0).expect("");
             }
         }
     }

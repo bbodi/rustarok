@@ -1232,7 +1232,7 @@ impl DamageRenderSystem {
                     .pos(&pos)
                     .color_rgb(&color)
                     .alpha((alpha * 255.0).min(255.0) as u8)
-                    .add(number_value, digit_count as u8);
+                    .add(number_value);
             }
             FlyingNumberType::Block => {
                 render_commands

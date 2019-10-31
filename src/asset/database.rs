@@ -35,6 +35,7 @@ impl AssetDatabase {
         }
     }
 
+    #[inline]
     pub fn get_model(&self, index: usize) -> &ModelRenderData {
         &self.models[index]
     }
@@ -51,20 +52,29 @@ impl AssetDatabase {
         self.models.push(model);
     }
 
-    pub fn reserve_model_slot(&mut self, name: &str) -> usize {
-        let model_index = self.models.len();
-        self.model_name_to_index
-            .insert(AssetDatabase::replace_non_ascii_chars(&name), model_index);
-        self.models.push(ModelRenderData {
-            bounding_box: BoundingBox::new(),
-            alpha: 0,
-            model: vec![],
-        });
-        return model_index;
+    pub(super) fn reserve_model_slots(&mut self, count: usize) -> Vec<usize> {
+        (0..count)
+            .map(|_| {
+                let model_index = self.models.len();
+                self.models.push(ModelRenderData {
+                    bounding_box: BoundingBox::new(),
+                    alpha: 0,
+                    model: vec![],
+                });
+                model_index
+            })
+            .collect()
     }
 
-    pub fn fill_reserved_model_slot(&mut self, model_index: usize, data: ModelRenderData) {
-        self.models[model_index] = data;
+    pub(super) fn fill_bulk_reserved_model_slot(
+        &mut self,
+        model_index: usize,
+        model_render_data: ModelRenderData,
+        name: String,
+    ) {
+        self.models[model_index] = model_render_data;
+        self.model_name_to_index
+            .insert(AssetDatabase::replace_non_ascii_chars(&name), model_index);
     }
 
     pub fn get_texture_id(&self, path: &str) -> Option<TextureId> {
@@ -72,6 +82,7 @@ impl AssetDatabase {
         return self.texture_db.entries.get(&key).map(|it| it.clone());
     }
 
+    #[inline]
     pub fn get_texture(&self, i: TextureId) -> &GlTexture {
         return &self.textures[i.0];
     }
@@ -103,7 +114,7 @@ impl AssetDatabase {
 
     pub(super) fn reserve_texture_slots(&mut self, gl: &Gl, count: usize) -> Vec<TextureId> {
         (0..count)
-            .map(|it| {
+            .map(|_| {
                 let texture_id = TextureId(self.textures.len());
                 self.textures
                     .push(GlTexture::new(gl, GlNativeTextureId(0), 0, 0));
@@ -207,9 +218,9 @@ impl AssetDatabase {
                 dst_buf.push(0)
             }
             unsafe {
-                gl.ActiveTexture(MyGlEnum::TEXTURE0);
-                gl.BindTexture(MyGlEnum::TEXTURE_2D, texture_entry.id());
-                gl.GetTexImage(
+                gl.active_texture(MyGlEnum::TEXTURE0);
+                gl.bind_texture(MyGlEnum::TEXTURE_2D, texture_entry.id());
+                gl.get_tex_image(
                     MyGlEnum::TEXTURE_2D,
                     0,
                     MyGlEnum::RGBA,

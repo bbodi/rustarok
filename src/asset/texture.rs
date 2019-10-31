@@ -1,11 +1,7 @@
 use std::os::raw::c_uint;
-use std::path::Path;
 
-use serde::export::fmt::Display;
 use serde::Serialize;
 
-use crate::asset::database::AssetDatabase;
-use crate::asset::AssetLoader;
 use crate::my_gl::{Gl, MyGlEnum};
 
 pub const DUMMY_TEXTURE_ID_FOR_TEST: TextureId = TextureId(0);
@@ -28,7 +24,7 @@ impl Drop for GlTextureContext {
     fn drop(&mut self) {
         unsafe {
             self.gl_for_drop
-                .DeleteTextures(1, &(self.native_id).0 as *const c_uint)
+                .delete_textures(1, &(self.native_id).0 as *const c_uint)
         }
     }
 }
@@ -65,8 +61,8 @@ impl GlTexture {
 
     pub fn bind(&self, gl: &Gl, texture_index: MyGlEnum) {
         unsafe {
-            gl.ActiveTexture(texture_index);
-            gl.BindTexture(MyGlEnum::TEXTURE_2D, self.context.native_id);
+            gl.active_texture(texture_index);
+            gl.bind_texture(MyGlEnum::TEXTURE_2D, self.context.native_id);
         }
     }
 }

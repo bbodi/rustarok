@@ -344,7 +344,7 @@ impl AttackCalculation {
         hp_mod_req: HpModificationRequest,
     ) -> HpModificationResult {
         return match hp_mod_req.typ {
-            HpModificationType::SpellDamage(base_dmg, damage_render_type) => {
+            HpModificationType::SpellDamage(base_dmg, _damage_render_type) => {
                 let dmg = dst
                     .calculated_attribs()
                     .armor
@@ -569,14 +569,6 @@ impl AttackSystem {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
             {
                 match &status_change.status {
-                    RemoveStatusComponentPayload::MainStatus(status_name) => {
-                        log::debug!(
-                            "Removing state '{:?}' from {:?}",
-                            status_name,
-                            status_change.target_entity_id
-                        );
-                        target_char.statuses.remove_main_status(*status_name);
-                    }
                     RemoveStatusComponentPayload::RemovingStatusType(status_type) => {
                         target_char.statuses.remove_by_nature(*status_type);
                     }

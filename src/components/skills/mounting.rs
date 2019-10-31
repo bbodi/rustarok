@@ -22,9 +22,9 @@ impl SkillDef for MountingSkill {
         &self,
         caster_entity_id: CharEntityId,
         caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _skill_pos: Option<Vec2>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         {

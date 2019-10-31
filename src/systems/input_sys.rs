@@ -57,7 +57,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
             let controller_id = ControllerEntityId(controller_id);
             match client.receive() {
                 Ok(msg) => match msg {
-                    OwnedMessage::Pong(buf) => {
+                    OwnedMessage::Pong(_buf) => {
                         // TODO
                         //                        let ping_time = u128::from_le_bytes([
                         //                            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8],

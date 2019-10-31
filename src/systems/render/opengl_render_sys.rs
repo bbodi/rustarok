@@ -17,7 +17,7 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::shaders::{load_shaders, GroundShaderParameters, Shaders};
 use crate::systems::render::render_command::{
     create_2d_pos_rot_matrix, create_3d_pos_rot_matrix, create_3d_rot_matrix, EffectFrameCacheKey,
-    RenderCommandCollector, TextureSizeSetting, UiLayer2d,
+    Font, RenderCommandCollector, TextureSizeSetting, UiLayer2d,
 };
 use crate::systems::render_sys::{DamageRenderSystem, ONE_SPRITE_PIXEL_SIZE_IN_3D};
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -69,47 +69,34 @@ pub struct OpenGlRenderSystem<'a, 'b> {
     circle_vertex_arrays: Vec<VertexArray>,
     fonts: Fonts<'a, 'b>,
 
-    identity_mat: Mat4,
     shaders: Shaders,
     white_dummy_texture: GlTexture,
 }
 
 pub struct Fonts<'a, 'b> {
-    small_font: sdl2::ttf::Font<'a, 'b>,
     normal_font: sdl2::ttf::Font<'a, 'b>,
-    big_font: sdl2::ttf::Font<'a, 'b>,
-    small_bold_font: sdl2::ttf::Font<'a, 'b>,
-    normal_bold_font: sdl2::ttf::Font<'a, 'b>,
-    big_bold_font: sdl2::ttf::Font<'a, 'b>,
-
-    small_font_outline: sdl2::ttf::Font<'a, 'b>,
-    normal_font_outline: sdl2::ttf::Font<'a, 'b>,
-    big_font_outline: sdl2::ttf::Font<'a, 'b>,
-    small_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
-    normal_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
-    big_bold_font_outline: sdl2::ttf::Font<'a, 'b>,
 }
 
-pub const SMALL_FONT_SIZE: i32 = 14;
+//pub const SMALL_FONT_SIZE: i32 = 14;
 pub const NORMAL_FONT_H: i32 = 20;
 pub const NORMAL_FONT_W: i32 = 10;
-pub const BIG_FONT_SIZE: i32 = 32;
+//pub const BIG_FONT_SIZE: i32 = 32;
 
 impl<'a, 'b> Fonts<'a, 'b> {
     pub fn new(ttf_context: &'a Sdl2TtfContext) -> Fonts {
-        let small_font = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-R.ttf",
-            SMALL_FONT_SIZE as u16,
-        )
-        .unwrap();
-        let mut small_font_outline = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-R.ttf",
-            SMALL_FONT_SIZE as u16,
-        )
-        .unwrap();
-        small_font_outline.set_outline_width(2);
+        //        let small_font = Video::load_font(
+        //            &ttf_context,
+        //            "assets/fonts/UbuntuMono-R.ttf",
+        //            SMALL_FONT_SIZE as u16,
+        //        )
+        //        .unwrap();
+        //        let mut small_font_outline = Video::load_font(
+        //            &ttf_context,
+        //            "assets/fonts/UbuntuMono-R.ttf",
+        //            SMALL_FONT_SIZE as u16,
+        //        )
+        //        .unwrap();
+        //        small_font_outline.set_outline_width(2);
 
         let normal_font = Video::load_font(
             &ttf_context,
@@ -117,75 +104,7 @@ impl<'a, 'b> Fonts<'a, 'b> {
             NORMAL_FONT_H as u16,
         )
         .unwrap();
-        let mut normal_font_outline = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-R.ttf",
-            NORMAL_FONT_H as u16,
-        )
-        .unwrap();
-        normal_font_outline.set_outline_width(2);
-
-        let big_font = Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-R.ttf", 32).unwrap();
-        let mut big_font_outline =
-            Video::load_font(&ttf_context, "assets/fonts/UbuntuMono-R.ttf", 32).unwrap();
-        big_font_outline.set_outline_width(2);
-
-        let small_bold_font = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            SMALL_FONT_SIZE as u16,
-        )
-        .unwrap();
-        let mut small_bold_font_outline = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            SMALL_FONT_SIZE as u16,
-        )
-        .unwrap();
-        small_bold_font_outline.set_outline_width(2);
-
-        let normal_bold_font = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            NORMAL_FONT_H as u16,
-        )
-        .unwrap();
-        let mut normal_bold_font_outline = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            NORMAL_FONT_H as u16,
-        )
-        .unwrap();
-        normal_bold_font_outline.set_outline_width(2);
-
-        let big_bold_font = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            BIG_FONT_SIZE as u16,
-        )
-        .unwrap();
-        let mut big_bold_font_outline = Video::load_font(
-            &ttf_context,
-            "assets/fonts/UbuntuMono-B.ttf",
-            BIG_FONT_SIZE as u16,
-        )
-        .unwrap();
-        big_bold_font_outline.set_outline_width(2);
-
-        Fonts {
-            small_font,
-            normal_font,
-            big_font,
-            small_bold_font,
-            normal_bold_font,
-            big_bold_font,
-            small_font_outline,
-            normal_font_outline,
-            big_font_outline,
-            small_bold_font_outline,
-            normal_bold_font_outline,
-            big_bold_font_outline,
-        }
+        Fonts { normal_font }
     }
 }
 
@@ -238,7 +157,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
 
         OpenGlRenderSystem {
             shaders: load_shaders(&gl),
-            identity_mat: Mat4::identity(),
             circle_vertex_arrays,
             fonts: Fonts::new(ttf_context),
             single_digit_u_coord,
@@ -475,8 +393,6 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
     }
 
     fn create_sphere_vao(radius: f32, sector_count: i32, stack_count: i32) -> Vec<[f32; 5]> {
-        let length_inv = 1.0f32 / radius; // vertex normal
-
         let sector_step = 2.0 * std::f32::consts::PI / sector_count as f32;
         let stack_step = std::f32::consts::PI / stack_count as f32;
 
@@ -526,7 +442,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         for i in 0..stack_count {
             let mut k1 = (i * (sector_count + 1)) as usize;
             let mut k2 = (k1 + sector_count as usize + 1) as usize;
-            for j in 0..sector_count {
+            for _j in 0..sector_count {
                 if i != 0 {
                     vertex(&vertices, &uvs, &mut vao, k1);
                     vertex(&vertices, &uvs, &mut vao, k2);
@@ -571,19 +487,19 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         shader
             .params
             .light_dir
-            .set(gl, &map_render_data.rsw.light.direction);
+            .set(gl, &map_render_data.light.direction);
         shader
             .params
             .light_ambient
-            .set(gl, &map_render_data.rsw.light.ambient);
+            .set(gl, &map_render_data.light.ambient);
         shader
             .params
             .light_diffuse
-            .set(gl, &map_render_data.rsw.light.diffuse);
+            .set(gl, &map_render_data.light.diffuse);
         shader
             .params
             .light_opacity
-            .set(gl, map_render_data.rsw.light.opacity);
+            .set(gl, map_render_data.light.opacity);
         shader.params.gnd_texture_atlas.set(gl, 0);
         shader.params.tile_color_texture.set(gl, 1);
         shader.params.lightmap_texture.set(gl, 2);
@@ -799,7 +715,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
         ): Self::SystemData,
     ) {
         unsafe {
-            gl.Clear(MyGlEnum::COLOR_BUFFER_BIT as u32 | MyGlEnum::DEPTH_BUFFER_BIT as u32);
+            gl.clear(MyGlEnum::COLOR_BUFFER_BIT as u32 | MyGlEnum::DEPTH_BUFFER_BIT as u32);
         }
 
         let gl = &gl;
@@ -837,7 +753,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.params.texture.set(gl, 0);
 
                 unsafe {
-                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.active_texture(MyGlEnum::TEXTURE0);
                 }
                 /////////////////////////////////
                 // 3D Sprites
@@ -876,7 +792,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         );
 
                         unsafe {
-                            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
+                            gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                         }
                         vao_bind.draw(&gl);
                     }
@@ -889,7 +805,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     let _stopwatch =
                         system_benchmark.start_measurement("OpenGlRenderSystem.number3d");
                     unsafe {
-                        gl.Disable(MyGlEnum::DEPTH_TEST);
+                        gl.disable(MyGlEnum::DEPTH_TEST);
                     }
                     asset_db
                         .get_texture(sys_vars.assets.sprites.numbers)
@@ -909,7 +825,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                             .draw(&gl);
                     }
                     unsafe {
-                        gl.Enable(MyGlEnum::DEPTH_TEST);
+                        gl.enable(MyGlEnum::DEPTH_TEST);
                     }
                 }
             }
@@ -928,7 +844,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.params.texture.set(gl, 0);
 
                 unsafe {
-                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.active_texture(MyGlEnum::TEXTURE0);
                 }
                 let vao_bind = map_render_data.centered_sprite_vertex_array.bind(&gl);
                 for command in &render_commands.horizontal_texture_3d_commands {
@@ -951,7 +867,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.params.color.set(gl, &command.color);
 
                     unsafe {
-                        gl.BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
+                        gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
                     vao_bind.draw(&gl);
                 }
@@ -964,7 +880,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
             {
                 let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.effect3d");
                 unsafe {
-                    gl.Disable(MyGlEnum::DEPTH_TEST);
+                    gl.disable(MyGlEnum::DEPTH_TEST);
                 }
                 let shader = self.shaders.str_effect_shader.gl_use(gl);
                 shader
@@ -974,14 +890,14 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader.params.view_mat.set(gl, &render_commands.view_matrix);
                 shader.params.texture.set(gl, 0);
                 unsafe {
-                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.active_texture(MyGlEnum::TEXTURE0);
                 }
 
                 let str_effect_cache = &mut self.str_effect_cache;
                 &render_commands
                     .effect_commands
                     .iter()
-                    .filter(|(frame_cache_key, commands)| !commands.is_empty())
+                    .filter(|(_frame_cache_key, commands)| !commands.is_empty())
                     .for_each(|(frame_cache_key, commands)| {
                         let cached_frame = str_effect_cache.cache.get(&frame_cache_key);
                         let str_file = &sys_vars.str_effects[frame_cache_key.effect_id.0];
@@ -1005,7 +921,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                 //                                shader.params.color.set(gl, &[255, 255, 255, 255]);
                                 shader.params.color.set(gl, &cached_frame.color);
                                 unsafe {
-                                    gl.BlendFunc(cached_frame.src_alpha, cached_frame.dst_alpha);
+                                    gl.blend_func(cached_frame.src_alpha, cached_frame.dst_alpha);
                                 }
                                 // TODO: save the native_id into the command, so str_file should not be looked up
                                 asset_db
@@ -1023,8 +939,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     });
 
                 unsafe {
-                    gl.BlendFunc(MyGlBlendEnum::SRC_ALPHA, MyGlBlendEnum::ONE_MINUS_SRC_ALPHA);
-                    gl.Enable(MyGlEnum::DEPTH_TEST);
+                    gl.blend_func(MyGlBlendEnum::SRC_ALPHA, MyGlBlendEnum::ONE_MINUS_SRC_ALPHA);
+                    gl.enable(MyGlEnum::DEPTH_TEST);
                 }
             }
 
@@ -1048,19 +964,19 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                 shader
                     .params
                     .light_dir
-                    .set(gl, &map_render_data.rsw.light.direction);
+                    .set(gl, &map_render_data.light.direction);
                 shader
                     .params
                     .light_ambient
-                    .set(gl, &map_render_data.rsw.light.ambient);
+                    .set(gl, &map_render_data.light.ambient);
                 shader
                     .params
                     .light_diffuse
-                    .set(gl, &map_render_data.rsw.light.diffuse);
+                    .set(gl, &map_render_data.light.diffuse);
                 shader
                     .params
                     .light_opacity
-                    .set(gl, map_render_data.rsw.light.opacity);
+                    .set(gl, map_render_data.light.opacity);
                 shader
                     .params
                     .use_lighting
@@ -1129,7 +1045,8 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                                 .map(|texture_id| asset_db.get_texture(texture_id))
                                 .unwrap_or(&self.white_dummy_texture)
                                 .bind(gl, MyGlEnum::TEXTURE0);
-                            if let Some(texture_id) = command.texture {}
+                            // TODO
+                            if let Some(_texture_id) = command.texture {}
                             vao_bind.draw(&gl);
                         }
                     }
@@ -1246,14 +1163,14 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
                 unsafe {
-                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.active_texture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.texture_2d_commands {
                     let texture = asset_db.get_texture(command.texture);
                     let width = texture.width as f32;
                     let height = texture.height as f32;
                     unsafe {
-                        gl.BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
+                        gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
                     let matrix =
                         create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
@@ -1322,14 +1239,15 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
 
                 let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
                 unsafe {
-                    gl.ActiveTexture(MyGlEnum::TEXTURE0);
+                    gl.active_texture(MyGlEnum::TEXTURE0);
                 }
                 for command in &render_commands.text_2d_commands {
+                    // TODO: draw text char by char without caching
                     if let Some(texture) = self.text_cache.get(&command.text) {
                         let width = texture.width as f32;
                         let height = texture.height as f32;
                         unsafe {
-                            gl.BindTexture(MyGlEnum::TEXTURE_2D, texture.id());
+                            gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                         }
                         shader
                             .params
@@ -1344,11 +1262,13 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader.params.color.set(gl, &command.color);
                         vertex_array_bind.draw(&gl);
                     } else {
-                        let texture = Video::create_text_texture_inner(
-                            &gl,
-                            &self.fonts.normal_font,
-                            &command.text,
-                        );
+                        let font = match command.font {
+                            Font::Normal => &self.fonts.normal_font,
+                            _ => &self.fonts.normal_font,
+                        };
+                        // just to avoid warning about unused field outline
+                        let font = if command.outline { font } else { font };
+                        let texture = Video::create_text_texture_inner(&gl, font, &command.text);
                         self.text_cache.insert(command.text.clone(), texture);
                     };
                 }

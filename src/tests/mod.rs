@@ -3,6 +3,7 @@ mod test_firewall;
 mod test_moving;
 
 use crate::assert_approx_eq::*;
+use crate::asset::texture::DUMMY_TEXTURE_ID_FOR_TEST;
 use crate::common::Vec2;
 use crate::components::char::Percentage;
 use crate::components::char::{
@@ -32,12 +33,30 @@ use specs::prelude::*;
 use std::collections::HashMap;
 use std::time::Duration;
 
+#[allow(dead_code)]
 const TIMESTEP_FOR_30_FPS: f32 = 0.033333333;
+#[allow(dead_code)]
 const TIMESTEP_FOR_60_FPS: f32 = 0.016666668;
+#[allow(dead_code)]
 const TIMESTEP_FOR_120_FPS: f32 = 0.0083333333;
+#[allow(dead_code)]
 const TIMESTEP_FOR_240_FPS: f32 = 0.0041666666;
 
 const TIMESTEP_FOR_TESTS: f32 = TIMESTEP_FOR_30_FPS;
+
+impl Texts {
+    pub fn new_for_test() -> Texts {
+        Texts {
+            skill_name_texts: Default::default(),
+            skill_key_texts: Default::default(),
+            custom_texts: Default::default(),
+            attack_absorbed: DUMMY_TEXTURE_ID_FOR_TEST,
+            attack_blocked: DUMMY_TEXTURE_ID_FOR_TEST,
+            minus: DUMMY_TEXTURE_ID_FOR_TEST,
+            plus: DUMMY_TEXTURE_ID_FOR_TEST,
+        }
+    }
+}
 
 fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
     simple_logging::log_to_stderr(LevelFilter::Trace);
@@ -190,7 +209,7 @@ impl<'a> OrderedEventAsserter<'a> {
         expected_next_status: CharState,
     ) {
         if !self.search_event(|event| match event {
-            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+            SystemEvent::CharStatusChange(_tick, char_id, from_status, to_status) => {
                 expected_char_id == *char_id
                     && *from_status == expected_prev_status
                     && *to_status == expected_next_status
@@ -205,13 +224,14 @@ impl<'a> OrderedEventAsserter<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn state_went_into_attacking(
         mut self,
         attacker_id: CharEntityId,
         attacked_id: CharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
-            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+            SystemEvent::CharStatusChange(_tick, char_id, _from_status, to_status) => {
                 attacker_id == *char_id
                     && match to_status {
                         CharState::Attacking { target, .. } => *target == attacked_id,
@@ -234,7 +254,7 @@ impl<'a> OrderedEventAsserter<'a> {
         expected_char_id: CharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
-            SystemEvent::CharStatusChange(tick, char_id, from_status, to_status) => {
+            SystemEvent::CharStatusChange(_tick, char_id, _from_status, to_status) => {
                 expected_char_id == *char_id
                     && match to_status {
                         CharState::CastingSkill(_) => true,
@@ -252,6 +272,7 @@ impl<'a> OrderedEventAsserter<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn basic_damage(
         mut self,
         expected_attacker: CharEntityId,
@@ -259,7 +280,7 @@ impl<'a> OrderedEventAsserter<'a> {
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
-                timestamp,
+                timestamp: _,
                 src,
                 dst,
                 result,
@@ -296,7 +317,7 @@ impl<'a> OrderedEventAsserter<'a> {
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
-                timestamp,
+                timestamp: _,
                 src,
                 dst,
                 result,
@@ -306,7 +327,7 @@ impl<'a> OrderedEventAsserter<'a> {
                     && match result.typ {
                         HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
                             HpModificationType::SpellDamage(_damage, _display_type) => false,
-                            HpModificationType::BasicDamage(damage, _, _) => false,
+                            HpModificationType::BasicDamage(_damage, _, _) => false,
                             HpModificationType::Heal(heal) => expected_heal == heal,
                             HpModificationType::Poison(_) => false,
                         },
@@ -333,7 +354,7 @@ impl<'a> OrderedEventAsserter<'a> {
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
-                timestamp,
+                timestamp: _,
                 src,
                 dst,
                 result,
@@ -369,7 +390,7 @@ impl<'a> OrderedEventAsserter<'a> {
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
-                timestamp,
+                timestamp: _,
                 src,
                 dst,
                 result,
@@ -432,13 +453,6 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         self.run_frames_n_times(TestUtil::frames_needed_for(duration, self.timestep));
     }
 
-    pub fn clear_world(&mut self) {
-        self.ecs_world.write_resource::<Vec<SystemEvent>>().clear();
-        self.ecs_world
-            .write_storage::<CharacterStateComponent>()
-            .clear();
-    }
-
     pub fn create_char(&mut self, pos: Vec2, team: Team) -> CharEntityId {
         let char_id = CharEntityId(self.ecs_world.create_entity().build());
         {
@@ -474,7 +488,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         self.ecs_world.maintain();
     }
 
-    pub fn apply_status(&mut self, char_id: CharEntityId, apply_status: ApplyStatusComponent) {
+    pub fn apply_status(&mut self, apply_status: ApplyStatusComponent) {
         self.ecs_world
             .write_resource::<SystemVariables>()
             .apply_statuses

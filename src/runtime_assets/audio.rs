@@ -45,14 +45,14 @@ fn init_audio() {
     let format = sdl2::mixer::DEFAULT_FORMAT; // signed 16 bit samples, in little-endian byte order
     let channels = sdl2::mixer::DEFAULT_CHANNELS; // Stereo
     let chunk_size = 1_024;
-    sdl2::mixer::open_audio(frequency, format, channels, chunk_size);
+    sdl2::mixer::open_audio(frequency, format, channels, chunk_size).expect("");
     let _mixer_context = sdl2::mixer::init(
         sdl2::mixer::InitFlag::MP3
             | sdl2::mixer::InitFlag::FLAC
             | sdl2::mixer::InitFlag::MOD
             | sdl2::mixer::InitFlag::OGG,
     )
-    .unwrap();
+    .expect("");
     sdl2::mixer::allocate_channels(4);
     sdl2::mixer::Channel::all().set_volume(16);
 }

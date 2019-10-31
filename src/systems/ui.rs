@@ -538,7 +538,7 @@ fn render_action_2d(
     pos: &Vec2i,
     color: &[u8; 3],
     render_commands: &mut RenderCommandCollector,
-    layer: UiLayer2d,
+    ui_layer: UiLayer2d,
     scale: f32,
     asset_db: &AssetDatabase,
 ) {
@@ -575,7 +575,7 @@ fn render_action_2d(
             .scale(scale)
             .color_rgb(color)
             .flip_vertically(layer.is_mirror)
-            .layer(UiLayer2d::Cursor)
+            .layer(ui_layer)
             .offset(offset[0], offset[1])
             .add(texture_id);
     }

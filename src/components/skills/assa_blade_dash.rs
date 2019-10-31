@@ -31,10 +31,10 @@ impl SkillDef for AssaBladeDashSkill {
     fn finish_cast(
         &self,
         caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
+        _caster_pos: Vec2,
+        _skill_pos: Option<Vec2>,
         char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
@@ -110,11 +110,11 @@ impl Status for AssaBladeDashStatus {
 
     fn on_apply(
         &mut self,
-        self_entity_id: CharEntityId,
+        _self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
-        entities: &Entities,
-        updater: &mut LazyUpdate,
-        sys_vars: &SystemVariables,
+        _entities: &Entities,
+        _updater: &mut LazyUpdate,
+        _sys_vars: &SystemVariables,
         physics_world: &mut PhysicEngine,
     ) {
         // allow to go through anything
@@ -135,12 +135,12 @@ impl Status for AssaBladeDashStatus {
 
     fn update(
         &mut self,
-        self_char_id: CharEntityId,
+        _self_char_id: CharEntityId,
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut LazyUpdate,
+        _entities: &specs::Entities,
+        _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
             if self.ends_at.has_already_passed(sys_vars.time) {
@@ -285,12 +285,7 @@ impl Status for AssaBladeDashStatus {
                     );
                 }
             }
-            CharOutlook::Monster(monster_id) => {
-                let body_res = {
-                    let sprites = &sys_vars.assets.sprites.monster_sprites;
-                    &sprites[&monster_id]
-                };
-            }
+            CharOutlook::Monster(_monster_id) => {}
         }
     }
 

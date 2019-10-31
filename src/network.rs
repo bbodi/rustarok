@@ -1,9 +1,9 @@
-use crate::configs::AppConfig;
 use crate::asset::database::AssetDatabase;
 use crate::common::v2;
 use crate::components::char::{attach_human_player_components, Team};
 use crate::components::controller::{CameraComponent, CharEntityId, ControllerEntityId};
 use crate::components::BrowserClient;
+use crate::configs::AppConfig;
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::effect::StrEffectType;
@@ -45,10 +45,10 @@ pub fn handle_new_connections(
                     "asset_db": serde_json::to_value(asset_db).unwrap(),
                     "effect_names": StrEffectType::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
                     "ground": json!({
-                        "light_dir" : map_render_data.rsw.light.direction,
-                        "light_ambient" : map_render_data.rsw.light.ambient,
-                        "light_diffuse" : map_render_data.rsw.light.diffuse,
-                        "light_opacity" : map_render_data.rsw.light.opacity,
+                        "light_dir" : map_render_data.light.direction,
+                        "light_ambient" : map_render_data.light.ambient,
+                        "light_diffuse" : map_render_data.light.diffuse,
+                        "light_opacity" : map_render_data.light.opacity,
                     }),
                     "projection_mat": sys_vars
                                         .matrices
@@ -212,10 +212,7 @@ pub fn handle_client_handshakes(ecs_world: &mut World, appconfig: &AppConfig) {
                                 &updater,
                                 &mut ecs_world.write_resource::<PhysicEngine>(),
                                 projection_mat,
-                                v2(
-                                    appconfig.start_pos_x,
-                                    appconfig.start_pos_y,
-                                ),
+                                v2(appconfig.start_pos_x, appconfig.start_pos_y),
                                 Sex::Male,
                                 JobId::CRUSADER,
                                 2,

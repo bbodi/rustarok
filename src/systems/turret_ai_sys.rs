@@ -5,7 +5,7 @@ use crate::components::char::{
 use crate::components::controller::{ControllerComponent, ControllerEntityId, PlayerIntention};
 use crate::configs::DevConfig;
 use crate::systems::minion_ai_sys::MinionAiSystem;
-use crate::systems::{SystemFrameDurations, SystemVariables};
+use crate::systems::SystemFrameDurations;
 use specs::prelude::*;
 
 pub struct TurretAiSystem;
@@ -20,7 +20,6 @@ impl<'a> specs::System<'a> for TurretAiSystem {
         specs::ReadStorage<'a, TurretControllerComponent>,
         specs::ReadStorage<'a, TurretComponent>,
         specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
         specs::ReadExpect<'a, DevConfig>,
     );
 
@@ -33,7 +32,6 @@ impl<'a> specs::System<'a> for TurretAiSystem {
             turret_controller_storage,
             turret_storage,
             mut system_benchmark,
-            sys_vars,
             dev_configs,
         ): Self::SystemData,
     ) {
@@ -123,7 +121,7 @@ impl<'a> specs::System<'a> for TurretAiSystem {
                 }
             } else {
                 // the char might have died, remove the controller entity
-                entities.delete(controller_id.0);
+                entities.delete(controller_id.0).expect("");
             }
         }
     }

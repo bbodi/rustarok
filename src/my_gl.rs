@@ -10,6 +10,7 @@ use std::os::raw::c_void;
 pub struct Gl;
 
 #[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
 pub enum MyGlEnum {
     TEXTURE0 = gl::TEXTURE0 as isize,
     TEXTURE1 = gl::TEXTURE1 as isize,
@@ -48,6 +49,7 @@ pub enum MyGlEnum {
 }
 
 #[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
 pub enum MyGlBlendEnum {
     ZERO = gl::ZERO as isize,
     ONE = gl::ONE as isize,
@@ -87,15 +89,15 @@ impl Gl {
         return (Gl, gl_context);
     }
 
-    pub unsafe fn GenBuffers(&self, n: GLsizei, buffers: *mut GLuint) {
+    pub unsafe fn gen_buffers(&self, n: GLsizei, buffers: *mut GLuint) {
         gl::GenBuffers(n, buffers);
     }
 
-    pub unsafe fn BindBuffer(&self, target: MyGlEnum, buffer: GLuint) {
+    pub unsafe fn bind_buffer(&self, target: MyGlEnum, buffer: GLuint) {
         gl::BindBuffer(target as u32, buffer);
     }
 
-    pub unsafe fn BufferData(
+    pub unsafe fn buffer_data(
         &self,
         target: MyGlEnum,
         size: GLsizeiptr,
@@ -105,19 +107,19 @@ impl Gl {
         gl::BufferData(target as u32, size, data, usage as u32);
     }
 
-    pub unsafe fn GenVertexArrays(&self, n: GLsizei, arrays: *mut GLuint) {
+    pub unsafe fn gen_vertex_arrays(&self, n: GLsizei, arrays: *mut GLuint) {
         gl::GenVertexArrays(n, arrays);
     }
 
-    pub unsafe fn BindVertexArray(&self, array: GLuint) {
+    pub unsafe fn bind_vertex_array(&self, array: GLuint) {
         gl::BindVertexArray(array);
     }
 
-    pub unsafe fn EnableVertexAttribArray(&self, index: GLuint) {
+    pub unsafe fn enable_vertex_attrib_array(&self, index: GLuint) {
         gl::EnableVertexAttribArray(index);
     }
 
-    pub unsafe fn VertexAttribPointer(
+    pub unsafe fn vertex_attrib_pointer(
         &self,
         index: GLuint,
         size: GLint,
@@ -129,19 +131,19 @@ impl Gl {
         gl::VertexAttribPointer(index, size, type_ as u32, normalized, stride, pointer);
     }
 
-    pub unsafe fn DrawArrays(&self, mode: MyGlEnum, first: GLint, count: GLsizei) {
+    pub unsafe fn draw_arrays(&self, mode: MyGlEnum, first: GLint, count: GLsizei) {
         gl::DrawArrays(mode as u32, first, count);
     }
 
-    pub unsafe fn BindTexture(&self, target: MyGlEnum, texture: GlNativeTextureId) {
+    pub unsafe fn bind_texture(&self, target: MyGlEnum, texture: GlNativeTextureId) {
         gl::BindTexture(target as u32, texture.0);
     }
 
-    pub unsafe fn ActiveTexture(&self, texture: MyGlEnum) {
+    pub unsafe fn active_texture(&self, texture: MyGlEnum) {
         gl::ActiveTexture(texture as u32);
     }
 
-    pub unsafe fn GetTexImage(
+    pub unsafe fn get_tex_image(
         &self,
         target: MyGlEnum,
         level: GLint,
@@ -152,27 +154,27 @@ impl Gl {
         gl::GetTexImage(target as u32, level, format as u32, type_ as u32, pixels);
     }
 
-    pub unsafe fn TexParameteri(&self, target: MyGlEnum, pname: MyGlEnum, param: GLint) {
+    pub unsafe fn tex_parameteri(&self, target: MyGlEnum, pname: MyGlEnum, param: GLint) {
         gl::TexParameteri(target as u32, pname as u32, param);
     }
 
-    pub unsafe fn GenerateMipmap(&self, target: MyGlEnum) {
+    pub unsafe fn generate_mipmap(&self, target: MyGlEnum) {
         gl::GenerateMipmap(target as u32);
     }
 
-    pub unsafe fn DisableVertexAttribArray(&self, index: GLuint) {
+    pub unsafe fn disable_vertex_attrib_array(&self, index: GLuint) {
         gl::DisableVertexAttribArray(index);
     }
 
-    pub unsafe fn Clear(&self, mask: GLbitfield) {
+    pub unsafe fn clear(&self, mask: GLbitfield) {
         gl::Clear(mask);
     }
 
-    pub unsafe fn GenTextures(&self, n: GLsizei, textures: *mut GLuint) {
+    pub unsafe fn gen_textures(&self, n: GLsizei, textures: *mut GLuint) {
         gl::GenTextures(n, textures);
     }
 
-    pub unsafe fn TexImage2D(
+    pub unsafe fn tex_image2d(
         &self,
         target: MyGlEnum,
         level: GLint,
@@ -197,23 +199,23 @@ impl Gl {
         );
     }
 
-    pub unsafe fn DeleteTextures(&self, n: GLsizei, textures: *const GLuint) {
+    pub unsafe fn delete_textures(&self, n: GLsizei, textures: *const GLuint) {
         gl::DeleteTextures(n, textures);
     }
 
-    pub unsafe fn DeleteBuffers(&self, n: GLsizei, buffers: *const GLuint) {
+    pub unsafe fn delete_buffers(&self, n: GLsizei, buffers: *const GLuint) {
         gl::DeleteBuffers(n, buffers);
     }
 
-    pub unsafe fn DeleteVertexArrays(&self, n: GLsizei, buffers: *const GLuint) {
+    pub unsafe fn delete_vertex_arrays(&self, n: GLsizei, buffers: *const GLuint) {
         gl::DeleteVertexArrays(n, buffers);
     }
 
-    pub unsafe fn DeleteShader(&self, n: GLuint) {
+    pub unsafe fn delete_shader(&self, n: GLuint) {
         gl::DeleteShader(n);
     }
 
-    pub unsafe fn ShaderSource(
+    pub unsafe fn shader_source(
         &self,
         shader: GLuint,
         count: GLsizei,
@@ -223,47 +225,47 @@ impl Gl {
         gl::ShaderSource(shader, count, string, length);
     }
 
-    pub unsafe fn CompileShader(&self, n: GLuint) {
+    pub unsafe fn compile_shader(&self, n: GLuint) {
         gl::CompileShader(n);
     }
 
-    pub unsafe fn GetProgramiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
+    pub unsafe fn get_programiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
         gl::GetProgramiv(program, pname as u32, params);
     }
 
-    pub unsafe fn GetShaderiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
+    pub unsafe fn get_shaderiv(&self, program: GLuint, pname: MyGlEnum, params: *mut GLint) {
         gl::GetShaderiv(program, pname as u32, params);
     }
 
-    pub unsafe fn GetUniformLocation(&self, program: GLuint, name: *const GLchar) -> GLint {
+    pub unsafe fn get_uniform_location(&self, program: GLuint, name: *const GLchar) -> GLint {
         return gl::GetUniformLocation(program, name);
     }
 
-    pub unsafe fn CreateShader(&self, kind: MyGlEnum) -> GLuint {
+    pub unsafe fn create_shader(&self, kind: MyGlEnum) -> GLuint {
         return gl::CreateShader(kind as u32);
     }
 
-    pub unsafe fn GetProgramInfoLog(
+    pub unsafe fn get_program_info_log(
         &self,
         program: GLuint,
-        bufSize: GLsizei,
+        buf_size: GLsizei,
         length: *mut GLsizei,
-        infoLog: *mut GLchar,
+        info_log: *mut GLchar,
     ) {
-        gl::GetProgramInfoLog(program, bufSize, length, infoLog);
+        gl::GetProgramInfoLog(program, buf_size, length, info_log);
     }
 
-    pub unsafe fn GetShaderInfoLog(
+    pub unsafe fn get_shader_info_log(
         &self,
         program: GLuint,
-        bufSize: GLsizei,
+        buf_size: GLsizei,
         length: *mut GLsizei,
-        infoLog: *mut GLchar,
+        info_log: *mut GLchar,
     ) {
-        gl::GetShaderInfoLog(program, bufSize, length, infoLog);
+        gl::GetShaderInfoLog(program, buf_size, length, info_log);
     }
 
-    pub unsafe fn UniformMatrix3fv(
+    pub unsafe fn uniform_matrix3fv(
         &self,
         location: GLint,
         count: GLsizei,
@@ -273,7 +275,7 @@ impl Gl {
         gl::UniformMatrix3fv(location, count, transpose, value);
     }
 
-    pub unsafe fn UniformMatrix4fv(
+    pub unsafe fn uniform_matrix4fv(
         &self,
         location: GLint,
         count: GLsizei,
@@ -283,63 +285,63 @@ impl Gl {
         gl::UniformMatrix4fv(location, count, transpose, value);
     }
 
-    pub unsafe fn Uniform3fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
+    pub unsafe fn uniform3fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
         gl::Uniform3fv(location, count, value);
     }
 
-    pub unsafe fn Uniform4fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
+    pub unsafe fn uniform4fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
         gl::Uniform4fv(location, count, value);
     }
 
-    pub unsafe fn Uniform2fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
+    pub unsafe fn uniform2fv(&self, location: GLint, count: GLsizei, value: *const GLfloat) {
         gl::Uniform2fv(location, count, value);
     }
 
-    pub unsafe fn Uniform2i(&self, location: GLint, a: GLint, b: GLint) {
+    pub unsafe fn uniform2i(&self, location: GLint, a: GLint, b: GLint) {
         gl::Uniform2i(location, a, b);
     }
 
-    pub unsafe fn Uniform1f(&self, location: GLint, value: GLfloat) {
+    pub unsafe fn uniform1f(&self, location: GLint, value: GLfloat) {
         gl::Uniform1f(location, value);
     }
 
-    pub unsafe fn Uniform1i(&self, location: GLint, value: GLint) {
+    pub unsafe fn uniform1i(&self, location: GLint, value: GLint) {
         gl::Uniform1i(location, value);
     }
 
-    pub unsafe fn CreateProgram(&self) -> GLuint {
+    pub unsafe fn create_program(&self) -> GLuint {
         return gl::CreateProgram();
     }
 
-    pub unsafe fn AttachShader(&self, program: GLuint, shader: GLuint) {
+    pub unsafe fn attach_shader(&self, program: GLuint, shader: GLuint) {
         gl::AttachShader(program, shader);
     }
 
-    pub unsafe fn Disable(&self, n: MyGlEnum) {
+    pub unsafe fn disable(&self, n: MyGlEnum) {
         gl::Disable(n as u32);
     }
 
-    pub unsafe fn Enable(&self, n: MyGlEnum) {
+    pub unsafe fn enable(&self, n: MyGlEnum) {
         gl::Enable(n as u32);
     }
 
-    pub unsafe fn BlendFunc(&self, n: MyGlBlendEnum, b: MyGlBlendEnum) {
+    pub unsafe fn blend_func(&self, n: MyGlBlendEnum, b: MyGlBlendEnum) {
         gl::BlendFunc(n as u32, b as u32);
     }
 
-    pub unsafe fn DetachShader(&self, program: GLuint, shader: GLuint) {
+    pub unsafe fn detach_shader(&self, program: GLuint, shader: GLuint) {
         gl::DetachShader(program, shader);
     }
 
-    pub unsafe fn UseProgram(&self, program: GLuint) {
+    pub unsafe fn use_program(&self, program: GLuint) {
         gl::UseProgram(program);
     }
 
-    pub unsafe fn DeleteProgram(&self, program: GLuint) {
+    pub unsafe fn delete_program(&self, program: GLuint) {
         gl::DeleteProgram(program);
     }
 
-    pub unsafe fn LinkProgram(&self, program: GLuint) {
+    pub unsafe fn link_program(&self, program: GLuint) {
         gl::LinkProgram(program);
     }
 }

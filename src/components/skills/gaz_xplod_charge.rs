@@ -41,8 +41,8 @@ impl SkillDef for GazXplodiumChargeSkill {
         caster_entity_id: CharEntityId,
         caster_pos: Vec2,
         skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        _char_to_skill_dir: &Vec2,
+        _target_entity: Option<CharEntityId>,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         Some(Box::new(GazXplodiumChargeSkillManifestation::new(
@@ -66,7 +66,6 @@ impl SkillDef for GazXplodiumChargeSkill {
 }
 
 struct GazXplodiumChargeSkillManifestation {
-    start_pos: Vec2,
     end_pos: Vec2,
     current_pos: Vector3<f32>,
     current_target_pos: Vector3<f32>,
@@ -81,13 +80,12 @@ impl GazXplodiumChargeSkillManifestation {
         caster_id: CharEntityId,
         start_pos: Vec2,
         end_pos: Vec2,
-        physics_world: &mut PhysicEngine,
+        _physics_world: &mut PhysicEngine,
         now: ElapsedTime,
         configs: GazXplodiumChargeSkillConfigInner,
     ) -> GazXplodiumChargeSkillManifestation {
         let ctrl = v2_to_v3(&(start_pos - (end_pos - start_pos))) + v3(0.0, 20.0, 0.0);
         GazXplodiumChargeSkillManifestation {
-            start_pos,
             end_pos,
             current_pos: Vector3::new(start_pos.x, 1.0, start_pos.y),
             started_at: now,
@@ -107,15 +105,13 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
+        _all_collisions_in_world: &WorldCollisions,
         sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
+        _physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
-        let now = sys_vars.time;
-
         let travel_duration_percentage = sys_vars.time.percentage_between(
             self.started_at,
             self.started_at
@@ -149,13 +145,11 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         .push(ApplyStatusInAreaComponent {
                             source_entity_id: self.caster_id,
                             status: ApplyStatusComponentPayload::from_secondary(Box::new(
-                                StunStatus {
-                                    caster_entity_id: self.caster_id,
-                                    started: sys_vars.time,
-                                    until: sys_vars
-                                        .time
-                                        .add_seconds(self.configs.stun_duration_seconds),
-                                },
+                                StunStatus::new(
+                                    self.caster_id,
+                                    sys_vars.time,
+                                    self.configs.stun_duration_seconds,
+                                ),
                             )),
                             area_shape,
                             area_isom,
@@ -182,10 +176,10 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
     fn render(
         &self,
         now: ElapsedTime,
-        tick: u64,
+        _tick: u64,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
-        audio_command_collector: &mut AudioCommandCollectorComponent,
+        _audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
         let missile_landed = self
             .started_at

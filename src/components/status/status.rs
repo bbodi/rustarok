@@ -34,21 +34,21 @@ pub trait Status: Any {
 
     fn get_body_sprite<'a>(
         &self,
-        sys_vars: &'a SystemVariables,
-        job_id: JobId,
-        sex: Sex,
+        _sys_vars: &'a SystemVariables,
+        _job_id: JobId,
+        _sex: Sex,
     ) -> Option<&'a SpriteResource> {
         None
     }
 
     fn on_apply(
         &mut self,
-        self_entity_id: CharEntityId,
-        target_char: &mut CharacterStateComponent,
-        entities: &Entities,
-        updater: &mut LazyUpdate,
-        sys_vars: &SystemVariables,
-        physics_world: &mut PhysicEngine,
+        _self_entity_id: CharEntityId,
+        _target_char: &mut CharacterStateComponent,
+        _entities: &Entities,
+        _updater: &mut LazyUpdate,
+        _sys_vars: &SystemVariables,
+        _physics_world: &mut PhysicEngine,
     ) {
     }
 
@@ -89,24 +89,24 @@ pub trait Status: Any {
     fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
         outcome: HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) -> HpModificationResult {
         outcome
     }
 
     fn hp_mod_has_been_applied_on_me(
         &mut self,
-        self_id: CharEntityId,
-        outcome: &HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        _self_id: CharEntityId,
+        _outcome: &HpModificationResult,
+        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
     }
 
     fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        self_id: CharEntityId,
-        outcome: &HpModificationResult,
-        hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        _self_id: CharEntityId,
+        _outcome: &HpModificationResult,
+        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
     }
 
@@ -295,7 +295,7 @@ impl Statuses {
             .iter_mut()
             .enumerate()
             .take(self.first_free_index)
-            .filter(|(i, it)| it.is_some())
+            .filter(|(_i, it)| it.is_some())
         {
             let result = status.as_mut().unwrap().update(
                 self_char_id,
@@ -514,7 +514,7 @@ impl Statuses {
             .iter()
             .take(self.first_free_index)
             .enumerate()
-            .find(|(i, current_status)| {
+            .find(|(_i, current_status)| {
                 current_status
                     .as_ref()
                     .map(|current_status| type_id == current_status.as_ref().type_id())
@@ -575,14 +575,11 @@ impl Statuses {
         }
     }
 
-    pub fn remove_main_status(&mut self, status: MainStatusesIndex) {
-        self.statuses[status as usize] = None;
-    }
-
     unsafe fn trait_to_struct<T>(boxx: &Box<dyn Status>) -> &T {
         return std::mem::transmute::<_, &Box<T>>(boxx);
     }
 
+    #[allow(dead_code)]
     pub fn get_status<T: 'static>(&self) -> Option<&T> {
         let requested_type_id = TypeId::of::<T>();
         for status in self.statuses.iter().filter(|it| it.is_some()) {
@@ -612,6 +609,8 @@ impl Statuses {
         return None;
     }
 
+    // TODO: do we need it?
+    #[allow(dead_code)]
     pub fn count(&self) -> usize {
         let secondary_status_count = self.first_free_index - MAINSTATUSES_COUNT;
         let main_status_count = self
@@ -742,10 +741,6 @@ pub enum ApplyStatusComponentPayload {
 }
 
 impl ApplyStatusComponentPayload {
-    pub fn from_main_status(m: MainStatuses) -> ApplyStatusComponentPayload {
-        ApplyStatusComponentPayload::MainStatus(m)
-    }
-
     pub fn from_secondary(status: Box<dyn Status + Send>) -> ApplyStatusComponentPayload {
         ApplyStatusComponentPayload::SecondaryStatus(status)
     }
@@ -789,7 +784,6 @@ pub enum StatusNature {
 }
 
 pub enum RemoveStatusComponentPayload {
-    MainStatus(MainStatusesIndex),
     RemovingStatusType(StatusNature),
 }
 
@@ -834,18 +828,6 @@ impl ApplyStatusComponent {
 }
 
 impl RemoveStatusComponent {
-    pub fn from_main_status(
-        source_entity_id: CharEntityId,
-        target_entity_id: CharEntityId,
-        m: MainStatusesIndex,
-    ) -> RemoveStatusComponent {
-        RemoveStatusComponent {
-            source_entity_id,
-            target_entity_id,
-            status: RemoveStatusComponentPayload::MainStatus(m),
-        }
-    }
-
     pub fn by_status_nature(
         source_entity_id: CharEntityId,
         target_entity_id: CharEntityId,

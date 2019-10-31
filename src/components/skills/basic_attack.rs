@@ -24,6 +24,7 @@ use crate::systems::{AssetResources, SystemVariables};
 #[derive(Clone, Debug, PartialEq)]
 pub enum BasicAttack {
     MeleeSimple,
+    #[allow(dead_code)]
     MeleeCombo {
         combo_count: u8,
         base_dmg_percentage_for_each_combo: Percentage,
@@ -75,7 +76,6 @@ impl BasicAttack {
                 None
             }
             BasicAttack::Ranged { bullet_type } => Some(Box::new(BasicRangeAttackBullet::new(
-                calculated_attribs.attack_speed.as_f32(),
                 caster_pos,
                 caster_entity_id,
                 target_entity_id,
@@ -96,7 +96,6 @@ pub enum WeaponType {
 }
 
 struct BasicRangeAttackBullet {
-    attack_speed: f32,
     start_pos: Vec2,
     target_pos: Vec2,
     current_pos: Vec2,
@@ -110,7 +109,6 @@ struct BasicRangeAttackBullet {
 
 impl BasicRangeAttackBullet {
     fn new(
-        attack_speed: f32,
         start_pos: Vec2,
         caster_id: CharEntityId,
         target_id: CharEntityId,
@@ -120,7 +118,6 @@ impl BasicRangeAttackBullet {
         now_tick: u64,
     ) -> BasicRangeAttackBullet {
         BasicRangeAttackBullet {
-            attack_speed,
             start_pos,
             current_pos: v2(0.0, 0.0),
             target_pos: v2(0.0, 0.0),
@@ -138,11 +135,11 @@ impl SkillManifestation for BasicRangeAttackBullet {
     fn update(
         &mut self,
         self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
+        _all_collisions_in_world: &WorldCollisions,
         sys_vars: &mut SystemVariables,
         entities: &specs::Entities,
         char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
+        _physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {
         let now = sys_vars.time;
@@ -203,10 +200,10 @@ impl SkillManifestation for BasicRangeAttackBullet {
     fn render(
         &self,
         now: ElapsedTime,
-        tick: u64,
+        _tick: u64,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
-        audio_command_collector: &mut AudioCommandCollectorComponent,
+        _audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
         let dir = NextActionApplierSystem::determine_dir(&self.target_pos, &self.start_pos);
         let anim = SpriteRenderDescriptorComponent {

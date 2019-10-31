@@ -39,19 +39,16 @@ fn reflection() {
 
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(
+    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
         attacked_id,
-        ApplyStatusComponent::from_secondary_status(
+        attacked_id,
+        Box::new(ReflectDamageStatus::new(
             attacked_id,
-            attacked_id,
-            Box::new(ReflectDamageStatus::new(
-                attacked_id,
-                percentage(10),
-                ElapsedTime(0.0),
-                10.0,
-            )),
-        ),
-    );
+            percentage(10),
+            ElapsedTime(0.0),
+            10.0,
+        )),
+    ));
     test_util.set_char_target(attacker_id, EntityTarget::OtherEntity(attacked_id));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
@@ -83,18 +80,15 @@ fn vampiric_attack() {
 
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(
-        attacked_id,
-        ApplyStatusComponent::from_secondary_status(
-            attacker_id,
-            attacker_id,
-            Box::new(AttackHealStatus::new(
-                percentage(10),
-                ElapsedTime(0.0),
-                10.0,
-            )),
-        ),
-    );
+    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+        attacker_id,
+        attacker_id,
+        Box::new(AttackHealStatus::new(
+            percentage(10),
+            ElapsedTime(0.0),
+            10.0,
+        )),
+    ));
     test_util.set_char_target(attacker_id, EntityTarget::OtherEntity(attacked_id));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
@@ -128,19 +122,16 @@ fn sacrifice() {
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(
+    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
         attacked_id,
-        ApplyStatusComponent::from_secondary_status(
-            attacked_id,
-            attacked_id,
-            Box::new(SacrificeStatus::new(
-                sacrifice_id,
-                percentage(10),
-                ElapsedTime(0.0),
-                10.0,
-            )),
-        ),
-    );
+        attacked_id,
+        Box::new(SacrificeStatus::new(
+            sacrifice_id,
+            percentage(10),
+            ElapsedTime(0.0),
+            10.0,
+        )),
+    ));
     test_util.set_char_target(attacker_id, EntityTarget::OtherEntity(attacked_id));
 
     test_util.run_for(Duration::from_secs_f32(0.5));
@@ -178,19 +169,16 @@ fn sacrifice_100_percent() {
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(
+    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
         attacked_id,
-        ApplyStatusComponent::from_secondary_status(
-            attacked_id,
-            attacked_id,
-            Box::new(SacrificeStatus::new(
-                sacrifice_id,
-                percentage(100),
-                ElapsedTime(0.0),
-                10.0,
-            )),
-        ),
-    );
+        attacked_id,
+        Box::new(SacrificeStatus::new(
+            sacrifice_id,
+            percentage(100),
+            ElapsedTime(0.0),
+            10.0,
+        )),
+    ));
     test_util.set_char_target(attacker_id, EntityTarget::OtherEntity(attacked_id));
 
     test_util.run_for(Duration::from_secs_f32(0.5));

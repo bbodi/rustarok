@@ -6,7 +6,7 @@ use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render::render_command::{
     Circle3dRenderCommand, HorizontalTexture3dRenderCommand, ModelRenderCommand,
     Number3dRenderCommand, PartialCircle2dRenderCommand, Rectangle2dRenderCommand,
-    Rectangle3dRenderCommand, RenderCommandCollector, Sprite3dRenderCommand, Text2dRenderCommand,
+    Rectangle3dRenderCommand, RenderCommandCollector, Sprite3dRenderCommand,
     Texture2dRenderCommand, TextureSizeSetting, Trimesh3dRenderCommand,
 };
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -129,12 +129,6 @@ impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
 }
 
 impl WebSocketBrowserRenderSystem {
-    fn send_2d_text_commands(
-        send_buffer: &mut Vec<u8>,
-        render_commands: &Vec<Text2dRenderCommand>,
-    ) {
-    }
-
     fn send_2d_rectangle_commands(
         send_buffer: &mut Vec<u8>,
         render_commands: &VecDeque<Rectangle2dRenderCommand>,

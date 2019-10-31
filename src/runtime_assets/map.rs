@@ -1,7 +1,7 @@
 use crate::asset::database::AssetDatabase;
 use crate::asset::gat::Gat;
 use crate::asset::rsm::{BoundingBox, RsmNodeVertex};
-use crate::asset::rsw::Rsw;
+use crate::asset::rsw::LightData;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::asset::AssetLoader;
 use crate::common::{measure_time, Mat4};
@@ -46,7 +46,7 @@ pub struct MapRenderData {
     pub gat: Gat,
     pub ground_width: u32,
     pub ground_height: u32,
-    pub rsw: Rsw,
+    pub light: LightData,
     pub use_tile_colors: bool,
     pub use_lightmaps: bool,
     pub use_lighting: bool,
@@ -148,17 +148,6 @@ pub fn load_map(
         })
         .collect();
 
-    log::info!("load_ground");
-    //    let ground_data = load_ground(
-    //        gl,
-    //        map_name,
-    //        &gat,
-    //        rectangles,
-    //        &world.water,
-    //        &colliders,
-    //        asset_loader,
-    //        asset_db,
-    //    );
     asset_loader.start_loading_ground(
         gl,
         asset_db,
@@ -193,95 +182,9 @@ pub fn load_map(
     ////////////////////////////
     //// MODELS
     ////////////////////////////
-    world.models.iter().for_each(|model| {
-        asset_loader.load_model(&model.filename, asset_db).unwrap();
-    });
+    asset_loader.start_loading_models(gl, world.models, asset_db, gat.width / 2, gat.height / 2);
 
-    let model_instances_iter = {
-        let len = world.models.len();
-        world.models.iter().take(len)
-    };
-
-    let mut model_instances: Vec<ModelInstance> = model_instances_iter
-        .map(|model_instance| {
-            let mut only_translation_matrix: vek::Mat4<f32> = vek::Mat4::identity();
-            {
-                let t = model_instance.pos
-                    + Vector3::new((gat.width / 2) as f32, 0f32, (gat.height / 2) as f32);
-                only_translation_matrix.translate_3d((t.x, t.y, t.z));
-            }
-
-            let mut instance_matrix: vek::Mat4<f32> = only_translation_matrix.clone();
-            instance_matrix =
-                instance_matrix * vek::Mat4::rotation_z(model_instance.rot.z.to_radians());
-            instance_matrix =
-                instance_matrix * vek::Mat4::rotation_x(model_instance.rot.x.to_radians());
-            instance_matrix =
-                instance_matrix * vek::Mat4::rotation_y(model_instance.rot.y.to_radians());
-
-            instance_matrix = instance_matrix
-                * vek::Mat4::scaling_3d((
-                    model_instance.scale.x,
-                    model_instance.scale.y,
-                    model_instance.scale.z,
-                ));
-            only_translation_matrix = only_translation_matrix
-                * vek::Mat4::scaling_3d((
-                    model_instance.scale.x,
-                    model_instance.scale.y,
-                    model_instance.scale.z,
-                ));
-
-            instance_matrix.rotate_x(180f32.to_radians());
-            only_translation_matrix.rotate_x(180f32.to_radians());
-
-            let model_db_index = asset_db.get_model_index(&model_instance.filename);
-            let model_render_data = asset_db.get_model(model_db_index);
-            let tmin: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
-                model_render_data.bounding_box.min.x,
-                model_render_data.bounding_box.min.y,
-                model_render_data.bounding_box.min.z,
-            ));
-            let tmax: vek::Vec3<f32> = only_translation_matrix.mul_point(vek::Vec3::new(
-                model_render_data.bounding_box.max.x,
-                model_render_data.bounding_box.max.y,
-                model_render_data.bounding_box.max.z,
-            ));
-            let min = Vector3::new(
-                tmin[0].min(tmax[0]),
-                tmin[1].min(tmax[1]),
-                tmin[2].max(tmax[2]),
-            );
-            let max = Vector3::new(
-                tmax[0].max(tmin[0]),
-                tmax[1].max(tmin[1]),
-                tmax[2].min(tmin[2]),
-            );
-            ModelInstance {
-                asset_db_model_index: model_db_index,
-                matrix: Mat4::new(
-                    instance_matrix[(0, 0)],
-                    instance_matrix[(0, 1)],
-                    instance_matrix[(0, 2)],
-                    instance_matrix[(0, 3)],
-                    instance_matrix[(1, 0)],
-                    instance_matrix[(1, 1)],
-                    instance_matrix[(1, 2)],
-                    instance_matrix[(1, 3)],
-                    instance_matrix[(2, 0)],
-                    instance_matrix[(2, 1)],
-                    instance_matrix[(2, 2)],
-                    instance_matrix[(2, 3)],
-                    instance_matrix[(3, 0)],
-                    instance_matrix[(3, 1)],
-                    instance_matrix[(3, 2)],
-                    instance_matrix[(3, 3)],
-                ),
-                bottom_left_front: min,
-                top_right_back: max,
-            }
-        })
-        .collect();
+    let mut model_instances: Vec<ModelInstance> = vec![];
 
     let s: Vec<[f32; 4]> = vec![
         [-0.5, 0.5, 0.0, 0.0],
@@ -374,7 +277,7 @@ pub fn load_map(
 
     // TODO
     // remove the the upper half of lamps on which Guards are standing
-    if map_name == "prontera" {
+    if false && map_name == "prontera" {
         let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
         let model_index = asset_db.get_model_index(lamp_name);
         let model = asset_db.get_model(model_index);
@@ -425,7 +328,7 @@ pub fn load_map(
         gat,
         ground_width: ground_data.ground_width,
         ground_height: ground_data.ground_height,
-        rsw: world,
+        light: world.light,
         ground_vertex_array: ground_data.ground_vertex_array,
         texture_atlas: ground_data.texture_atlas,
         tile_color_texture: ground_data.tile_color_texture,

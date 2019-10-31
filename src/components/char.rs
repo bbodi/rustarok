@@ -27,6 +27,7 @@ use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum CharActionIndex {
     Idle = 0,
     Walking = 8,
@@ -267,6 +268,7 @@ impl CharStateComponentBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn outlook_monster(mut self, monster_id: MonsterId) -> CharStateComponentBuilder {
         self.outlook = CharOutlook::Monster(monster_id);
         self
@@ -397,12 +399,6 @@ impl CharacterEntityBuilder {
 #[derive(Eq, PartialEq, Hash)]
 pub struct ComponentRadius(pub i32);
 
-impl ComponentRadius {
-    pub fn get(&self) -> f32 {
-        self.0 as f32 * 0.5
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vec2>,
@@ -418,8 +414,6 @@ pub struct CastingSkillData {
 pub enum CharState {
     Idle,
     Walking(Vec2),
-    Sitting,
-    PickingItem,
     StandBy,
     Attacking {
         target: CharEntityId,
@@ -427,7 +421,6 @@ pub enum CharState {
         basic_attack: BasicAttack,
     },
     ReceivingDamage,
-    Freeze,
     Dead,
     CastingSkill(CastingSkillData),
 }
@@ -450,20 +443,6 @@ impl CharState {
 }
 
 impl CharState {
-    pub fn is_attacking(&self) -> bool {
-        match self {
-            CharState::Attacking { .. } => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_casting(&self) -> bool {
-        match self {
-            CharState::CastingSkill { .. } => true,
-            _ => false,
-        }
-    }
-
     pub fn is_walking(&self) -> bool {
         match self {
             CharState::Walking(_pos) => true,
@@ -489,24 +468,18 @@ impl CharState {
         match (self, is_monster) {
             (CharState::Idle, false) => CharActionIndex::Idle as usize,
             (CharState::Walking(_pos), false) => CharActionIndex::Walking as usize,
-            (CharState::Sitting, false) => CharActionIndex::Sitting as usize,
-            (CharState::PickingItem, false) => CharActionIndex::PickingItem as usize,
             (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
             (CharState::Attacking { .. }, false) => CharActionIndex::Attacking3 as usize,
             (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
-            (CharState::Freeze, false) => CharActionIndex::Freeze1 as usize,
             (CharState::Dead, false) => CharActionIndex::Dead as usize,
             (CharState::CastingSkill { .. }, false) => CharActionIndex::CastingSpell as usize,
 
             // monster
             (CharState::Idle, true) => MonsterActionIndex::Idle as usize,
             (CharState::Walking(_pos), true) => MonsterActionIndex::Walking as usize,
-            (CharState::Sitting, true) => MonsterActionIndex::Idle as usize,
-            (CharState::PickingItem, true) => MonsterActionIndex::Idle as usize,
             (CharState::StandBy, true) => MonsterActionIndex::Idle as usize,
             (CharState::Attacking { .. }, true) => MonsterActionIndex::Attack as usize,
             (CharState::ReceivingDamage, true) => MonsterActionIndex::ReceivingDamage as usize,
-            (CharState::Freeze, true) => MonsterActionIndex::Idle as usize,
             (CharState::Dead, true) => MonsterActionIndex::Die as usize,
             (CharState::CastingSkill { .. }, true) => MonsterActionIndex::Attack as usize,
         }
@@ -614,16 +587,7 @@ impl Percentage {
         return num - (change as i32);
     }
 
-    pub fn add(&mut self, p: Percentage) {
-        self.value += p.value;
-    }
-
-    pub fn divp(&self, other: Percentage) -> Percentage {
-        Percentage {
-            value: self.value / other.value,
-        }
-    }
-
+    #[allow(dead_code)]
     pub fn div(&self, other: i32) -> Percentage {
         Percentage {
             value: self.value / other,
@@ -670,6 +634,8 @@ mod tests {
 }
 
 #[derive(Eq, PartialEq)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub enum CharType {
     Player,
     Minion,
@@ -830,6 +796,7 @@ impl CharAttributes {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum CharAttributeModifier {
     AddPercentage(Percentage),
     AddValue(f32),
@@ -1017,6 +984,7 @@ impl CharAttributeModifierCollector {
 }
 
 #[derive(Eq, Debug, PartialEq, Clone, Copy)]
+#[allow(dead_code)]
 pub enum Team {
     Left,  // red
     Right, // blue
@@ -1042,6 +1010,7 @@ impl Team {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_enemy_collision_group(&self) -> CollisionGroup {
         match self {
             Team::Left => CollisionGroup::RightPlayer,
@@ -1269,6 +1238,7 @@ impl CharacterStateComponent {
         }
     }
 
+    #[allow(dead_code)]
     pub fn base_attributes(&self) -> &CharAttributes {
         &self.base_attributes
     }
@@ -1288,6 +1258,7 @@ impl CharacterStateComponent {
             .differences(&self.base_attributes, modifier_collector);
     }
 
+    #[allow(dead_code)]
     pub fn get_status_count(&self) -> usize {
         self.statuses.count()
     }
@@ -1354,12 +1325,9 @@ impl CharacterStateComponent {
             CharState::CastingSkill(casting_info) => casting_info.can_move,
             CharState::Idle => true,
             CharState::Walking(_pos) => true,
-            CharState::Sitting => true,
-            CharState::PickingItem => false,
             CharState::StandBy => true,
             CharState::Attacking { .. } => false,
             CharState::ReceivingDamage => true,
-            CharState::Freeze => false,
             CharState::Dead => false,
         };
         can_move_by_state
@@ -1372,12 +1340,9 @@ impl CharacterStateComponent {
             CharState::CastingSkill(_) => false,
             CharState::Idle => true,
             CharState::Walking(_pos) => true,
-            CharState::Sitting => true,
-            CharState::PickingItem => false,
             CharState::StandBy => true,
             CharState::Attacking { .. } => false,
             CharState::ReceivingDamage => false,
-            CharState::Freeze => false,
             CharState::Dead => false,
         };
         can_cast_by_state
@@ -1416,11 +1381,8 @@ impl CharacterStateComponent {
         match &self.state {
             CharState::Idle
             | CharState::Walking(_)
-            | CharState::Sitting
-            | CharState::PickingItem
             | CharState::StandBy
             | CharState::ReceivingDamage
-            | CharState::Freeze
             | CharState::CastingSkill(_) => {
                 self.state = CharState::ReceivingDamage;
             }
@@ -1430,6 +1392,7 @@ impl CharacterStateComponent {
         };
     }
 
+    #[allow(dead_code)]
     pub fn set_dir(&mut self, dir: usize) {
         self.dir = dir;
     }

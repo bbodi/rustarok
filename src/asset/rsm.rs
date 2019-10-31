@@ -1,10 +1,7 @@
-use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
-use crate::asset::{AssetLoader, BinaryReader};
+use crate::asset::BinaryReader;
 use crate::common::{v3, Mat3, Mat4, Vec3};
-use crate::my_gl::{Gl, MyGlEnum};
 use crate::runtime_assets::map::SameTextureNodeFacesRaw;
-use crate::video::{VertexArray, VertexAttribDefinition};
 use nalgebra::{Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector4};
 use std::collections::HashMap;
 
@@ -336,7 +333,7 @@ impl Rsm {
             let vertices_per_texture_per_node: Vec<SameTextureNodeFacesRaw> = faces_by_texture_id
                 .iter()
                 .map(|(&texture_index, faces)| {
-                    // a node összes olyan face-e, akinek texture_index a texturája
+                    // all the faces of the node whose has the same texture index (which is texture_index)
                     let mesh = Rsm::generate_trimesh(
                         model_bbox,
                         node,
@@ -357,31 +354,6 @@ impl Rsm {
                         texture: gl_tex.clone(),
                         texture_name: name.to_owned(),
                     };
-                    //                    SameTextureNodeFaces {
-                    //                        vao: VertexArray::new_static(
-                    //                            gl,
-                    //                            MyGlEnum::TRIANGLES,
-                    //                            mesh,
-                    //                            vec![
-                    //                                VertexAttribDefinition {
-                    //                                    number_of_components: 3,
-                    //                                    offset_of_first_element: 0,
-                    //                                },
-                    //                                VertexAttribDefinition {
-                    //                                    // normal
-                    //                                    number_of_components: 3,
-                    //                                    offset_of_first_element: 3,
-                    //                                },
-                    //                                VertexAttribDefinition {
-                    //                                    // uv
-                    //                                    number_of_components: 2,
-                    //                                    offset_of_first_element: 6,
-                    //                                },
-                    //                            ],
-                    //                        ),
-                    //                        texture: gl_tex.clone(),
-                    //                        texture_name: name.to_owned(),
-                    //                    }
                     renderable
                 })
                 .collect();
@@ -393,26 +365,6 @@ impl Rsm {
             real_bounding_box.center[i] = real_bounding_box.min[i] + real_bounding_box.range[i];
         }
         return (full_model_rendering_data, real_bounding_box);
-    }
-
-    pub fn load_textures(
-        gl: &Gl,
-        asset_loader: &AssetLoader,
-        asset_db: &mut AssetDatabase,
-        texture_names: &Vec<String>,
-    ) -> Vec<(String, TextureId)> {
-        texture_names
-            .iter()
-            .map(|texture_name| {
-                let path = format!("data\\texture\\{}", texture_name);
-                let ret = asset_db.get_texture_id(&path).unwrap_or_else(|| {
-                    asset_loader
-                        .load_texture(gl, &path, MyGlEnum::NEAREST, asset_db)
-                        .unwrap()
-                });
-                return (AssetDatabase::replace_non_ascii_chars(&path), ret);
-            })
-            .collect()
     }
 
     fn calc_matrix_and_bounding_box_recursively(

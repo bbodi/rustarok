@@ -46,14 +46,14 @@ pub struct Rsw {
     pub water: WaterData,
     pub file: FileData,
     pub light: LightData,
-    pub models: Vec<ModelInstance>,
+    pub models: Vec<RswModelInstance>,
     pub lights: Vec<MapLight>,
     pub sounds: Vec<MapSound>,
     pub effects: Vec<MapEffect>,
 }
 
 #[derive(Debug)]
-pub struct ModelInstance {
+pub struct RswModelInstance {
     pub name: String,
     pub anim_type: i32,
     pub anim_speed: f32,
@@ -186,14 +186,14 @@ impl Rsw {
         };
 
         let count = buf.next_i32();
-        let mut models: Vec<ModelInstance> = Vec::with_capacity(count as usize);
+        let mut models: Vec<RswModelInstance> = Vec::with_capacity(count as usize);
         let mut lights: Vec<MapLight> = Vec::with_capacity(count as usize);
         let mut sounds: Vec<MapSound> = Vec::with_capacity(count as usize);
         let mut effects: Vec<MapEffect> = Vec::with_capacity(count as usize);
         for _i in 0..count {
             let typ = buf.next_i32();
             match typ {
-                1 => models.push(ModelInstance {
+                1 => models.push(RswModelInstance {
                     name: if version >= 1.3 {
                         buf.string(40)
                     } else {
