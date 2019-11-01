@@ -1,6 +1,7 @@
+use crate::asset::asset_loader::AssetLoader;
+use crate::asset::binary_reader::BinaryReader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
-use crate::asset::{AssetLoader, BinaryReader};
 use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::ByteWriter;

@@ -36,8 +36,9 @@ use specs::prelude::*;
 use specs::Builder;
 use specs::Join;
 
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
-use crate::asset::{AssetLoader, SpriteResource};
+use crate::asset::SpriteResource;
 use crate::common::{measure_time, v2, DeltaTime, ElapsedTime, Vec2};
 use crate::components::char::{
     CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,

@@ -1,4 +1,4 @@
-use crate::asset::AssetLoader;
+use crate::asset::asset_loader::AssetLoader;
 use crate::systems::SystemFrameDurations;
 use specs::prelude::*;
 

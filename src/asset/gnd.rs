@@ -2,7 +2,7 @@ use nalgebra::{Rotation3, Vector3};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 
-use crate::asset::BinaryReader;
+use crate::asset::binary_reader::BinaryReader;
 use crate::common::v3;
 
 pub struct Gnd {

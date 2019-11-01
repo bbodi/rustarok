@@ -1,4 +1,4 @@
-use crate::asset::BinaryReader;
+use crate::asset::binary_reader::BinaryReader;
 use crate::systems::render_sys::COLOR_WHITE;
 use std::ops::RangeBounds;
 

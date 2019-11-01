@@ -1,6 +1,6 @@
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::StrFile;
-use crate::asset::AssetLoader;
 use crate::common::measure_time;
 use crate::effect::StrEffectType;
 use crate::my_gl::Gl;

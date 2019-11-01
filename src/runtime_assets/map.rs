@@ -1,9 +1,9 @@
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
-use crate::asset::gat::Gat;
+use crate::asset::gat::{BlockingRectangle, Gat};
 use crate::asset::rsm::{BoundingBox, RsmNodeVertex};
 use crate::asset::rsw::LightData;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
-use crate::asset::AssetLoader;
 use crate::common::{measure_time, Mat4};
 use crate::common::{v2, Vec2};
 use crate::my_gl::{Gl, MyGlEnum};
@@ -114,38 +114,7 @@ pub fn load_map(
     log::info!("coliders");
     let colliders: Vec<(Vec2, Vec2)> = rectangles
         .iter()
-        .map(|cell| {
-            let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
-            let half_w = cell.width as f32 / 2.0;
-            let x = cell.start_x as f32 + half_w;
-            let half_h = cell.height as f32 / 2.0;
-            let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
-            let half_extents = v2(half_w, half_h);
-
-            let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
-            let v = rot * Vector3::new(x, 0.0, y);
-            let v2 = v2(v.x, v.z);
-            let parent_rigid_body = RigidBodyDesc::new()
-                .translation(v2)
-                .gravity_enabled(false)
-                .status(nphysics2d::object::BodyStatus::Static)
-                .build();
-            let parent_handle = physics_world.bodies.insert(parent_rigid_body);
-            let cuboid = ColliderDesc::new(cuboid)
-                .density(10.0)
-                .collision_groups(
-                    CollisionGroups::new()
-                        .with_membership(&[CollisionGroup::StaticModel as usize])
-                        .with_blacklist(&[
-                            CollisionGroup::StaticModel as usize,
-                            CollisionGroup::NonCollidablePlayer as usize,
-                        ]),
-                )
-                .build(BodyPartHandle(parent_handle, 0));
-            let cuboid_pos = cuboid.position_wrt_body().translation.vector;
-            physics_world.colliders.insert(cuboid);
-            (half_extents, cuboid_pos)
-        })
+        .map(|cell| create_collider(physics_world, cell))
         .collect();
 
     asset_loader.start_loading_ground(
@@ -179,23 +148,17 @@ pub fn load_map(
         lightmap_texture: DUMMY_TEXTURE_ID_FOR_TEST,
     };
 
-    ////////////////////////////
-    //// MODELS
-    ////////////////////////////
     asset_loader.start_loading_models(gl, world.models, asset_db, gat.width / 2, gat.height / 2);
 
-    let mut model_instances: Vec<ModelInstance> = vec![];
-
-    let s: Vec<[f32; 4]> = vec![
-        [-0.5, 0.5, 0.0, 0.0],
-        [0.5, 0.5, 1.0, 0.0],
-        [-0.5, -0.5, 0.0, 1.0],
-        [0.5, -0.5, 1.0, 1.0],
-    ];
     let centered_sprite_vertex_array = VertexArray::new_static(
         gl,
         MyGlEnum::TRIANGLE_STRIP,
-        s,
+        vec![
+            [-0.5f32, 0.5, 0.0, 0.0],
+            [0.5, 0.5, 1.0, 0.0],
+            [-0.5, -0.5, 0.0, 1.0],
+            [0.5, -0.5, 1.0, 1.0],
+        ],
         vec![
             VertexAttribDefinition {
                 number_of_components: 2,
@@ -208,16 +171,15 @@ pub fn load_map(
             },
         ],
     );
-    let s: Vec<[f32; 4]> = vec![
-        [0.0, 0.0, 0.0, 0.0],
-        [1.0, 0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0],
-    ];
     let sprite_vertex_array = VertexArray::new_static(
         gl,
         MyGlEnum::TRIANGLE_STRIP,
-        s,
+        vec![
+            [0.0f32, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+        ],
         vec![
             VertexAttribDefinition {
                 number_of_components: 2,
@@ -230,11 +192,10 @@ pub fn load_map(
             },
         ],
     );
-    let s: Vec<[f32; 2]> = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
     let rectangle_vertex_array = VertexArray::new_static(
         gl,
         MyGlEnum::TRIANGLE_STRIP,
-        s,
+        vec![[0.0f32, 1.0f32], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
         vec![VertexAttribDefinition {
             number_of_components: 2,
             offset_of_first_element: 0,
@@ -246,8 +207,41 @@ pub fn load_map(
         .solver
         .set_contact_model(Box::new(SignoriniModel::new()));
 
+    let minimap_texture = load_minimap_texture(gl, asset_loader, asset_db, &map_name);
+
+    MapRenderData {
+        gat,
+        ground_width: ground_data.ground_width,
+        ground_height: ground_data.ground_height,
+        light: world.light,
+        ground_vertex_array: ground_data.ground_vertex_array,
+        texture_atlas: ground_data.texture_atlas,
+        tile_color_texture: ground_data.tile_color_texture,
+        lightmap_texture: ground_data.lightmap_texture,
+        model_instances: vec![],
+        centered_sprite_vertex_array,
+        bottom_left_sprite_vertex_array: sprite_vertex_array,
+        rectangle_vertex_array,
+        use_tile_colors: true,
+        use_lightmaps: true,
+        use_lighting: true,
+        draw_models: true,
+        draw_ground: true,
+        ground_walkability_mesh: ground_data.ground_walkability_mesh,
+        ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
+        ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
+        minimap_texture_id: minimap_texture,
+    }
+}
+
+fn load_minimap_texture(
+    gl: &Gl,
+    asset_loader: &AssetLoader,
+    asset_db: &mut AssetDatabase,
+    map_name: &str,
+) -> TextureId {
     let path = format!("data\\texture\\À¯ÀúÀÎÅÍÆäÀÌ½º\\map\\{}.bmp", map_name);
-    let minimap_texture = asset_db.get_texture_id(&path).unwrap_or_else(|| {
+    return asset_db.get_texture_id(&path).unwrap_or_else(|| {
         let surface = asset_loader.load_sdl_surface(&path);
         log::trace!("Surface loaded: {}", path);
         let mut surface = surface.unwrap_or_else(|e| {
@@ -274,79 +268,39 @@ pub fn load_map(
         });
         AssetLoader::create_texture_from_surface(gl, &path, surface, MyGlEnum::NEAREST, asset_db)
     });
+}
 
-    // TODO
-    // remove the the upper half of lamps on which Guards are standing
-    if false && map_name == "prontera" {
-        let lamp_name = "ÇÁ·ÐÅ×¶ó\\ÈÖÀå°¡·Îµî.rsm";
-        let model_index = asset_db.get_model_index(lamp_name);
-        let model = asset_db.get_model(model_index);
-        let new_model = ModelRenderData {
-            bounding_box: model.bounding_box.clone(),
-            alpha: 255,
-            model: model
-                .model
-                .iter()
-                .map(|m| {
-                    m.iter()
-                        .filter(|m| {
-                            m.texture_name.ends_with("stone-down.bmp")
-                                || m.texture_name.ends_with("STONE-UP.BMP")
-                        })
-                        .map(|m| m.clone())
-                        .collect()
-                })
-                .collect(),
-        };
-        asset_db.register_model("half_lamp", new_model);
-        let new_model_index = asset_db.get_model_index("half_lamp");
-        // RIGHT TEAM GUARDS
-        // middle final 4 guards on lamps
-        model_instances[453].asset_db_model_index = new_model_index;
-        model_instances[454].asset_db_model_index = new_model_index;
-        model_instances[455].asset_db_model_index = new_model_index;
-        model_instances[456].asset_db_model_index = new_model_index;
-        // top, guard alone on lamp
-        model_instances[695].asset_db_model_index = new_model_index;
-        // top, two guards on lamps
-        model_instances[549].asset_db_model_index = new_model_index;
-        model_instances[550].asset_db_model_index = new_model_index;
-        // LEFT TEAM GUARDS
-        // middle final 4 guards on lamps
-        model_instances[457].asset_db_model_index = new_model_index;
-        model_instances[458].asset_db_model_index = new_model_index;
-        model_instances[459].asset_db_model_index = new_model_index;
-        model_instances[460].asset_db_model_index = new_model_index;
-        // top, guard alone on lamp
-        model_instances[712].asset_db_model_index = new_model_index;
-        // top, two guards on lamps
-        model_instances[536].asset_db_model_index = new_model_index;
-        model_instances[537].asset_db_model_index = new_model_index;
-    }
+fn create_collider(physics_world: &mut PhysicEngine, cell: &BlockingRectangle) -> (Vec2, Vec2) {
+    let rot = Rotation3::<f32>::new(Vector3::new(180f32.to_radians(), 0.0, 0.0));
+    let half_w = cell.width as f32 / 2.0;
+    let x = cell.start_x as f32 + half_w;
+    let half_h = cell.height as f32 / 2.0;
+    let y = (cell.bottom - cell.height) as f32 + 1.0 + half_h;
+    let half_extents = v2(half_w, half_h);
 
-    MapRenderData {
-        gat,
-        ground_width: ground_data.ground_width,
-        ground_height: ground_data.ground_height,
-        light: world.light,
-        ground_vertex_array: ground_data.ground_vertex_array,
-        texture_atlas: ground_data.texture_atlas,
-        tile_color_texture: ground_data.tile_color_texture,
-        lightmap_texture: ground_data.lightmap_texture,
-        model_instances,
-        centered_sprite_vertex_array,
-        bottom_left_sprite_vertex_array: sprite_vertex_array,
-        rectangle_vertex_array,
-        use_tile_colors: true,
-        use_lightmaps: true,
-        use_lighting: true,
-        draw_models: true,
-        draw_ground: true,
-        ground_walkability_mesh: ground_data.ground_walkability_mesh,
-        ground_walkability_mesh2: ground_data.ground_walkability_mesh2,
-        ground_walkability_mesh3: ground_data.ground_walkability_mesh3,
-        minimap_texture_id: minimap_texture,
-    }
+    let cuboid = ShapeHandle::new(ncollide2d::shape::Cuboid::new(half_extents));
+    let v = rot * Vector3::new(x, 0.0, y);
+    let v2 = v2(v.x, v.z);
+    let parent_rigid_body = RigidBodyDesc::new()
+        .translation(v2)
+        .gravity_enabled(false)
+        .status(nphysics2d::object::BodyStatus::Static)
+        .build();
+    let parent_handle = physics_world.bodies.insert(parent_rigid_body);
+    let cuboid = ColliderDesc::new(cuboid)
+        .density(10.0)
+        .collision_groups(
+            CollisionGroups::new()
+                .with_membership(&[CollisionGroup::StaticModel as usize])
+                .with_blacklist(&[
+                    CollisionGroup::StaticModel as usize,
+                    CollisionGroup::NonCollidablePlayer as usize,
+                ]),
+        )
+        .build(BodyPartHandle(parent_handle, 0));
+    let cuboid_pos = cuboid.position_wrt_body().translation.vector;
+    physics_world.colliders.insert(cuboid);
+    (half_extents, cuboid_pos)
 }
 
 pub struct PhysicEngine {

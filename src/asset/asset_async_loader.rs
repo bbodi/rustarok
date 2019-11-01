@@ -8,13 +8,15 @@ use encoding::DecoderTrap;
 use std::fmt::Write;
 
 use crate::asset::act::ActionFile;
+use crate::asset::asset_loader::AssetLoader;
+use crate::asset::binary_reader::BinaryReader;
 use crate::asset::gat::{BlockingRectangle, CellType, Gat};
 use crate::asset::gnd::{Gnd, MeshVertex};
 use crate::asset::rsm::{BoundingBox, Rsm};
 use crate::asset::rsw::{RswModelInstance, WaterData};
 use crate::asset::spr::SpriteFile;
 use crate::asset::texture::TextureId;
-use crate::asset::{AssetLoader, BinaryReader, GrfEntry, SpriteResource};
+use crate::asset::{GrfEntry, SpriteResource};
 use crate::common::{measure_time, v3, Mat4, Vec2, Vec3};
 use crate::components::char::CharActionIndex;
 use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
@@ -87,7 +89,7 @@ pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
         content: Vec<u8>,
         file_name: String,
     },
-    LoadModelPart1Response {
+    LoadModelsResponse {
         models: HashMap<String, ModelLoadingData>,
         model_instances: Vec<ModelInstance>,
         reserved_textures: Vec<ReservedTexturedata<'a>>,
@@ -235,7 +237,7 @@ impl<'a> BackgroundAssetLoader<'a> {
                         })
                         .collect();
                     self.to_main_thread
-                        .send(FromBackgroundAssetLoaderMsg::LoadModelPart1Response {
+                        .send(FromBackgroundAssetLoaderMsg::LoadModelsResponse {
                             models,
                             model_instances,
                             reserved_textures,

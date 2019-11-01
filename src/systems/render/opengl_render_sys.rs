@@ -4,10 +4,10 @@ use nalgebra::{Point2, Rotation3, Vector3};
 use sdl2::ttf::Sdl2TtfContext;
 use specs::prelude::*;
 
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
 use crate::asset::texture::GlTexture;
-use crate::asset::AssetLoader;
 use crate::common::{rotate_vec2, v2_to_v3, Mat3, Mat4};
 use crate::components::controller::CameraComponent;
 use crate::components::BrowserClient;

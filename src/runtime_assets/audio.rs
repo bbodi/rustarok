@@ -1,4 +1,4 @@
-use crate::asset::AssetLoader;
+use crate::asset::asset_loader::AssetLoader;
 use crate::systems::sound_sys::{SoundChunkStore, SoundId, SoundSystem, DUMMY_SOUND_ID};
 
 pub struct Sounds {

@@ -392,34 +392,50 @@ impl<'a> specs::System<'a> for InputConsumerSystem {
                 }
             }
 
-            for key_binding in &input.key_bindings {
-                let (keys, script) = key_binding;
-                let mut need_alt = false;
-                let mut need_ctrl = false;
-                let mut need_shift = false;
-                let mut all_keys_down = keys.iter().take_while(|it| it.is_some()).all(|it| {
-                    let it = it.unwrap();
-                    match it {
-                        Scancode::LAlt => {
-                            need_alt = true;
-                            true
+            {
+                let key = input.key_bindings.iter().find_map(|key_binding| {
+                    let (keys, script) = key_binding;
+                    let mut need_alt = false;
+                    let mut need_ctrl = false;
+                    let mut need_shift = false;
+                    let mut key = None;
+                    let mut all_keys_down = keys.iter().take_while(|it| it.is_some()).all(|it| {
+                        let it = it.unwrap();
+                        match it {
+                            Scancode::LAlt => {
+                                need_alt = true;
+                                true
+                            }
+                            Scancode::LCtrl => {
+                                need_ctrl = true;
+                                true
+                            }
+                            Scancode::LShift => {
+                                need_shift = true;
+                                true
+                            }
+                            _ => {
+                                key = Some(it);
+                                input.is_key_just_pressed(it)
+                            }
                         }
-                        Scancode::LCtrl => {
-                            need_ctrl = true;
-                            true
-                        }
-                        Scancode::LShift => {
-                            need_shift = true;
-                            true
-                        }
-                        _ => input.is_key_just_pressed(it),
+                    });
+                    all_keys_down &= need_alt == input.alt_down;
+                    all_keys_down &= need_ctrl == input.ctrl_down;
+                    all_keys_down &= need_shift == input.shift_down;
+                    if all_keys_down {
+                        console_command_buffer.commands.push(script.clone());
+                        key
+                    } else {
+                        None
                     }
                 });
-                all_keys_down &= need_alt == input.alt_down;
-                all_keys_down &= need_ctrl == input.ctrl_down;
-                all_keys_down &= need_shift == input.shift_down;
-                if all_keys_down {
-                    console_command_buffer.commands.push(script.clone());
+                // in case of a binding activation, we remove the key from being
+                // "just pressed", so other areas won't register it as a keypress (e.g. console)
+                // (calling key_pressed again on a key will set it as down but not just-pressed)
+                if let Some(key) = key {
+                    input.key_pressed(key);
+                    input.text.clear();
                 }
             }
             if input.is_key_just_pressed(Scancode::Grave)

@@ -1,4 +1,4 @@
-use crate::asset::BinaryReader;
+use crate::asset::binary_reader::BinaryReader;
 use crate::common::v3;
 use nalgebra::Vector3;
 use std::borrow::ToOwned;

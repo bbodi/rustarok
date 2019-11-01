@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use crate::asset::BinaryReader;
+use crate::asset::binary_reader::BinaryReader;
 use byteorder::WriteBytesExt;
 use byteorder::{LittleEndian, ReadBytesExt};
 

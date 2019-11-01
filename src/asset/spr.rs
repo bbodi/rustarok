@@ -1,4 +1,4 @@
-use crate::asset::BinaryReader;
+use crate::asset::binary_reader::BinaryReader;
 
 pub struct SpriteFile {
     pub frames: Vec<SprFrame>,

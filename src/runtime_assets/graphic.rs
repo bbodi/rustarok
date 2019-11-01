@@ -4,9 +4,9 @@ use std::string::ToString;
 use sdl2::ttf::Sdl2TtfContext;
 use strum::IntoEnumIterator;
 
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
-use crate::asset::AssetLoader;
 use crate::components::controller::SkillKey;
 use crate::components::skills::skills::Skills;
 use crate::my_gl::{Gl, MyGlEnum};

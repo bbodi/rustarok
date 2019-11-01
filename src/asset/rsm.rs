@@ -1,5 +1,5 @@
+use crate::asset::binary_reader::BinaryReader;
 use crate::asset::texture::TextureId;
-use crate::asset::BinaryReader;
 use crate::common::{v3, Mat3, Mat4, Vec3};
 use crate::runtime_assets::map::SameTextureNodeFacesRaw;
 use nalgebra::{Point3, Quaternion, Rotation3, Unit, UnitQuaternion, Vector4};
