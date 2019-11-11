@@ -1,14 +1,12 @@
 use nalgebra::{Isometry2, Vector3};
-use specs::{Entity, LazyUpdate};
 
 use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
 use crate::common::{v3, Vec2};
-use crate::components::char::{
-    ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
-};
+use crate::components::char::{ActionPlayMode, CharActionIndex, SpriteRenderDescriptorComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType,
 };
 use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
@@ -102,17 +100,8 @@ impl GazXplodiumChargeSkillManifestation {
 }
 
 impl SkillManifestation for GazXplodiumChargeSkillManifestation {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        _all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
-        let travel_duration_percentage = sys_vars.time.percentage_between(
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        let travel_duration_percentage = params.now().percentage_between(
             self.started_at,
             self.started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds),
@@ -125,12 +114,16 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds)
                 .add_seconds(self.configs.detonation_duration);
-            if end_time.has_already_passed(sys_vars.time) {
-                if let Some(caster) = char_storage.get(self.caster_id.0) {
+            if end_time.has_already_passed(params.now()) {
+                if let Some(caster_team) = params
+                    .char_storage
+                    .get(self.caster_id.0)
+                    .map(|caster| caster.team)
+                {
                     let area_shape =
                         Box::new(ncollide2d::shape::Ball::new(self.configs.explosion_area));
                     let area_isom = Isometry2::new(self.end_pos, 0.0);
-                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
+                    params.add_area_hp_mod_request(AreaAttackComponent {
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
                         source_entity_id: self.caster_id,
@@ -140,35 +133,30 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         ),
                         except: None,
                     });
-                    sys_vars
-                        .apply_area_statuses
-                        .push(ApplyStatusInAreaComponent {
-                            source_entity_id: self.caster_id,
-                            status: ApplyStatusComponentPayload::from_secondary(Box::new(
-                                StunStatus::new(
-                                    self.caster_id,
-                                    sys_vars.time,
-                                    self.configs.stun_duration_seconds,
-                                ),
-                            )),
-                            area_shape,
-                            area_isom,
-                            except: None,
-                            nature: StatusNature::Harmful,
-                            caster_team: caster.team,
-                        });
-                    updater.insert(
-                        entities.create(),
-                        StrEffectComponent {
-                            effect_id: StrEffectType::Explosion.into(),
-                            pos: self.end_pos,
-                            start_time: sys_vars.time,
-                            die_at: None,
-                            play_mode: ActionPlayMode::Once,
-                        },
-                    );
+                    params.apply_area_status(ApplyStatusInAreaComponent {
+                        source_entity_id: self.caster_id,
+                        status: ApplyStatusComponentPayload::from_secondary(Box::new(
+                            StunStatus::new(
+                                self.caster_id,
+                                params.now(),
+                                self.configs.stun_duration_seconds,
+                            ),
+                        )),
+                        area_shape,
+                        area_isom,
+                        except: None,
+                        nature: StatusNature::Harmful,
+                        caster_team,
+                    });
+                    params.create_entity_with_comp(StrEffectComponent {
+                        effect_id: StrEffectType::Explosion.into(),
+                        pos: self.end_pos,
+                        start_time: params.now(),
+                        die_at: None,
+                        play_mode: ActionPlayMode::Once,
+                    });
                 }
-                updater.remove::<SkillManifestationComponent>(self_entity_id);
+                params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
             }
         }
     }

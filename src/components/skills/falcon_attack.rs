@@ -1,12 +1,12 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::LazyUpdate;
 
 use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType,
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::ApplyStatusComponent;
@@ -118,38 +118,36 @@ struct FalconAttackSkillManifestation {
 }
 
 impl SkillManifestation for FalconAttackSkillManifestation {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        _entities: &Entities,
-        char_storage: &mut WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         let falcon_collider_handle = self.falcon_collider_handle;
-        if self.die_at.has_already_passed(sys_vars.time) {
-            physics_world.colliders.remove(falcon_collider_handle);
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
+        if self.die_at.has_already_passed(params.now()) {
+            params
+                .physics_world
+                .colliders
+                .remove(falcon_collider_handle);
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
         } else {
-            let my_collisions = all_collisions_in_world
+            let my_collisions = params
+                .all_collisions_in_world
                 .iter()
                 .filter(|(_key, coll)| coll.other_coll_handle == falcon_collider_handle);
             for (_key, coll) in my_collisions {
-                if let Some(char_collider) = physics_world.colliders.get(coll.character_coll_handle)
+                if let Some(char_collider) = params
+                    .physics_world
+                    .colliders
+                    .get(coll.character_coll_handle)
                 {
                     let target_char_entity_id: CharEntityId = *char_collider
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
-                    if let Some(target_char) = char_storage.get(target_char_entity_id.0) {
+                    if let Some(target_char) = params.char_storage.get(target_char_entity_id.0) {
                         if !self.team.can_attack(target_char.team)
                             || self.damaged_entities.contains(&target_char_entity_id)
                         {
                             continue;
                         }
-                        sys_vars.hp_mod_requests.push(HpModificationRequest {
+                        params.add_hp_mod_request(HpModificationRequest {
                             src_entity: self.falcon_owner_id,
                             dst_entity: target_char_entity_id,
                             typ: HpModificationType::SpellDamage(
@@ -157,26 +155,25 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                                 DamageDisplayType::Combo(2),
                             ),
                         });
-                        sys_vars
-                            .apply_statuses
-                            .push(ApplyStatusComponent::from_secondary_status(
-                                self.falcon_owner_id,
-                                target_char_entity_id,
-                                Box::new(WalkingSpeedModifierStatus::new(
-                                    sys_vars.time,
-                                    self.slow,
-                                    self.slow_duration,
-                                )),
-                            ));
+                        params.apply_status(ApplyStatusComponent::from_secondary_status(
+                            self.falcon_owner_id,
+                            target_char_entity_id,
+                            Box::new(WalkingSpeedModifierStatus::new(
+                                params.now(),
+                                self.slow,
+                                self.slow_duration,
+                            )),
+                        ));
                         self.damaged_entities.insert(target_char_entity_id);
                     }
                 }
             }
-            let duration_percentage = sys_vars
-                .time
+            let duration_percentage = params
+                .now()
                 .percentage_between(self.created_at, self.die_at);
             let new_pos = self.start_pos + self.path * duration_percentage;
-            let falcon_body = physics_world
+            let falcon_body = params
+                .physics_world
                 .colliders
                 .get_mut(self.falcon_collider_handle)
                 .unwrap();

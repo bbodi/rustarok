@@ -1,5 +1,5 @@
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate, ReadStorage};
+use specs::ReadStorage;
 
 use crate::common::{v2, Vec2};
 use crate::components::char::{
@@ -7,7 +7,8 @@ use crate::components::char::{
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType,
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
@@ -160,63 +161,57 @@ impl PyroBlastManifest {
 }
 
 impl SkillManifestation for PyroBlastManifest {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        _all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
-        if let Some(target_char) = char_storage.get_mut(self.target_entity_id.0) {
-            let target_pos = target_char.pos();
-            let dir_vector = target_pos - self.pos;
-            let distance = dir_vector.magnitude();
-            if distance > 2.0 {
-                let dir_vector = dir_vector.normalize();
-                self.pos = self.pos + (dir_vector * sys_vars.dt.0 * self.configs.moving_speed);
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        let (target_pos, collide) =
+            if let Some(target_char) = params.char_storage.get_mut(self.target_entity_id.0) {
+                let target_pos = target_char.pos();
+                let dir_vector = target_pos - self.pos;
+                let distance = dir_vector.magnitude();
+                if distance > 2.0 {
+                    let dir_vector = dir_vector.normalize();
+                    self.pos = self.pos + (dir_vector * params.dt().0 * self.configs.moving_speed);
+                    (target_pos, false)
+                } else {
+                    target_char
+                        .statuses
+                        .remove::<PyroBlastTargetStatus, _>(|status| {
+                            status.caster_entity_id == self.caster_entity_id
+                        });
+                    (target_pos, true)
+                }
             } else {
-                updater.remove::<SkillManifestationComponent>(self_entity_id);
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
-                    src_entity: self.caster_entity_id,
-                    dst_entity: self.target_entity_id,
-                    typ: HpModificationType::SpellDamage(
-                        self.configs.damage,
-                        DamageDisplayType::SingleNumber,
-                    ),
-                });
-                let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
-                let area_isom = Isometry2::new(target_pos, 0.0);
-                sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
-                    area_shape,
-                    area_isom,
-                    source_entity_id: self.caster_entity_id,
-                    typ: HpModificationType::SpellDamage(
-                        self.configs.secondary_damage,
-                        DamageDisplayType::SingleNumber,
-                    ),
-                    except: Some(self.target_entity_id),
-                });
-                updater.insert(
-                    entities.create(),
-                    StrEffectComponent {
-                        effect_id: StrEffectType::Explosion.into(),
-                        pos: target_pos,
-                        start_time: sys_vars.time,
-                        die_at: None,
-                        play_mode: ActionPlayMode::Once,
-                    },
-                );
-                target_char
-                    .statuses
-                    .remove::<PyroBlastTargetStatus, _>(|status| {
-                        status.caster_entity_id == self.caster_entity_id
-                    })
-            }
-        } else {
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
+                params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+                (v2(0.0, 0.0), false)
+            };
+        if collide {
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+            params.add_hp_mod_request(HpModificationRequest {
+                src_entity: self.caster_entity_id,
+                dst_entity: self.target_entity_id,
+                typ: HpModificationType::SpellDamage(
+                    self.configs.damage,
+                    DamageDisplayType::SingleNumber,
+                ),
+            });
+            let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
+            let area_isom = Isometry2::new(target_pos, 0.0);
+            params.add_area_hp_mod_request(AreaAttackComponent {
+                area_shape,
+                area_isom,
+                source_entity_id: self.caster_entity_id,
+                typ: HpModificationType::SpellDamage(
+                    self.configs.secondary_damage,
+                    DamageDisplayType::SingleNumber,
+                ),
+                except: Some(self.target_entity_id),
+            });
+            params.create_entity_with_comp(StrEffectComponent {
+                effect_id: StrEffectType::Explosion.into(),
+                pos: target_pos,
+                start_time: params.now(),
+                die_at: None,
+                play_mode: ActionPlayMode::Once,
+            });
         }
     }
 

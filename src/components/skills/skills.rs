@@ -7,7 +7,7 @@ use serde::Deserialize;
 use specs::prelude::*;
 use strum_macros::EnumIter;
 
-use crate::common::{v2_to_v3, Vec2};
+use crate::common::{v2_to_v3, DeltaTime, Vec2};
 use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent, Team};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
@@ -32,6 +32,8 @@ use crate::components::skills::gaz_turret::{
 };
 use crate::components::skills::gaz_xplod_charge::GAZ_XPLODIUM_CHARGE_SKILL;
 use crate::components::skills::sanctuary::SANCTUARY_SKILL;
+use crate::components::status::status::{ApplyStatusComponent, ApplyStatusInAreaComponent};
+use crate::components::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
@@ -42,17 +44,97 @@ use crate::{ElapsedTime, PhysicEngine};
 
 pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
 
+pub struct SkillManifestationUpdateParam<'a, 'longer> {
+    pub self_entity_id: Entity,
+    pub all_collisions_in_world: &'longer WorldCollisions,
+    sys_vars: &'longer mut SystemVariables,
+    entities: &'a Entities<'a>,
+    pub char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+    pub physics_world: &'longer mut PhysicEngine,
+    updater: &'longer mut LazyUpdate,
+}
+
+impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
+    pub fn new(
+        self_entity_id: Entity,
+        all_collisions_in_world: &'longer WorldCollisions,
+        sys_vars: &'longer mut SystemVariables,
+        entities: &'a Entities,
+        char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+        physics_world: &'longer mut PhysicEngine,
+        updater: &'longer mut LazyUpdate,
+    ) -> SkillManifestationUpdateParam<'a, 'longer> {
+        SkillManifestationUpdateParam {
+            self_entity_id,
+            all_collisions_in_world,
+            sys_vars,
+            entities,
+            char_storage,
+            physics_world,
+            updater,
+        }
+    }
+
+    pub fn remove_component<C>(&self, entitiy_id: Entity)
+    where
+        C: Component + Send + Sync,
+    {
+        self.updater.remove::<C>(entitiy_id);
+    }
+
+    pub fn insert_comp<C>(&self, entitiy_id: Entity, comp: C)
+    where
+        C: Component + Send + Sync,
+    {
+        self.updater.insert(entitiy_id, comp);
+    }
+
+    pub fn create_entity_with_comp<C>(&self, comp: C)
+    where
+        C: Component + Send + Sync,
+    {
+        self.insert_comp(self.entities.create(), comp);
+    }
+
+    pub fn now(&self) -> ElapsedTime {
+        self.sys_vars.time
+    }
+
+    pub fn tick(&self) -> u64 {
+        self.sys_vars.tick
+    }
+
+    pub fn dt(&self) -> DeltaTime {
+        self.sys_vars.dt
+    }
+
+    pub fn assets(&self) -> &AssetResources {
+        &self.sys_vars.assets
+    }
+
+    pub fn apply_status(&mut self, apply_status_comp: ApplyStatusComponent) {
+        self.sys_vars.apply_statuses.push(apply_status_comp);
+    }
+
+    pub fn apply_area_status(&mut self, apply_status_comp: ApplyStatusInAreaComponent) {
+        self.sys_vars.apply_area_statuses.push(apply_status_comp);
+    }
+
+    pub fn add_hp_mod_request(&mut self, hp_mod_req: HpModificationRequest) {
+        self.sys_vars.hp_mod_requests.push(hp_mod_req);
+    }
+
+    pub fn add_area_hp_mod_request(&mut self, hp_mod_req: AreaAttackComponent) {
+        self.sys_vars.area_hp_mod_requests.push(hp_mod_req);
+    }
+
+    pub fn apply_force(&mut self, force: ApplyForceComponent) {
+        self.sys_vars.pushes.push(force);
+    }
+}
+
 pub trait SkillManifestation {
-    fn update(
-        &mut self,
-        entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        entities: &Entities,
-        char_storage: &mut WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    );
+    fn update(&mut self, params: SkillManifestationUpdateParam);
 
     fn render(
         &self,
@@ -82,26 +164,9 @@ impl SkillManifestationComponent {
         }
     }
 
-    pub fn update(
-        &mut self,
-        self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        entities: &Entities,
-        char_storage: &mut WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
+    pub fn update(&mut self, params: SkillManifestationUpdateParam) {
         let mut skill = self.skill.lock().unwrap();
-        skill.update(
-            self_entity_id,
-            all_collisions_in_world,
-            sys_vars,
-            entities,
-            char_storage,
-            physics_world,
-            updater,
-        );
+        skill.update(params);
     }
 
     pub fn render(

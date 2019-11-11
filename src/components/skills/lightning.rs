@@ -1,11 +1,12 @@
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
+use specs::Entity;
 
 use crate::common::Vec2;
-use crate::components::char::{ActionPlayMode, CharacterStateComponent};
+use crate::components::char::ActionPlayMode;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType,
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
@@ -15,7 +16,7 @@ use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine};
+use crate::ElapsedTime;
 
 pub struct LightningSkill;
 
@@ -105,32 +106,23 @@ impl LightningManifest {
 }
 
 impl SkillManifestation for LightningManifest {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        _all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         if self
             .created_at
             .add_seconds(12.0)
-            .has_already_passed(sys_vars.time)
+            .has_already_passed(params.now())
         {
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
-            updater.remove::<StrEffectComponent>(self.effect_id);
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+            params.remove_component::<StrEffectComponent>(params.self_entity_id);
         } else {
-            if self.next_action_at.has_already_passed(sys_vars.time) {
-                updater.remove::<StrEffectComponent>(self.effect_id);
+            if self.next_action_at.has_already_passed(params.now()) {
+                params.remove_component::<StrEffectComponent>(self.effect_id);
                 let effect_comp = match self.action_count {
                     0 => StrEffectComponent {
                         effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
-                        start_time: sys_vars.time.add_seconds(-0.5),
-                        die_at: Some(sys_vars.time.add_seconds(1.0)),
+                        start_time: params.now().add_seconds(-0.5),
+                        die_at: Some(params.now().add_seconds(1.0)),
                         play_mode: ActionPlayMode::Repeat,
                     },
                     1 => {
@@ -138,8 +130,8 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
-                            start_time: sys_vars.time.add_seconds(-0.5),
-                            die_at: Some(sys_vars.time.add_seconds(1.0)),
+                            start_time: params.now().add_seconds(-0.5),
+                            die_at: Some(params.now().add_seconds(1.0)),
                             play_mode: ActionPlayMode::Repeat,
                         }
                     }
@@ -148,8 +140,8 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
-                            start_time: sys_vars.time.add_seconds(-0.5),
-                            die_at: Some(sys_vars.time.add_seconds(1.0)),
+                            start_time: params.now().add_seconds(-0.5),
+                            die_at: Some(params.now().add_seconds(1.0)),
                             play_mode: ActionPlayMode::Repeat,
                         }
                     }
@@ -158,8 +150,8 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
-                            start_time: sys_vars.time.add_seconds(-0.5),
-                            die_at: Some(sys_vars.time.add_seconds(1.0)),
+                            start_time: params.now().add_seconds(-0.5),
+                            die_at: Some(params.now().add_seconds(1.0)),
                             play_mode: ActionPlayMode::Repeat,
                         }
                     }
@@ -168,16 +160,16 @@ impl SkillManifestation for LightningManifest {
                         StrEffectComponent {
                             effect_id: StrEffectType::Lightning.into(),
                             pos,
-                            start_time: sys_vars.time.add_seconds(-0.5),
-                            die_at: Some(sys_vars.time.add_seconds(1.0)),
+                            start_time: params.now().add_seconds(-0.5),
+                            die_at: Some(params.now().add_seconds(1.0)),
                             play_mode: ActionPlayMode::Repeat,
                         }
                     }
                     5 => StrEffectComponent {
                         effect_id: StrEffectType::Lightning.into(),
                         pos: self.pos,
-                        start_time: sys_vars.time.add_seconds(-0.5),
-                        die_at: Some(sys_vars.time.add_seconds(1.0)),
+                        start_time: params.now().add_seconds(-0.5),
+                        die_at: Some(params.now().add_seconds(1.0)),
                         play_mode: ActionPlayMode::Repeat,
                     },
                     _ => {
@@ -185,13 +177,13 @@ impl SkillManifestation for LightningManifest {
                     }
                 };
                 self.last_skill_pos = effect_comp.pos.clone();
-                updater.insert(self.effect_id, effect_comp);
+                params.insert_comp(self.effect_id, effect_comp);
                 self.action_count += 1;
-                self.next_action_at = sys_vars.time.add_seconds(1.5);
-                self.next_damage_at = sys_vars.time.add_seconds(1.0);
+                self.next_action_at = params.now().add_seconds(1.5);
+                self.next_damage_at = params.now().add_seconds(1.0);
             }
-            if self.next_damage_at.has_already_passed(sys_vars.time) {
-                sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
+            if self.next_damage_at.has_already_passed(params.now()) {
+                params.add_area_hp_mod_request(AreaAttackComponent {
                     area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
                     area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,

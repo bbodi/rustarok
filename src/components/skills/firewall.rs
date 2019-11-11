@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use nalgebra::Vector2;
-use nphysics2d::object::DefaultColliderHandle;
+use nphysics2d::object::{DefaultBodyHandle, DefaultColliderHandle};
 use specs::{Entity, LazyUpdate};
 
 use crate::common::{rotate_vec2, v2, Vec2, Vec2i};
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
-    WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType, Skills,
 };
 use crate::components::{
     ApplyForceComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
@@ -174,38 +174,42 @@ impl PushBackWallSkill {
 }
 
 impl SkillManifestation for PushBackWallSkill {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
-        let now = sys_vars.time;
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        let now = params.now();
         let self_collider_handle = self.collider_handle;
         if self.die_at.has_already_passed(now) {
-            physics_world.colliders.remove(self_collider_handle);
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
+            params.physics_world.colliders.remove(self_collider_handle);
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
             for effect_id in &self.effect_ids {
-                updater.remove::<StrEffectComponent>(*effect_id);
+                params.remove_component::<StrEffectComponent>(*effect_id);
             }
         } else {
             // TODO: wouldn't it be better to use the area push functionality?
-            let my_collisions = all_collisions_in_world
+            let my_collisions = params
+                .all_collisions_in_world
                 .iter()
                 .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
             for (_key, coll) in my_collisions {
-                if let Some(char_collider) = physics_world.colliders.get(coll.character_coll_handle)
-                {
-                    let target_char_entity_id: CharEntityId = *char_collider
-                        .user_data()
-                        .map(|v| v.downcast_ref().unwrap())
-                        .unwrap();
-                    if let Some(target_char) = char_storage.get(target_char_entity_id.0) {
-                        if !self.team.can_attack(target_char.team)
+                let collider: Option<(CharEntityId, DefaultBodyHandle)> = params
+                    .physics_world
+                    .colliders
+                    .get(coll.character_coll_handle)
+                    .map(|char_collider| {
+                        (
+                            *char_collider
+                                .user_data()
+                                .map(|v| v.downcast_ref().unwrap())
+                                .unwrap(),
+                            char_collider.body(),
+                        )
+                    });
+                if let Some((target_char_entity_id, body_handle)) = collider {
+                    let target = params
+                        .char_storage
+                        .get(target_char_entity_id.0)
+                        .map(|target| (target.pos(), target.team));
+                    if let Some((target_pos, target_team)) = target {
+                        if !self.team.can_attack(target_team)
                             || !self
                                 .cannot_damage_until
                                 .get(&target_char_entity_id)
@@ -214,13 +218,13 @@ impl SkillManifestation for PushBackWallSkill {
                         {
                             continue;
                         }
-                        let push_dir = self.pos - target_char.pos();
+                        let push_dir = self.pos - target_pos;
                         let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
                             v2(1.0, 0.0) // "random"
                         } else {
                             -push_dir.normalize()
                         };
-                        sys_vars.hp_mod_requests.push(HpModificationRequest {
+                        params.add_hp_mod_request(HpModificationRequest {
                             src_entity: self.caster_entity_id,
                             dst_entity: target_char_entity_id,
                             typ: HpModificationType::SpellDamage(
@@ -228,11 +232,11 @@ impl SkillManifestation for PushBackWallSkill {
                                 DamageDisplayType::SingleNumber,
                             ),
                         });
-                        sys_vars.pushes.push(ApplyForceComponent {
+                        params.apply_force(ApplyForceComponent {
                             src_entity: self.caster_entity_id,
                             dst_entity: target_char_entity_id,
                             force: push_dir * self.pushback_force,
-                            body_handle: char_collider.body(),
+                            body_handle,
                             duration: self.force_duration_seconds,
                         });
                         self.cannot_damage_until.insert(

@@ -1,15 +1,13 @@
 use crate::common::{v2, Vec2, Vec2u};
-use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{SkillManifestation, WorldCollisions};
+use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::components::{HpModificationRequest, HpModificationType};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::AssetResources;
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
-use specs::{Entity, LazyUpdate};
 
 pub struct HealApplierArea {
     pub collider_handle: DefaultColliderHandle,
@@ -52,23 +50,16 @@ impl HealApplierArea {
 }
 
 impl SkillManifestation for HealApplierArea {
-    fn update(
-        &mut self,
-        _self_entity_id: Entity,
-        all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        physics_world: &mut PhysicEngine,
-        _updater: &mut LazyUpdate,
-    ) {
-        if self.next_action_at.has_already_passed(sys_vars.time) {
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        if self.next_action_at.has_already_passed(params.now()) {
             let self_collider_handle = self.collider_handle;
-            let my_collisions = all_collisions_in_world
+            let my_collisions = params
+                .all_collisions_in_world
                 .iter()
                 .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
             for (_key, coll) in my_collisions {
-                let char_collider = physics_world
+                let char_collider = params
+                    .physics_world
                     .colliders
                     .get(coll.character_coll_handle)
                     .unwrap();
@@ -76,12 +67,12 @@ impl SkillManifestation for HealApplierArea {
                     .user_data()
                     .map(|v| v.downcast_ref().unwrap())
                     .unwrap();
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
+                params.add_hp_mod_request(HpModificationRequest {
                     src_entity: self.caster_entity_id,
                     dst_entity: char_entity_id,
                     typ: self.attack_type,
                 });
-                self.next_action_at = sys_vars.time.add_seconds(self.interval);
+                self.next_action_at = params.now().add_seconds(self.interval);
             }
         }
     }

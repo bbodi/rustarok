@@ -1,7 +1,9 @@
 use specs::prelude::*;
 
 use crate::components::char::CharacterStateComponent;
-use crate::components::skills::skills::SkillManifestationComponent;
+use crate::components::skills::skills::{
+    SkillManifestationComponent, SkillManifestationUpdateParam,
+};
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 
@@ -34,7 +36,16 @@ impl<'a> System<'a> for SkillSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("SkillSystem");
         for (entity_id, skill) in (&entities, &mut skill_storage).join() {
-            skill.update(
+            //            skill.update(SkillManifestationUpdateParam {
+            //                self_entity_id: entity_id,
+            //                all_collisions_in_world: &collisions_resource.collisions,
+            //                sys_vars: &mut sys_vars,
+            //                entities: &entities,
+            //                char_storage: &mut char_storage,
+            //                physics_world: &mut physics_world,
+            //                updater: &mut updater,
+            //            });
+            skill.update(SkillManifestationUpdateParam::new(
                 entity_id,
                 &collisions_resource.collisions,
                 &mut sys_vars,
@@ -42,7 +53,7 @@ impl<'a> System<'a> for SkillSystem {
                 &mut char_storage,
                 &mut physics_world,
                 &mut updater,
-            );
+            ));
         }
     }
 }

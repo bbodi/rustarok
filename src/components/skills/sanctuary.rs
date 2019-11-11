@@ -1,16 +1,13 @@
 use nalgebra::Isometry2;
-use specs::{Entity, LazyUpdate};
 
 use crate::common::{v2, Vec2};
-use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, Skills,
-    WorldCollisions,
+    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
+    SkillTargetType, Skills,
 };
 use crate::components::{AreaAttackComponent, HpModificationType};
 use crate::configs::DevConfig;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::{RenderCommandCollector, Trimesh3dType};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -99,24 +96,15 @@ impl SanctuarySkillManifest {
 }
 
 impl SkillManifestation for SanctuarySkillManifest {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        _all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
-        if self.die_at.has_already_passed(sys_vars.time) {
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        if self.die_at.has_already_passed(params.now()) {
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
         } else {
-            if self.next_heal_at.has_not_passed_yet(sys_vars.time) {
+            if self.next_heal_at.has_not_passed_yet(params.now()) {
                 return;
             }
-            self.next_heal_at = sys_vars.time.add_seconds(self.heal_freq);
-            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
+            self.next_heal_at = params.now().add_seconds(self.heal_freq);
+            params.add_area_hp_mod_request(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2(2.5, 2.5))),
                 area_isom: Isometry2::new(self.pos, 0.0),
                 source_entity_id: self.caster_entity_id,

@@ -1,12 +1,9 @@
-use specs::{Entity, LazyUpdate};
-
 use crate::components::char::{
-    ActionPlayMode, CharActionIndex, CharAttributes, CharacterStateComponent,
-    SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharActionIndex, CharAttributes, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillManifestation, SkillManifestationComponent, WorldCollisions,
+    SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
 };
 
 use crate::common::{v2, v3, ElapsedTime, Vec2};
@@ -14,7 +11,6 @@ use crate::components::char::Percentage;
 use crate::components::{
     DamageDisplayType, HpModificationRequest, HpModificationType, SoundEffectComponent,
 };
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
@@ -133,68 +129,57 @@ impl BasicRangeAttackBullet {
 }
 
 impl SkillManifestation for BasicRangeAttackBullet {
-    fn update(
-        &mut self,
-        self_entity_id: Entity,
-        _all_collisions_in_world: &WorldCollisions,
-        sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
-        _physics_world: &mut PhysicEngine,
-        updater: &mut LazyUpdate,
-    ) {
-        let now = sys_vars.time;
-        if sys_vars.tick == self.started_tick + 1 {
+    fn update(&mut self, mut params: SkillManifestationUpdateParam) {
+        let now = params.now();
+        if params.tick() == self.started_tick + 1 {
             match self.weapon_type {
                 WeaponType::Arrow => {
-                    updater.insert(
-                        entities.create(),
-                        SoundEffectComponent {
-                            target_entity_id: self.caster_id,
-                            sound_id: sys_vars.assets.sounds.arrow_attack,
-                            pos: self.start_pos,
-                            start_time: now,
-                        },
-                    );
+                    params.create_entity_with_comp(SoundEffectComponent {
+                        target_entity_id: self.caster_id,
+                        sound_id: params.assets().sounds.arrow_attack,
+                        pos: self.start_pos,
+                        start_time: now,
+                    });
                 }
                 WeaponType::SilverBullet => {
-                    updater.insert(
-                        entities.create(),
-                        SoundEffectComponent {
-                            target_entity_id: self.caster_id,
-                            sound_id: sys_vars.assets.sounds.gun_attack,
-                            pos: self.start_pos,
-                            start_time: now,
-                        },
-                    );
+                    params.create_entity_with_comp(SoundEffectComponent {
+                        target_entity_id: self.caster_id,
+                        sound_id: params.assets().sounds.gun_attack,
+                        pos: self.start_pos,
+                        start_time: now,
+                    });
                 }
                 WeaponType::Sword => {}
             }
         }
 
-        let travel_duration_percentage = sys_vars
-            .time
+        let travel_duration_percentage = params
+            .now()
             .percentage_between(self.started_at, self.ends_at);
         if travel_duration_percentage < 1.0 {
-            if let Some(target) = char_storage.get(self.target_id.0) {
+            if let Some(target) = params.char_storage.get(self.target_id.0) {
                 let dir = target.pos() - self.start_pos;
                 self.current_pos = self.start_pos + dir * travel_duration_percentage;
                 self.target_pos = target.pos();
             }
         } else {
-            if let Some(caster) = char_storage.get(self.caster_id.0) {
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
+            let attack_dmg = params
+                .char_storage
+                .get(self.caster_id.0)
+                .map(|caster| caster.calculated_attribs().attack_damage as u32);
+            if let Some(attack_dmg) = attack_dmg {
+                params.add_hp_mod_request(HpModificationRequest {
                     src_entity: self.caster_id,
                     dst_entity: self.target_id,
                     typ: HpModificationType::BasicDamage(
-                        caster.calculated_attribs().attack_damage as u32,
+                        attack_dmg,
                         DamageDisplayType::SingleNumber,
                         self.weapon_type,
                     ),
                 });
             }
             // TODO: return with KeepIt or RemoveMe
-            updater.remove::<SkillManifestationComponent>(self_entity_id);
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
         }
     }
 
