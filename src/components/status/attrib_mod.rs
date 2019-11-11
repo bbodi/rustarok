@@ -1,12 +1,8 @@
-use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent, Percentage,
+use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
+use crate::components::status::status::{
+    Status, StatusNature, StatusUpdateParams, StatusUpdateResult,
 };
-use crate::components::controller::CharEntityId;
-use crate::components::status::status::{Status, StatusNature, StatusUpdateResult};
-use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct ArmorModifierStatus {
@@ -38,16 +34,8 @@ impl Status for ArmorModifierStatus {
         );
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        _char_state: &mut CharacterStateComponent,
-        _physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
@@ -93,16 +81,8 @@ impl Status for WalkingSpeedModifierStatus {
         );
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        _char_state: &mut CharacterStateComponent,
-        _physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

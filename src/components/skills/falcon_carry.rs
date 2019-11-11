@@ -7,7 +7,7 @@ use crate::components::char::{
 use crate::components::controller::{CharEntityId, ControllerComponent, ControllerEntityId};
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateResult,
+    Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::ApplyForceComponent;
 use crate::configs::DevConfig;
@@ -133,17 +133,9 @@ impl Status for FalconCarryStatus {
         false
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        char_state: &mut CharacterStateComponent,
-        physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.ends_at.has_already_passed(sys_vars.time) {
-            char_state.set_collidable(physics_world);
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.ends_at.has_already_passed(params.sys_vars.time) {
+            params.target_char.set_collidable(params.physics_world);
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

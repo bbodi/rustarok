@@ -10,7 +10,8 @@ use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
+    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
+    StatusUpdateResult,
 };
 use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
@@ -133,21 +134,18 @@ impl Status for AssaBladeDashStatus {
         [0, 0, 0, 0]
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        char_state: &mut CharacterStateComponent,
-        physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
-            if self.ends_at.has_already_passed(sys_vars.time) {
-                char_state.set_collidable(physics_world);
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if let Some(body) = params
+            .physics_world
+            .bodies
+            .rigid_body_mut(params.target_char.body_handle)
+        {
+            if self.ends_at.has_already_passed(params.sys_vars.time) {
+                params.target_char.set_collidable(params.physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
-                let duration_percentage = sys_vars
+                let duration_percentage = params
+                    .sys_vars
                     .time
                     .percentage_between(self.started_at, self.ends_at);
                 let pos = if duration_percentage < 0.5 {
@@ -166,40 +164,46 @@ impl Status for AssaBladeDashStatus {
                 body.set_position(Isometry2::translation(pos.x, pos.y));
 
                 if !self.forward_damage_done && duration_percentage > 0.25 {
-                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
-                        area_shape: Box::new(ncollide2d::shape::Cuboid::new(
-                            v2(
-                                self.configs.attributes.width.unwrap_or(1.0),
-                                self.configs.attributes.casting_range,
-                            ) / 2.0,
-                        )),
-                        area_isom: Isometry2::new(self.center, self.rot_radian),
-                        source_entity_id: self.caster_entity_id,
-                        typ: HpModificationType::BasicDamage(
-                            self.configs.first_damage,
-                            DamageDisplayType::SingleNumber,
-                            WeaponType::Sword,
-                        ),
-                        except: None,
-                    });
+                    params
+                        .sys_vars
+                        .area_hp_mod_requests
+                        .push(AreaAttackComponent {
+                            area_shape: Box::new(ncollide2d::shape::Cuboid::new(
+                                v2(
+                                    self.configs.attributes.width.unwrap_or(1.0),
+                                    self.configs.attributes.casting_range,
+                                ) / 2.0,
+                            )),
+                            area_isom: Isometry2::new(self.center, self.rot_radian),
+                            source_entity_id: self.caster_entity_id,
+                            typ: HpModificationType::BasicDamage(
+                                self.configs.first_damage,
+                                DamageDisplayType::SingleNumber,
+                                WeaponType::Sword,
+                            ),
+                            except: None,
+                        });
                     self.forward_damage_done = true;
                 } else if !self.backward_damage_done && duration_percentage > 0.75 {
-                    sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
-                        area_shape: Box::new(ncollide2d::shape::Cuboid::new(
-                            v2(
-                                self.configs.attributes.width.unwrap_or(1.0),
-                                self.configs.attributes.casting_range,
-                            ) / 2.0,
-                        )),
-                        area_isom: Isometry2::new(self.center, self.rot_radian),
-                        source_entity_id: self.caster_entity_id,
-                        typ: HpModificationType::BasicDamage(
-                            self.configs.second_damage,
-                            DamageDisplayType::SingleNumber,
-                            WeaponType::Sword,
-                        ),
-                        except: None,
-                    });
+                    params
+                        .sys_vars
+                        .area_hp_mod_requests
+                        .push(AreaAttackComponent {
+                            area_shape: Box::new(ncollide2d::shape::Cuboid::new(
+                                v2(
+                                    self.configs.attributes.width.unwrap_or(1.0),
+                                    self.configs.attributes.casting_range,
+                                ) / 2.0,
+                            )),
+                            area_isom: Isometry2::new(self.center, self.rot_radian),
+                            source_entity_id: self.caster_entity_id,
+                            typ: HpModificationType::BasicDamage(
+                                self.configs.second_damage,
+                                DamageDisplayType::SingleNumber,
+                                WeaponType::Sword,
+                            ),
+                            except: None,
+                        });
                     self.backward_damage_done = true;
                 }
                 StatusUpdateResult::KeepIt

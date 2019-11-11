@@ -8,7 +8,8 @@ use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
+    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
+    StatusUpdateResult,
 };
 use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
@@ -162,17 +163,9 @@ impl Status for ExoSkeletonStatus {
         );
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        target_char: &mut CharacterStateComponent,
-        _phyisic_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
-            target_char.basic_attack = BasicAttack::MeleeSimple;
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
+            params.target_char.basic_attack = BasicAttack::MeleeSimple;
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

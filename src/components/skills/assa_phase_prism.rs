@@ -9,7 +9,8 @@ use crate::components::skills::skills::{
     SkillDef, SkillManifestation, SkillManifestationComponent, SkillTargetType, WorldCollisions,
 };
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateResult,
+    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
+    StatusUpdateResult,
 };
 use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
@@ -230,21 +231,18 @@ impl Status for AssaPhasePrismStatus {
         [0, 255, 255, 255]
     }
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        char_state: &mut CharacterStateComponent,
-        physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {
-            if self.ends_at.has_already_passed(sys_vars.time) {
-                char_state.set_collidable(physics_world);
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if let Some(body) = params
+            .physics_world
+            .bodies
+            .rigid_body_mut(params.target_char.body_handle)
+        {
+            if self.ends_at.has_already_passed(params.sys_vars.time) {
+                params.target_char.set_collidable(params.physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
-                let duration_percentage = sys_vars
+                let duration_percentage = params
+                    .sys_vars
                     .time
                     .percentage_between(self.started_at, self.ends_at);
                 let pos = self.start_pos + self.vector * duration_percentage;

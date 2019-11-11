@@ -29,6 +29,15 @@ pub enum StatusStackingResult {
     Replace,
 }
 
+pub struct StatusUpdateParams<'a> {
+    pub self_char_id: CharEntityId,
+    pub target_char: &'a mut CharacterStateComponent,
+    pub physics_world: &'a mut PhysicEngine,
+    pub sys_vars: &'a mut SystemVariables,
+    pub entities: &'a Entities<'a>,
+    pub updater: &'a mut LazyUpdate,
+}
+
 pub trait Status: Any {
     fn dupl(&self) -> Box<dyn Status + Send>;
 
@@ -74,15 +83,7 @@ pub trait Status: Any {
 
     fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
 
-    fn update(
-        &mut self,
-        _self_char_id: CharEntityId,
-        _target_char: &mut CharacterStateComponent,
-        _phyisic_world: &mut PhysicEngine,
-        _system_vars: &mut SystemVariables,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
+    fn update(&mut self, _params: StatusUpdateParams) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
     }
 
@@ -297,14 +298,14 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|(_i, it)| it.is_some())
         {
-            let result = status.as_mut().unwrap().update(
+            let result = status.as_mut().unwrap().update(StatusUpdateParams {
                 self_char_id,
-                char_state,
-                physics_world,
-                sys_vars,
-                entities,
+                target_char: char_state,
+                physics_world: physics_world,
+                sys_vars: sys_vars,
+                entities: entities,
                 updater,
-            );
+            });
             match result {
                 StatusUpdateResult::RemoveIt => {
                     changed |= 1 << i;
@@ -682,25 +683,17 @@ impl Status for PoisonStatus {
         [128, 255, 128, 255]
     }
 
-    fn update(
-        &mut self,
-        self_char_id: CharEntityId,
-        _char_state: &mut CharacterStateComponent,
-        _physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.has_already_passed(sys_vars.time) {
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
+            if self.next_damage_at.has_already_passed(params.sys_vars.time) {
+                params.sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
-                    dst_entity: self_char_id,
+                    dst_entity: params.self_char_id,
                     typ: HpModificationType::Poison(30),
                 });
-                self.next_damage_at = sys_vars.time.add_seconds(1.0);
+                self.next_damage_at = params.sys_vars.time.add_seconds(1.0);
             }
             StatusUpdateResult::KeepIt
         }

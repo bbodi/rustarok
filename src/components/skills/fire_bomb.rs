@@ -1,5 +1,4 @@
 use nalgebra::Isometry2;
-use specs::LazyUpdate;
 
 use crate::common::Vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
@@ -7,14 +6,13 @@ use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
-    StatusNature, StatusUpdateResult,
+    StatusNature, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
@@ -86,35 +84,31 @@ impl Status for FireBombStatus {
         Box::new(self.clone())
     }
 
-    fn update(
-        &mut self,
-        self_char_id: CharEntityId,
-        char_state: &mut CharacterStateComponent,
-        _physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
-        updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
             let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
-            let area_isom = Isometry2::new(char_state.pos(), 0.0);
-            sys_vars.area_hp_mod_requests.push(AreaAttackComponent {
-                area_shape: area_shape.clone(),
-                area_isom: area_isom.clone(),
-                source_entity_id: self.caster_entity_id,
-                typ: HpModificationType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
-                except: None,
-            });
+            let area_isom = Isometry2::new(params.target_char.pos(), 0.0);
+            params
+                .sys_vars
+                .area_hp_mod_requests
+                .push(AreaAttackComponent {
+                    area_shape: area_shape.clone(),
+                    area_isom: area_isom.clone(),
+                    source_entity_id: self.caster_entity_id,
+                    typ: HpModificationType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
+                    except: None,
+                });
             if self.spread_count < 1 {
-                sys_vars
+                params
+                    .sys_vars
                     .apply_area_statuses
                     .push(ApplyStatusInAreaComponent {
                         source_entity_id: self.caster_entity_id,
                         status: ApplyStatusComponentPayload::from_secondary(Box::new(
                             FireBombStatus {
                                 caster_entity_id: self.caster_entity_id,
-                                started: sys_vars.time,
-                                until: sys_vars.time.add_seconds(2.0),
+                                started: params.sys_vars.time,
+                                until: params.sys_vars.time.add_seconds(2.0),
                                 damage: self.damage,
                                 spread_count: self.spread_count + 1,
                                 caster_team: self.caster_team,
@@ -122,19 +116,19 @@ impl Status for FireBombStatus {
                         )),
                         area_shape: area_shape.clone(),
                         area_isom: area_isom.clone(),
-                        except: Some(self_char_id),
+                        except: Some(params.self_char_id),
                         nature: StatusNature::Harmful,
                         caster_team: self.caster_team,
                     });
             }
             let effect_comp = StrEffectComponent {
                 effect_id: StrEffectType::FirePillarBomb.into(),
-                pos: char_state.pos(),
-                start_time: sys_vars.time.add_seconds(-0.5),
-                die_at: Some(sys_vars.time.add_seconds(1.0)),
+                pos: params.target_char.pos(),
+                start_time: params.sys_vars.time.add_seconds(-0.5),
+                die_at: Some(params.sys_vars.time.add_seconds(1.0)),
                 play_mode: ActionPlayMode::Repeat,
             };
-            updater.insert(entities.create(), effect_comp);
+            params.updater.insert(params.entities.create(), effect_comp);
 
             StatusUpdateResult::RemoveIt
         } else {

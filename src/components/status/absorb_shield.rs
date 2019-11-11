@@ -1,19 +1,17 @@
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateResult,
+    Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::{
     ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationResultType,
     HpModificationType,
 };
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::SystemVariables;
 use crate::ElapsedTime;
-use specs::LazyUpdate;
 
 #[derive(Clone)]
 pub struct AbsorbStatus {
@@ -41,20 +39,12 @@ impl Status for AbsorbStatus {
         Box::new(self.clone())
     }
 
-    fn update(
-        &mut self,
-        self_char_id: CharEntityId,
-        _char_state: &mut CharacterStateComponent,
-        _physics_world: &mut PhysicEngine,
-        sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        _updater: &mut LazyUpdate,
-    ) -> StatusUpdateResult {
-        if self.until.has_already_passed(sys_vars.time) {
+    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        if self.until.has_already_passed(params.sys_vars.time) {
             if self.absorbed_damage > 0 {
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
+                params.sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.caster_entity_id,
-                    dst_entity: self_char_id,
+                    dst_entity: params.self_char_id,
                     typ: HpModificationType::Heal(self.absorbed_damage),
                 });
             }
@@ -63,9 +53,9 @@ impl Status for AbsorbStatus {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .has_already_passed(sys_vars.time)
+                .has_already_passed(params.sys_vars.time)
             {
-                self.animation_started = sys_vars.time.add_seconds(-1.9);
+                self.animation_started = params.sys_vars.time.add_seconds(-1.9);
             }
             StatusUpdateResult::KeepIt
         }

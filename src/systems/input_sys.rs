@@ -257,31 +257,22 @@ pub struct InputConsumerSystem;
 
 impl<'a> System<'a> for InputConsumerSystem {
     type SystemData = (
-        Entities<'a>,
         WriteStorage<'a, HumanInputComponent>,
         WriteStorage<'a, CameraComponent>,
         WriteExpect<'a, ConsoleCommandBuffer>,
-        ReadStorage<'a, BrowserClient>,
         ReadExpect<'a, SystemVariables>,
     );
 
     fn run(
         &mut self,
         (
-            entities,
             mut input_storage,
             mut camera_storage,
             mut console_command_buffer,
-            browser_storage,
             sys_vars,
         ): Self::SystemData,
     ) {
-        for (controller_id, input, camera) in
-            (&entities, &mut input_storage, &mut camera_storage).join()
-        {
-            // for autocompletion...
-            let input: &mut HumanInputComponent = input;
-
+        for (input, camera) in (&mut input_storage, &mut camera_storage).join() {
             let events: Vec<_> = input.inputs.drain(..).collect();
             input.left_mouse_released = false;
             input.right_mouse_released = false;
@@ -428,17 +419,11 @@ impl<'a> System<'a> for InputConsumerSystem {
                 });
                 // in case of a binding activation, we remove the key from being
                 // "just pressed", so other areas won't register it as a keypress (e.g. console)
-                // (calling key_pressed again on a key will set it as down but not just-pressed)
+                // (calling key_pressed again on the key will set it as "down" but not as "just-pressed")
                 if let Some(key) = key {
                     input.key_pressed(key);
                     input.text.clear();
                 }
-            }
-            if input.is_key_just_pressed(Scancode::Grave)
-                && input.alt_down
-                && browser_storage.get(controller_id).is_none()
-            {
-                input.is_console_open = !input.is_console_open;
             }
 
             if input.is_key_just_released(Scancode::L) && !input.is_console_open {
