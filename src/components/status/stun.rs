@@ -77,7 +77,7 @@ impl Status for StunStatus {
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
+        _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(sys_vars.time) {

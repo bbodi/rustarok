@@ -9,14 +9,14 @@ use specs::prelude::*;
 
 pub struct CameraSystem;
 
-impl<'a> specs::System<'a> for CameraSystem {
+impl<'a> System<'a> for CameraSystem {
     type SystemData = (
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, HumanInputComponent>,
-        specs::ReadStorage<'a, ControllerComponent>,
-        specs::WriteStorage<'a, CameraComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, MapRenderData>,
+        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, HumanInputComponent>,
+        ReadStorage<'a, ControllerComponent>,
+        WriteStorage<'a, CameraComponent>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, MapRenderData>,
     );
 
     fn run(

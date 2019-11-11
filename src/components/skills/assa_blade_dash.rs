@@ -139,7 +139,7 @@ impl Status for AssaBladeDashStatus {
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
+        _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if let Some(body) = physics_world.bodies.rigid_body_mut(char_state.body_handle) {

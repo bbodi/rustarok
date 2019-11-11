@@ -22,6 +22,7 @@ use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(variant_size_differences)]
 pub enum BasicAttack {
     MeleeSimple,
     #[allow(dead_code)]

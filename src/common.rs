@@ -31,17 +31,14 @@ pub fn v3(x: f32, y: f32, z: f32) -> Vec3 {
     Vec3::new(x, y, z)
 }
 
+#[inline]
+pub fn p3(x: f32, y: f32, z: f32) -> Point3<f32> {
+    Point3::<f32>::new(x, y, z)
+}
 #[macro_export]
 macro_rules! p2 {
     ($x:expr, $y:expr) => {
         Point2::<f32>::new($x as f32, $y as f32)
-    };
-}
-
-#[macro_export]
-macro_rules! p3 {
-    ($x:expr, $y:expr, $z:expr) => {
-        Point3::<f32>::new($x as f32, $y as f32, $z as f32)
     };
 }
 
@@ -52,7 +49,7 @@ pub fn p3_to_v2(input: &Point3<f32>) -> Vec2 {
 
 #[inline]
 pub fn v2_to_p3(input: &Vec2) -> Point3<f32> {
-    p3!(input.x, 0.0, input.y)
+    p3(input.x, 0.0, input.y)
 }
 
 #[inline]
@@ -102,7 +99,7 @@ impl Eq for ElapsedTime {}
 
 impl ElapsedTime {
     pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
-        ElapsedTime(self.0 + seconds as f32)
+        ElapsedTime(self.0 + seconds)
     }
 
     pub fn minus(&self, other: ElapsedTime) -> ElapsedTime {

@@ -1,5 +1,3 @@
-extern crate rand;
-
 use std::sync::Mutex;
 
 use nalgebra::Isometry2;

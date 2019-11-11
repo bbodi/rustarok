@@ -1,29 +1,36 @@
-extern crate actix_web;
-extern crate assert_approx_eq;
-extern crate byteorder;
-extern crate config;
-extern crate crossbeam_channel;
-extern crate encoding;
+#![deny(
+//missing_docs,
+warnings,
+anonymous_parameters,
+unused_extern_crates,
+unused_import_braces,
+missing_copy_implementations,
+trivial_casts,
+variant_size_differences,
+//missing_debug_implementations,
+trivial_numeric_casts,
+unused_qualifications,
+clippy::all
+)]
+
+//use byteorder;
+//use config;
+use crossbeam_channel;
+use encoding;
 //#[macro_use]
-//extern crate imgui;
-//extern crate imgui_opengl_renderer;
-//extern crate imgui_sdl2;
-extern crate libflate;
-extern crate log;
-extern crate nalgebra;
-extern crate notify;
-extern crate sdl2;
-extern crate serde;
+//use imgui;
+//use imgui_opengl_renderer;
+//use imgui_sdl2;
+use log;
+use notify;
+use sdl2;
 #[macro_use]
 extern crate serde_json;
-extern crate specs;
+use specs;
 #[macro_use]
 extern crate specs_derive;
-extern crate strum;
-extern crate strum_macros;
-extern crate sublime_fuzzy;
-extern crate vek;
-extern crate websocket;
+use strum;
+use websocket;
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -529,7 +536,7 @@ fn register_systems<'a, 'b>(
 
 fn update_desktop_inputs(
     video: &mut Video,
-    ecs_world: &mut specs::world::World,
+    ecs_world: &mut World,
     desktop_client_controller: ControllerEntityId,
 ) -> bool {
     let mut storage = ecs_world.write_storage::<HumanInputComponent>();
@@ -555,7 +562,7 @@ pub fn get_current_ms(now: SystemTime) -> u64 {
         .as_millis() as u64
 }
 
-fn send_ping_packets(ecs_world: &mut specs::world::World) -> () {
+fn send_ping_packets(ecs_world: &mut World) -> () {
     let now_ms = get_current_ms(SystemTime::now());
     let data = now_ms.to_le_bytes();
     let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
@@ -567,7 +574,7 @@ fn send_ping_packets(ecs_world: &mut specs::world::World) -> () {
     }
 }
 
-fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
+fn spawn_minions(ecs_world: &mut World) -> () {
     {
         let entity_id = create_random_char_minion(
             ecs_world,
@@ -601,7 +608,7 @@ fn spawn_minions(ecs_world: &mut specs::world::World) -> () {
 fn reload_configs_if_changed(
     runtime_conf_watcher_rx: crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
     watcher: notify::RecommendedWatcher,
-    ecs_world: &mut specs::world::World,
+    ecs_world: &mut World,
 ) -> (
     crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
     notify::RecommendedWatcher,
@@ -653,7 +660,7 @@ pub struct ConsoleCommandBuffer {
 
 fn execute_console_commands(
     command_defs: &HashMap<String, CommandDefinition>,
-    ecs_world: &mut specs::world::World,
+    ecs_world: &mut World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
 ) {
@@ -730,7 +737,7 @@ fn execute_console_commands(
 fn execute_console_command(
     cmd: CommandArguments,
     command_defs: &HashMap<String, CommandDefinition>,
-    ecs_world: &mut specs::world::World,
+    ecs_world: &mut World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
 ) {
@@ -751,7 +758,7 @@ fn execute_console_command(
     }
 }
 
-fn execute_finished_skill_castings(ecs_world: &mut specs::world::World) {
+fn execute_finished_skill_castings(ecs_world: &mut World) {
     // TODO: avoid allocating new vec
     let finished_casts = std::mem::replace(
         &mut ecs_world
@@ -811,7 +818,7 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
 //fn imgui_frame(
 //    desktop_client_entity: ControllerEntityId,
 //    video: &mut Video,
-//    ecs_world: &mut specs::world::World,
+//    ecs_world: &mut World,
 //    fps: u64,
 //    fps_history: &[f32],
 //    fov: &mut f32,
@@ -973,11 +980,7 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
 //    return ret;
 //}
 
-fn create_random_char_minion(
-    ecs_world: &mut specs::world::World,
-    pos2d: Vec2,
-    team: Team,
-) -> CharEntityId {
+fn create_random_char_minion(ecs_world: &mut World, pos2d: Vec2, team: Team) -> CharEntityId {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male

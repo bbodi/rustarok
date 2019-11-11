@@ -13,7 +13,7 @@ use crate::asset::binary_reader::BinaryReader;
 use crate::asset::gat::{BlockingRectangle, CellType, Gat};
 use crate::asset::gnd::{Gnd, MeshVertex};
 use crate::asset::rsm::{BoundingBox, Rsm};
-use crate::asset::rsw::{RswModelInstance, WaterData};
+use crate::asset::rsw::RswModelInstance;
 use crate::asset::spr::SpriteFile;
 use crate::asset::texture::TextureId;
 use crate::asset::{GrfEntry, SpriteResource};
@@ -67,14 +67,15 @@ pub(super) enum ToBackgroundAssetLoaderMsg {
         map_name: String,
         rectangles: Vec<BlockingRectangle>,
         gat: Gat,
-        water: WaterData,
+        water_level: f32,
+        water_wave_height: f32,
         colliders: Vec<(Vec2, Vec2)>,
     },
 }
 
 pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
     StartLoadingSpritesResponse {
-        sprites: Sprites,
+        sprites: Box<Sprites>,
         reserved_textures: Vec<ReservedTexturedata<'a>>,
         texture_id_pool: Vec<TextureId>,
     },
@@ -251,7 +252,7 @@ impl<'a> BackgroundAssetLoader<'a> {
                     let sprites = self.load_sprites(&mut texture_id_pool, &mut reserved_textures);
                     self.to_main_thread
                         .send(FromBackgroundAssetLoaderMsg::StartLoadingSpritesResponse {
-                            sprites,
+                            sprites: Box::new(sprites),
                             reserved_textures,
                             texture_id_pool,
                         })
@@ -262,7 +263,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                     map_name,
                     rectangles,
                     gat,
-                    water,
+                    water_level,
+                    water_wave_height: water_height,
                     colliders,
                 } => {
                     let mut reserved_textures = Vec::<ReservedTexturedata>::with_capacity(3);
@@ -270,7 +272,8 @@ impl<'a> BackgroundAssetLoader<'a> {
                         &map_name,
                         &gat,
                         rectangles,
-                        &water,
+                        water_level,
+                        water_height,
                         &colliders,
                         &mut texture_id_pool,
                         &mut reserved_textures,
@@ -370,7 +373,8 @@ impl<'a> BackgroundAssetLoader<'a> {
         map_name: &str,
         gat: &Gat,
         rectangles: Vec<BlockingRectangle>,
-        water: &WaterData,
+        water_level: f32,
+        water_wave_height: f32,
         colliders: &Vec<(Vec2, Vec2)>,
         texture_id_pool: &mut Vec<TextureId>,
         reserved_textures: &mut Vec<ReservedTexturedata>,
@@ -452,7 +456,7 @@ impl<'a> BackgroundAssetLoader<'a> {
             .collect();
         let ground_walkability_mesh3 = vertices;
         let (elapsed, mut ground) = measure_time(|| {
-            self.load_gnd(map_name, water.level, water.wave_height)
+            self.load_gnd(map_name, water_level, water_wave_height)
                 .unwrap()
         });
         log::info!("gnd loaded: {}ms", elapsed.as_millis());
@@ -505,8 +509,8 @@ impl<'a> BackgroundAssetLoader<'a> {
         )
         .unwrap();
 
-        let scaled_w = (width as u32).next_power_of_two();
-        let scaled_h = (height as u32).next_power_of_two();
+        let scaled_w = width.next_power_of_two();
+        let scaled_h = height.next_power_of_two();
 
         let mut scaled_tiles_color_surface =
             sdl2::surface::Surface::new(scaled_w, scaled_h, PixelFormatEnum::BGRA32)
@@ -544,17 +548,16 @@ impl<'a> BackgroundAssetLoader<'a> {
         let surface = {
             sdl2::surface::Surface::from_data(
                 lightmap,
-                width as u32,
-                height as u32,
-                (width as u32) * 4,
+                width,
+                height,
+                width * 4,
                 sdl2::pixels::PixelFormatEnum::BGRA32,
             )
             .unwrap()
         };
         //         clone this surface because the lightmap will be freed when load_ground exits.
         let mut cloned_surface =
-            sdl2::surface::Surface::new(width as u32, height as u32, PixelFormatEnum::BGRA32)
-                .unwrap();
+            sdl2::surface::Surface::new(width, height, PixelFormatEnum::BGRA32).unwrap();
         surface
             .blit_scaled(None, &mut cloned_surface, None)
             .unwrap();

@@ -51,13 +51,13 @@ impl MinionAiSystem {
     }
 }
 
-impl<'a> specs::System<'a> for MinionAiSystem {
+impl<'a> System<'a> for MinionAiSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, ControllerComponent>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, MinionComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
+        Entities<'a>,
+        WriteStorage<'a, ControllerComponent>,
+        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, MinionComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(

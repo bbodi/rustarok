@@ -33,7 +33,7 @@ impl SkillDef for FalconCarrySkill {
         _skill_pos: Option<Vec2>,
         _char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
+        ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
@@ -139,7 +139,7 @@ impl Status for FalconCarryStatus {
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
+        _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.ends_at.has_already_passed(sys_vars.time) {

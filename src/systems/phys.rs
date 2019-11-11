@@ -8,12 +8,12 @@ use specs::prelude::*;
 
 pub struct FrictionSystem;
 
-impl<'a> specs::System<'a> for FrictionSystem {
+impl<'a> System<'a> for FrictionSystem {
     type SystemData = (
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, SystemVariables>,
+        WriteStorage<'a, CharacterStateComponent>,
     );
 
     fn run(
@@ -52,13 +52,13 @@ impl<'a> specs::System<'a> for FrictionSystem {
 
 pub struct PhysCollisionCollectorSystem;
 
-impl<'a> specs::System<'a> for PhysCollisionCollectorSystem {
+impl<'a> System<'a> for PhysCollisionCollectorSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, CollisionsFromPrevFrame>,
+        Entities<'a>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, SystemVariables>,
+        WriteExpect<'a, CollisionsFromPrevFrame>,
     );
 
     fn run(

@@ -14,15 +14,15 @@ use strum::IntoEnumIterator;
 
 pub struct InputToNextActionSystem;
 
-impl<'a> specs::System<'a> for InputToNextActionSystem {
+impl<'a> System<'a> for InputToNextActionSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, HumanInputComponent>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, ControllerComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, MapRenderData>,
+        Entities<'a>,
+        ReadStorage<'a, HumanInputComponent>,
+        ReadStorage<'a, CharacterStateComponent>,
+        WriteStorage<'a, ControllerComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, MapRenderData>,
     );
 
     fn run(

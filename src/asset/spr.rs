@@ -82,7 +82,7 @@ impl SpriteFile {
     }
 
     fn to_rgba(frame: SprFrame, pal: &Vec<u8>) -> SprFrame {
-        let mut buf = Vec::<u8>::with_capacity((frame.width * frame.height * 4) as usize);
+        let mut buf = Vec::<u8>::with_capacity(frame.width * frame.height * 4);
         for y in 0..frame.height {
             for x in 0..frame.width {
                 let idx1 = frame.data[(y * frame.width + x)] as usize * 4;

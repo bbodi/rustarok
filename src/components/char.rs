@@ -645,8 +645,10 @@ pub enum CharType {
 }
 
 #[derive(Clone)]
+#[allow(variant_size_differences)]
 pub enum CharOutlook {
     Monster(MonsterId),
+    // TODO: this variant can be smaller, e.g sex 1 bit, head_index ~8 bit etc
     Player {
         job_sprite_id: JobSpriteId,
         head_index: usize,
@@ -1267,7 +1269,7 @@ impl CharacterStateComponent {
         &mut self,
         self_char_id: CharEntityId,
         sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
+        entities: &Entities,
         updater: &mut LazyUpdate,
         phyisics_world: &mut PhysicEngine,
     ) {

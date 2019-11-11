@@ -462,7 +462,7 @@ impl ShaderParam3x3fv {
                 self.0,
                 1,           // count
                 false as u8, // transpose
-                matrix.as_slice().as_ptr() as *const f32,
+                matrix.as_slice().as_ptr(),
             );
         }
     }
@@ -475,7 +475,7 @@ impl ShaderParam3fv {
             gl.uniform3fv(
                 self.0,
                 1, // count
-                vector.as_ptr() as *const f32,
+                vector.as_ptr(),
             );
         }
     }
@@ -494,7 +494,7 @@ impl ShaderParam4ubv {
                     vector[2] as f32 / 255.0,
                     vector[3] as f32 / 255.0,
                 ]
-                .as_ptr() as *const f32,
+                .as_ptr(),
             );
         }
     }
@@ -505,7 +505,7 @@ impl ShaderParam4ubv {
             gl.uniform4fv(
                 self.0,
                 1, // count
-                vector.as_ptr() as *const f32,
+                vector.as_ptr(),
             );
         }
     }
@@ -518,7 +518,7 @@ impl ShaderParam2fv {
             gl.uniform2fv(
                 self.0,
                 1, // count
-                vector.as_ptr() as *const f32,
+                vector.as_ptr(),
             );
         }
     }
@@ -559,7 +559,7 @@ impl ShaderParam4x4fv {
                 self.0,
                 1,           // count
                 false as u8, // transpose
-                matrix.as_slice().as_ptr() as *const f32,
+                matrix.as_slice().as_ptr(),
             );
         }
     }

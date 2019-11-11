@@ -80,7 +80,7 @@ pub trait Status: Any {
         _target_char: &mut CharacterStateComponent,
         _phyisic_world: &mut PhysicEngine,
         _system_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
+        _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         StatusUpdateResult::KeepIt
@@ -286,7 +286,7 @@ impl Statuses {
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        entities: &specs::Entities,
+        entities: &Entities,
         updater: &mut LazyUpdate,
     ) -> u32 {
         let mut changed: u32 = 0;
@@ -688,7 +688,7 @@ impl Status for PoisonStatus {
         _char_state: &mut CharacterStateComponent,
         _physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
+        _entities: &Entities,
         _updater: &mut LazyUpdate,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(sys_vars.time) {

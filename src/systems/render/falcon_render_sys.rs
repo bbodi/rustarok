@@ -7,12 +7,12 @@ use specs::prelude::*;
 
 pub struct FalconRenderSys;
 
-impl<'a> specs::System<'a> for FalconRenderSys {
+impl<'a> System<'a> for FalconRenderSys {
     type SystemData = (
-        specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::ReadStorage<'a, FalconComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::WriteStorage<'a, RenderCommandCollector>,
+        ReadStorage<'a, SpriteRenderDescriptorComponent>,
+        ReadStorage<'a, FalconComponent>,
+        ReadExpect<'a, SystemVariables>,
+        WriteStorage<'a, RenderCommandCollector>,
     );
 
     fn run(

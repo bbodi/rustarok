@@ -2,7 +2,6 @@ mod basic_attack;
 mod test_firewall;
 mod test_moving;
 
-use crate::assert_approx_eq::*;
 use crate::asset::texture::DUMMY_TEXTURE_ID_FOR_TEST;
 use crate::common::Vec2;
 use crate::components::char::Percentage;
@@ -27,6 +26,7 @@ use crate::systems::{
     SystemVariables,
 };
 use crate::{register_systems, run_main_frame};
+use assert_approx_eq::assert_approx_eq;
 use log::LevelFilter;
 use nalgebra::Vector2;
 use specs::prelude::*;
@@ -97,7 +97,7 @@ fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
     };
 }
 struct CharAsserter<'a> {
-    ecs_world: &'a specs::World,
+    ecs_world: &'a World,
     char_id: CharEntityId,
 }
 
@@ -176,7 +176,7 @@ impl<'a> CharAsserter<'a> {
 }
 
 struct OrderedEventAsserter<'a> {
-    ecs_world: &'a specs::World,
+    ecs_world: &'a World,
     index: usize,
 }
 
@@ -432,8 +432,8 @@ impl<'a> OrderedEventAsserter<'a> {
 }
 
 struct TestUtil<'a, 'b> {
-    pub ecs_world: specs::World,
-    pub ecs_dispatcher: specs::Dispatcher<'a, 'b>,
+    pub ecs_world: World,
+    pub ecs_dispatcher: Dispatcher<'a, 'b>,
     pub timestep: f32,
 }
 

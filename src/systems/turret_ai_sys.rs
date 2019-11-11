@@ -1,3 +1,5 @@
+use specs::prelude::*;
+
 use crate::common::v2_to_p2;
 use crate::components::char::{
     CharacterStateComponent, EntityTarget, TurretComponent, TurretControllerComponent,
@@ -6,21 +8,20 @@ use crate::components::controller::{ControllerComponent, ControllerEntityId, Pla
 use crate::configs::DevConfig;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::SystemFrameDurations;
-use specs::prelude::*;
 
 pub struct TurretAiSystem;
 
 impl TurretAiSystem {}
 
-impl<'a> specs::System<'a> for TurretAiSystem {
+impl<'a> System<'a> for TurretAiSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, ControllerComponent>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, TurretControllerComponent>,
-        specs::ReadStorage<'a, TurretComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, DevConfig>,
+        Entities<'a>,
+        WriteStorage<'a, ControllerComponent>,
+        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, TurretControllerComponent>,
+        ReadStorage<'a, TurretComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, DevConfig>,
     );
 
     fn run(

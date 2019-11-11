@@ -77,7 +77,8 @@ impl<'a> AssetLoader<'a> {
                 map_name: map_name.to_string(),
                 rectangles: rectangles,
                 gat,
-                water,
+                water_level: water.level,
+                water_wave_height: water.wave_height,
                 colliders,
             })
             .expect("");
@@ -113,7 +114,7 @@ impl<'a> AssetLoader<'a> {
                         reserved_textures,
                         texture_id_pool,
                     } => {
-                        sys_vars.assets.sprites = sprites;
+                        sys_vars.assets.sprites = *sprites;
                         log::info!("{} Sprites have been loaded", reserved_textures.len());
                         log::info!("{} Unused texture slot", texture_id_pool.len());
                         AssetLoader::set_reserved_textures(gl, asset_db, reserved_textures)

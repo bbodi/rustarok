@@ -75,7 +75,7 @@ impl Gl {
     ) -> (Gl, sdl2::video::GLContext) {
         // these two variables must be in scope, so don't remove their variables
         let gl_context = window.gl_create_context().unwrap();
-        let _gl = gl::load_with(|s| video.gl_get_proc_address(s) as *const std::os::raw::c_void);
+        let _gl = gl::load_with(|s| video.gl_get_proc_address(s) as *const c_void);
         unsafe {
             gl::Viewport(0, 0, width, height);
             gl::ClearColor(0.3, 0.3, 0.5, 1.0);

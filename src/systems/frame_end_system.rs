@@ -6,11 +6,11 @@ use specs::prelude::*;
 
 pub struct FrameEndSystem;
 
-impl<'a> specs::System<'a> for FrameEndSystem {
+impl<'a> System<'a> for FrameEndSystem {
     type SystemData = (
-        specs::WriteStorage<'a, RenderCommandCollector>,
-        specs::WriteStorage<'a, AudioCommandCollectorComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
+        WriteStorage<'a, RenderCommandCollector>,
+        WriteStorage<'a, AudioCommandCollectorComponent>,
+        WriteExpect<'a, SystemVariables>,
     );
 
     fn run(

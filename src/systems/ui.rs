@@ -32,7 +32,7 @@ impl RenderUI {
         sys_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
-        entities: &specs::Entities,
+        entities: &Entities,
         camera_pos: &Vec3,
         is_browser: bool,
         asset_db: &AssetDatabase,
@@ -131,7 +131,7 @@ impl RenderUI {
         sys_vars: &mut SystemVariables,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
-        entities: &specs::Entities,
+        entities: &Entities,
         camera_pos: &Vec3,
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
@@ -551,7 +551,7 @@ fn render_action_2d(
         let elapsed_time = sys_vars
             .time
             .elapsed_since(animated_sprite.animation_started);
-        ((elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count) as usize
+        (elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count
     };
     let animation = &action.frames[frame_index];
     for layer in &animation.layers {

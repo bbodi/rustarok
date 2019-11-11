@@ -14,16 +14,16 @@ use std::collections::HashMap;
 
 pub struct CharacterStateUpdateSystem;
 
-impl<'a> specs::System<'a> for CharacterStateUpdateSystem {
+impl<'a> System<'a> for CharacterStateUpdateSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, NpcComponent>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteExpect<'a, CollisionsFromPrevFrame>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::Write<'a, LazyUpdate>,
+        Entities<'a>,
+        ReadStorage<'a, NpcComponent>,
+        WriteStorage<'a, CharacterStateComponent>,
+        WriteExpect<'a, SystemVariables>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteExpect<'a, CollisionsFromPrevFrame>,
+        WriteExpect<'a, SystemFrameDurations>,
+        Write<'a, LazyUpdate>,
     );
 
     fn run(

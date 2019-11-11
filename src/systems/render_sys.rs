@@ -55,15 +55,15 @@ impl RenderDesktopClientSystem {
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
-        physics_world: &specs::ReadExpect<'a, PhysicEngine>,
+        physics_world: &ReadExpect<'a, PhysicEngine>,
         sys_vars: &SystemVariables,
         dev_configs: &DevConfig,
-        char_state_storage: &specs::ReadStorage<'a, CharacterStateComponent>,
-        entities: &specs::Entities<'a>,
-        sprite_storage: &specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
-        skill_storage: &specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
-        str_effect_storage: &specs::ReadStorage<'a, StrEffectComponent>,
-        updater: &specs::Write<'a, LazyUpdate>,
+        char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
+        entities: &Entities<'a>,
+        sprite_storage: &ReadStorage<'a, SpriteRenderDescriptorComponent>,
+        skill_storage: &ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
+        str_effect_storage: &ReadStorage<'a, StrEffectComponent>,
+        updater: &Write<'a, LazyUpdate>,
         system_benchmark: &mut SystemFrameDurations,
         asset_db: &AssetDatabase,
         render_only_chars: bool,
@@ -624,29 +624,29 @@ struct ControllerAndControlled<'a> {
     controlled_char: &'a CharacterStateComponent,
 }
 
-impl<'a> specs::System<'a> for RenderDesktopClientSystem {
+impl<'a> System<'a> for RenderDesktopClientSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::ReadStorage<'a, HumanInputComponent>,
-        specs::ReadStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, ControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
-        specs::WriteExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, DevConfig>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
-        specs::ReadStorage<'a, StrEffectComponent>,
-        specs::ReadStorage<'a, CameraComponent>,
-        specs::ReadExpect<'a, PhysicEngine>,
-        specs::Write<'a, LazyUpdate>,
-        specs::ReadStorage<'a, FlyingNumberComponent>,
-        specs::ReadStorage<'a, SoundEffectComponent>,
-        specs::WriteStorage<'a, RenderCommandCollector>,
-        specs::WriteStorage<'a, AudioCommandCollectorComponent>,
-        specs::ReadExpect<'a, AssetDatabase>,
-        specs::ReadStorage<'a, NpcComponent>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadExpect<'a, MapRenderData>,
+        Entities<'a>,
+        ReadStorage<'a, HumanInputComponent>,
+        ReadStorage<'a, SpriteRenderDescriptorComponent>,
+        ReadStorage<'a, CharacterStateComponent>,
+        WriteStorage<'a, ControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
+        WriteExpect<'a, SystemVariables>,
+        ReadExpect<'a, DevConfig>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
+        ReadStorage<'a, StrEffectComponent>,
+        ReadStorage<'a, CameraComponent>,
+        ReadExpect<'a, PhysicEngine>,
+        Write<'a, LazyUpdate>,
+        ReadStorage<'a, FlyingNumberComponent>,
+        ReadStorage<'a, SoundEffectComponent>,
+        WriteStorage<'a, RenderCommandCollector>,
+        WriteStorage<'a, AudioCommandCollectorComponent>,
+        ReadExpect<'a, AssetDatabase>,
+        ReadStorage<'a, NpcComponent>,
+        ReadStorage<'a, BrowserClient>,
+        ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
@@ -1047,14 +1047,14 @@ impl DamageRenderSystem {
 
     pub fn run(
         &self,
-        entities: &specs::Entities,
-        numbers: &specs::ReadStorage<FlyingNumberComponent>,
-        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
+        entities: &Entities,
+        numbers: &ReadStorage<FlyingNumberComponent>,
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
         followed_char_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
-        updater: &specs::Write<LazyUpdate>,
+        updater: &Write<LazyUpdate>,
         render_commands: &mut RenderCommandCollector,
     ) {
         for (entity_id, number) in (entities, numbers).join() {
@@ -1076,7 +1076,7 @@ impl DamageRenderSystem {
 
     fn add_render_command(
         number: &FlyingNumberComponent,
-        char_state_storage: &specs::ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<CharacterStateComponent>,
         desktop_entity_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
@@ -1113,9 +1113,7 @@ impl DamageRenderSystem {
             FlyingNumberType::Absorb => 120.0,
         };
 
-        let perc = now
-            .elapsed_since(number.start_time)
-            .div(number.duration as f32);
+        let perc = now.elapsed_since(number.start_time).div(number.duration);
 
         // render sub damages for combo
         if let FlyingNumberType::Combo {
@@ -1470,6 +1468,6 @@ impl RenderDesktopClientSystem {
         for layer_index in 0..str_file.layers.len() {
             render_commands.add_effect_command(world_pos, effect_id, key_index, layer_index);
         }
-        return real_index >= max_key as i32 && play_mode == ActionPlayMode::Once;
+        return real_index >= max_key && play_mode == ActionPlayMode::Once;
     }
 }

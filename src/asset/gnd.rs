@@ -422,7 +422,7 @@ impl Gnd {
                 let texture = texture_indices[buf.next_u16() as usize];
 
                 let u = (texture % atlas_cols as usize) as f32;
-                let v = (texture as f32 / atlas_cols as f32).floor();
+                let v = (texture as f32 / atlas_cols).floor();
 
                 Tile {
                     u1: (u + u1 * (1f32 - atlas_px_u * 2f32) + atlas_px_u) * atlas_factor_u
@@ -454,7 +454,7 @@ impl Gnd {
         let height = (lightmap.count as f32).sqrt().ceil() as usize;
         let _width = (width * 8).next_power_of_two();
         let _height = (height * 8).next_power_of_two();
-        let mut out = vec![0; (_width * _height * 4) as usize];
+        let mut out = vec![0; _width * _height * 4];
 
         for i in 0..(lightmap.count as usize) {
             let per_cell = lightmap.per_cell as usize;
@@ -463,7 +463,7 @@ impl Gnd {
             let y = i.checked_div(width).unwrap_or(0) * 8;
             for _x in 0..8 {
                 for _y in 0..8 {
-                    let idx = (((x + _x) + (y + _y) * _width) * 4) as usize;
+                    let idx = ((x + _x) + (y + _y) * _width) * 4;
                     out[idx + 0] = lightmap.data[pos + per_cell + (_x + _y * 8) * 3 + 0] >> 4 << 4; // Posterisation
                     out[idx + 1] = lightmap.data[pos + per_cell + (_x + _y * 8) * 3 + 1] >> 4 << 4; // Posterisation
                     out[idx + 2] = lightmap.data[pos + per_cell + (_x + _y * 8) * 3 + 2] >> 4 << 4; // Posterisation
@@ -522,7 +522,7 @@ impl Gnd {
                 let cell = &surfaces[y * width + x];
                 if cell.tile_up > -1 {
                     let color = tiles[cell.tile_up as usize].color;
-                    let from = (y * width + x) as usize * 4;
+                    let from = (y * width + x) * 4;
                     let to = from + 4;
                     data[from..to].copy_from_slice(&color);
                 }
@@ -546,7 +546,7 @@ impl Gnd {
                 Vector3::zeros(),
                 Vector3::zeros()
             ];
-            (width * height) as usize
+            width * height
         ];
         pub fn triangle_normal(
             p1: &Vector3<f32>,
@@ -557,7 +557,7 @@ impl Gnd {
         }
         for y in 0..height {
             for x in 0..width {
-                let cell = &surfaces[(y * width + x) as usize];
+                let cell = &surfaces[y * width + x];
                 if cell.tile_up > -1 {
                     let a: Vector3<f32> =
                         Vector3::new(((x + 0) * 2) as f32, cell.height[0], ((y + 0) * 2) as f32);
@@ -569,7 +569,7 @@ impl Gnd {
                         Vector3::new(((x + 0) * 2) as f32, cell.height[2], ((y + 1) * 2) as f32);
                     let t1 = triangle_normal(&a, &b, &c);
                     let t2 = triangle_normal(&c, &d, &a);
-                    tmp[(y * width + x) as usize] = (t1 + t2).normalize();
+                    tmp[y * width + x] = (t1 + t2).normalize();
                 }
             }
         }

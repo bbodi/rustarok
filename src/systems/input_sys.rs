@@ -38,13 +38,13 @@ fn read_i16(iter: &mut Enumerate<Iter<u8>>) -> i16 {
     return ((*upper_byte as i16) << 8) | *lower_byte as i16;
 }
 
-impl<'a> specs::System<'a> for BrowserInputProducerSystem {
+impl<'a> System<'a> for BrowserInputProducerSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, HumanInputComponent>,
-        specs::WriteStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, CharacterStateComponent>,
-        specs::Write<'a, LazyUpdate>,
+        Entities<'a>,
+        WriteStorage<'a, HumanInputComponent>,
+        WriteStorage<'a, BrowserClient>,
+        ReadStorage<'a, CharacterStateComponent>,
+        Write<'a, LazyUpdate>,
     );
 
     fn run(
@@ -83,11 +83,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     }
                                     let mouse_x: u16 = read_u16(&mut iter);
                                     let mouse_y: u16 = read_u16(&mut iter);
-                                    let mousestate = {
-                                        unsafe {
-                                            std::mem::transmute((0 as u32, 0 as i32, 0 as i32))
-                                        }
-                                    };
+                                    let mousestate = { unsafe { std::mem::transmute((0, 0, 0)) } };
                                     input_producer.inputs.push(sdl2::event::Event::MouseMotion {
                                         timestamp: 0,
                                         window_id: 0,
@@ -205,7 +201,7 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
                                     input_producer.inputs.push(sdl2::event::Event::MouseWheel {
                                         which: 0,
                                         x: 0,
-                                        y: delta_y as i32,
+                                        y: delta_y,
                                         direction: MouseWheelDirection::Normal,
                                         timestamp: 0,
                                         window_id: 0,
@@ -259,14 +255,14 @@ impl<'a> specs::System<'a> for BrowserInputProducerSystem {
 
 pub struct InputConsumerSystem;
 
-impl<'a> specs::System<'a> for InputConsumerSystem {
+impl<'a> System<'a> for InputConsumerSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, HumanInputComponent>,
-        specs::WriteStorage<'a, CameraComponent>,
-        specs::WriteExpect<'a, ConsoleCommandBuffer>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadExpect<'a, SystemVariables>,
+        Entities<'a>,
+        WriteStorage<'a, HumanInputComponent>,
+        WriteStorage<'a, CameraComponent>,
+        WriteExpect<'a, ConsoleCommandBuffer>,
+        ReadStorage<'a, BrowserClient>,
+        ReadExpect<'a, SystemVariables>,
     );
 
     fn run(

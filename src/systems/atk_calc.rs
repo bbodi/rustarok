@@ -35,16 +35,16 @@ impl AttackSystem {
     }
 }
 
-impl<'a> specs::System<'a> for AttackSystem {
+impl<'a> System<'a> for AttackSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, DevConfig>,
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::Write<'a, LazyUpdate>,
-        Option<specs::Write<'a, Vec<SystemEvent>>>,
+        Entities<'a>,
+        WriteStorage<'a, CharacterStateComponent>,
+        WriteExpect<'a, SystemVariables>,
+        ReadExpect<'a, DevConfig>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteExpect<'a, SystemFrameDurations>,
+        Write<'a, LazyUpdate>,
+        Option<Write<'a, Vec<SystemEvent>>>,
     );
 
     fn run(
@@ -266,7 +266,7 @@ impl AttackCalculation {
 
     pub fn apply_hp_mod_on_area(
         entities: &Entities,
-        char_storage: &specs::WriteStorage<CharacterStateComponent>,
+        char_storage: &WriteStorage<CharacterStateComponent>,
         area_hpmod_req: &AreaAttackComponent,
     ) -> Vec<HpModificationRequest> {
         let mut result_attacks = vec![];
@@ -302,7 +302,7 @@ impl AttackCalculation {
 
     pub fn apply_statuses_on_area(
         entities: &Entities,
-        char_storage: &specs::WriteStorage<CharacterStateComponent>,
+        char_storage: &WriteStorage<CharacterStateComponent>,
         area_status: &ApplyStatusInAreaComponent,
     ) -> Vec<ApplyStatusComponent> {
         let mut result_statuses = vec![];
@@ -371,7 +371,7 @@ impl AttackCalculation {
                 if atk <= 0 {
                     hp_mod_req.blocked()
                 } else {
-                    hp_mod_req.allow(dmg as u32)
+                    hp_mod_req.allow(dmg)
                 }
             }
         };

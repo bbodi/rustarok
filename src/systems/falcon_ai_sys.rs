@@ -143,16 +143,16 @@ impl FalconAiSystem {}
 pub const FALCON_FLY_HEIGHT: f32 = 5.0;
 pub const FALCON_LOWERED_HEIGHT: f32 = 2.0;
 
-impl<'a> specs::System<'a> for FalconAiSystem {
+impl<'a> System<'a> for FalconAiSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, FalconComponent>,
-        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadStorage<'a, ControllerComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteExpect<'a, SystemVariables>,
+        Entities<'a>,
+        WriteStorage<'a, FalconComponent>,
+        WriteStorage<'a, SpriteRenderDescriptorComponent>,
+        WriteStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, ControllerComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteExpect<'a, SystemVariables>,
     );
 
     fn run(

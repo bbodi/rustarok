@@ -7,16 +7,16 @@ use crate::PhysicEngine;
 
 pub struct SkillSystem;
 
-impl<'a> specs::System<'a> for SkillSystem {
+impl<'a> System<'a> for SkillSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteExpect<'a, SystemVariables>,
-        specs::WriteExpect<'a, CollisionsFromPrevFrame>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::WriteExpect<'a, PhysicEngine>,
-        specs::WriteStorage<'a, SkillManifestationComponent>,
-        specs::Write<'a, LazyUpdate>,
+        Entities<'a>,
+        WriteStorage<'a, CharacterStateComponent>,
+        WriteExpect<'a, SystemVariables>,
+        WriteExpect<'a, CollisionsFromPrevFrame>,
+        WriteExpect<'a, SystemFrameDurations>,
+        WriteExpect<'a, PhysicEngine>,
+        WriteStorage<'a, SkillManifestationComponent>,
+        Write<'a, LazyUpdate>,
     );
 
     fn run(

@@ -27,7 +27,7 @@ impl SkillDef for GazTurretSkill {
         skill_pos: Option<Vec2>,
         _char_to_skill_dir: &Vec2,
         _target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
+        ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .read_storage::<CharacterStateComponent>()
@@ -78,7 +78,7 @@ impl SkillDef for GazDestroyTurretSkill {
         _skill_pos: Option<Vec2>,
         _char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
+        ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if target_entity
             .and_then(|it| {
@@ -121,7 +121,7 @@ impl SkillDef for GazTurretTargetSkill {
         _skill_pos: Option<Vec2>,
         _char_to_skill_dir: &Vec2,
         target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
+        ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         for turret in (&mut ecs_world.write_storage::<TurretComponent>()).join() {
             if turret.owner_entity_id == caster_entity_id {

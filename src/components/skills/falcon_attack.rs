@@ -37,7 +37,7 @@ impl SkillDef for FalconAttackSkill {
         _skill_pos: Option<Vec2>,
         char_to_skill_dir: &Vec2,
         _target_entity: Option<CharEntityId>,
-        ecs_world: &mut specs::world::World,
+        ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
@@ -123,8 +123,8 @@ impl SkillManifestation for FalconAttackSkillManifestation {
         self_entity_id: Entity,
         all_collisions_in_world: &WorldCollisions,
         sys_vars: &mut SystemVariables,
-        _entities: &specs::Entities,
-        char_storage: &mut specs::WriteStorage<CharacterStateComponent>,
+        _entities: &Entities,
+        char_storage: &mut WriteStorage<CharacterStateComponent>,
         physics_world: &mut PhysicEngine,
         updater: &mut LazyUpdate,
     ) {

@@ -197,7 +197,7 @@ impl Gat {
         width: usize,
         height: usize,
     ) -> Vec<BlockingRectangle> {
-        let mut heights = vec![0; (width * height) as usize];
+        let mut heights = vec![0; width * height];
         let mut row_heights = Vec::<BlockingRectangle>::with_capacity(height);
         for (i, _cell) in cells.iter().enumerate() {
             let x = i % width;
@@ -236,7 +236,7 @@ impl Gat {
         let mut max_start_i = 0;
         let mut max_height = 0;
         for x in 0..width {
-            let reference_bar_h = heights[x] as usize;
+            let reference_bar_h = heights[x];
             if reference_bar_h == 0 {
                 continue;
             }

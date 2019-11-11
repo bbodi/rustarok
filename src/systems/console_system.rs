@@ -207,7 +207,7 @@ impl<'a> ConsoleSystem<'a> {
             let prev_char_is_space = console
                 .input
                 .chars()
-                .nth(console.cursor_x as usize - 1)
+                .nth(console.cursor_x - 1)
                 .unwrap()
                 .is_whitespace();
             let predicate = |ch: char| -> bool {
@@ -240,7 +240,7 @@ impl<'a> ConsoleSystem<'a> {
                 };
             (new_input, new_x)
         } else {
-            if console.cursor_x as usize >= console.input.chars().count() {
+            if console.cursor_x >= console.input.chars().count() {
                 console.input.pop();
             } else {
                 let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x - 1);
@@ -263,7 +263,7 @@ impl<'a> ConsoleSystem<'a> {
             let next_char_is_space = console
                 .input
                 .chars()
-                .nth(console.cursor_x as usize)
+                .nth(console.cursor_x)
                 .unwrap()
                 .is_whitespace();
             let predicate = |ch: char| -> bool {
@@ -294,7 +294,7 @@ impl<'a> ConsoleSystem<'a> {
                     .collect::<String>()
             }
         } else {
-            if console.cursor_x as usize >= console.input.chars().count() - 1 {
+            if console.cursor_x >= console.input.chars().count() - 1 {
                 console.input.pop();
             } else {
                 let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
@@ -312,7 +312,7 @@ impl<'a> ConsoleSystem<'a> {
             let next_char_is_space = console
                 .input
                 .chars()
-                .nth(console.cursor_x as usize)
+                .nth(console.cursor_x)
                 .unwrap()
                 .is_whitespace();
             let predicate = |ch: char| -> bool {
@@ -341,7 +341,7 @@ impl<'a> ConsoleSystem<'a> {
             let prev_char_is_space = console
                 .input
                 .chars()
-                .nth(console.cursor_x as usize - 1)
+                .nth(console.cursor_x - 1)
                 .unwrap()
                 .is_whitespace();
             let predicate = |ch: char| -> bool {
@@ -399,7 +399,7 @@ impl<'a> ConsoleSystem<'a> {
         &mut self,
         text: &str,
         console: &mut ConsoleComponent,
-        input_storage: &specs::ReadStorage<HumanInputComponent>,
+        input_storage: &ReadStorage<HumanInputComponent>,
     ) {
         let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
         console.input.insert_str(idx, text);
@@ -577,7 +577,7 @@ impl<'a> ConsoleSystem<'a> {
         &self,
         console: &mut ConsoleComponent,
         autocompletion: AutocompletionType,
-        input_storage: &specs::ReadStorage<HumanInputComponent>,
+        input_storage: &ReadStorage<HumanInputComponent>,
     ) {
         match autocompletion {
             AutocompletionType::CommandName => {
@@ -625,15 +625,12 @@ impl<'a> ConsoleSystem<'a> {
 
     fn get_byte_pos(text: &str, index: usize) -> usize {
         text.char_indices()
-            .nth(index as usize)
+            .nth(index)
             .unwrap_or((text.len(), '0'))
             .0
     }
 
-    pub fn get_user_id_by_name(
-        ecs_world: &specs::World,
-        username: &str,
-    ) -> Option<ControllerEntityId> {
+    pub fn get_user_id_by_name(ecs_world: &World, username: &str) -> Option<ControllerEntityId> {
         for (entity_id, human) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<HumanInputComponent>(),
@@ -647,7 +644,7 @@ impl<'a> ConsoleSystem<'a> {
         return None;
     }
 
-    pub fn get_char_id_by_name(ecs_world: &specs::World, username: &str) -> Option<CharEntityId> {
+    pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<CharEntityId> {
         for (entity_id, char_state) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<CharacterStateComponent>(),
@@ -893,7 +890,7 @@ pub trait AutocompletionProvider {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        input_storage: &specs::ReadStorage<HumanInputComponent>,
+        input_storage: &ReadStorage<HumanInputComponent>,
     ) -> Option<Vec<String>>;
 }
 
@@ -912,7 +909,7 @@ impl AutocompletionProvider for BasicAutocompletionProvider {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        _input_storage: &specs::ReadStorage<HumanInputComponent>,
+        _input_storage: &ReadStorage<HumanInputComponent>,
     ) -> Option<Vec<String>> {
         (self.0)(param_index)
     }
@@ -922,8 +919,8 @@ pub struct AutocompletionProviderWithUsernameCompletion(
     Box<
         dyn Fn(
             usize,
-            Box<dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>>,
-            &specs::ReadStorage<HumanInputComponent>,
+            Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>>,
+            &ReadStorage<HumanInputComponent>,
         ) -> Option<Vec<String>>,
     >,
 );
@@ -933,8 +930,8 @@ impl AutocompletionProviderWithUsernameCompletion {
     where
         F: Fn(
                 usize,
-                Box<dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>>,
-                &specs::ReadStorage<HumanInputComponent>,
+                Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>>,
+                &ReadStorage<HumanInputComponent>,
             ) -> Option<Vec<String>>
             + 'static,
     {
@@ -948,17 +945,16 @@ impl AutocompletionProvider for AutocompletionProviderWithUsernameCompletion {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        input_storage: &specs::ReadStorage<HumanInputComponent>,
+        input_storage: &ReadStorage<HumanInputComponent>,
     ) -> Option<Vec<String>> {
-        let username_completor: Box<
-            dyn Fn(&specs::ReadStorage<HumanInputComponent>) -> Vec<String>,
-        > = Box::new(|input_storage| {
-            let mut usernames = Vec::with_capacity(12);
-            for input in input_storage.join() {
-                usernames.push(input.username.clone());
-            }
-            usernames
-        });
+        let username_completor: Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>> =
+            Box::new(|input_storage| {
+                let mut usernames = Vec::with_capacity(12);
+                for input in input_storage.join() {
+                    usernames.push(input.username.clone());
+                }
+                usernames
+            });
         (self.0)(param_index, username_completor, input_storage)
     }
 }
@@ -972,12 +968,7 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback = Box<
-    dyn Fn(
-        ControllerEntityId,
-        CharEntityId,
-        &CommandArguments,
-        &mut specs::World,
-    ) -> Result<(), String>,
+    dyn Fn(ControllerEntityId, CharEntityId, &CommandArguments, &mut World) -> Result<(), String>,
 >;
 
 pub enum ConsoleWordType {
@@ -1018,13 +1009,13 @@ pub struct ConsoleEntry {
     words: Vec<ConsoleWords>,
 }
 
-impl<'a, 'b> specs::System<'a> for ConsoleSystem<'b> {
+impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
     type SystemData = (
-        specs::ReadStorage<'a, HumanInputComponent>,
-        specs::WriteStorage<'a, ConsoleComponent>,
-        specs::WriteStorage<'a, RenderCommandCollector>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, DevConfig>,
+        ReadStorage<'a, HumanInputComponent>,
+        WriteStorage<'a, ConsoleComponent>,
+        WriteStorage<'a, RenderCommandCollector>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, DevConfig>,
     );
 
     fn run(

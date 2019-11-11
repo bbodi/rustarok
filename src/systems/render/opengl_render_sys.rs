@@ -441,7 +441,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
         }
         for i in 0..stack_count {
             let mut k1 = (i * (sector_count + 1)) as usize;
-            let mut k2 = (k1 + sector_count as usize + 1) as usize;
+            let mut k2 = k1 + sector_count as usize + 1;
             for _j in 0..sector_count {
                 if i != 0 {
                     vertex(&vertices, &uvs, &mut vao, k1);
@@ -689,16 +689,16 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
     }
 }
 
-impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
+impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
-        specs::ReadStorage<'a, RenderCommandCollector>,
-        specs::ReadStorage<'a, BrowserClient>,
-        specs::ReadStorage<'a, CameraComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, AssetDatabase>,
-        specs::ReadExpect<'a, Gl>,
-        specs::ReadExpect<'a, MapRenderData>,
+        ReadStorage<'a, RenderCommandCollector>,
+        ReadStorage<'a, BrowserClient>,
+        ReadStorage<'a, CameraComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, AssetDatabase>,
+        ReadExpect<'a, Gl>,
+        ReadExpect<'a, MapRenderData>,
     );
 
     fn run(
@@ -1067,7 +1067,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         shader
                             .params
                             .scale
-                            .set(gl, &[command.width as f32, 1.0, command.height as f32]);
+                            .set(gl, &[command.width, 1.0, command.height]);
                         centered_rectangle_vao_bind.draw(&gl);
                     }
                 }
@@ -1173,7 +1173,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                         gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
                     let matrix =
-                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
+                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
                     shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
@@ -1210,7 +1210,7 @@ impl<'a> specs::System<'a> for OpenGlRenderSystem<'_, '_> {
                     shader.params.color.set(gl, &command.color);
                     // TODO: is rotation necessary for 2d rect?
                     let matrix =
-                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad as f32);
+                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
                     shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params

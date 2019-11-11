@@ -68,10 +68,10 @@ impl SoundSystem {
     }
 }
 
-impl<'a> specs::System<'a> for SoundSystem {
+impl<'a> System<'a> for SoundSystem {
     type SystemData = (
-        specs::ReadStorage<'a, AudioCommandCollectorComponent>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
+        ReadStorage<'a, AudioCommandCollectorComponent>,
+        WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(&mut self, (audio_commands, mut system_benchmark): Self::SystemData) {

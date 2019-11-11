@@ -25,7 +25,7 @@ use websocket::OwnedMessage;
 
 pub fn handle_new_connections(
     map_name: &str,
-    ecs_world: &mut specs::World,
+    ecs_world: &mut World,
     websocket_server: &mut WsServer<NoTlsAcceptor, TcpListener>,
 ) -> () {
     match websocket_server.accept() {

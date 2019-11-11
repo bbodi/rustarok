@@ -1009,12 +1009,12 @@ impl Sprite3dRenderCommand {
             self.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale,
         ];
         let mut top_right = Vector4::new(0.5 * width, 0.5 * height, 0.0, 1.0);
-        top_right.x += offset_in_3d_space[0] as f32;
-        top_right.y -= offset_in_3d_space[1] as f32;
+        top_right.x += offset_in_3d_space[0];
+        top_right.y -= offset_in_3d_space[1];
 
         let mut bottom_left = Vector4::new(-0.5 * width, -0.5 * height, 0.0, 1.0);
-        bottom_left.x += offset_in_3d_space[0] as f32;
-        bottom_left.y -= offset_in_3d_space[1] as f32;
+        bottom_left.x += offset_in_3d_space[0];
+        bottom_left.y -= offset_in_3d_space[1];
         if bottom_left.y.is_nan() || self.pos.y.is_nan() {
             dbg!(bottom_left);
             dbg!(width);

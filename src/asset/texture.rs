@@ -22,10 +22,7 @@ struct GlTextureContext {
 
 impl Drop for GlTextureContext {
     fn drop(&mut self) {
-        unsafe {
-            self.gl_for_drop
-                .delete_textures(1, &(self.native_id).0 as *const c_uint)
-        }
+        unsafe { self.gl_for_drop.delete_textures(1, &(self.native_id).0) }
     }
 }
 

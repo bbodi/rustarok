@@ -15,13 +15,13 @@ use specs::prelude::*;
 
 pub struct NextActionApplierSystem;
 
-impl<'a> specs::System<'a> for NextActionApplierSystem {
+impl<'a> System<'a> for NextActionApplierSystem {
     type SystemData = (
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, ControllerComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, DevConfig>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
+        WriteStorage<'a, CharacterStateComponent>,
+        WriteStorage<'a, ControllerComponent>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, DevConfig>,
+        WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(
@@ -82,11 +82,11 @@ impl<'a> specs::System<'a> for NextActionApplierSystem {
 
 pub struct UpdateCharSpriteBasedOnStateSystem;
 
-impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
+impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
     type SystemData = (
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
+        WriteStorage<'a, CharacterStateComponent>,
+        WriteStorage<'a, SpriteRenderDescriptorComponent>,
+        ReadExpect<'a, SystemVariables>,
     );
 
     fn run(&mut self, (char_state_storage, mut sprite_storage, sys_vars): Self::SystemData) {
@@ -152,12 +152,12 @@ impl<'a> specs::System<'a> for UpdateCharSpriteBasedOnStateSystem {
 
 pub struct SavePreviousCharStateSystem;
 
-impl<'a> specs::System<'a> for SavePreviousCharStateSystem {
+impl<'a> System<'a> for SavePreviousCharStateSystem {
     type SystemData = (
-        specs::Entities<'a>,
-        specs::WriteStorage<'a, CharacterStateComponent>,
-        specs::ReadExpect<'a, SystemVariables>,
-        Option<specs::Write<'a, Vec<SystemEvent>>>,
+        Entities<'a>,
+        WriteStorage<'a, CharacterStateComponent>,
+        ReadExpect<'a, SystemVariables>,
+        Option<Write<'a, Vec<SystemEvent>>>,
     );
 
     fn run(&mut self, (entities, mut char_state_storage, sys_vars, mut events): Self::SystemData) {

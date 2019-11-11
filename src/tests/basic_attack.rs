@@ -201,6 +201,6 @@ fn sacrifice_100_percent() {
     // 10% of the damage is redirected to the 'sacrifice' char
     test_util
         .assert_events_in_order()
-        .basic_damage_eq(attacker_id, attacked_id, 0 as u32)
+        .basic_damage_eq(attacker_id, attacked_id, 0)
         .basic_damage_eq(attacker_id, sacrifice_id, 120);
 }

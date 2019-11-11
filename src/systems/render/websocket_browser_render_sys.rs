@@ -26,13 +26,13 @@ impl WebSocketBrowserRenderSystem {
     }
 }
 
-impl<'a> specs::System<'a> for WebSocketBrowserRenderSystem {
+impl<'a> System<'a> for WebSocketBrowserRenderSystem {
     type SystemData = (
-        specs::ReadStorage<'a, RenderCommandCollector>,
-        specs::WriteStorage<'a, BrowserClient>,
-        specs::WriteExpect<'a, SystemFrameDurations>,
-        specs::ReadExpect<'a, SystemVariables>,
-        specs::ReadExpect<'a, DevConfig>,
+        ReadStorage<'a, RenderCommandCollector>,
+        WriteStorage<'a, BrowserClient>,
+        WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, DevConfig>,
     );
 
     fn run(
