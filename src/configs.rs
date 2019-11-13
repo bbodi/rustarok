@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub log_level: String,
     pub start_pos_x: f32,
     pub start_pos_y: f32,
+    pub resolution_w: u32,
+    pub resolution_h: u32,
     pub grf_paths: Vec<String>,
 }
 

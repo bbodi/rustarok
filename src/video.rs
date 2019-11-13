@@ -9,7 +9,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use crate::asset::asset_loader::AssetLoader;
 use sdl2::render::BlendMode;
 use sdl2::ttf::Sdl2TtfContext;
-use sdl2::video::Window;
+use sdl2::video::{DisplayMode, FullscreenType, Window};
 use sdl2::EventPump;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
@@ -21,31 +21,46 @@ pub struct Video {
     //    pub imgui_sdl2: ImguiSdl2,
     //    pub renderer: Renderer,
     pub event_pump: EventPump,
+    // !!! gl_context: sdl2::video::GLContext THIS MUST BE KEPT IN SCOPE, DON'T REMOVE IT!
+    _gl_context: sdl2::video::GLContext,
+    original_displaymode: DisplayMode,
 }
 
-pub const VIDEO_WIDTH: u32 = 1024;
-pub const VIDEO_HEIGHT: u32 = 768;
-
 impl Video {
-    pub fn init(sdl_context: &sdl2::Sdl) -> (Video, Gl, sdl2::video::GLContext) {
+    pub fn init(
+        sdl_context: &sdl2::Sdl,
+        resolution_w: u32,
+        resolution_h: u32,
+    ) -> (Video, Gl, Vec<String>) {
         sdl_context.mouse().show_cursor(true); // false
         let video = sdl_context.video().unwrap();
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(4, 5);
         let window = video
-            .window("Rustarok", VIDEO_WIDTH, VIDEO_HEIGHT)
+            .window("Rustarok", resolution_w, resolution_h)
             .opengl()
             .allow_highdpi()
             //            .resizable()
             .build()
             .unwrap();
-        let (gl, gl_context) = Gl::new(&video, &window, VIDEO_WIDTH as i32, VIDEO_HEIGHT as i32);
+        let (gl, gl_context) = Gl::new(&video, &window, resolution_w as i32, resolution_h as i32);
         //        let mut imgui = imgui::ImGui::init();
         //        imgui.set_ini_filename(None);
         //        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
         //        let renderer =
         //            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+
+        let display_modes = (0..video.num_display_modes(0).unwrap())
+            .map(|i| {
+                let display_mode = video.display_mode(0, i).unwrap();
+                format!(
+                    "{}x{}@{}",
+                    display_mode.w, display_mode.h, display_mode.refresh_rate
+                )
+            })
+            .collect();
+        let original_displaymode = video.current_display_mode(0).unwrap();
         let event_pump = sdl_context.event_pump().unwrap();
         (
             Video {
@@ -54,9 +69,11 @@ impl Video {
                 //                imgui_sdl2,
                 //                renderer,
                 event_pump,
+                original_displaymode,
+                _gl_context: gl_context,
             },
             gl,
-            gl_context,
+            display_modes,
         )
     }
 
@@ -131,6 +148,17 @@ impl Video {
                 asset_db,
             )
         });
+    }
+}
+
+impl Drop for Video {
+    fn drop(&mut self) {
+        if self.window.fullscreen_state() != FullscreenType::Off {
+            self.window
+                .set_display_mode(self.original_displaymode)
+                .unwrap();
+            self.window.set_fullscreen(FullscreenType::Off).unwrap();
+        }
     }
 }
 

@@ -11,7 +11,6 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
-use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::{ElapsedTime, SpriteResource};
 use specs::prelude::*;
 use specs::ReadStorage;
@@ -50,10 +49,10 @@ impl RenderUI {
                 {
                     let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
                         let bar_w = 540;
-                        let bar_x = ((VIDEO_WIDTH / 2) - (bar_w / 2) - 2) as i32;
+                        let bar_x = ((sys_vars.resolution_w / 2) - (bar_w / 2) - 2) as i32;
                         render_commands
                             .rectangle_2d()
-                            .screen_pos(bar_x + x, VIDEO_HEIGHT as i32 - 200 + y)
+                            .screen_pos(bar_x + x, sys_vars.resolution_h as i32 - 200 + y)
                             .size(w as u16, h as u16)
                             .color(&color)
                             .layer(UiLayer2d::SelfCastingBar)
@@ -139,14 +138,14 @@ impl RenderUI {
         // prontera minimaps has empty spaces: left 52, right 45 pixels
         // 6 pixel padding on left and bottom, 7 on top and right
         let minimap_texture = asset_db.get_texture(map_render_data.minimap_texture_id);
-        let scale = (VIDEO_HEIGHT as i32 / 4).min(minimap_texture.height) as f32
+        let scale = (sys_vars.resolution_h as i32 / 4).min(minimap_texture.height) as f32
             / minimap_texture.height as f32;
         let all_minimap_w = (minimap_texture.width as f32 * scale) as i32;
-        let minimap_render_x = VIDEO_WIDTH as i32 - all_minimap_w - 20;
+        let minimap_render_x = sys_vars.resolution_w as i32 - all_minimap_w - 20;
         let offset_x = ((52.0 + 6.0) * scale) as i32;
         let minimap_x = minimap_render_x + offset_x;
         let minimap_h = (minimap_texture.height as f32 * scale) as i32;
-        let minimap_y = VIDEO_HEIGHT as i32 - minimap_h - 20;
+        let minimap_y = sys_vars.resolution_h as i32 - minimap_h - 20;
         render_commands
             .sprite_2d()
             .scale(scale)
@@ -229,25 +228,31 @@ impl RenderUI {
 
         // draw camera rectangle
         let right_top = InputConsumerSystem::project_screen_pos_to_world_pos(
-            VIDEO_WIDTH as u16,
+            sys_vars.resolution_w as u16,
             0,
             camera_pos,
             &sys_vars.matrices.projection,
             &render_commands.view_matrix,
+            sys_vars.resolution_w,
+            sys_vars.resolution_h,
         );
         let left_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
             0,
-            VIDEO_HEIGHT as u16,
+            sys_vars.resolution_h as u16,
             camera_pos,
             &sys_vars.matrices.projection,
             &render_commands.view_matrix,
+            sys_vars.resolution_w,
+            sys_vars.resolution_h,
         );
         let right_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
-            VIDEO_WIDTH as u16,
-            VIDEO_HEIGHT as u16,
+            sys_vars.resolution_w as u16,
+            sys_vars.resolution_h as u16,
             camera_pos,
             &sys_vars.matrices.projection,
             &render_commands.view_matrix,
+            sys_vars.resolution_w,
+            sys_vars.resolution_h,
         );
 
         let h = right_bottom.y - right_top.y;
@@ -322,7 +327,7 @@ impl RenderUI {
             + count * single_icon_size
             + inner_border * count * 2
             + (count - 1) * space;
-        let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
+        let start_x = sys_vars.resolution_w as i32 / 2 - skill_bar_width / 2;
         let y = main_skill_bar_top - single_icon_size - inner_border * 2 - outer_border * 2;
 
         let mut x = start_x + outer_border;
@@ -438,8 +443,12 @@ impl RenderUI {
             + count * single_icon_size
             + inner_border * count * 2
             + (count - 1) * space;
-        let start_x = VIDEO_WIDTH as i32 / 2 - skill_bar_width / 2;
-        let y = VIDEO_HEIGHT as i32 - single_icon_size - 20 - outer_border * 2 - inner_border * 2;
+        let start_x = sys_vars.resolution_w as i32 / 2 - skill_bar_width / 2;
+        let y = sys_vars.resolution_h as i32
+            - single_icon_size
+            - 20
+            - outer_border * 2
+            - inner_border * 2;
 
         let mut x = start_x + outer_border;
         for skill_key in main_keys.iter() {

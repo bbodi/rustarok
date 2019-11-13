@@ -1,4 +1,7 @@
 
+resolution_w = 1024
+resolution_h = 768
+
 # right gate: 250.0, -200.0
 start_pos_x = 238
 start_pos_y = -65

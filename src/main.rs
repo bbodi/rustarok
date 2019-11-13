@@ -160,11 +160,11 @@ fn main() {
     let fov = 0.638;
     let _window_opened = false;
     let _cam_angle = -60.0;
-    let render_matrices = RenderMatrices::new(fov);
+    let render_matrices = RenderMatrices::new(fov, config.resolution_w, config.resolution_h);
 
     let sdl_context = sdl2::init().unwrap();
-    // !!! gl_context: sdl2::video::GLContext THIS MUST BE KEPT IN SCOPE, DON'T REMOVE IT!
-    let (mut video, gl, _gl_context) = Video::init(&sdl_context);
+    let (mut video, gl, display_modes) =
+        Video::init(&sdl_context, config.resolution_w, config.resolution_h);
 
     let mut physics_world = PhysicEngine::new();
 
@@ -192,6 +192,7 @@ fn main() {
     let command_defs: HashMap<String, CommandDefinition> = ConsoleSystem::init_commands(
         get_all_effect_names(&asset_loader),
         get_all_map_names(&asset_loader),
+        display_modes,
     );
 
     let mut ecs_world = create_ecs_world();
@@ -231,6 +232,8 @@ fn main() {
         str_effects,
         sounds,
         0.0, // fix dt, used only in tests
+        config.resolution_w,
+        config.resolution_h,
     );
     log::info!("<<< Populate SystemVariables");
 
@@ -283,6 +286,8 @@ fn main() {
         1,
         Team::Right,
         &ecs_world.read_resource::<DevConfig>(),
+        config.resolution_w,
+        config.resolution_h,
     );
     ecs_world
         .read_resource::<LazyUpdate>()
@@ -353,6 +358,7 @@ fn main() {
             &mut ecs_world,
             desktop_client_char,
             desktop_client_controller,
+            &mut video,
         );
         run_main_frame(&mut ecs_world, &mut ecs_dispatcher);
 
@@ -663,6 +669,7 @@ fn execute_console_commands(
     ecs_world: &mut World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
+    video: &mut Video,
 ) {
     {
         let console_args = {
@@ -677,6 +684,7 @@ fn execute_console_commands(
                 ecs_world,
                 desktop_client_char,
                 desktop_client_controller,
+                video,
             );
         }
     }
@@ -695,6 +703,7 @@ fn execute_console_commands(
                 ecs_world,
                 desktop_client_char,
                 desktop_client_controller,
+                video,
             );
         }
     }
@@ -720,6 +729,7 @@ fn execute_console_commands(
                 ecs_world,
                 desktop_client_char,
                 desktop_client_controller,
+                video,
             );
             let mut dev_config = ecs_world.write_resource::<DevConfig>();
             dev_config.execute_script = dev_config
@@ -740,6 +750,7 @@ fn execute_console_command(
     ecs_world: &mut World,
     desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
+    video: &mut Video,
 ) {
     log::debug!("Execute command: {:?}", cmd);
     let command_def = &command_defs[cmd.get_command_name().unwrap()];
@@ -748,6 +759,7 @@ fn execute_console_command(
         desktop_client_char,
         &cmd,
         ecs_world,
+        video,
     ) {
         log::error!("Console error: {}", e);
         ecs_world

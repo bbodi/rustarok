@@ -455,6 +455,8 @@ impl RenderDesktopClientSystem {
                                 &camera.view_matrix,
                                 &sys_vars.matrices.projection,
                                 &asset_db,
+                                sys_vars.resolution_w,
+                                sys_vars.resolution_h,
                             )
                         } else {
                             continue;
@@ -480,6 +482,8 @@ impl RenderDesktopClientSystem {
                                 &camera.view_matrix,
                                 &sys_vars.matrices.projection,
                                 asset_db,
+                                sys_vars.resolution_w,
+                                sys_vars.resolution_h,
                             );
                             body_bounding_rect.merge(&head_bounding_rect);
                         }
@@ -568,6 +572,8 @@ impl RenderDesktopClientSystem {
                                 &camera.view_matrix,
                                 &sys_vars.matrices.projection,
                                 asset_db,
+                                sys_vars.resolution_w,
+                                sys_vars.resolution_h,
                             )
                         } else {
                             continue;

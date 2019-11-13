@@ -23,18 +23,22 @@ use crate::components::{
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
+use crate::my_gl::Gl;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::console_system::{
     AutocompletionProviderWithUsernameCompletion, BasicAutocompletionProvider, CommandDefinition,
     CommandParamType, ConsoleComponent, ConsoleEntry, ConsoleSystem, ConsoleWordType,
+    OwnedAutocompletionProvider,
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::input_sys_scancodes::ScancodeNames;
-use crate::systems::{Sex, SystemVariables};
+use crate::systems::{RenderMatrices, Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
 use rand::Rng;
 use sdl2::keyboard::Scancode;
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::video::{FullscreenType, WindowPos};
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -45,12 +49,14 @@ pub(super) fn cmd_toggle_console() -> CommandDefinition {
         name: "toggle_console".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
-            let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
-            let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
-            input_comp.is_console_open = !input_comp.is_console_open;
-            Ok(())
-        }),
+        action: Box::new(
+            |self_controller_id, _self_char_id, _args, ecs_world, _video| {
+                let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
+                let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+                input_comp.is_console_open = !input_comp.is_console_open;
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -66,34 +72,36 @@ pub(super) fn cmd_bind_key() -> CommandDefinition {
             0 => Some(vec![]),
             _ => None,
         }),
-        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
-            let script = args.as_str(1).unwrap();
+        action: Box::new(
+            |self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let script = args.as_str(1).unwrap();
 
-            let keys = args
-                .as_str(0)
-                .unwrap()
-                .split('+')
-                .map(|it| match it {
-                    "alt" => Ok(Scancode::LAlt),
-                    "ctrl" => Ok(Scancode::LCtrl),
-                    "shift" => Ok(Scancode::LShift),
-                    _ => ScancodeNames::from_str(it)
-                        .map(|name| Scancode::from_i32(name as i32).unwrap()),
-                })
-                .collect::<Result<Vec<Scancode>, strum::ParseError>>();
-            if let Ok(keys) = keys {
-                let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
-                let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
-                let mut iter = keys.into_iter();
-                input_comp.key_bindings.push((
-                    [iter.next(), iter.next(), iter.next(), iter.next()],
-                    script.to_string(),
-                ));
-                Ok(())
-            } else {
-                Err(format!("unrecognizable key: {}", args.as_str(0).unwrap()))
-            }
-        }),
+                let keys = args
+                    .as_str(0)
+                    .unwrap()
+                    .split('+')
+                    .map(|it| match it {
+                        "alt" => Ok(Scancode::LAlt),
+                        "ctrl" => Ok(Scancode::LCtrl),
+                        "shift" => Ok(Scancode::LShift),
+                        _ => ScancodeNames::from_str(it)
+                            .map(|name| Scancode::from_i32(name as i32).unwrap()),
+                    })
+                    .collect::<Result<Vec<Scancode>, strum::ParseError>>();
+                if let Ok(keys) = keys {
+                    let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
+                    let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+                    let mut iter = keys.into_iter();
+                    input_comp.key_bindings.push((
+                        [iter.next(), iter.next(), iter.next(), iter.next()],
+                        script.to_string(),
+                    ));
+                    Ok(())
+                } else {
+                    Err(format!("unrecognizable key: {}", args.as_str(0).unwrap()))
+                }
+            },
+        ),
     }
 }
 
@@ -113,57 +121,61 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
-            let job_name = args.as_str(0).unwrap();
-            let username = args.as_str(1);
+        action: Box::new(
+            |self_controller_id, self_char_id, args, ecs_world, _video| {
+                let job_name = args.as_str(0).unwrap();
+                let username = args.as_str(1);
 
-            let target_char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-            let target_controller_id = if let Some(username) = username {
-                ConsoleSystem::get_user_id_by_name(ecs_world, username)
-            } else {
-                Some(self_controller_id)
-            };
-            if let Some(target_char_id) = target_char_id {
-                if let Some(target_char) = ecs_world
-                    .write_storage::<CharacterStateComponent>()
-                    .get_mut(target_char_id.0)
-                {
-                    if let Ok(job_id) = JobId::from_str(job_name) {
-                        attach_human_player_components(
-                            &target_char.name,
-                            target_char_id,
-                            target_controller_id.unwrap(),
-                            &ecs_world.read_resource::<LazyUpdate>(),
-                            &mut ecs_world.write_resource::<PhysicEngine>(),
-                            ecs_world
-                                .read_resource::<SystemVariables>()
-                                .matrices
-                                .projection,
-                            target_char.pos(),
-                            Sex::Male,
-                            job_id,
-                            1,
-                            target_char.team,
-                            &ecs_world.read_resource::<DevConfig>(),
-                        );
-                        Ok(())
+                let target_char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
+                let target_controller_id = if let Some(username) = username {
+                    ConsoleSystem::get_user_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_controller_id)
+                };
+                if let Some(target_char_id) = target_char_id {
+                    if let Some(target_char) = ecs_world
+                        .write_storage::<CharacterStateComponent>()
+                        .get_mut(target_char_id.0)
+                    {
+                        if let Ok(job_id) = JobId::from_str(job_name) {
+                            attach_human_player_components(
+                                &target_char.name,
+                                target_char_id,
+                                target_controller_id.unwrap(),
+                                &ecs_world.read_resource::<LazyUpdate>(),
+                                &mut ecs_world.write_resource::<PhysicEngine>(),
+                                ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .matrices
+                                    .projection,
+                                target_char.pos(),
+                                Sex::Male,
+                                job_id,
+                                1,
+                                target_char.team,
+                                &ecs_world.read_resource::<DevConfig>(),
+                                ecs_world.read_resource::<SystemVariables>().resolution_w,
+                                ecs_world.read_resource::<SystemVariables>().resolution_h,
+                            );
+                            Ok(())
+                        } else {
+                            return Err("Invalid JobId".to_owned());
+                        }
                     } else {
-                        return Err("Invalid JobId".to_owned());
+                        Err(format!(
+                            "The character component does not exist: {:?}",
+                            target_char_id
+                        ))
                     }
                 } else {
-                    Err(format!(
-                        "The character component does not exist: {:?}",
-                        target_char_id
-                    ))
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -194,36 +206,38 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let job_name = args.as_str(0).unwrap();
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let job_name = args.as_str(0).unwrap();
+                let username = args.as_str(1);
 
-            let target_char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-            if let Some(target_char_id) = target_char_id {
-                if let Some(target_char) = ecs_world
-                    .write_storage::<CharacterStateComponent>()
-                    .get_mut(target_char_id.0)
-                {
-                    if let Some(outlook) = get_outlook(job_name, Some(&target_char.outlook)) {
-                        target_char.outlook = outlook;
-                        Ok(())
+                let target_char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
+                if let Some(target_char_id) = target_char_id {
+                    if let Some(target_char) = ecs_world
+                        .write_storage::<CharacterStateComponent>()
+                        .get_mut(target_char_id.0)
+                    {
+                        if let Some(outlook) = get_outlook(job_name, Some(&target_char.outlook)) {
+                            target_char.outlook = outlook;
+                            Ok(())
+                        } else {
+                            return Err("Invalid JobId/MonsterId".to_owned());
+                        }
                     } else {
-                        return Err("Invalid JobId/MonsterId".to_owned());
+                        Err(format!(
+                            "The character component does not exist: {:?}",
+                            target_char_id
+                        ))
                     }
                 } else {
-                    Err(format!(
-                        "The character component does not exist: {:?}",
-                        target_char_id
-                    ))
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -257,53 +271,55 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
         name: "list_entities".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
-            let mut entities = HashMap::<String, u32>::with_capacity(32);
-            entities.insert("all".to_owned(), 0);
-            entities.insert("left_team".to_owned(), 0);
-            entities.insert("right_team".to_owned(), 0);
-            entities.insert("npc".to_owned(), 0);
-            entities.insert("player".to_owned(), 0);
-            for job_id in JobId::iter() {
-                entities.insert(job_id.to_string(), 0);
-            }
-            for (entity_id, char_state) in (
-                &ecs_world.entities(),
-                &ecs_world.read_storage::<CharacterStateComponent>(),
-            )
-                .join()
-            {
-                *entities.get_mut("all").unwrap() += 1;
-                if char_state.team == Team::Left {
-                    *entities.get_mut("left_team").unwrap() += 1;
-                } else {
-                    *entities.get_mut("right_team").unwrap() += 1;
+        action: Box::new(
+            |self_controller_id, _self_char_id, _args, ecs_world, _video| {
+                let mut entities = HashMap::<String, u32>::with_capacity(32);
+                entities.insert("all".to_owned(), 0);
+                entities.insert("left_team".to_owned(), 0);
+                entities.insert("right_team".to_owned(), 0);
+                entities.insert("npc".to_owned(), 0);
+                entities.insert("player".to_owned(), 0);
+                for job_id in JobId::iter() {
+                    entities.insert(job_id.to_string(), 0);
                 }
-                *entities.get_mut(&char_state.job_id.to_string()).unwrap() += 1;
-
-                if ecs_world
-                    .read_storage::<HumanInputComponent>()
-                    .get(entity_id)
-                    .is_none()
+                for (entity_id, char_state) in (
+                    &ecs_world.entities(),
+                    &ecs_world.read_storage::<CharacterStateComponent>(),
+                )
+                    .join()
                 {
-                    *entities.get_mut("npc").unwrap() += 1;
-                } else {
-                    *entities.get_mut("player").unwrap() += 1;
+                    *entities.get_mut("all").unwrap() += 1;
+                    if char_state.team == Team::Left {
+                        *entities.get_mut("left_team").unwrap() += 1;
+                    } else {
+                        *entities.get_mut("right_team").unwrap() += 1;
+                    }
+                    *entities.get_mut(&char_state.job_id.to_string()).unwrap() += 1;
+
+                    if ecs_world
+                        .read_storage::<HumanInputComponent>()
+                        .get(entity_id)
+                        .is_none()
+                    {
+                        *entities.get_mut("npc").unwrap() += 1;
+                    } else {
+                        *entities.get_mut("player").unwrap() += 1;
+                    }
+                    for (name, count) in &entities {
+                        ecs_world
+                            .write_storage::<ConsoleComponent>()
+                            .get_mut(self_controller_id.0)
+                            .unwrap()
+                            .add_entry(
+                                ConsoleEntry::new()
+                                    .add(&format!("{:15} ", name), ConsoleWordType::Normal)
+                                    .add(&count.to_string(), ConsoleWordType::Param),
+                            );
+                    }
                 }
-                for (name, count) in &entities {
-                    ecs_world
-                        .write_storage::<ConsoleComponent>()
-                        .get_mut(self_controller_id.0)
-                        .unwrap()
-                        .add_entry(
-                            ConsoleEntry::new()
-                                .add(&format!("{:15} ", name), ConsoleWordType::Normal)
-                                .add(&count.to_string(), ConsoleWordType::Param),
-                        );
-                }
-            }
-            Ok(())
-        }),
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -323,50 +339,52 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
             ),
             _ => None,
         }),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let type_name = args.as_str(0).unwrap_or("all");
-            let mut entity_ids = Vec::with_capacity(32);
-            for (entity_id, char_state) in (
-                &ecs_world.entities(),
-                &ecs_world.read_storage::<CharacterStateComponent>(),
-            )
-                .join()
-            {
-                let entity_id = CharEntityId(entity_id);
-                let need_delete = match type_name {
-                    "all" => true,
-                    "left_team" => char_state.team == Team::Left,
-                    "right_team" => char_state.team == Team::Right,
-                    "npc" => ecs_world
-                        .read_storage::<HumanInputComponent>()
-                        .get(entity_id.0)
-                        .is_none(),
-                    "player" => ecs_world
-                        .read_storage::<HumanInputComponent>()
-                        .get(entity_id.0)
-                        .is_some(),
-                    _ => {
-                        if let Ok(job_id) = JobId::from_str(type_name) {
-                            char_state.job_id == job_id
-                        } else {
-                            false
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let type_name = args.as_str(0).unwrap_or("all");
+                let mut entity_ids = Vec::with_capacity(32);
+                for (entity_id, char_state) in (
+                    &ecs_world.entities(),
+                    &ecs_world.read_storage::<CharacterStateComponent>(),
+                )
+                    .join()
+                {
+                    let entity_id = CharEntityId(entity_id);
+                    let need_delete = match type_name {
+                        "all" => true,
+                        "left_team" => char_state.team == Team::Left,
+                        "right_team" => char_state.team == Team::Right,
+                        "npc" => ecs_world
+                            .read_storage::<HumanInputComponent>()
+                            .get(entity_id.0)
+                            .is_none(),
+                        "player" => ecs_world
+                            .read_storage::<HumanInputComponent>()
+                            .get(entity_id.0)
+                            .is_some(),
+                        _ => {
+                            if let Ok(job_id) = JobId::from_str(type_name) {
+                                char_state.job_id == job_id
+                            } else {
+                                false
+                            }
                         }
+                    };
+                    if need_delete && entity_id != self_char_id {
+                        entity_ids.push(entity_id);
                     }
-                };
-                if need_delete && entity_id != self_char_id {
-                    entity_ids.push(entity_id);
                 }
-            }
-            for entity_id in entity_ids {
-                ecs_world
-                    .write_storage::<CharacterStateComponent>()
-                    .get_mut(entity_id.0)
-                    .unwrap()
-                    .hp = 0;
-            }
+                for entity_id in entity_ids {
+                    ecs_world
+                        .write_storage::<CharacterStateComponent>()
+                        .get_mut(entity_id.0)
+                        .unwrap()
+                        .hp = 0;
+                }
 
-            Ok(())
-        }),
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -405,82 +423,88 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
             ),
             _ => None,
         }),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let type_name = args.as_str(0).unwrap();
-            let team = match args.as_str(1).unwrap() {
-                "left" => Team::Left,
-                _ => Team::Right,
-            };
-            let count = args.as_int(2).unwrap_or(1);
-            let pos2d = match (args.as_int(3), args.as_int(4)) {
-                (Some(x), Some(y)) => v2(x as f32, y as f32),
-                _ => {
-                    let map_render_data = &ecs_world.read_resource::<MapRenderData>();
-                    let hero_pos = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(self_char_id.0).unwrap();
-                        char_state.pos()
-                    };
-                    let mut rng = rand::thread_rng();
-                    let (x, y) = loop {
-                        let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
-                        let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
-                        let index = y.max(0.0) as usize * map_render_data.gat.width as usize
-                            + x.max(0.0) as usize;
-                        let walkable = (map_render_data.gat.cells[index].cell_type
-                            & CellType::Walkable as u8)
-                            != 0;
-                        if walkable {
-                            break (x, y);
-                        }
-                    };
-                    v2(x, -y)
-                }
-            };
-            let outlook = args
-                .as_str(5)
-                .and_then(|outlook| get_outlook(outlook, None));
-            let y = args.as_f32(6).unwrap_or(0.0);
-
-            for _ in 0..count {
-                match type_name {
-                    "minion_melee" | "minion_ranged" => {
-                        let job_id = if type_name == "minion_melee" {
-                            JobId::MeleeMinion
-                        } else {
-                            JobId::RangedMinion
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let type_name = args.as_str(0).unwrap();
+                let team = match args.as_str(1).unwrap() {
+                    "left" => Team::Left,
+                    _ => Team::Right,
+                };
+                let count = args.as_int(2).unwrap_or(1);
+                let pos2d = match (args.as_int(3), args.as_int(4)) {
+                    (Some(x), Some(y)) => v2(x as f32, y as f32),
+                    _ => {
+                        let map_render_data = &ecs_world.read_resource::<MapRenderData>();
+                        let hero_pos = {
+                            let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                            let char_state = storage.get(self_char_id.0).unwrap();
+                            char_state.pos()
                         };
-                        let char_entity_id = create_random_char_minion(
-                            ecs_world,
-                            pos2d,
-                            team,
-                            job_id,
-                            outlook.clone(),
-                        );
-                        ecs_world
-                            .create_entity()
-                            .with(ControllerComponent::new(char_entity_id))
-                            .with(MinionComponent { fountain_up: false })
-                            .build();
+                        let mut rng = rand::thread_rng();
+                        let (x, y) = loop {
+                            let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
+                            let y: f32 = rng.gen_range(hero_pos.y - 10.0, hero_pos.y + 10.0).abs();
+                            let index = y.max(0.0) as usize * map_render_data.gat.width as usize
+                                + x.max(0.0) as usize;
+                            let walkable = (map_render_data.gat.cells[index].cell_type
+                                & CellType::Walkable as u8)
+                                != 0;
+                            if walkable {
+                                break (x, y);
+                            }
+                        };
+                        v2(x, -y)
                     }
-                    "guard" => {
-                        let _char_entity_id =
-                            create_guard(ecs_world, pos2d, team, outlook.clone(), y);
-                    }
-                    "dummy_enemy" => {
-                        let _char_entity_id =
-                            create_dummy(ecs_world, pos2d, JobId::TargetDummy, outlook.clone());
-                    }
-                    "dummy_ally" => {
-                        let _char_entity_id =
-                            create_dummy(ecs_world, pos2d, JobId::HealingDummy, outlook.clone());
-                    }
-                    _ => {}
-                }
-            }
+                };
+                let outlook = args
+                    .as_str(5)
+                    .and_then(|outlook| get_outlook(outlook, None));
+                let y = args.as_f32(6).unwrap_or(0.0);
 
-            Ok(())
-        }),
+                for _ in 0..count {
+                    match type_name {
+                        "minion_melee" | "minion_ranged" => {
+                            let job_id = if type_name == "minion_melee" {
+                                JobId::MeleeMinion
+                            } else {
+                                JobId::RangedMinion
+                            };
+                            let char_entity_id = create_random_char_minion(
+                                ecs_world,
+                                pos2d,
+                                team,
+                                job_id,
+                                outlook.clone(),
+                            );
+                            ecs_world
+                                .create_entity()
+                                .with(ControllerComponent::new(char_entity_id))
+                                .with(MinionComponent { fountain_up: false })
+                                .build();
+                        }
+                        "guard" => {
+                            let _char_entity_id =
+                                create_guard(ecs_world, pos2d, team, outlook.clone(), y);
+                        }
+                        "dummy_enemy" => {
+                            let _char_entity_id =
+                                create_dummy(ecs_world, pos2d, JobId::TargetDummy, outlook.clone());
+                        }
+                        "dummy_ally" => {
+                            let _char_entity_id = create_dummy(
+                                ecs_world,
+                                pos2d,
+                                JobId::HealingDummy,
+                                outlook.clone(),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -612,7 +636,7 @@ fn create_random_char_minion(
 //        name: "spawn_effect".to_string(),
 //        arguments: vec![("effect_name", CommandParamType::String, true)],
 //        autocompletion: Box::new(SpawnEffectAutocompletion { effect_names }),
-//        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
+//        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world, _video| {
 //            let new_str_name = args.as_str(0).unwrap();
 //            let effect_id = {
 //                let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
@@ -654,54 +678,131 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
         name: "list_players".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
-            print_console(
-                &mut ecs_world.write_storage::<ConsoleComponent>(),
-                self_controller_id,
-                ConsoleEntry::new().add(
-                    &format!(
-                        "{:<15}{:>15}{:>17}{:>15}{:>15}",
-                        "name", "traffic(sum)", "traffic/sec[KB]", "ping[ms]", "server fps",
-                    ),
-                    ConsoleWordType::CommandName,
-                ),
-            );
-            for (entity_id, human) in (
-                &ecs_world.entities(),
-                &ecs_world.read_storage::<HumanInputComponent>(),
-            )
-                .join()
-            {
-                let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) = ecs_world
-                    .read_storage::<BrowserClient>()
-                    .get(entity_id)
-                    .map(|it| {
-                        (
-                            it.prev_bytes_per_second,
-                            it.sum_sent_bytes,
-                            it.ping,
-                            it.sending_fps,
-                        )
-                    })
-                    .unwrap_or((0, 0, 0, 1.0));
+        action: Box::new(
+            |self_controller_id, _self_char_id, _args, ecs_world, _video| {
                 print_console(
                     &mut ecs_world.write_storage::<ConsoleComponent>(),
                     self_controller_id,
                     ConsoleEntry::new().add(
                         &format!(
                             "{:<15}{:>15}{:>17}{:>15}{:>15}",
-                            &human.username,
-                            humanize_bytes(sum_sent_bytes),
-                            format!("{:>8.2}", prev_bytes_per_second as f32 / KIB as f32),
-                            ping,
-                            (1.0 / sending_fps).round() as u32
+                            "name", "traffic(sum)", "traffic/sec[KB]", "ping[ms]", "server fps",
                         ),
-                        ConsoleWordType::Normal,
+                        ConsoleWordType::CommandName,
                     ),
                 );
-            }
-            Ok(())
+                for (entity_id, human) in (
+                    &ecs_world.entities(),
+                    &ecs_world.read_storage::<HumanInputComponent>(),
+                )
+                    .join()
+                {
+                    let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) = ecs_world
+                        .read_storage::<BrowserClient>()
+                        .get(entity_id)
+                        .map(|it| {
+                            (
+                                it.prev_bytes_per_second,
+                                it.sum_sent_bytes,
+                                it.ping,
+                                it.sending_fps,
+                            )
+                        })
+                        .unwrap_or((0, 0, 0, 1.0));
+                    print_console(
+                        &mut ecs_world.write_storage::<ConsoleComponent>(),
+                        self_controller_id,
+                        ConsoleEntry::new().add(
+                            &format!(
+                                "{:<15}{:>15}{:>17}{:>15}{:>15}",
+                                &human.username,
+                                humanize_bytes(sum_sent_bytes),
+                                format!("{:>8.2}", prev_bytes_per_second as f32 / KIB as f32),
+                                ping,
+                                (1.0 / sending_fps).round() as u32
+                            ),
+                            ConsoleWordType::Normal,
+                        ),
+                    );
+                }
+                Ok(())
+            },
+        ),
+    }
+}
+
+pub(super) fn cmd_set_resolution(resolutions: Vec<String>) -> CommandDefinition {
+    CommandDefinition {
+        name: "set_resolution".to_string(),
+        arguments: vec![("resolution", CommandParamType::String, true)],
+        autocompletion: Box::new(OwnedAutocompletionProvider(resolutions)),
+        action: Box::new(
+            |_self_controller_id, _self_char_id, args, ecs_world, video| {
+                let selected = args.as_str(0).unwrap();
+                // 1024x768@60
+                let (w, h, freq) = {
+                    let mut w_x_h = selected.split("x");
+                    let w: i32 = w_x_h.next().unwrap().parse().unwrap();
+                    let mut h_at_freq = w_x_h.next().unwrap().split("@");
+                    let h: i32 = h_at_freq.next().unwrap().parse().unwrap();
+                    let freq: i32 = h_at_freq.next().unwrap().parse().unwrap();
+                    (w, h, freq)
+                };
+
+                let r = match video.window.fullscreen_state() {
+                    FullscreenType::Desktop | FullscreenType::Off => {
+                        let r = video
+                            .window
+                            .set_size(w as u32, h as u32)
+                            .map_err(|e| e.to_string());
+                        if r.is_ok() {
+                            video
+                                .window
+                                .set_position(WindowPos::Centered, WindowPos::Centered);
+                        }
+                        r
+                    }
+                    FullscreenType::True => {
+                        let display_mode =
+                            sdl2::video::DisplayMode::new(PixelFormatEnum::RGB888, w, h, freq);
+                        video.window.set_display_mode(display_mode)
+                    }
+                };
+                if r.is_ok() {
+                    {
+                        let gl = &ecs_world.read_resource::<Gl>();
+                        gl.viewport(0, 0, w, h);
+                    }
+                    {
+                        let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
+                        sys_vars.matrices = RenderMatrices::new(0.638, w as u32, h as u32);
+                        sys_vars.resolution_w = w as u32;
+                        sys_vars.resolution_h = h as u32;
+                    }
+                }
+                return r;
+            },
+        ),
+    }
+}
+
+pub(super) fn cmd_set_fullscreen() -> CommandDefinition {
+    CommandDefinition {
+        name: "set_fullscreen".to_string(),
+        arguments: vec![("on/off", CommandParamType::String, true)],
+        autocompletion: BasicAutocompletionProvider::new(|_index| {
+            Some(vec!["on".to_owned(), "off".to_owned()])
         }),
+        action: Box::new(
+            |_self_controller_id, _self_char_id, args, _ecs_world, video| {
+                let fullscreen_type = if args.as_str(0).unwrap() == "on" {
+                    FullscreenType::True
+                } else {
+                    FullscreenType::Off
+                };
+                return video.window.set_fullscreen(fullscreen_type);
+            },
+        ),
     }
 }
 
@@ -710,14 +811,16 @@ pub(super) fn cmd_clear() -> CommandDefinition {
         name: "clear".to_string(),
         arguments: vec![],
         autocompletion: BasicAutocompletionProvider::new(|_index| None),
-        action: Box::new(|self_controller_id, _self_char_id, _args, ecs_world| {
-            ecs_world
-                .write_storage::<ConsoleComponent>()
-                .get_mut(self_controller_id.0)
-                .unwrap()
-                .clear();
-            Ok(())
-        }),
+        action: Box::new(
+            |self_controller_id, _self_char_id, _args, ecs_world, _video| {
+                ecs_world
+                    .write_storage::<ConsoleComponent>()
+                    .get_mut(self_controller_id.0)
+                    .unwrap()
+                    .clear();
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -774,27 +877,29 @@ pub(super) fn cmd_heal() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let value = args.as_int(0).unwrap().max(0);
-            let username = args.as_str(1);
-            let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let value = args.as_int(0).unwrap().max(0);
+                let username = args.as_str(1);
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(entity_id) = entity_id {
-                let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-                sys_vars.hp_mod_requests.push(HpModificationRequest {
-                    src_entity: self_char_id,
-                    dst_entity: entity_id,
-                    typ: HpModificationType::Heal(value as u32),
-                });
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                if let Some(entity_id) = entity_id {
+                    let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+                    sys_vars.hp_mod_requests.push(HpModificationRequest {
+                        src_entity: self_char_id,
+                        dst_entity: entity_id,
+                        typ: HpModificationType::Heal(value as u32),
+                    });
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -821,81 +926,83 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                 None
             }
         }),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let name = args.as_str(0).unwrap();
-            let value = args.as_int(1).unwrap_or(0);
-            let width = args.as_int(2).unwrap_or(2).max(0) as u16;
-            let height = args.as_int(3).unwrap_or(3).max(0) as u16;
-            let interval = args.as_int(4).unwrap_or(500) as f32 / 1000.0;
-            let time = args.as_int(5).unwrap_or(500);
-            let x = args.as_int(6).map(|it| it as f32);
-            let y = args.as_int(7).map(|it| it as f32);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let name = args.as_str(0).unwrap();
+                let value = args.as_int(1).unwrap_or(0);
+                let width = args.as_int(2).unwrap_or(2).max(0) as u16;
+                let height = args.as_int(3).unwrap_or(3).max(0) as u16;
+                let interval = args.as_int(4).unwrap_or(500) as f32 / 1000.0;
+                let time = args.as_int(5).unwrap_or(500);
+                let x = args.as_int(6).map(|it| it as f32);
+                let y = args.as_int(7).map(|it| it as f32);
 
-            let (pos, caster_team) = {
-                let (hero_pos, team) = {
-                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(self_char_id.0).unwrap();
-                    (char_state.pos(), char_state.team)
+                let (pos, caster_team) = {
+                    let (hero_pos, team) = {
+                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let char_state = storage.get(self_char_id.0).unwrap();
+                        (char_state.pos(), char_state.team)
+                    };
+                    (v2(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
                 };
-                (v2(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
-            };
-            let area_status_id = ecs_world.create_entity().build();
-            ecs_world
-                .write_storage()
-                .insert(
-                    area_status_id,
-                    SkillManifestationComponent::new(
+                let area_status_id = ecs_world.create_entity().build();
+                ecs_world
+                    .write_storage()
+                    .insert(
                         area_status_id,
-                        match name {
-                            "heal" => Box::new(HealApplierArea::new(
-                                "Heal",
-                                HpModificationType::Heal(value.max(0) as u32),
-                                &pos,
-                                v2u(width, height),
-                                interval,
-                                self_char_id,
-                                &mut ecs_world.write_resource::<PhysicEngine>(),
-                            )),
-                            "damage" => Box::new(HealApplierArea::new(
-                                "Damage",
-                                HpModificationType::BasicDamage(
-                                    value.max(0) as u32,
-                                    DamageDisplayType::SingleNumber,
-                                    WeaponType::Sword,
-                                ),
-                                &pos,
-                                v2u(width, height),
-                                interval,
-                                self_char_id,
-                                &mut ecs_world.write_resource::<PhysicEngine>(),
-                            )),
-                            _ => {
-                                let name = name.to_owned();
-                                Box::new(StatusApplierArea::new(
-                                    name.to_owned(),
-                                    move |now| {
-                                        create_status_payload(
-                                            &name,
-                                            self_char_id,
-                                            now,
-                                            time,
-                                            value,
-                                            caster_team,
-                                        )
-                                        .unwrap()
-                                    },
+                        SkillManifestationComponent::new(
+                            area_status_id,
+                            match name {
+                                "heal" => Box::new(HealApplierArea::new(
+                                    "Heal",
+                                    HpModificationType::Heal(value.max(0) as u32),
                                     &pos,
                                     v2u(width, height),
+                                    interval,
                                     self_char_id,
                                     &mut ecs_world.write_resource::<PhysicEngine>(),
-                                ))
-                            }
-                        },
-                    ),
-                )
-                .unwrap();
-            Ok(())
-        }),
+                                )),
+                                "damage" => Box::new(HealApplierArea::new(
+                                    "Damage",
+                                    HpModificationType::BasicDamage(
+                                        value.max(0) as u32,
+                                        DamageDisplayType::SingleNumber,
+                                        WeaponType::Sword,
+                                    ),
+                                    &pos,
+                                    v2u(width, height),
+                                    interval,
+                                    self_char_id,
+                                    &mut ecs_world.write_resource::<PhysicEngine>(),
+                                )),
+                                _ => {
+                                    let name = name.to_owned();
+                                    Box::new(StatusApplierArea::new(
+                                        name.to_owned(),
+                                        move |now| {
+                                            create_status_payload(
+                                                &name,
+                                                self_char_id,
+                                                now,
+                                                time,
+                                                value,
+                                                caster_team,
+                                            )
+                                            .unwrap()
+                                        },
+                                        &pos,
+                                        v2u(width, height),
+                                        self_char_id,
+                                        &mut ecs_world.write_resource::<PhysicEngine>(),
+                                    ))
+                                }
+                            },
+                        ),
+                    )
+                    .unwrap();
+                Ok(())
+            },
+        ),
     }
 }
 
@@ -959,36 +1066,45 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let status_name = args.as_str(0).unwrap();
-            let time = args.as_int(1).unwrap();
-            let value = args.as_int(2).unwrap_or(0);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let status_name = args.as_str(0).unwrap();
+                let time = args.as_int(1).unwrap();
+                let value = args.as_int(2).unwrap_or(0);
 
-            let username = args.as_str(3);
-            let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let username = args.as_str(3);
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(entity_id) = entity_id {
-                let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-                let now = sys_vars.time;
-                let team = ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(self_char_id.0)
-                    .unwrap()
-                    .team;
-                sys_vars.apply_statuses.push(ApplyStatusComponent {
-                    source_entity_id: self_char_id,
-                    target_entity_id: entity_id,
-                    status: create_status_payload(status_name, entity_id, now, time, value, team)?,
-                });
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                if let Some(entity_id) = entity_id {
+                    let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+                    let now = sys_vars.time;
+                    let team = ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(self_char_id.0)
+                        .unwrap()
+                        .team;
+                    sys_vars.apply_statuses.push(ApplyStatusComponent {
+                        source_entity_id: self_char_id,
+                        target_entity_id: entity_id,
+                        status: create_status_payload(
+                            status_name,
+                            entity_id,
+                            now,
+                            time,
+                            value,
+                            team,
+                        )?,
+                    });
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1010,45 +1126,50 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let new_team = match args.as_str(0).unwrap() {
-                "left" => Team::Left,
-                _ => Team::Right,
-            };
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let new_team = match args.as_str(0).unwrap() {
+                    "left" => Team::Left,
+                    _ => Team::Right,
+                };
+                let username = args.as_str(1);
 
-            let target_entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let target_entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(target_char_id) = target_entity_id {
-                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                if let Some(target_char_id) = target_entity_id {
+                    let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
 
-                if let Some(collider) = ecs_world
-                    .write_resource::<PhysicEngine>()
-                    .colliders
-                    .get_mut(char_state.collider_handle)
-                {
-                    let mut cg = collider.collision_groups().clone();
-                    cg.modify_membership(char_state.team.get_collision_group() as usize, false);
-                    cg.modify_membership(new_team.get_collision_group() as usize, true);
-                    cg.modify_blacklist(
-                        char_state.team.get_barricade_collision_group() as usize,
-                        true,
-                    );
-                    cg.modify_blacklist(new_team.get_barricade_collision_group() as usize, false);
-                    collider.set_collision_groups(cg);
+                    if let Some(collider) = ecs_world
+                        .write_resource::<PhysicEngine>()
+                        .colliders
+                        .get_mut(char_state.collider_handle)
+                    {
+                        let mut cg = collider.collision_groups().clone();
+                        cg.modify_membership(char_state.team.get_collision_group() as usize, false);
+                        cg.modify_membership(new_team.get_collision_group() as usize, true);
+                        cg.modify_blacklist(
+                            char_state.team.get_barricade_collision_group() as usize,
+                            true,
+                        );
+                        cg.modify_blacklist(
+                            new_team.get_barricade_collision_group() as usize,
+                            false,
+                        );
+                        collider.set_collision_groups(cg);
+                    }
+
+                    char_state.team = new_team;
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-
-                char_state.team = new_team;
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1065,26 +1186,28 @@ pub(super) fn cmd_enable_collision() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(1);
 
-            let target_char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let target_char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(target_char_id) = target_char_id {
-                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                if let Some(target_char_id) = target_char_id {
+                    let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
 
-                char_state.set_collidable(&mut ecs_world.write_resource::<PhysicEngine>());
+                    char_state.set_collidable(&mut ecs_world.write_resource::<PhysicEngine>());
 
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1101,26 +1224,28 @@ pub(super) fn cmd_disable_collision() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(1);
 
-            let target_char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let target_char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(target_char_id) = target_char_id {
-                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                if let Some(target_char_id) = target_char_id {
+                    let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
 
-                char_state.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
+                    char_state.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
 
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1137,41 +1262,43 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, _self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
-            let target_entity_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
-            if let Some(target_char_id) = target_entity_id {
-                let pos2d = {
-                    // remove death status (that is the only status a death character has)
+        action: Box::new(
+            |_self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0).unwrap();
+                let target_entity_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
+                if let Some(target_char_id) = target_entity_id {
+                    let pos2d = {
+                        // remove death status (that is the only status a death character has)
+                        let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                        let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                        char_state.statuses.remove_all();
+                        char_state.set_state(CharState::Idle, char_state.dir());
+
+                        // give him max hp/sp
+                        char_state.hp = char_state.calculated_attribs().max_hp;
+                        char_state.pos()
+                    };
+
+                    // give him back it's physic component
+                    let physics_component = CharacterEntityBuilder::new(target_char_id, "tmp")
+                        .physics(
+                            pos2d,
+                            &mut ecs_world.write_resource::<PhysicEngine>(),
+                            |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
+                        )
+                        .physics_handles
+                        .unwrap();
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let char_state = char_storage.get_mut(target_char_id.0).unwrap();
-                    char_state.statuses.remove_all();
-                    char_state.set_state(CharState::Idle, char_state.dir());
+                    char_state.collider_handle = physics_component.0;
+                    char_state.body_handle = physics_component.1;
 
-                    // give him max hp/sp
-                    char_state.hp = char_state.calculated_attribs().max_hp;
-                    char_state.pos()
-                };
-
-                // give him back it's physic component
-                let physics_component = CharacterEntityBuilder::new(target_char_id, "tmp")
-                    .physics(
-                        pos2d,
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                        |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
-                    )
-                    .physics_handles
-                    .unwrap();
-                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                let char_state = char_storage.get_mut(target_char_id.0).unwrap();
-                char_state.collider_handle = physics_component.0;
-                char_state.body_handle = physics_component.1;
-
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1191,25 +1318,27 @@ pub(super) fn cmd_set_server_fps() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, _self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
-            let fps = args.as_int(1).unwrap().max(1);
+        action: Box::new(
+            |_self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0).unwrap();
+                let fps = args.as_int(1).unwrap().max(1);
 
-            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            if let Some(target_entity_id) = target_entity_id {
-                if let Some(browser) = ecs_world
-                    .write_storage::<BrowserClient>()
-                    .get_mut(target_entity_id.0)
-                {
-                    browser.set_sending_fps(fps as u32);
-                    Ok(())
+                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+                if let Some(target_entity_id) = target_entity_id {
+                    if let Some(browser) = ecs_world
+                        .write_storage::<BrowserClient>()
+                        .get_mut(target_entity_id.0)
+                    {
+                        browser.set_sending_fps(fps as u32);
+                        Ok(())
+                    } else {
+                        Err("User is not a browser".to_owned())
+                    }
                 } else {
-                    Err("User is not a browser".to_owned())
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1220,31 +1349,33 @@ pub(super) fn cmd_get_server_fps() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
+        action: Box::new(
+            |self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0).unwrap();
 
-            let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            if let Some(target_entity_id) = target_entity_id {
-                if let Some(browser) = ecs_world
-                    .read_storage::<BrowserClient>()
-                    .get(target_entity_id.0)
-                {
-                    print_console(
-                        &mut ecs_world.write_storage::<ConsoleComponent>(),
-                        self_controller_id,
-                        ConsoleEntry::new().add(
-                            &format!("{}", (1.0 / browser.sending_fps).round() as u32),
-                            ConsoleWordType::Normal,
-                        ),
-                    );
-                    Ok(())
+                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+                if let Some(target_entity_id) = target_entity_id {
+                    if let Some(browser) = ecs_world
+                        .read_storage::<BrowserClient>()
+                        .get(target_entity_id.0)
+                    {
+                        print_console(
+                            &mut ecs_world.write_storage::<ConsoleComponent>(),
+                            self_controller_id,
+                            ConsoleEntry::new().add(
+                                &format!("{}", (1.0 / browser.sending_fps).round() as u32),
+                                ConsoleWordType::Normal,
+                            ),
+                        );
+                        Ok(())
+                    } else {
+                        Err("User is not a browser".to_owned())
+                    }
                 } else {
-                    Err("User is not a browser".to_owned())
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1255,31 +1386,33 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
+        action: Box::new(
+            |self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0).unwrap();
 
-            let target_controller_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-            if let Some(target_controller_id) = target_controller_id {
-                // remove controller from self
-                if target_controller_id == self_controller_id {
-                    return Err("Can't follow yourself".to_owned());
+                let target_controller_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+                if let Some(target_controller_id) = target_controller_id {
+                    // remove controller from self
+                    if target_controller_id == self_controller_id {
+                        return Err("Can't follow yourself".to_owned());
+                    }
+
+                    ecs_world
+                        .write_storage::<ControllerComponent>()
+                        .remove(self_controller_id.0);
+
+                    // set camera to follow target
+                    ecs_world
+                        .write_storage::<CameraComponent>()
+                        .get_mut(self_controller_id.0)
+                        .unwrap()
+                        .followed_controller = Some(target_controller_id);
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-
-                ecs_world
-                    .write_storage::<ControllerComponent>()
-                    .remove(self_controller_id.0);
-
-                // set camera to follow target
-                ecs_world
-                    .write_storage::<CameraComponent>()
-                    .get_mut(self_controller_id.0)
-                    .unwrap()
-                    .followed_controller = Some(target_controller_id);
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1290,46 +1423,48 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(1);
 
-            let target_char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let target_char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(target_char_id) = target_char_id {
-                // create a new entity with the same outlook
-                let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+                if let Some(target_char_id) = target_char_id {
+                    // create a new entity with the same outlook
+                    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
 
-                let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
 
-                let cloning_char = char_storage.get(target_char_id.0).unwrap();
-                let updater = &ecs_world.read_resource::<LazyUpdate>();
-                CharacterEntityBuilder::new(char_entity_id, "Clone")
-                    .insert_npc_component(updater)
-                    .insert_sprite_render_descr_component(updater)
-                    .physics(
-                        cloning_char.pos(),
-                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                        |builder| {
-                            builder
-                                .collision_group(cloning_char.team.get_collision_group())
-                                .circle(1.0)
-                        },
-                    )
-                    .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-                        ch.outlook(cloning_char.outlook.clone())
-                            .job_id(cloning_char.job_id)
-                            .team(cloning_char.team)
-                    });
+                    let cloning_char = char_storage.get(target_char_id.0).unwrap();
+                    let updater = &ecs_world.read_resource::<LazyUpdate>();
+                    CharacterEntityBuilder::new(char_entity_id, "Clone")
+                        .insert_npc_component(updater)
+                        .insert_sprite_render_descr_component(updater)
+                        .physics(
+                            cloning_char.pos(),
+                            &mut ecs_world.write_resource::<PhysicEngine>(),
+                            |builder| {
+                                builder
+                                    .collision_group(cloning_char.team.get_collision_group())
+                                    .circle(1.0)
+                            },
+                        )
+                        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
+                            ch.outlook(cloning_char.outlook.clone())
+                                .job_id(cloning_char.job_id)
+                                .team(cloning_char.team)
+                        });
 
-                Ok(())
-            } else {
-                Err("The character was not found".to_owned())
-            }
-        }),
+                    Ok(())
+                } else {
+                    Err("The character was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1340,37 +1475,39 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_controller_id, _self_char_id, args, ecs_world| {
-            let charname = args.as_str(0).unwrap();
+        action: Box::new(
+            |self_controller_id, _self_char_id, args, ecs_world, _video| {
+                let charname = args.as_str(0).unwrap();
 
-            let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, charname);
-            if let Some(target_char_id) = target_char_id {
-                // remove current controller and add a new one
-                // TODO: skills should be reassigned as well
-                ecs_world
-                    .write_storage::<ControllerComponent>()
-                    .remove(self_controller_id.0)
-                    .expect("");
+                let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, charname);
+                if let Some(target_char_id) = target_char_id {
+                    // remove current controller and add a new one
+                    // TODO: skills should be reassigned as well
+                    ecs_world
+                        .write_storage::<ControllerComponent>()
+                        .remove(self_controller_id.0)
+                        .expect("");
 
-                ecs_world
-                    .write_storage::<ControllerComponent>()
-                    .insert(
-                        self_controller_id.0,
-                        ControllerComponent::new(target_char_id),
-                    )
-                    .expect("");
+                    ecs_world
+                        .write_storage::<ControllerComponent>()
+                        .insert(
+                            self_controller_id.0,
+                            ControllerComponent::new(target_char_id),
+                        )
+                        .expect("");
 
-                // set camera to follow target
-                ecs_world
-                    .write_storage::<CameraComponent>()
-                    .get_mut(self_controller_id.0)
-                    .unwrap()
-                    .followed_controller = Some(self_controller_id);
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                    // set camera to follow target
+                    ecs_world
+                        .write_storage::<CameraComponent>()
+                        .get_mut(self_controller_id.0)
+                        .unwrap()
+                        .followed_controller = Some(self_controller_id);
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1390,32 +1527,34 @@ pub(super) fn cmd_set_mass() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let mass = args.as_f32(0).unwrap();
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let mass = args.as_f32(0).unwrap();
+                let username = args.as_str(1);
 
-            let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-            if let Some(entity_id) = entity_id {
-                let body_handle = ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(entity_id.0)
-                    .map(|it| it.body_handle)
-                    .unwrap();
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
-                    body.set_mass(mass);
-                    Ok(())
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
                 } else {
-                    Err("No rigid body was found for this user".to_owned())
+                    Some(self_char_id)
+                };
+                if let Some(entity_id) = entity_id {
+                    let body_handle = ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(entity_id.0)
+                        .map(|it| it.body_handle)
+                        .unwrap();
+                    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                    if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
+                        body.set_mass(mass);
+                        Ok(())
+                    } else {
+                        Err("No rigid body was found for this user".to_owned())
+                    }
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1435,32 +1574,34 @@ pub(super) fn cmd_set_damping() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let damping = args.as_f32(0).unwrap();
-            let username = args.as_str(1);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let damping = args.as_f32(0).unwrap();
+                let username = args.as_str(1);
 
-            let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-            if let Some(entity_id) = entity_id {
-                let body_handle = ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(entity_id.0)
-                    .map(|it| it.body_handle)
-                    .unwrap();
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
-                    body.set_linear_damping(damping);
-                    Ok(())
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
                 } else {
-                    Err("No rigid body was found for this user".to_owned())
+                    Some(self_char_id)
+                };
+                if let Some(entity_id) = entity_id {
+                    let body_handle = ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(entity_id.0)
+                        .map(|it| it.body_handle)
+                        .unwrap();
+                    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                    if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
+                        body.set_linear_damping(damping);
+                        Ok(())
+                    } else {
+                        Err("No rigid body was found for this user".to_owned())
+                    }
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1471,32 +1612,34 @@ pub(super) fn cmd_goto() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0).unwrap();
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0).unwrap();
 
-            let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
-            if let Some(target_char_id) = target_char_id {
-                let target_pos = {
-                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(target_char_id.0).unwrap();
-                    char_state.pos()
-                };
-                let self_body_handle = ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(self_char_id.0)
-                    .map(|it| it.body_handle)
-                    .unwrap();
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                if let Some(self_body) = physics_world.bodies.rigid_body_mut(self_body_handle) {
-                    self_body.set_position(Isometry2::translation(target_pos.x, target_pos.y));
-                    Ok(())
+                let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
+                if let Some(target_char_id) = target_char_id {
+                    let target_pos = {
+                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let char_state = storage.get(target_char_id.0).unwrap();
+                        char_state.pos()
+                    };
+                    let self_body_handle = ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(self_char_id.0)
+                        .map(|it| it.body_handle)
+                        .unwrap();
+                    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                    if let Some(self_body) = physics_world.bodies.rigid_body_mut(self_body_handle) {
+                        self_body.set_position(Isometry2::translation(target_pos.x, target_pos.y));
+                        Ok(())
+                    } else {
+                        Err("No rigid body was found for this user".to_owned())
+                    }
                 } else {
-                    Err("No rigid body was found for this user".to_owned())
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1507,34 +1650,36 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
         autocompletion: AutocompletionProviderWithUsernameCompletion::new(
             |_index, username_completor, input_storage| Some(username_completor(input_storage)),
         ),
-        action: Box::new(|self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0);
+        action: Box::new(
+            |self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0);
 
-            let entity_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-
-            if let Some(entity_id) = entity_id {
-                let hero_pos = {
-                    let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    let char_state = storage.get(entity_id.0).unwrap();
-                    char_state.pos()
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
                 };
-                print_console(
-                    &mut ecs_world.write_storage::<ConsoleComponent>(),
-                    self_controller_id,
-                    ConsoleEntry::new().add(
-                        &format!("{}, {}", hero_pos.x as i32, hero_pos.y as i32),
-                        ConsoleWordType::Normal,
-                    ),
-                );
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+
+                if let Some(entity_id) = entity_id {
+                    let hero_pos = {
+                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let char_state = storage.get(entity_id.0).unwrap();
+                        char_state.pos()
+                    };
+                    print_console(
+                        &mut ecs_world.write_storage::<ConsoleComponent>(),
+                        self_controller_id,
+                        ConsoleEntry::new().add(
+                            &format!("{}, {}", hero_pos.x as i32, hero_pos.y as i32),
+                            ConsoleWordType::Normal,
+                        ),
+                    );
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1556,34 +1701,36 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let x = args.as_int(0).unwrap();
-            let z = args.as_int(1).unwrap();
-            let username = args.as_str(2);
-            let y = args.as_f32(3).unwrap_or(0.0);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let x = args.as_int(0).unwrap();
+                let z = args.as_int(1).unwrap();
+                let username = args.as_str(2);
+                let y = args.as_f32(3).unwrap_or(0.0);
 
-            let char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-
-            let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-            if let Some(char_state) = char_id.and_then(|it| char_storage.get_mut(it.0)) {
-                let body_handle = char_state.body_handle;
-
-                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
-                    body.set_position(Isometry2::translation(x as f32, z as f32));
-                    char_state.set_y(y);
-                    Ok(())
+                let char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
                 } else {
-                    Err("No rigid body was found for this user".to_owned())
+                    Some(self_char_id)
+                };
+
+                let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
+                if let Some(char_state) = char_id.and_then(|it| char_storage.get_mut(it.0)) {
+                    let body_handle = char_state.body_handle;
+
+                    let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                    if let Some(body) = physics_world.bodies.rigid_body_mut(body_handle) {
+                        body.set_position(Isometry2::translation(x as f32, z as f32));
+                        char_state.set_y(y);
+                        Ok(())
+                    } else {
+                        Err("No rigid body was found for this user".to_owned())
+                    }
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }
 
@@ -1600,39 +1747,41 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0);
 
-            let char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
+                let char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
 
-            if let Some(char_id) = char_id {
-                let pos = ecs_world
-                    .read_storage::<CharacterStateComponent>()
-                    .get(char_id.0)
-                    .map(|it| it.pos())
-                    .unwrap();
+                if let Some(char_id) = char_id {
+                    let pos = ecs_world
+                        .read_storage::<CharacterStateComponent>()
+                        .get(char_id.0)
+                        .map(|it| it.pos())
+                        .unwrap();
 
-                let _falcon_id = ecs_world
-                    .create_entity()
-                    .with(FalconComponent::new(char_id, pos.x, pos.y))
-                    .with(SpriteRenderDescriptorComponent {
-                        action_index: CharActionIndex::Idle as usize,
-                        fps_multiplier: 1.0,
-                        animation_started: ElapsedTime(0.0),
-                        forced_duration: None,
-                        direction: 0,
-                        animation_ends_at: ElapsedTime(0.0),
-                    })
-                    .build();
-                Ok(())
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+                    let _falcon_id = ecs_world
+                        .create_entity()
+                        .with(FalconComponent::new(char_id, pos.x, pos.y))
+                        .with(SpriteRenderDescriptorComponent {
+                            action_index: CharActionIndex::Idle as usize,
+                            fps_multiplier: 1.0,
+                            animation_started: ElapsedTime(0.0),
+                            forced_duration: None,
+                            direction: 0,
+                            animation_ends_at: ElapsedTime(0.0),
+                        })
+                        .build();
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
     }
 }
 
@@ -1649,37 +1798,39 @@ pub(super) fn cmd_remove_falcon() -> CommandDefinition {
                 }
             },
         ),
-        action: Box::new(|_self_controller_id, self_char_id, args, ecs_world| {
-            let username = args.as_str(0);
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0);
 
-            let char_id = if let Some(username) = username {
-                ConsoleSystem::get_char_id_by_name(ecs_world, username)
-            } else {
-                Some(self_char_id)
-            };
-
-            if let Some(char_id) = char_id {
-                let mut delete_falcon_id = None;
-                for (falcon_id, falcon) in (
-                    &ecs_world.entities(),
-                    &ecs_world.read_storage::<FalconComponent>(),
-                )
-                    .join()
-                {
-                    if falcon.owner_entity_id == char_id {
-                        delete_falcon_id = Some(falcon_id);
-                        break;
-                    }
-                }
-                if let Some(falcon_id) = delete_falcon_id {
-                    ecs_world.delete_entity(falcon_id).expect("");
-                    return Ok(());
+                let char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
                 } else {
-                    Err("The user does not have a falcon".to_owned())
+                    Some(self_char_id)
+                };
+
+                if let Some(char_id) = char_id {
+                    let mut delete_falcon_id = None;
+                    for (falcon_id, falcon) in (
+                        &ecs_world.entities(),
+                        &ecs_world.read_storage::<FalconComponent>(),
+                    )
+                        .join()
+                    {
+                        if falcon.owner_entity_id == char_id {
+                            delete_falcon_id = Some(falcon_id);
+                            break;
+                        }
+                    }
+                    if let Some(falcon_id) = delete_falcon_id {
+                        ecs_world.delete_entity(falcon_id).expect("");
+                        return Ok(());
+                    } else {
+                        Err("The user does not have a falcon".to_owned())
+                    }
+                } else {
+                    Err("The user was not found".to_owned())
                 }
-            } else {
-                Err("The user was not found".to_owned())
-            }
-        }),
+            },
+        ),
     }
 }

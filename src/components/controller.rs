@@ -177,12 +177,13 @@ impl CameraComponent {
         };
     }
 
-    pub fn reset_y_and_angle(&mut self, projection: &Mat4) {
+    pub fn reset_y_and_angle(&mut self, projection: &Mat4, resolution_w: u32, resolution_h: u32) {
         self.pitch = CameraComponent::PITCH;
         self.yaw = CameraComponent::YAW;
         self.camera.set_y(40.0);
         self.camera.rotate(self.pitch, self.yaw);
-        self.camera.update_visible_z_range(projection);
+        self.camera
+            .update_visible_z_range(projection, resolution_w, resolution_h);
     }
 }
 

@@ -1,3 +1,6 @@
+#### 2019.11.13
+- `set_resolution` and `set_fullscreen` commands
+- `resolution_w` and `resolution_h` configs in config.toml
 
 #### 2019.10.27
 - Startup time optimization

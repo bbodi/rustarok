@@ -65,7 +65,7 @@ fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
 
     // TODO: can I remove render_matrices from system vars?
     let fov = 0.638;
-    let render_matrices = RenderMatrices::new(fov);
+    let render_matrices = RenderMatrices::new(fov, 1024, 768);
 
     let sys_vars = SystemVariables::new(
         Sprites::new_for_test(),
@@ -76,6 +76,8 @@ fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
         vec![],
         Sounds::new_for_test(),
         TIMESTEP_FOR_TESTS,
+        1024,
+        768,
     );
 
     let ecs_dispatcher = register_systems(None, None, None, true);

@@ -14,7 +14,7 @@ use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::strum::IntoEnumIterator;
-use crate::video::{ortho, VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::ortho;
 use crate::{
     get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
 };
@@ -140,15 +140,22 @@ pub struct RenderMatrices {
 }
 
 impl RenderMatrices {
-    pub fn new(fov: f32) -> RenderMatrices {
+    pub fn new(fov: f32, resolution_w: u32, resolution_h: u32) -> RenderMatrices {
         RenderMatrices {
             projection: Mat4::new_perspective(
-                VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
+                resolution_w as f32 / resolution_h as f32,
                 fov,
                 0.1f32,
                 1000.0f32,
             ),
-            ortho: ortho(0.0, VIDEO_WIDTH as f32, VIDEO_HEIGHT as f32, 0.0, -1.0, 1.0),
+            ortho: ortho(
+                0.0,
+                resolution_w as f32,
+                resolution_h as f32,
+                0.0,
+                -1.0,
+                1.0,
+            ),
         }
     }
 }
@@ -165,6 +172,8 @@ pub enum SystemEvent {
 }
 
 pub struct SystemVariables {
+    pub resolution_w: u32,
+    pub resolution_h: u32,
     pub assets: AssetResources,
     pub tick: u64,
     pub last_tick_time: u64,
@@ -194,8 +203,12 @@ impl SystemVariables {
         str_effects: Vec<StrFile>,
         sounds: Sounds,
         fix_dt_for_test: f32,
+        resolution_w: u32,
+        resolution_h: u32,
     ) -> SystemVariables {
         SystemVariables {
+            resolution_w,
+            resolution_h,
             assets: AssetResources {
                 sprites,
                 texts,

@@ -6,7 +6,6 @@ use crate::components::controller::{
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::components::BrowserClient;
 use crate::systems::SystemVariables;
-use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use crate::ConsoleCommandBuffer;
 use nalgebra::Vector4;
 use sdl2::keyboard::Scancode;
@@ -430,7 +429,11 @@ impl<'a> System<'a> for InputConsumerSystem {
                 match input.camera_movement_mode {
                     CameraMode::Free => {
                         input.camera_movement_mode = CameraMode::FollowChar;
-                        camera.reset_y_and_angle(&sys_vars.matrices.projection);
+                        camera.reset_y_and_angle(
+                            &sys_vars.matrices.projection,
+                            sys_vars.resolution_w,
+                            sys_vars.resolution_h,
+                        );
                     }
                     CameraMode::FollowChar => {
                         input.camera_movement_mode = CameraMode::FreeMoveButFixedAngle
@@ -447,6 +450,8 @@ impl<'a> System<'a> for InputConsumerSystem {
                 &camera.camera.pos(),
                 &sys_vars.matrices.projection,
                 &camera.view_matrix,
+                sys_vars.resolution_w,
+                sys_vars.resolution_h,
             );
             input.mouse_world_pos = mouse_world_pos;
 
@@ -504,13 +509,15 @@ impl InputConsumerSystem {
         camera_pos: &Vec3,
         projection: &Mat4,
         view: &Mat4,
+        resolution_w: u32,
+        resolution_h: u32,
     ) -> Vec2 {
         let x = x2d as f32;
         let y = y2d as f32;
 
         let ray_clip = Vector4::new(
-            2.0 * x / VIDEO_WIDTH as f32 - 1.0,
-            1.0 - (2.0 * y) / VIDEO_HEIGHT as f32,
+            2.0 * x / resolution_w as f32 - 1.0,
+            1.0 - (2.0 * y) / resolution_h as f32,
             -1.0,
             1.0,
         );

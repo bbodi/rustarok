@@ -89,6 +89,12 @@ impl Gl {
         return (Gl, gl_context);
     }
 
+    pub fn viewport(&self, x: i32, y: i32, w: i32, h: i32) {
+        unsafe {
+            gl::Viewport(x, y, w, h);
+        }
+    }
+
     pub unsafe fn gen_buffers(&self, n: GLsizei, buffers: *mut GLuint) {
         gl::GenBuffers(n, buffers);
     }

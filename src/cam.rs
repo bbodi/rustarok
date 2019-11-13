@@ -1,6 +1,5 @@
 use crate::common::{v3, Mat4, Vec2, Vec3};
 use crate::systems::input_sys::InputConsumerSystem;
-use crate::video::VIDEO_HEIGHT;
 use nalgebra::Point3;
 
 #[derive(Clone)]
@@ -49,14 +48,21 @@ impl Camera {
         self.pos.z = z;
     }
 
-    pub fn update_visible_z_range(&mut self, projection: &Mat4) {
+    pub fn update_visible_z_range(
+        &mut self,
+        projection: &Mat4,
+        resolution_w: u32,
+        resolution_h: u32,
+    ) {
         let view = self.create_view_matrix();
         let center = InputConsumerSystem::project_screen_pos_to_world_pos(
             0,
-            (VIDEO_HEIGHT / 2) as u16,
+            (resolution_h / 2) as u16,
             &self.pos(),
             projection,
             &view,
+            resolution_w,
+            resolution_h,
         );
         self.visible_z_range = (self.pos.z - center.y).abs();
         self.top_z_world_coord_offset = self.pos.z
@@ -66,6 +72,8 @@ impl Camera {
                 &self.pos(),
                 projection,
                 &view,
+                resolution_w,
+                resolution_h,
             )
             .y;
     }

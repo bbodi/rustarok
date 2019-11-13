@@ -142,8 +142,11 @@ impl<'a> BackgroundAssetLoader<'a> {
 
     pub fn run(self) {
         loop {
-            let msg = self.from_main_thread.recv().unwrap();
-            match msg {
+            let msg = self.from_main_thread.recv();
+            if msg.is_err() {
+                break;
+            }
+            match msg.unwrap() {
                 ToBackgroundAssetLoaderMsg::LoadTexture {
                     texture_id,
                     minmag,

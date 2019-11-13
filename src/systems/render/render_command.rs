@@ -5,7 +5,6 @@ use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
 use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
-use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
 use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
 use std::collections::{HashMap, VecDeque};
@@ -1000,6 +999,8 @@ impl Sprite3dRenderCommand {
         view: &Mat4,
         projection: &Mat4,
         asset_db: &AssetDatabase,
+        resolution_w: u32,
+        resolution_h: u32,
     ) -> SpriteBoundingRect {
         let texture = asset_db.get_texture(self.texture_id);
         let width = texture.width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * self.scale;
@@ -1026,21 +1027,29 @@ impl Sprite3dRenderCommand {
 
         let mut model_view = view * Mat4::new_translation(&self.pos);
         Sprite3dRenderCommand::set_spherical_billboard(&mut model_view);
-        fn sh(v: Vector4<f32>) -> [i32; 2] {
+        fn sh(v: Vector4<f32>, resolution_w: u32, resolution_h: u32) -> [i32; 2] {
             let s = if v[3] == 0.0 { 1.0 } else { 1.0 / v[3] };
-            let s2 = (v[1] * s / 2.0 + 0.5) * VIDEO_HEIGHT as f32;
+            let s2 = (v[1] * s / 2.0 + 0.5) * resolution_h as f32;
             if s2.is_nan() {
                 dbg!(v[1]);
                 dbg!(v);
                 dbg!(s);
             }
             [
-                ((v[0] * s / 2.0 + 0.5) * VIDEO_WIDTH as f32) as i32,
-                VIDEO_HEIGHT as i32 - s2 as i32,
+                ((v[0] * s / 2.0 + 0.5) * resolution_w as f32) as i32,
+                resolution_h as i32 - s2 as i32,
             ]
         }
-        let bottom_left = sh(projection * model_view * bottom_left);
-        let top_right = sh(projection * model_view * top_right);
+        let bottom_left = sh(
+            projection * model_view * bottom_left,
+            resolution_w,
+            resolution_h,
+        );
+        let top_right = sh(
+            projection * model_view * top_right,
+            resolution_w,
+            resolution_h,
+        );
         return SpriteBoundingRect {
             bottom_left,
             top_right,

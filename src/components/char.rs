@@ -66,6 +66,8 @@ pub fn attach_human_player_components(
     head_index: usize,
     team: Team,
     dev_configs: &DevConfig,
+    resolution_w: u32,
+    resolution_h: u32,
 ) {
     CharacterEntityBuilder::new(char_entity_id, username)
         .insert_sprite_render_descr_component(updater)
@@ -97,7 +99,7 @@ pub fn attach_human_player_components(
     // camera
     {
         let mut camera_component = CameraComponent::new(Some(controller_id));
-        camera_component.reset_y_and_angle(&projection_mat);
+        camera_component.reset_y_and_angle(&projection_mat, resolution_w, resolution_h);
         updater.insert(controller_id.0, camera_component);
     }
 }

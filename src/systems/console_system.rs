@@ -5,13 +5,14 @@ use crate::systems::console_commands::{
     cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear, cmd_clone_char, cmd_control_char,
     cmd_disable_collision, cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_get_server_fps,
     cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_remove_falcon,
-    cmd_resurrect, cmd_set_damping, cmd_set_job, cmd_set_mass, cmd_set_outlook, cmd_set_pos,
-    cmd_set_server_fps, cmd_set_team, cmd_spawn_area, cmd_spawn_entity, cmd_toggle_console,
+    cmd_resurrect, cmd_set_damping, cmd_set_fullscreen, cmd_set_job, cmd_set_mass, cmd_set_outlook,
+    cmd_set_pos, cmd_set_resolution, cmd_set_server_fps, cmd_set_team, cmd_spawn_area,
+    cmd_spawn_entity, cmd_toggle_console,
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
 use crate::systems::SystemVariables;
-use crate::video::{VIDEO_HEIGHT, VIDEO_WIDTH};
+use crate::video::Video;
 use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
 use serde::export::fmt::{Debug, Error};
@@ -661,12 +662,15 @@ impl<'a> ConsoleSystem<'a> {
     pub fn init_commands(
         _effect_names: Vec<String>,
         _map_names: Vec<String>,
+        resolutions: Vec<String>,
     ) -> HashMap<String, CommandDefinition> {
         let mut command_defs: HashMap<String, CommandDefinition> = HashMap::new();
         ConsoleSystem::add_command(&mut command_defs, cmd_set_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_get_pos());
         ConsoleSystem::add_command(&mut command_defs, cmd_add_status());
         ConsoleSystem::add_command(&mut command_defs, cmd_list_players());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_resolution(resolutions));
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_fullscreen());
         ConsoleSystem::add_command(&mut command_defs, cmd_list_entities());
         //        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_effect(effect_names));
         ConsoleSystem::add_command(&mut command_defs, cmd_spawn_area());
@@ -894,6 +898,17 @@ pub trait AutocompletionProvider {
     ) -> Option<Vec<String>>;
 }
 
+pub struct OwnedAutocompletionProvider(pub Vec<String>);
+impl AutocompletionProvider for OwnedAutocompletionProvider {
+    fn get_autocompletion_list(
+        &self,
+        _param_index: usize,
+        _input_storage: &ReadStorage<HumanInputComponent>,
+    ) -> Option<Vec<String>> {
+        Some(self.0.clone())
+    }
+}
+
 pub struct BasicAutocompletionProvider(Box<dyn Fn(usize) -> Option<Vec<String>>>);
 
 impl BasicAutocompletionProvider {
@@ -968,7 +983,13 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback = Box<
-    dyn Fn(ControllerEntityId, CharEntityId, &CommandArguments, &mut World) -> Result<(), String>,
+    dyn Fn(
+        ControllerEntityId,
+        CharEntityId,
+        &CommandArguments,
+        &mut World,
+        &mut Video,
+    ) -> Result<(), String>,
 >;
 
 pub enum ConsoleWordType {
@@ -1037,7 +1058,7 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
         {
             let now = sys_vars.time;
             let console_color = dev_configs.console.color;
-            let console_height = (VIDEO_HEIGHT / 3) as i32;
+            let console_height = (sys_vars.resolution_h / 3) as i32;
             let repeat_time = 0.1;
             if !input.is_console_open {
                 if console.y_pos > 0 {
@@ -1194,7 +1215,7 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
                 render_commands
                     .rectangle_2d()
                     .screen_pos(0, 0)
-                    .size(VIDEO_WIDTH as u16, console.y_pos as u16)
+                    .size(sys_vars.resolution_w as u16, console.y_pos as u16)
                     .color(&console_color)
                     .layer(UiLayer2d::Console)
                     .add();

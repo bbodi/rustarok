@@ -61,9 +61,11 @@ impl<'a> System<'a> for CameraSystem {
                         {
                             if input.mouse_wheel != 0 {
                                 camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
-                                camera
-                                    .camera
-                                    .update_visible_z_range(&sys_vars.matrices.projection);
+                                camera.camera.update_visible_z_range(
+                                    &sys_vars.matrices.projection,
+                                    sys_vars.resolution_w,
+                                    sys_vars.resolution_h,
+                                );
                             };
                             if let Some(char_state) = char_state_storage.get(followed_char.0) {
                                 let pos = char_state.pos();
@@ -77,9 +79,11 @@ impl<'a> System<'a> for CameraSystem {
                 CameraMode::FreeMoveButFixedAngle => {
                     if input.mouse_wheel != 0 {
                         camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
-                        camera
-                            .camera
-                            .update_visible_z_range(&sys_vars.matrices.projection);
+                        camera.camera.update_visible_z_range(
+                            &sys_vars.matrices.projection,
+                            sys_vars.resolution_w,
+                            sys_vars.resolution_h,
+                        );
                     }
                     if !input.is_console_open {
                         CameraSystem::axis_aligned_movement(camera, input);

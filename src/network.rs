@@ -10,8 +10,6 @@ use crate::effect::StrEffectType;
 use crate::my_gl::Gl;
 use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::{Sex, SystemVariables};
-use crate::video::VIDEO_HEIGHT;
-use crate::video::VIDEO_WIDTH;
 use byteorder::{LittleEndian, WriteBytesExt};
 use specs::prelude::*;
 use std::convert::TryInto;
@@ -39,8 +37,8 @@ pub fn handle_new_connections(
                 let sys_vars = &ecs_world.read_resource::<SystemVariables>();
                 let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                 let welcome_data = json!({
-                    "screen_width": VIDEO_WIDTH,
-                    "screen_height": VIDEO_HEIGHT,
+                    "screen_width": sys_vars.resolution_w,
+                    "screen_height": sys_vars.resolution_h,
                     "map_name": map_name,
                     "asset_db": serde_json::to_value(asset_db).unwrap(),
                     "effect_names": StrEffectType::iter().map(|it| it.to_string()).collect::<Vec<_>>(),
@@ -218,6 +216,8 @@ pub fn handle_client_handshakes(ecs_world: &mut World, appconfig: &AppConfig) {
                                 2,
                                 Team::Right,
                                 &ecs_world.read_resource::<DevConfig>(),
+                                ecs_world.read_resource::<SystemVariables>().resolution_w,
+                                ecs_world.read_resource::<SystemVariables>().resolution_h,
                             );
                         }
                     } else {
