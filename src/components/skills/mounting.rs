@@ -1,9 +1,9 @@
 use specs::LazyUpdate;
 
-use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{ApplyStatusComponent, MainStatuses};
 use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
@@ -20,11 +20,7 @@ impl SkillDef for MountingSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         {
@@ -35,7 +31,7 @@ impl SkillDef for MountingSkill {
                 entities.create(),
                 StrEffectComponent {
                     effect_id: StrEffectType::Concentration.into(),
-                    pos: caster_pos,
+                    pos: params.caster_pos,
                     start_time: now,
                     die_at: Some(now.add_seconds(0.7)),
                     play_mode: ActionPlayMode::PlayThenHold,
@@ -46,8 +42,8 @@ impl SkillDef for MountingSkill {
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_main_status(
-                caster_entity_id,
-                caster_entity_id,
+                params.caster_entity_id,
+                params.caster_entity_id,
                 MainStatuses::Mounted,
             ));
         None

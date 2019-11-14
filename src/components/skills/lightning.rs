@@ -5,8 +5,8 @@ use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
@@ -29,18 +29,14 @@ impl SkillDef for LightningSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         Some(Box::new(LightningManifest::new(
-            caster_entity_id,
-            &skill_pos.unwrap(),
-            char_to_skill_dir,
+            params.caster_entity_id,
+            &params.skill_pos.unwrap(),
+            &params.char_to_skill_dir,
             sys_vars.time,
             &ecs_world.entities(),
         )))

@@ -1,6 +1,6 @@
-use crate::common::Vec2;
-use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{RemoveStatusComponent, StatusNature};
 use crate::systems::SystemVariables;
 
@@ -15,19 +15,15 @@ impl SkillDef for CureSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         sys_vars
             .remove_statuses
             .push(RemoveStatusComponent::by_status_nature(
-                caster_entity_id,
-                target_entity.unwrap(),
+                params.caster_entity_id,
+                params.target_entity.unwrap(),
                 StatusNature::Harmful,
             ));
         None

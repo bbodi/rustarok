@@ -6,8 +6,8 @@ use crate::common::{rotate_vec2, v2};
 use crate::components::char::ActionPlayMode;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType, Skills,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType, Skills,
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
@@ -30,15 +30,11 @@ impl SkillDef for BrutalTestSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+        let angle_in_rad = params.char_to_skill_dir.angle(&Vector2::y());
+        let angle_in_rad = if params.char_to_skill_dir.x > 0.0 {
             angle_in_rad
         } else {
             -angle_in_rad
@@ -46,8 +42,8 @@ impl SkillDef for BrutalTestSkill {
         let entities = &ecs_world.entities();
         let mut updater = ecs_world.write_resource::<LazyUpdate>();
         Some(Box::new(BrutalSkillManifest::new(
-            caster_entity_id,
-            &skill_pos.unwrap(),
+            params.caster_entity_id,
+            &params.skill_pos.unwrap(),
             angle_in_rad,
             ecs_world
                 .read_resource::<DevConfig>()

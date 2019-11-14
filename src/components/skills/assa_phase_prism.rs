@@ -4,8 +4,8 @@ use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
@@ -29,11 +29,7 @@ impl SkillDef for AssaPhasePrismSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
@@ -42,9 +38,9 @@ impl SkillDef for AssaPhasePrismSkill {
             .skills
             .assa_phase_prism;
         Some(Box::new(AssaPhasePrismSkillManifestation::new(
-            caster_entity_id,
-            caster_pos,
-            *char_to_skill_dir,
+            params.caster_entity_id,
+            params.caster_pos,
+            params.char_to_skill_dir,
             &mut ecs_world.write_resource::<PhysicEngine>(),
             sys_vars.time,
             configs.duration_seconds,

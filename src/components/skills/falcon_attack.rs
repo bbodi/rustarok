@@ -5,8 +5,8 @@ use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::ApplyStatusComponent;
@@ -32,18 +32,14 @@ impl SkillDef for FalconAttackSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
 
-        let angle_in_rad = char_to_skill_dir.angle(&Vector2::y());
-        let angle_in_rad = if char_to_skill_dir.x > 0.0 {
+        let angle_in_rad = params.char_to_skill_dir.angle(&Vector2::y());
+        let angle_in_rad = if params.char_to_skill_dir.x > 0.0 {
             angle_in_rad
         } else {
             -angle_in_rad
@@ -55,14 +51,15 @@ impl SkillDef for FalconAttackSkill {
             )
                 .join()
             {
-                if falcon.owner_entity_id != caster_entity_id {
+                if falcon.owner_entity_id != params.caster_entity_id {
                     continue;
                 }
-                let end_pos = caster_pos + (char_to_skill_dir * configs.attributes.casting_range);
+                let end_pos = params.caster_pos
+                    + (params.char_to_skill_dir * configs.attributes.casting_range);
                 falcon.set_state_to_attack(
                     sys_vars.time,
                     configs.duration_in_seconds,
-                    caster_pos,
+                    params.caster_pos,
                     end_pos,
                     sprite,
                 );
@@ -70,20 +67,20 @@ impl SkillDef for FalconAttackSkill {
 
                 let (coll_handle, _body_handle) = ecs_world
                     .write_resource::<PhysicEngine>()
-                    .add_cuboid_skill_area(caster_pos, angle_in_rad, extents);
+                    .add_cuboid_skill_area(params.caster_pos, angle_in_rad, extents);
                 return Some(Box::new(FalconAttackSkillManifestation {
                     damaged_entities: HashSet::with_capacity(8),
                     extents,
-                    start_pos: caster_pos,
-                    path: end_pos - caster_pos,
+                    start_pos: params.caster_pos,
+                    path: end_pos - params.caster_pos,
                     rot_angle_in_rad: angle_in_rad,
                     created_at: sys_vars.time,
                     die_at: sys_vars.time.add_seconds(configs.duration_in_seconds),
                     falcon_collider_handle: coll_handle,
-                    falcon_owner_id: caster_entity_id,
+                    falcon_owner_id: params.caster_entity_id,
                     team: ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(caster_entity_id.0)
+                        .get(params.caster_entity_id.0)
                         .unwrap()
                         .team,
                     damage: configs.damage,

@@ -779,14 +779,10 @@ fn execute_finished_skill_castings(ecs_world: &mut World) {
         Vec::with_capacity(128),
     );
     for finished_cast in &finished_casts {
-        let manifestation = finished_cast.skill.get_definition().finish_cast(
-            finished_cast.caster_entity_id,
-            finished_cast.caster_pos,
-            finished_cast.skill_pos,
-            &finished_cast.char_to_skill_dir,
-            finished_cast.target_entity,
-            ecs_world,
-        );
+        let manifestation = finished_cast
+            .skill
+            .get_definition()
+            .finish_cast(&finished_cast, ecs_world);
         if let Some(manifestation) = manifestation {
             let skill_entity_id = ecs_world.create_entity().build();
             ecs_world.read_resource::<LazyUpdate>().insert(

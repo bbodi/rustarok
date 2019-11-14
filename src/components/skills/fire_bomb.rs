@@ -1,9 +1,10 @@
 use nalgebra::Isometry2;
 
-use crate::common::Vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
 use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, Status,
     StatusNature, StatusUpdateParams, StatusUpdateResult,
@@ -29,26 +30,22 @@ impl SkillDef for FireBombSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get(caster_entity_id.0)
+            .get(params.caster_entity_id.0)
         {
             let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
             let now = sys_vars.time;
             sys_vars
                 .apply_statuses
                 .push(ApplyStatusComponent::from_secondary_status(
-                    caster_entity_id,
-                    target_entity.unwrap(),
+                    params.caster_entity_id,
+                    params.target_entity.unwrap(),
                     Box::new(FireBombStatus {
-                        caster_entity_id,
+                        caster_entity_id: params.caster_entity_id,
                         started: now,
                         until: now.add_seconds(2.0),
                         damage: ecs_world

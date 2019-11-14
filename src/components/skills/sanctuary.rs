@@ -3,8 +3,8 @@ use nalgebra::Isometry2;
 use crate::common::{v2, Vec2};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType, Skills,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType, Skills,
 };
 use crate::components::{AreaAttackComponent, HpModificationType};
 use crate::configs::DevConfig;
@@ -24,17 +24,13 @@ impl SkillDef for SanctuarySkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let configs = &ecs_world.read_resource::<DevConfig>().skills.sanctuary;
         Some(Box::new(SanctuarySkillManifest::new(
-            caster_entity_id,
-            &skill_pos.unwrap(),
+            params.caster_entity_id,
+            &params.skill_pos.unwrap(),
             configs.heal,
             configs.heal_freq_seconds,
             ecs_world.read_resource::<SystemVariables>().time,

@@ -1,12 +1,14 @@
 use crate::asset::SpriteResource;
-use crate::common::{ElapsedTime, Vec2};
+use crate::common::ElapsedTime;
 use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
     StatusUpdateResult,
@@ -30,11 +32,7 @@ impl SkillDef for ExoSkeletonSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
@@ -44,8 +42,8 @@ impl SkillDef for ExoSkeletonSkill {
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                caster_entity_id,
+                params.caster_entity_id,
+                params.caster_entity_id,
                 Box::new(ExoSkeletonStatus::new(
                     now,
                     duration_seconds,

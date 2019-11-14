@@ -8,7 +8,9 @@ use crate::components::char::{
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{
     ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
     StatusUpdateResult,
@@ -31,19 +33,15 @@ impl SkillDef for AssaBladeDashSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .write_storage::<CharacterStateComponent>()
-            .get_mut(caster_entity_id.0)
+            .get_mut(params.caster_entity_id.0)
         {
-            let angle = char_to_skill_dir.angle(&Vector2::y());
-            let angle = if char_to_skill_dir.x > 0.0 {
+            let angle = params.char_to_skill_dir.angle(&Vector2::y());
+            let angle = if params.char_to_skill_dir.x > 0.0 {
                 angle
             } else {
                 -angle
@@ -59,17 +57,17 @@ impl SkillDef for AssaBladeDashSkill {
             sys_vars
                 .apply_statuses
                 .push(ApplyStatusComponent::from_secondary_status(
-                    caster_entity_id,
-                    caster_entity_id,
+                    params.caster_entity_id,
+                    params.caster_entity_id,
                     Box::new(AssaBladeDashStatus {
-                        caster_entity_id,
+                        caster_entity_id: params.caster_entity_id,
                         started_at: now,
                         ends_at: now.add_seconds(configs.duration_seconds),
                         start_pos: caster.pos(),
                         center: caster.pos()
-                            + char_to_skill_dir * (configs.attributes.casting_range / 2.0),
+                            + params.char_to_skill_dir * (configs.attributes.casting_range / 2.0),
                         rot_radian: angle,
-                        vector: char_to_skill_dir * configs.attributes.casting_range,
+                        vector: params.char_to_skill_dir * configs.attributes.casting_range,
                         shadow1_pos: Vector2::zeros(),
                         shadow2_pos: Vector2::zeros(),
                         forward_damage_done: false,

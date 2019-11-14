@@ -1,9 +1,9 @@
 use specs::LazyUpdate;
 
-use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::CharEntityId;
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{ApplyStatusComponent, PoisonStatus};
 use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
@@ -21,11 +21,7 @@ impl SkillDef for PosionSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
@@ -36,7 +32,7 @@ impl SkillDef for PosionSkill {
             entities.create(),
             StrEffectComponent {
                 effect_id: StrEffectType::Poison.into(),
-                pos: skill_pos.unwrap(),
+                pos: params.skill_pos.unwrap(),
                 start_time: now,
                 die_at: Some(now.add_seconds(0.7)),
                 play_mode: ActionPlayMode::Repeat,
@@ -46,10 +42,10 @@ impl SkillDef for PosionSkill {
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                target_entity.unwrap(),
+                params.caster_entity_id,
+                params.target_entity.unwrap(),
                 Box::new(PoisonStatus {
-                    poison_caster_entity_id: caster_entity_id,
+                    poison_caster_entity_id: params.caster_entity_id,
                     started: now,
                     until: now.add_seconds(configs.duration_seconds),
                     next_damage_at: now,

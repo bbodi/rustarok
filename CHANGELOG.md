@@ -1,3 +1,7 @@
+#### 2019.11.14
+- Barricade cannot be put onto an already occupied tile
+- `finish_cast` now expects a `FinishCast` struct as a parameter
+
 #### 2019.11.13
 - `set_resolution` and `set_fullscreen` commands
 - `resolution_w` and `resolution_h` configs in config.toml

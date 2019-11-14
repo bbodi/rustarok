@@ -200,11 +200,7 @@ pub trait SkillDef {
     fn get_icon_path(&self) -> &'static str;
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>>;
 
@@ -299,14 +295,9 @@ impl SkillDef for AttackMoveSkill {
         ""
     }
 
-    // TODO: paraméterek ki structba
     fn finish_cast(
         &self,
-        _caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        _params: &FinishCast,
         _ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         None

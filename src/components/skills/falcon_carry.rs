@@ -5,7 +5,9 @@ use crate::components::char::{
     CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CharEntityId, ControllerComponent, ControllerEntityId};
-use crate::components::skills::skills::{SkillDef, SkillManifestation, SkillTargetType};
+use crate::components::skills::skills::{
+    FinishCast, SkillDef, SkillManifestation, SkillTargetType,
+};
 use crate::components::status::status::{
     Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
 };
@@ -28,16 +30,12 @@ impl SkillDef for FalconCarrySkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        _caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
-        let target_entity = target_entity.unwrap();
+        let target_entity = params.target_entity.unwrap();
         let target_pos = {
             let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
             if let Some(target) = char_storage.get(target_entity.0) {
@@ -53,10 +51,10 @@ impl SkillDef for FalconCarrySkill {
             )
                 .join()
             {
-                if falcon.owner_entity_id != caster_entity_id {
+                if falcon.owner_entity_id != params.caster_entity_id {
                     continue;
                 }
-                if target_entity == caster_entity_id {
+                if target_entity == params.caster_entity_id {
                     // falcon.state = FalconState::CarryOwner
                     for (entity_id, controller) in (
                         &ecs_world.entities(),

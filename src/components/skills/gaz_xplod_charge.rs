@@ -5,8 +5,8 @@ use crate::common::{v3, Vec2};
 use crate::components::char::{ActionPlayMode, CharActionIndex, SpriteRenderDescriptorComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::status::{
     ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
@@ -36,17 +36,13 @@ impl SkillDef for GazXplodiumChargeSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        _target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         Some(Box::new(GazXplodiumChargeSkillManifestation::new(
-            caster_entity_id,
-            caster_pos,
-            skill_pos.unwrap(),
+            params.caster_entity_id,
+            params.caster_pos,
+            params.skill_pos.unwrap(),
             &mut ecs_world.write_resource::<PhysicEngine>(),
             ecs_world.read_resource::<SystemVariables>().time,
             ecs_world

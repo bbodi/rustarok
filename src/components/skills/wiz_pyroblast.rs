@@ -7,8 +7,8 @@ use crate::components::char::{
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
-    SkillDef, SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
-    SkillTargetType,
+    FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
+    SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
 use crate::components::{
@@ -35,11 +35,7 @@ impl SkillDef for WizPyroBlastSkill {
 
     fn finish_cast(
         &self,
-        caster_entity_id: CharEntityId,
-        caster_pos: Vec2,
-        _skill_pos: Option<Vec2>,
-        _char_to_skill_dir: &Vec2,
-        target_entity: Option<CharEntityId>,
+        params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
@@ -53,17 +49,17 @@ impl SkillDef for WizPyroBlastSkill {
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_secondary_status(
-                caster_entity_id,
-                target_entity.unwrap(),
+                params.caster_entity_id,
+                params.target_entity.unwrap(),
                 Box::new(PyroBlastTargetStatus {
-                    caster_entity_id,
+                    caster_entity_id: params.caster_entity_id,
                     splash_radius: configs.splash_radius,
                 }),
             ));
         Some(Box::new(PyroBlastManifest::new(
-            caster_entity_id,
-            caster_pos,
-            target_entity.unwrap(),
+            params.caster_entity_id,
+            params.caster_pos,
+            params.target_entity.unwrap(),
             sys_vars.time,
             &mut ecs_world.write_resource::<PhysicEngine>(),
             configs,
