@@ -1,8 +1,8 @@
 use nalgebra::Isometry2;
-use specs::Entity;
+use specs::{Entity, ReadStorage};
 
 use crate::common::Vec2;
-use crate::components::char::ActionPlayMode;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
@@ -193,6 +193,7 @@ impl SkillManifestation for LightningManifest {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

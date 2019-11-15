@@ -180,6 +180,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

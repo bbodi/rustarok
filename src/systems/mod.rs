@@ -132,6 +132,7 @@ pub struct AssetResources {
     pub skill_icons: HashMap<Skills, TextureId>,
     pub status_icons: HashMap<&'static str, TextureId>,
     pub sounds: Sounds,
+    pub str_effects: Vec<StrFile>,
 }
 
 pub struct RenderMatrices {
@@ -189,7 +190,6 @@ pub struct SystemVariables {
     pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
-    pub str_effects: Vec<StrFile>,
     pub fix_dt_for_test: f32,
 }
 
@@ -215,6 +215,7 @@ impl SystemVariables {
                 skill_icons,
                 status_icons,
                 sounds,
+                str_effects,
             },
             last_tick_time: get_current_ms(SystemTime::now()),
             tick: 1,
@@ -228,7 +229,6 @@ impl SystemVariables {
             just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
-            str_effects,
             fix_dt_for_test,
         }
     }

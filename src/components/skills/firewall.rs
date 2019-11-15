@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use nalgebra::Vector2;
 use nphysics2d::object::{DefaultBodyHandle, DefaultColliderHandle};
-use specs::{Entity, LazyUpdate};
+use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::common::{rotate_vec2, v2, Vec2, Vec2i};
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
@@ -247,6 +247,7 @@ impl SkillManifestation for PushBackWallSkill {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         _now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,

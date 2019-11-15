@@ -52,6 +52,12 @@ impl StrEffectCache {
     }
 }
 
+#[allow(dead_code)]
+pub enum Trimesh3dType {
+    Sanctuary,
+    SphericalCylinder,
+    Sphere,
+}
 pub const VERTEX_ARRAY_COUNT: usize = 3;
 
 pub struct OpenGlRenderSystem<'a, 'b> {
@@ -279,36 +285,70 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                         },
                     ],
                 );
-                let mesh = OpenGlRenderSystem::create_sphere_vao(1.0, 100, 100);
-                let coords: Vec<[f32; 9]> = mesh
-                    .iter()
-                    .map(|coord| {
-                        [
-                            coord[0], coord[1], coord[2], 1.0, 1.0, 1.0, 1.0, coord[3], coord[4],
-                        ]
-                    })
-                    .collect();
-                let sphere = VertexArray::new_static(
-                    &gl,
-                    MyGlEnum::TRIANGLES,
-                    coords,
-                    vec![
-                        VertexAttribDefinition {
-                            number_of_components: 3,
-                            offset_of_first_element: 0,
-                        },
-                        VertexAttribDefinition {
-                            number_of_components: 4,
-                            offset_of_first_element: 3,
-                        },
-                        VertexAttribDefinition {
-                            number_of_components: 2,
-                            offset_of_first_element: 7,
-                        },
-                    ],
-                );
+                let sphere = {
+                    let mesh = OpenGlRenderSystem::create_sphere_vao(1.0, 100, 100);
+                    let coords: Vec<[f32; 9]> = mesh
+                        .iter()
+                        .map(|coord| {
+                            [
+                                coord[0], coord[1], coord[2], 1.0, 1.0, 1.0, 1.0, coord[3],
+                                coord[4],
+                            ]
+                        })
+                        .collect();
+                    VertexArray::new_static(
+                        &gl,
+                        MyGlEnum::TRIANGLES,
+                        coords,
+                        vec![
+                            VertexAttribDefinition {
+                                number_of_components: 3,
+                                offset_of_first_element: 0,
+                            },
+                            VertexAttribDefinition {
+                                number_of_components: 4,
+                                offset_of_first_element: 3,
+                            },
+                            VertexAttribDefinition {
+                                number_of_components: 2,
+                                offset_of_first_element: 7,
+                            },
+                        ],
+                    )
+                };
 
-                [sanctuary_vao.clone(), sanctuary_vao, sphere]
+                let sperical_cylinder = {
+                    let mesh = OpenGlRenderSystem::create_cylinder_vao(1.0, 3.0, 16, -3.0);
+                    let coords: Vec<[f32; 9]> = mesh
+                        .iter()
+                        .map(|coord| {
+                            [
+                                coord[0], coord[1], coord[2], 1.0, 1.0, 1.0, coord[3], 0.0, 0.0,
+                            ]
+                        })
+                        .collect();
+                    VertexArray::new_static(
+                        &gl,
+                        MyGlEnum::TRIANGLE_STRIP,
+                        coords,
+                        vec![
+                            VertexAttribDefinition {
+                                number_of_components: 3,
+                                offset_of_first_element: 0,
+                            },
+                            VertexAttribDefinition {
+                                number_of_components: 4,
+                                offset_of_first_element: 3,
+                            },
+                            VertexAttribDefinition {
+                                number_of_components: 2,
+                                offset_of_first_element: 7,
+                            },
+                        ],
+                    )
+                };
+
+                [sanctuary_vao.clone(), sperical_cylinder, sphere]
             },
             centered_rectangle_vao: {
                 let bottom_left: [f32; 9] = [-0.5, 0.0, -0.5, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0];
@@ -390,6 +430,28 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
                 AssetLoader::create_texture_from_surface_inner(&gl, surface, MyGlEnum::LINEAR)
             },
         }
+    }
+
+    fn create_cylinder_vao(
+        radius: f32,
+        height: f32,
+        num_steps: i32,
+        top_offset: f32,
+    ) -> Vec<[f32; 4]> {
+        let mut vertices = Vec::with_capacity(num_steps as usize * 2);
+        let mut a = std::f32::consts::PI * 2.0;
+        let step = std::f32::consts::PI * 2.0 / num_steps as f32;
+        for _i in 0..=num_steps {
+            let x = a.cos() * radius;
+            let y = a.sin() * radius;
+            vertices.push([x, 0.0, y, 1.0]);
+            // top_offset: sperical billboard "rotates" the sprite rectangle around the x axis, so
+            // depth test does not work as expected because the sprite rectangle is sticking out
+            // of the cylinder
+            vertices.push([x, height, y + top_offset, 0.0]);
+            a -= step;
+        }
+        return vertices;
     }
 
     fn create_sphere_vao(radius: f32, sector_count: i32, stack_count: i32) -> Vec<[f32; 5]> {
@@ -900,7 +962,7 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
                     .filter(|(_frame_cache_key, commands)| !commands.is_empty())
                     .for_each(|(frame_cache_key, commands)| {
                         let cached_frame = str_effect_cache.cache.get(&frame_cache_key);
-                        let str_file = &sys_vars.str_effects[frame_cache_key.effect_id.0];
+                        let str_file = &sys_vars.assets.str_effects[frame_cache_key.effect_id.0];
                         match cached_frame {
                             None => {
                                 let layer = &str_file.layers[frame_cache_key.layer_index];

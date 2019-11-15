@@ -1,5 +1,6 @@
 use crate::components::char::{
-    ActionPlayMode, CharActionIndex, CharAttributes, SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharActionIndex, CharAttributes, CharacterStateComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
@@ -16,6 +17,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
+use specs::ReadStorage;
 
 #[derive(Clone, Debug, PartialEq)]
 #[allow(variant_size_differences)]
@@ -185,6 +187,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

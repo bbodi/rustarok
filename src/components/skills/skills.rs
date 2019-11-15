@@ -138,6 +138,7 @@ pub trait SkillManifestation {
 
     fn render(
         &self,
+        char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
@@ -171,6 +172,7 @@ impl SkillManifestationComponent {
 
     pub fn render(
         &self,
+        char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
@@ -178,7 +180,14 @@ impl SkillManifestationComponent {
         audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let skill = self.skill.lock().unwrap();
-        skill.render(now, tick, assets, render_commands, audio_commands);
+        skill.render(
+            char_entity_storage,
+            now,
+            tick,
+            assets,
+            render_commands,
+            audio_commands,
+        );
     }
 }
 
@@ -218,7 +227,8 @@ pub trait SkillDef {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            sys_vars,
+            &sys_vars.assets,
+            sys_vars.time,
             render_commands,
             ActionPlayMode::Repeat,
         );

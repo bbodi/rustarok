@@ -1,6 +1,7 @@
 use nalgebra::Isometry2;
 
 use crate::common::{v2, ElapsedTime, Vec2};
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::skills::{
@@ -17,6 +18,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
+use specs::ReadStorage;
 
 pub struct AssaPhasePrismSkill;
 
@@ -180,6 +182,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         _now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

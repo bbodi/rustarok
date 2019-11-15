@@ -2,7 +2,9 @@ use nalgebra::{Isometry2, Vector3};
 
 use crate::common::{v2_to_v3, v3_to_v2, ElapsedTime};
 use crate::common::{v3, Vec2};
-use crate::components::char::{ActionPlayMode, CharActionIndex, SpriteRenderDescriptorComponent};
+use crate::components::char::{
+    ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
+};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
@@ -23,6 +25,7 @@ use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
+use specs::ReadStorage;
 use vek::QuadraticBezier3;
 
 pub struct GazXplodiumChargeSkill;
@@ -159,6 +162,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

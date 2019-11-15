@@ -254,7 +254,7 @@ impl NextActionApplierSystem {
                 },
                 char_to_skill_dir_when_casted: dir_vector,
             });
-            let dir = if is_self_cast && target_entity.map(|it| it == self_char_id).is_some() {
+            let dir = if is_self_cast || target_entity.map(|it| it == self_char_id).is_some() {
                 // skill on self, don't change direction
                 char_state.dir()
             } else {

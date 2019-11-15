@@ -96,7 +96,8 @@ impl Status for AbsorbStatus {
             StrEffectType::Ramadan,
             self.animation_started,
             &char_state.pos(),
-            sys_vars,
+            &sys_vars.assets,
+            sys_vars.time,
             render_commands,
             ActionPlayMode::Repeat,
         );

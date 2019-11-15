@@ -1,4 +1,5 @@
 use crate::common::{v2, Vec2};
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
@@ -8,6 +9,7 @@ use crate::systems::AssetResources;
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
+use specs::ReadStorage;
 
 pub struct StatusApplierArea<F>
 where
@@ -84,6 +86,7 @@ where
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

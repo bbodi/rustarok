@@ -1,6 +1,7 @@
 use nalgebra::Isometry2;
 
 use crate::common::{v2, Vec2};
+use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
@@ -8,10 +9,12 @@ use crate::components::skills::skills::{
 };
 use crate::components::{AreaAttackComponent, HpModificationType};
 use crate::configs::DevConfig;
-use crate::systems::render::render_command::{RenderCommandCollector, Trimesh3dType};
+use crate::systems::render::opengl_render_sys::Trimesh3dType;
+use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
+use specs::ReadStorage;
 
 pub struct SanctuarySkill;
 
@@ -112,6 +115,7 @@ impl SkillManifestation for SanctuarySkillManifest {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

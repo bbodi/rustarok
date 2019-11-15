@@ -241,6 +241,7 @@ impl RenderDesktopClientSystem {
 
         for skill in (&skill_storage).join() {
             skill.render(
+                char_state_storage,
                 sys_vars.time,
                 sys_vars.tick,
                 &sys_vars.assets,
@@ -264,7 +265,8 @@ impl RenderDesktopClientSystem {
                         str_effect.effect_id,
                         str_effect.start_time,
                         &str_effect.pos,
-                        sys_vars,
+                        &sys_vars.assets,
+                        sys_vars.time,
                         render_commands,
                         str_effect.play_mode,
                     );
@@ -1448,7 +1450,8 @@ impl RenderDesktopClientSystem {
         effect: E,
         start_time: ElapsedTime,
         world_pos: &Vec2,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        now: ElapsedTime,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,
     ) -> bool
@@ -1456,11 +1459,10 @@ impl RenderDesktopClientSystem {
         E: Into<StrEffectId>,
     {
         let effect_id = effect.into();
-        let str_file = &sys_vars.str_effects[effect_id.0];
+        let str_file = &assets.str_effects[effect_id.0];
         let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
         let max_key = str_file.max_key as i32;
-        let real_index = sys_vars
-            .time
+        let real_index = now
             .elapsed_since(start_time)
             .div(seconds_needed_for_one_frame) as i32;
         let key_index = match play_mode {

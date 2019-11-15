@@ -143,6 +143,7 @@ pub fn handle_client_handshakes(ecs_world: &mut World, appconfig: &AppConfig) {
                                 {
                                     let str_file = &ecs_world
                                         .read_resource::<SystemVariables>()
+                                        .assets
                                         .str_effects[effect_type as usize];
 
                                     response_buf

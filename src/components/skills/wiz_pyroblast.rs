@@ -83,7 +83,8 @@ impl SkillDef for WizPyroBlastSkill {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            sys_vars,
+            &sys_vars.assets,
+            sys_vars.time,
             render_commands,
             ActionPlayMode::Repeat,
         );
@@ -213,6 +214,7 @@ impl SkillManifestation for PyroBlastManifest {
 
     fn render(
         &self,
+        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

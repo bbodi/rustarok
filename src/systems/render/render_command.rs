@@ -3,7 +3,7 @@ use crate::asset::texture::TextureId;
 use crate::common::{v3, Mat3, Mat4, Vec2};
 use crate::components::char::SpriteBoundingRect;
 use crate::effect::StrEffectId;
-use crate::systems::render::opengl_render_sys::VERTEX_ARRAY_COUNT;
+use crate::systems::render::opengl_render_sys::{Trimesh3dType, VERTEX_ARRAY_COUNT};
 use crate::systems::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
 use specs::prelude::*;
@@ -636,13 +636,6 @@ pub enum Font {
     NormalBold,
     Big,
     BigBold,
-}
-
-#[allow(dead_code)]
-pub enum Trimesh3dType {
-    Sanctuary,
-    Cylinder,
-    Sphere,
 }
 
 pub struct Trimesh3dRenderCommand {
