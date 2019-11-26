@@ -10,7 +10,7 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
 };
-use crate::components::status::status::{ApplyStatusComponent, Status, StatusNature};
+use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
     StrEffectComponent,
@@ -48,10 +48,10 @@ impl SkillDef for WizPyroBlastSkill {
 
         sys_vars
             .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
+            .push(ApplyStatusComponent::from_status(
                 params.caster_entity_id,
                 params.target_entity.unwrap(),
-                Box::new(PyroBlastTargetStatus {
+                StatusEnum::PyroBlastTargetStatus(PyroBlastTargetStatus {
                     caster_entity_id: params.caster_entity_id,
                     splash_radius: configs.splash_radius,
                 }),
@@ -169,11 +169,13 @@ impl SkillManifestation for PyroBlastManifest {
                     self.pos = self.pos + (dir_vector * params.dt().0 * self.configs.moving_speed);
                     (target_pos, false)
                 } else {
-                    target_char
-                        .statuses
-                        .remove::<PyroBlastTargetStatus, _>(|status| {
+                    target_char.statuses.remove_if(|status| {
+                        if let StatusEnum::PyroBlastTargetStatus(status) = status {
                             status.caster_entity_id == self.caster_entity_id
-                        });
+                        } else {
+                            false
+                        }
+                    });
                     (target_pos, true)
                 }
             } else {
@@ -244,32 +246,25 @@ impl SkillManifestation for PyroBlastManifest {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PyroBlastTargetStatus {
     pub caster_entity_id: CharEntityId,
     pub splash_radius: f32,
 }
 
-impl Status for PyroBlastTargetStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn render(
+impl PyroBlastTargetStatus {
+    pub fn render(
         &self,
-        char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        char_pos: Vec2,
+        now: ElapsedTime,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         render_commands
             .horizontal_texture_3d()
-            .pos(&char_state.pos())
-            .rotation_rad(sys_vars.time.0 % 6.28)
+            .pos(&char_pos)
+            .rotation_rad(now.0 % 6.28)
             .fix_size(self.splash_radius * 2.0)
-            .add(sys_vars.assets.sprites.magic_target);
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Neutral
+            .add(assets.sprites.magic_target);
     }
 }

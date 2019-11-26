@@ -8,15 +8,13 @@ use crate::components::char::{
 use crate::components::controller::{
     CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
+use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::fire_bomb::FireBombStatus;
 use crate::components::skills::skills::SkillManifestationComponent;
-use crate::components::status::absorb_shield::AbsorbStatus;
 use crate::components::status::attrib_mod::ArmorModifierStatus;
 use crate::components::status::heal_area::HealApplierArea;
-use crate::components::status::status::{
-    ApplyStatusComponent, ApplyStatusComponentPayload, PoisonStatus,
-};
+use crate::components::status::status::{ApplyStatusComponent, PoisonStatus, StatusEnum};
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
     BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
@@ -1013,32 +1011,31 @@ fn create_status_payload(
     time: i32,
     value: i32,
     caster_team: Team,
-) -> Result<ApplyStatusComponentPayload, String> {
+) -> Result<StatusEnum, String> {
     match name {
-        "absorb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            AbsorbStatus::new(self_char_id, now, time as f32 / 1000.0),
+        "absorb" => Ok(StatusEnum::AbsorbStatus(AbsorbStatus::new(
+            self_char_id,
+            now,
+            time as f32 / 1000.0,
         ))),
-        "firebomb" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            FireBombStatus {
-                caster_entity_id: self_char_id,
-                started: now,
-                until: now.add_seconds(time as f32 / 1000.0),
-                damage: value.max(1) as u32,
-                spread_count: 0,
-                caster_team,
-            },
-        ))),
-        "poison" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            PoisonStatus {
-                poison_caster_entity_id: self_char_id,
-                started: now,
-                until: now.add_seconds(time as f32 / 1000.0),
-                next_damage_at: now,
-                damage: value.max(1) as u32,
-            },
-        ))),
-        "armor" => Ok(ApplyStatusComponentPayload::from_secondary(Box::new(
-            ArmorModifierStatus::new(now, percentage(value)),
+        "firebomb" => Ok(StatusEnum::FireBombStatus(FireBombStatus {
+            caster_entity_id: self_char_id,
+            started: now,
+            until: now.add_seconds(time as f32 / 1000.0),
+            damage: value.max(1) as u32,
+            spread_count: 0,
+            caster_team,
+        })),
+        "poison" => Ok(StatusEnum::PoisonStatus(PoisonStatus {
+            poison_caster_entity_id: self_char_id,
+            started: now,
+            until: now.add_seconds(time as f32 / 1000.0),
+            next_damage_at: now,
+            damage: value.max(1) as u32,
+        })),
+        "armor" => Ok(StatusEnum::ArmorModifierStatus(ArmorModifierStatus::new(
+            now,
+            percentage(value),
         ))),
         _ => Err("Status not found".to_owned()),
     }
@@ -1099,6 +1096,45 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
                             team,
                         )?,
                     });
+                    Ok(())
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
+    }
+}
+
+pub(super) fn cmd_list_statuses() -> CommandDefinition {
+    CommandDefinition {
+        name: "list_statuses".to_string(),
+        arguments: vec![("[username]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+        ),
+        action: Box::new(
+            |self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(3);
+                let entity_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
+
+                if let Some(entity_id) = entity_id {
+                    let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    if let Some(target_char) = char_storage.get(entity_id.0) {
+                        for status in target_char.statuses.get_statuses().iter() {
+                            if let Some(status) = status {
+                                print_console(
+                                    &mut ecs_world.write_storage::<ConsoleComponent>(),
+                                    self_controller_id,
+                                    ConsoleEntry::new()
+                                        .add(&format!("{:?}", status), ConsoleWordType::Normal),
+                                )
+                            }
+                        }
+                    }
                     Ok(())
                 } else {
                     Err("The user was not found".to_owned())

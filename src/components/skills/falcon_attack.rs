@@ -9,7 +9,7 @@ use crate::components::skills::skills::{
     SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
-use crate::components::status::status::ApplyStatusComponent;
+use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::components::{DamageDisplayType, HpModificationRequest, HpModificationType};
 use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
@@ -152,14 +152,16 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                                 DamageDisplayType::Combo(2),
                             ),
                         });
-                        params.apply_status(ApplyStatusComponent::from_secondary_status(
+                        params.apply_status(ApplyStatusComponent::from_status(
                             self.falcon_owner_id,
                             target_char_entity_id,
-                            Box::new(WalkingSpeedModifierStatus::new(
-                                params.now(),
-                                self.slow,
-                                self.slow_duration,
-                            )),
+                            StatusEnum::WalkingSpeedModifierStatus(
+                                WalkingSpeedModifierStatus::new(
+                                    params.now(),
+                                    self.slow,
+                                    self.slow_duration,
+                                ),
+                            ),
                         ));
                         self.damaged_entities.insert(target_char_entity_id);
                     }

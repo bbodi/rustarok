@@ -1,9 +1,23 @@
 use crate::asset::SpriteResource;
+use crate::common::Vec2;
 use crate::components::char::{
     percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
-    CharAttributes, CharacterStateComponent, Percentage, Team,
+    CharAttributes, CharState, CharacterStateComponent, Percentage, Team,
 };
 use crate::components::controller::CharEntityId;
+use crate::components::skills::absorb_shield::AbsorbStatus;
+use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
+use crate::components::skills::assa_phase_prism::AssaPhasePrismStatus;
+use crate::components::skills::falcon_carry::FalconCarryStatus;
+use crate::components::skills::fire_bomb::FireBombStatus;
+use crate::components::skills::gaz_exo_skel::ExoSkeletonStatus;
+use crate::components::skills::wiz_pyroblast::PyroBlastTargetStatus;
+use crate::components::status::attack_heal_status::AttackHealStatus;
+use crate::components::status::attrib_mod::{ArmorModifierStatus, WalkingSpeedModifierStatus};
+use crate::components::status::death_status::DeathStatus;
+use crate::components::status::reflect_damage_status::ReflectDamageStatus;
+use crate::components::status::sacrafice_status::SacrificeStatus;
+use crate::components::status::stun::StunStatus;
 use crate::components::{
     ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationType,
 };
@@ -13,14 +27,12 @@ use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{Sex, SystemVariables};
+use crate::systems::{AssetResources, Sex, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entities, LazyUpdate};
-use std::any::{Any, TypeId};
-use std::collections::HashSet;
-use std::ops::Deref;
 use strum_macros::EnumCount;
+use strum_macros::EnumDiscriminants;
 
 #[derive(Debug)]
 pub enum StatusStackingResult {
@@ -38,121 +50,537 @@ pub struct StatusUpdateParams<'a> {
     pub updater: &'a mut LazyUpdate,
 }
 
-pub trait Status: Any {
-    fn dupl(&self) -> Box<dyn Status + Send>;
+const NONSTACKABLE_STATUS_COUNT: usize = 6;
 
-    fn get_body_sprite<'a>(
-        &self,
-        _sys_vars: &'a SystemVariables,
-        _job_id: JobId,
-        _sex: Sex,
-    ) -> Option<&'a SpriteResource> {
-        None
-    }
+#[allow(variant_size_differences)]
+#[derive(Clone, Debug, EnumCount, EnumDiscriminants)]
+pub enum StatusEnum {
+    MountedStatus {
+        speedup: Percentage,
+    },
+    DeathStatus(DeathStatus),
+    AssaBladeDashStatus(AssaBladeDashStatus),
+    AssaPhasePrismStatus(AssaPhasePrismStatus),
+    FalconCarryStatus(FalconCarryStatus),
+    ExoSkeletonStatus(ExoSkeletonStatus),
 
-    fn on_apply(
-        &mut self,
-        _self_entity_id: CharEntityId,
-        _target_char: &mut CharacterStateComponent,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-        _sys_vars: &SystemVariables,
-        _physics_world: &mut PhysicEngine,
-    ) {
-    }
+    // stackable statuses
+    AbsorbStatus(AbsorbStatus),
+    FireBombStatus(FireBombStatus),
+    PyroBlastTargetStatus(PyroBlastTargetStatus),
+    #[allow(dead_code)]
+    AttackHealStatus(AttackHealStatus), // TODO: stackable?
+    ArmorModifierStatus(ArmorModifierStatus),
+    WalkingSpeedModifierStatus(WalkingSpeedModifierStatus),
+    #[allow(dead_code)]
+    ReflectDamageStatus(ReflectDamageStatus), // TODO: stackable?,
+    #[allow(dead_code)]
+    SacrificeStatus(SacrificeStatus),
+    PoisonStatus(PoisonStatus),
+    StunStatus(StunStatus),
+}
 
+impl StatusEnum {
+    // TODO: const fn
     fn can_target_move(&self) -> bool {
-        true
-    }
-
-    fn can_target_be_controlled(&self) -> bool {
-        true
+        match self {
+            StatusEnum::AbsorbStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::MountedStatus { .. } => true,
+            StatusEnum::DeathStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_) => false,
+        }
     }
 
     fn can_target_cast(&self) -> bool {
-        true
+        match self {
+            StatusEnum::AbsorbStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::MountedStatus { .. } => true,
+            StatusEnum::DeathStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_) => false,
+        }
     }
 
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [255, 255, 255, 255]
+    fn can_target_be_controlled(&self) -> bool {
+        match self {
+            StatusEnum::AbsorbStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::MountedStatus { .. } => true,
+            StatusEnum::DeathStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_) => false,
+        }
     }
 
-    fn get_render_size(&self) -> f32 {
-        1.0
+    // TODO: remove it
+    fn typ(&self) -> StatusNature {
+        match self {
+            StatusEnum::AbsorbStatus(_) => StatusNature::Supportive,
+            StatusEnum::MountedStatus { .. } => StatusNature::Supportive,
+            StatusEnum::DeathStatus(_) => StatusNature::Supportive,
+            StatusEnum::AssaBladeDashStatus(_) => StatusNature::Supportive,
+            StatusEnum::AssaPhasePrismStatus(_) => StatusNature::Supportive,
+            StatusEnum::FalconCarryStatus(_) => StatusNature::Supportive,
+            StatusEnum::ExoSkeletonStatus(_) => StatusNature::Supportive,
+            StatusEnum::FireBombStatus(_) => StatusNature::Supportive,
+            StatusEnum::PyroBlastTargetStatus(_) => StatusNature::Supportive,
+            StatusEnum::AttackHealStatus(_) => StatusNature::Supportive,
+            StatusEnum::ArmorModifierStatus(_) => StatusNature::Supportive,
+            StatusEnum::WalkingSpeedModifierStatus(_) => StatusNature::Supportive,
+            StatusEnum::ReflectDamageStatus(_) => StatusNature::Supportive,
+            StatusEnum::SacrificeStatus(_) => StatusNature::Supportive,
+            StatusEnum::PoisonStatus(_) => StatusNature::Supportive,
+            StatusEnum::StunStatus(_) => StatusNature::Supportive,
+        }
     }
 
-    fn calc_attribs(&self, _modifiers: &mut CharAttributeModifierCollector) {}
-
-    fn update(&mut self, _params: StatusUpdateParams) -> StatusUpdateResult {
-        StatusUpdateResult::KeepIt
+    pub fn get_body_sprite<'a>(
+        &self,
+        sys_vars: &'a SystemVariables,
+        job_id: JobId,
+        sex: Sex,
+    ) -> Option<&'a SpriteResource> {
+        match self {
+            StatusEnum::AbsorbStatus(_) => None,
+            StatusEnum::MountedStatus { .. } => {
+                let sprites = &sys_vars.assets.sprites;
+                sprites
+                    .mounted_character_sprites
+                    .get(&job_id)
+                    .and_then(|it| it.get(sex as usize))
+            }
+            StatusEnum::DeathStatus(_) => None,
+            StatusEnum::AssaBladeDashStatus(_) => None,
+            StatusEnum::AssaPhasePrismStatus(_) => None,
+            StatusEnum::FalconCarryStatus(_) => None,
+            StatusEnum::ExoSkeletonStatus(_) => Some(&sys_vars.assets.sprites.exoskeleton),
+            StatusEnum::FireBombStatus(_) => None,
+            StatusEnum::PyroBlastTargetStatus(_) => None,
+            StatusEnum::AttackHealStatus(_) => None,
+            StatusEnum::ArmorModifierStatus(_) => None,
+            StatusEnum::WalkingSpeedModifierStatus(_) => None,
+            StatusEnum::ReflectDamageStatus(_) => None,
+            StatusEnum::SacrificeStatus(_) => None,
+            StatusEnum::PoisonStatus(_) => None,
+            StatusEnum::StunStatus(_) => None,
+        }
     }
 
-    fn hp_mod_is_calculated_but_not_applied_yet(
+    pub fn on_apply(
+        &mut self,
+        self_entity_id: CharEntityId,
+        target_char: &mut CharacterStateComponent,
+        entities: &Entities,
+        updater: &mut LazyUpdate,
+        sys_vars: &SystemVariables,
+        physics_world: &mut PhysicEngine,
+    ) {
+        match self {
+            StatusEnum::AssaBladeDashStatus(_) => {
+                // allow to go through anything
+                target_char.set_noncollidable(physics_world);
+            }
+            StatusEnum::FalconCarryStatus(_) => {
+                target_char.set_noncollidable(physics_world);
+                target_char.set_state(CharState::StandBy, 0);
+            }
+            StatusEnum::ExoSkeletonStatus(status) => {
+                status.on_apply(target_char, entities, updater, sys_vars.time)
+            }
+            StatusEnum::StunStatus(status) => status.on_apply(
+                self_entity_id,
+                target_char,
+                entities,
+                updater,
+                &sys_vars.assets,
+                sys_vars.time,
+            ),
+            StatusEnum::AbsorbStatus(_)
+            | StatusEnum::MountedStatus { .. }
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::PoisonStatus(_) => {}
+        }
+    }
+
+    pub fn get_render_color(&self, now: ElapsedTime) -> [u8; 4] {
+        match self {
+            StatusEnum::AbsorbStatus(_)
+            | StatusEnum::MountedStatus { .. }
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::StunStatus(_) => [255, 255, 255, 255],
+            StatusEnum::AssaBladeDashStatus(_) => [0, 0, 0, 0],
+            StatusEnum::AssaPhasePrismStatus(_) => [0, 255, 255, 255],
+            StatusEnum::PoisonStatus(_) => [128, 255, 128, 255],
+            StatusEnum::DeathStatus(status) => [
+                255,
+                255,
+                255,
+                if status.is_npc {
+                    255 - (now.percentage_between(status.started, status.remove_char_at) * 255.0)
+                        as u8
+                } else {
+                    255
+                },
+            ],
+        }
+    }
+
+    //    pub fn get_render_size(&self) -> f32 {
+    //        match self {
+    //            StatusEnum::AbsorbStatus(_)
+    //            | StatusEnum::MountedStatus { .. }
+    //            | StatusEnum::FireBombStatus(_)
+    //            | StatusEnum::PyroBlastTargetStatus(_)
+    //            | StatusEnum::AttackHealStatus(_)
+    //            | StatusEnum::ArmorModifierStatus(_)
+    //            | StatusEnum::WalkingSpeedModifierStatus(_)
+    //            | StatusEnum::ReflectDamageStatus(_)
+    //            | StatusEnum::SacrificeStatus(_)
+    //            | StatusEnum::FalconCarryStatus(_)
+    //            | StatusEnum::ExoSkeletonStatus(_)
+    //            | StatusEnum::AssaBladeDashStatus(_)
+    //            | StatusEnum::AssaPhasePrismStatus(_)
+    //            | StatusEnum::PoisonStatus(_)
+    //            | StatusEnum::DeathStatus(_)
+    //            | StatusEnum::StunStatus(_) => 1.0,
+    //        }
+    //    }
+
+    pub fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+        match self {
+            StatusEnum::AbsorbStatus(_) => {}
+            StatusEnum::MountedStatus { speedup } => {
+                // it is applied directly on the base moving speed, since it is called first
+                modifiers.change_walking_speed(
+                    CharAttributeModifier::IncreaseByPercentage(*speedup),
+                    ElapsedTime(0.0),
+                    ElapsedTime(0.0),
+                );
+            }
+            StatusEnum::ArmorModifierStatus(status) => {
+                status.calc_attribs(modifiers);
+            }
+            StatusEnum::WalkingSpeedModifierStatus(status) => {
+                status.calc_attribs(modifiers);
+            }
+            StatusEnum::ExoSkeletonStatus(status) => status.calc_attribs(modifiers),
+            StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::StunStatus(_) => {}
+        }
+    }
+
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+        match self {
+            StatusEnum::AbsorbStatus(status) => status.update(
+                params.sys_vars.time,
+                params.self_char_id,
+                &mut params.sys_vars.hp_mod_requests,
+            ),
+            StatusEnum::AssaBladeDashStatus(status) => status.update(params),
+            StatusEnum::AssaPhasePrismStatus(status) => status.update(params),
+            StatusEnum::FalconCarryStatus(status) => status.update(params),
+            StatusEnum::FireBombStatus(status) => status.update(params),
+            StatusEnum::ExoSkeletonStatus(status) => status.update(params),
+            StatusEnum::AttackHealStatus(status) => status.update(params),
+            StatusEnum::ArmorModifierStatus(status) => status.update(params),
+            StatusEnum::WalkingSpeedModifierStatus(status) => status.update(params),
+            StatusEnum::ReflectDamageStatus(status) => status.update(params),
+            StatusEnum::SacrificeStatus(status) => status.update(params),
+            StatusEnum::PoisonStatus(status) => status.update(params),
+            StatusEnum::StunStatus(status) => status.update(params),
+            StatusEnum::MountedStatus { .. }
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_) => StatusUpdateResult::KeepIt,
+        }
+    }
+
+    pub fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
         outcome: HpModificationResult,
-        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) -> HpModificationResult {
-        outcome
+        match self {
+            StatusEnum::AbsorbStatus(status) => {
+                status.hp_mod_is_calculated_but_not_applied_yet(outcome)
+            }
+            StatusEnum::SacrificeStatus(status) => {
+                status.hp_mod_is_calculated_but_not_applied_yet(outcome, hp_mod_reqs)
+            }
+            StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::MountedStatus { .. } => outcome,
+        }
     }
 
-    fn hp_mod_has_been_applied_on_me(
+    pub fn hp_mod_has_been_applied_on_me(
         &mut self,
-        _self_id: CharEntityId,
-        _outcome: &HpModificationResult,
-        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
+        match self {
+            StatusEnum::ReflectDamageStatus(status) => {
+                status.hp_mod_has_been_applied_on_me(self_id, outcome, hp_mod_reqs)
+            }
+            StatusEnum::SacrificeStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::MountedStatus { .. }
+            | StatusEnum::AbsorbStatus(_) => {}
+        }
     }
 
-    fn hp_mod_has_been_applied_on_enemy(
+    pub fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        _self_id: CharEntityId,
-        _outcome: &HpModificationResult,
-        _hp_mod_reqs: &mut Vec<HpModificationRequest>,
+        self_id: CharEntityId,
+        outcome: &HpModificationResult,
+        hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
+        match self {
+            StatusEnum::AttackHealStatus(status) => {
+                status.hp_mod_has_been_applied_on_enemy(self_id, outcome, hp_mod_reqs)
+            }
+            StatusEnum::SacrificeStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::DeathStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::MountedStatus { .. }
+            | StatusEnum::AbsorbStatus(_) => {}
+        }
     }
 
-    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
-        true
+    pub fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
+        match self {
+            StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::StunStatus(_)
+            | StatusEnum::MountedStatus { .. } => true,
+            StatusEnum::DeathStatus(_)
+            | StatusEnum::AbsorbStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::FalconCarryStatus(_)
+            | StatusEnum::AssaPhasePrismStatus(_) => false,
+        }
     }
 
-    fn render(
+    pub fn stack(&mut self, other: &StatusEnum) -> StatusStackingResult {
+        match self {
+            StatusEnum::FireBombStatus(_)
+            | StatusEnum::PyroBlastTargetStatus(_)
+            | StatusEnum::AttackHealStatus(_)
+            | StatusEnum::ArmorModifierStatus(_)
+            | StatusEnum::WalkingSpeedModifierStatus(_)
+            | StatusEnum::ReflectDamageStatus(_)
+            | StatusEnum::PoisonStatus(_)
+            | StatusEnum::StunStatus(_) => StatusStackingResult::AddTheNewStatus,
+            StatusEnum::AbsorbStatus(status) => status.stack(other),
+            StatusEnum::DeathStatus(_)
+            | StatusEnum::SacrificeStatus(_)
+            | StatusEnum::ExoSkeletonStatus(_)
+            | StatusEnum::AssaBladeDashStatus(_)
+            | StatusEnum::MountedStatus { .. }
+            | StatusEnum::FalconCarryStatus(_) => StatusStackingResult::DontAddTheNewStatus,
+            StatusEnum::AssaPhasePrismStatus(_) => StatusStackingResult::Replace,
+        }
+    }
+
+    pub fn render(
         &self,
-        _char_state: &CharacterStateComponent,
-        _system_vars: &SystemVariables,
-        _render_commands: &mut RenderCommandCollector,
+        char_state: &CharacterStateComponent,
+        system_vars: &SystemVariables,
+        render_commands: &mut RenderCommandCollector,
     ) {
+        match self {
+            StatusEnum::AbsorbStatus(status) => status.render(
+                system_vars.time,
+                &system_vars.assets,
+                char_state.pos(),
+                render_commands,
+            ),
+            StatusEnum::MountedStatus { .. } => {}
+            StatusEnum::ExoSkeletonStatus(_) => {}
+            StatusEnum::FireBombStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::PyroBlastTargetStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::AttackHealStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::ArmorModifierStatus(_) => {}
+            StatusEnum::WalkingSpeedModifierStatus(_) => {}
+            StatusEnum::ReflectDamageStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::SacrificeStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::PoisonStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::StunStatus(status) => status.render(
+                char_state.pos(),
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::DeathStatus(_) => {}
+            StatusEnum::AssaBladeDashStatus(status) => status.render(
+                char_state,
+                system_vars.time,
+                &system_vars.assets,
+                render_commands,
+            ),
+            StatusEnum::FalconCarryStatus(status) => {
+                status.render(&system_vars.assets, render_commands)
+            }
+            StatusEnum::AssaPhasePrismStatus(_) => {}
+        }
     }
 
-    fn get_status_completion_percent(&self, _now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-        None
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+        match self {
+            StatusEnum::AbsorbStatus(status) => Some((
+                status.until,
+                now.percentage_between(status.started, status.until),
+            )),
+            StatusEnum::MountedStatus { .. } => None,
+            StatusEnum::ExoSkeletonStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::FireBombStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::PyroBlastTargetStatus(_) => None,
+            StatusEnum::AttackHealStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::ArmorModifierStatus(_) => None,
+            StatusEnum::WalkingSpeedModifierStatus(_) => None,
+            StatusEnum::ReflectDamageStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::SacrificeStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::PoisonStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::StunStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::DeathStatus(_) => None,
+            StatusEnum::AssaBladeDashStatus(_) => None,
+            StatusEnum::FalconCarryStatus(status) => status.get_status_completion_percent(now),
+            StatusEnum::AssaPhasePrismStatus(_) => None,
+        }
     }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::AddTheNewStatus
-    }
-
-    fn typ(&self) -> StatusNature;
 }
 
-// TODO: should 'Dead' be a status?
-#[derive(Debug, EnumCount, Clone, Copy)]
-pub enum MainStatuses {
-    Mounted,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum MainStatusesIndex {
-    Mounted,
-}
-
-#[derive(Clone)]
-pub struct MountedStatus {
-    speedup: Percentage,
-}
-
+// if you change the size, the update function has to be changed as well
 const STATUS_ARRAY_SIZE: usize = 32;
 pub struct Statuses {
-    statuses: [Option<Box<dyn Status>>; STATUS_ARRAY_SIZE],
+    statuses: [Option<StatusEnum>; STATUS_ARRAY_SIZE],
     first_free_index: usize,
     cached_modifier_collector: CharAttributeModifierCollector,
 }
@@ -165,59 +593,62 @@ impl Statuses {
     pub fn new() -> Statuses {
         Statuses {
             statuses: Default::default(),
-            first_free_index: MAINSTATUSES_COUNT,
+            first_free_index: NONSTACKABLE_STATUS_COUNT,
             cached_modifier_collector: CharAttributeModifierCollector::new(),
         }
     }
 
+    pub fn get_statuses(&self) -> &[Option<StatusEnum>; STATUS_ARRAY_SIZE] {
+        &self.statuses
+    }
+
     pub fn can_move(&self) -> bool {
         let mut allow = true;
-        for status in self
+        for can_move in self
             .statuses
             .iter()
             .take(self.first_free_index)
-            .filter(|it| it.is_some())
+            .map(|it| it.as_ref().map(|it| it.can_target_move()).unwrap_or(true))
         {
-            allow &= status.as_ref().unwrap().can_target_move();
+            allow &= can_move;
         }
         return allow;
     }
 
     pub fn can_cast(&self) -> bool {
         let mut allow = true;
-        for status in self
+        for can_cast in self
             .statuses
             .iter()
             .take(self.first_free_index)
-            .filter(|it| it.is_some())
+            .map(|it| it.as_ref().map(|it| it.can_target_cast()).unwrap_or(true))
         {
-            allow &= status.as_ref().unwrap().can_target_cast();
+            allow &= can_cast;
         }
         return allow;
     }
 
     pub fn can_be_controlled(&self) -> bool {
         let mut allow = true;
-        for status in self
-            .statuses
-            .iter()
-            .take(self.first_free_index)
-            .filter(|it| it.is_some())
-        {
-            allow &= status.as_ref().unwrap().can_target_be_controlled();
+        for can_be_controlled in self.statuses.iter().take(self.first_free_index).map(|it| {
+            it.as_ref()
+                .map(|it| it.can_target_be_controlled())
+                .unwrap_or(true)
+        }) {
+            allow &= can_be_controlled;
         }
         return allow;
     }
 
     pub fn allow_push(&mut self, push: &ApplyForceComponent) -> bool {
         let mut allow = true;
-        for status in self
+        for allow_push in self
             .statuses
             .iter_mut()
             .take(self.first_free_index)
-            .filter(|it| it.is_some())
+            .map(|it| it.as_ref().map(|it| it.allow_push(push)).unwrap_or(true))
         {
-            allow &= status.as_ref().unwrap().allow_push(push);
+            allow &= allow_push;
         }
         return allow;
     }
@@ -273,11 +704,10 @@ impl Statuses {
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            status.as_mut().unwrap().hp_mod_has_been_applied_on_enemy(
-                self_id,
-                &outcome,
-                hp_mod_reqs,
-            );
+            status
+                .as_mut()
+                .unwrap()
+                .hp_mod_has_been_applied_on_me(self_id, &outcome, hp_mod_reqs);
         }
     }
 
@@ -301,9 +731,9 @@ impl Statuses {
             let result = status.as_mut().unwrap().update(StatusUpdateParams {
                 self_char_id,
                 target_char: char_state,
-                physics_world: physics_world,
-                sys_vars: sys_vars,
-                entities: entities,
+                physics_world,
+                sys_vars,
+                entities,
                 updater,
             });
             match result {
@@ -323,26 +753,22 @@ impl Statuses {
                 self.statuses[i] = None;
             }
         }
-        while self.first_free_index > MAINSTATUSES_COUNT
-            && self.statuses[self.first_free_index - 1].is_none()
-        {
-            self.first_free_index -= 1;
-        }
+        self.move_free_index();
     }
 
     pub fn render(
         &self,
-        char_pos: &CharacterStateComponent,
+        char_state: &CharacterStateComponent,
         sys_vars: &SystemVariables,
         render_commands: &mut RenderCommandCollector,
     ) {
-        let mut already_rendered = HashSet::with_capacity(self.statuses.len());
+        let mut already_rendered: [bool; STATUSENUM_COUNT] = [false; STATUSENUM_COUNT];
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let boxx = status.as_ref().unwrap();
-            let type_id = boxx.deref().type_id();
-            if !already_rendered.contains(&type_id) {
-                boxx.render(char_pos, sys_vars, render_commands);
-                already_rendered.insert(type_id);
+            let status = status.as_ref().unwrap();
+            let type_id = StatusEnumDiscriminants::from(status) as usize;
+            if !already_rendered[type_id] {
+                status.render(char_state, sys_vars, render_commands);
+                already_rendered[type_id] = true;
             }
         }
     }
@@ -489,40 +915,56 @@ impl Statuses {
     }
 
     pub fn is_mounted(&self) -> bool {
-        self.statuses[MainStatusesIndex::Mounted as usize].is_some()
+        self.statuses[StatusEnumDiscriminants::MountedStatus as usize].is_some()
     }
 
-    pub fn switch_mounted(&mut self, mounted_speedup: Percentage) {
-        let is_mounted = self.statuses[MainStatusesIndex::Mounted as usize].is_some();
-        let value: Option<Box<dyn Status>> = if !is_mounted {
-            Some(Box::new(MountedStatus {
-                speedup: mounted_speedup,
-            }))
-        } else {
-            None
-        };
-        self.statuses[MainStatusesIndex::Mounted as usize] = value;
-    }
-
-    pub fn add(&mut self, new_status: Box<dyn Status>) {
+    pub fn add(&mut self, new_status: StatusEnum) {
+        log::debug!("Try to add status: {:?}", new_status);
         if self.first_free_index >= STATUS_ARRAY_SIZE {
             log::error!("There is no more space for new Status!");
             return;
         }
-        let type_id = new_status.as_ref().type_id();
-        let (current_index, stack_type) = self
-            .statuses
-            .iter()
-            .take(self.first_free_index)
-            .enumerate()
-            .find(|(_i, current_status)| {
-                current_status
-                    .as_ref()
-                    .map(|current_status| type_id == current_status.as_ref().type_id())
-                    .unwrap_or(false)
-            })
-            .map(|(i, current_status)| (i, current_status.as_ref().unwrap().stack(&new_status)))
-            .unwrap_or((0, StatusStackingResult::AddTheNewStatus));
+
+        let mut current_index = self.first_free_index;
+        let mut stack_type = StatusStackingResult::AddTheNewStatus;
+        let adding_status_type = StatusEnumDiscriminants::from(&new_status) as usize;
+        for i in 0..self.first_free_index {
+            if i < NONSTACKABLE_STATUS_COUNT {
+                let target_slot_type = i;
+                if target_slot_type == adding_status_type {
+                    stack_type = self.statuses[i]
+                        .as_mut()
+                        .map(|it| it.stack(&new_status))
+                        .unwrap_or(StatusStackingResult::Replace);
+                    current_index = i;
+                    log::trace!(
+                        "Found NONSTACKABLE slot. stack_type: {:?}, index: {}",
+                        stack_type,
+                        current_index
+                    );
+                    break;
+                }
+            } else {
+                if let Some(status) = self.statuses[i].as_mut() {
+                    let target_slot_type = {
+                        let s: &StatusEnum = status;
+                        StatusEnumDiscriminants::from(s) as usize
+                    };
+                    if target_slot_type == adding_status_type {
+                        stack_type = status.stack(&new_status);
+                        current_index = i;
+                        log::trace!(
+                            "Found STACKABLE slot. stack_type: {:?}, index: {}",
+                            stack_type,
+                            current_index
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+
+        log::trace!("stack_type: {:?}, index: {}", stack_type, current_index);
         match stack_type {
             StatusStackingResult::Replace => {
                 self.statuses[current_index] = Some(new_status);
@@ -538,89 +980,140 @@ impl Statuses {
     }
 
     pub fn remove_all(&mut self) {
+        log::debug!("Remove all status");
         for status in self.statuses.iter_mut().take(self.first_free_index) {
             *status = None;
         }
-        self.first_free_index = MAINSTATUSES_COUNT;
-    }
-
-    pub fn remove<T: 'static, P>(&mut self, predicate: P)
-    where
-        P: Fn(&T) -> bool,
-    {
-        let removing_type_id = std::any::TypeId::of::<T>();
-        for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
-            let should_remove = arc_status
-                .as_ref()
-                .map(|boxx| {
-                    let type_id = boxx.as_ref().type_id();
-                    type_id == removing_type_id
-                        && unsafe { predicate(Statuses::trait_to_struct(boxx)) }
-                })
-                .unwrap_or(false);
-            if should_remove {
-                *arc_status = None;
-            }
-        }
+        self.first_free_index = NONSTACKABLE_STATUS_COUNT;
     }
 
     pub fn remove_by_nature(&mut self, status_type: StatusNature) {
-        for arc_status in self.statuses.iter_mut().take(self.first_free_index) {
-            let should_remove = arc_status
+        log::debug!("remove_by_nature: {:?}", status_type);
+        for status in self.statuses.iter_mut().take(self.first_free_index) {
+            let should_remove = status
                 .as_ref()
                 .map(|it| it.typ() == status_type)
                 .unwrap_or(false);
             if should_remove {
-                *arc_status = None;
+                *status = None;
             }
+        }
+        self.move_free_index();
+    }
+
+    pub fn remove(&mut self, discr: StatusEnumDiscriminants) {
+        log::debug!("remove: {:?}", discr);
+        for status in self.statuses.iter_mut().take(self.first_free_index) {
+            let should_remove = status
+                .as_ref()
+                .map(|it| StatusEnumDiscriminants::from(it) == discr)
+                .unwrap_or(false);
+            if should_remove {
+                *status = None;
+            }
+        }
+        self.move_free_index();
+    }
+
+    fn move_free_index(&mut self) {
+        while self.first_free_index > NONSTACKABLE_STATUS_COUNT
+            && self.statuses[self.first_free_index - 1].is_none()
+        {
+            self.first_free_index -= 1;
         }
     }
 
-    unsafe fn trait_to_struct<T>(boxx: &Box<dyn Status>) -> &T {
-        return std::mem::transmute::<_, &Box<T>>(boxx);
-    }
-
-    #[allow(dead_code)]
-    pub fn get_status<T: 'static>(&self) -> Option<&T> {
-        let requested_type_id = TypeId::of::<T>();
-        for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let boxx: &Box<dyn Status> = &status.as_ref().unwrap();
-            let type_id = boxx.as_ref().type_id();
-            if requested_type_id == type_id {
-                let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
-                return Some(param);
-            }
-        }
-        return None;
-    }
-
-    pub fn with_status<F, T: 'static, R>(&self, func: F) -> Option<R>
+    pub fn remove_if<F>(&mut self, predicate: F)
     where
-        F: Fn(&T) -> R,
+        F: Fn(&StatusEnum) -> bool,
     {
-        let requested_type_id = TypeId::of::<T>();
+        for status in self.statuses.iter_mut().take(self.first_free_index) {
+            let should_remove = status.as_ref().map(|it| predicate(it)).unwrap_or(false);
+            if should_remove {
+                *status = None;
+            }
+        }
+        self.move_free_index();
+    }
+
+    #[allow(dead_code)]
+    pub fn get_status(&self, requested_type_id: StatusEnumDiscriminants) -> Option<&StatusEnum> {
         for status in self.statuses.iter().filter(|it| it.is_some()) {
-            let boxx: &Box<dyn Status> = &status.as_ref().unwrap();
-            let type_id = boxx.as_ref().type_id();
+            let status = status.as_ref().unwrap();
+            let type_id: StatusEnumDiscriminants = status.into();
             if requested_type_id == type_id {
-                let param: &T = unsafe { Statuses::trait_to_struct(boxx) };
-                return Some(func(param));
+                return Some(status);
             }
         }
         return None;
     }
 
-    // TODO: do we need it?
     #[allow(dead_code)]
+    // for tests
     pub fn count(&self) -> usize {
-        let secondary_status_count = self.first_free_index - MAINSTATUSES_COUNT;
+        let secondary_status_count = self.first_free_index - NONSTACKABLE_STATUS_COUNT;
         let main_status_count = self
             .statuses
             .iter()
-            .take(MAINSTATUSES_COUNT)
+            .take(NONSTACKABLE_STATUS_COUNT)
             .filter(|it| it.is_some())
             .count();
         return main_status_count + secondary_status_count;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_stackable_statuses() {
+        let mut statuses = Statuses::new();
+
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[0].is_none());
+        statuses.add(StatusEnum::MountedStatus {
+            speedup: percentage(0),
+        });
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[0].is_some());
+        statuses.add(StatusEnum::MountedStatus {
+            speedup: percentage(0),
+        });
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[0].is_some());
+
+        statuses.remove(StatusEnumDiscriminants::MountedStatus);
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[0].is_none());
+    }
+
+    #[test]
+    fn stackable_statuses() {
+        let mut statuses = Statuses::new();
+
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT].is_none());
+
+        let status = StatusEnum::WalkingSpeedModifierStatus(WalkingSpeedModifierStatus {
+            started: ElapsedTime(0.0),
+            until: ElapsedTime(0.0),
+            modifier: percentage(0),
+        });
+
+        statuses.add(status.clone());
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT].is_some());
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT + 1);
+
+        statuses.add(status.clone());
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT + 2);
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT].is_some());
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT + 1].is_some());
+
+        statuses.remove(StatusEnumDiscriminants::WalkingSpeedModifierStatus);
+        assert_eq!(statuses.first_free_index, NONSTACKABLE_STATUS_COUNT);
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT].is_none());
+        assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT + 1].is_none());
     }
 }
 
@@ -629,43 +1122,7 @@ pub enum StatusUpdateResult {
     KeepIt,
 }
 
-impl Status for MountedStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn get_body_sprite<'a>(
-        &self,
-        sys_vars: &'a SystemVariables,
-        job_id: JobId,
-        sex: Sex,
-    ) -> Option<&'a SpriteResource> {
-        let sprites = &sys_vars.assets.sprites;
-        sprites
-            .mounted_character_sprites
-            .get(&job_id)
-            .and_then(|it| it.get(sex as usize))
-    }
-
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
-        // it is applied directly on the base moving speed, since it is called first
-        modifiers.change_walking_speed(
-            CharAttributeModifier::IncreaseByPercentage(self.speedup),
-            ElapsedTime(0.0),
-            ElapsedTime(0.0),
-        );
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::DontAddTheNewStatus
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PoisonStatus {
     pub poison_caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
@@ -674,16 +1131,8 @@ pub struct PoisonStatus {
     pub damage: u32,
 }
 
-impl Status for PoisonStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [128, 255, 128, 255]
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+impl PoisonStatus {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
@@ -699,70 +1148,39 @@ impl Status for PoisonStatus {
         }
     }
 
-    fn render(
+    pub fn render(
         &self,
-        char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        char_pos: Vec2,
+        now: ElapsedTime,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Quagmire,
             self.started,
-            &char_state.pos(),
-            &sys_vars.assets,
-            sys_vars.time,
+            &char_pos,
+            assets,
+            now,
             render_commands,
             ActionPlayMode::Repeat,
         );
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::Replace
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Harmful
-    }
-}
-
-pub enum ApplyStatusComponentPayload {
-    MainStatus(MainStatuses),
-    SecondaryStatus(Box<dyn Status + Send>),
-}
-
-impl ApplyStatusComponentPayload {
-    pub fn from_secondary(status: Box<dyn Status + Send>) -> ApplyStatusComponentPayload {
-        ApplyStatusComponentPayload::SecondaryStatus(status)
-    }
-}
-
-impl Clone for ApplyStatusComponentPayload {
-    fn clone(&self) -> Self {
-        match self {
-            ApplyStatusComponentPayload::MainStatus(m) => {
-                ApplyStatusComponentPayload::MainStatus(*m)
-            }
-            ApplyStatusComponentPayload::SecondaryStatus(arc) => {
-                let boxed_status_clone = arc.dupl();
-                ApplyStatusComponentPayload::SecondaryStatus(boxed_status_clone)
-            }
-        }
     }
 }
 
 pub struct ApplyStatusComponent {
     pub source_entity_id: CharEntityId,
     pub target_entity_id: CharEntityId,
-    pub status: ApplyStatusComponentPayload,
+    pub status: StatusEnum,
 }
 
 pub struct ApplyStatusInAreaComponent {
     pub source_entity_id: CharEntityId,
-    pub status: ApplyStatusComponentPayload,
+    pub status: StatusEnum,
+    // TODO: it should not be a box. Predefine shapes
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
     pub except: Option<CharEntityId>,
@@ -770,15 +1188,15 @@ pub struct ApplyStatusInAreaComponent {
     pub caster_team: Team,
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub enum StatusNature {
     Supportive,
     Harmful,
-    Neutral,
 }
 
 pub enum RemoveStatusComponentPayload {
     RemovingStatusType(StatusNature),
+    RemovingStatusDiscr(StatusEnumDiscriminants),
 }
 
 pub struct RemoveStatusComponent {
@@ -796,27 +1214,15 @@ unsafe impl Sync for ApplyStatusInAreaComponent {}
 unsafe impl Send for ApplyStatusInAreaComponent {}
 
 impl ApplyStatusComponent {
-    pub fn from_main_status(
+    pub fn from_status(
         source_entity_id: CharEntityId,
         target_entity_id: CharEntityId,
-        m: MainStatuses,
+        m: StatusEnum,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
             source_entity_id,
             target_entity_id,
-            status: ApplyStatusComponentPayload::MainStatus(m),
-        }
-    }
-
-    pub fn from_secondary_status(
-        source_entity_id: CharEntityId,
-        target_entity_id: CharEntityId,
-        status: Box<dyn Status + Send>,
-    ) -> ApplyStatusComponent {
-        ApplyStatusComponent {
-            source_entity_id,
-            target_entity_id,
-            status: ApplyStatusComponentPayload::from_secondary(status),
+            status: m,
         }
     }
 }

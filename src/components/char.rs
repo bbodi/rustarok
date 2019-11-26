@@ -610,6 +610,7 @@ mod tests {
     #[test]
     fn test_percentages() {
         assert_eq!(percentage(70).increase_by(percentage(10)).as_i16(), 77);
+        assert_eq!(percentage(70).increase_by(percentage(0)).as_i16(), 70);
         assert_eq!(percentage(70).increase_by(percentage(-10)).as_i16(), 63);
         assert_eq!(percentage(100).increase_by(percentage(200)).as_i16(), 300);
         assert_eq!(percentage(10).add_me_to(200), 220);
@@ -1027,7 +1028,6 @@ impl Team {
         match nature {
             StatusNature::Harmful => self.can_attack(other_team),
             StatusNature::Supportive => self.can_support(other_team),
-            StatusNature::Neutral => true,
         }
     }
 
@@ -1262,6 +1262,7 @@ impl CharacterStateComponent {
             .differences(&self.base_attributes, modifier_collector);
     }
 
+    // for tests
     #[allow(dead_code)]
     pub fn get_status_count(&self) -> usize {
         self.statuses.count()

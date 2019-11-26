@@ -11,6 +11,7 @@ use crate::components::char::{
 use crate::components::controller::{CharEntityId, EntitiesBelowCursor};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
+use crate::components::status::status::StatusEnumDiscriminants;
 use crate::components::{HpModificationResultType, HpModificationType};
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId};
@@ -118,8 +119,8 @@ impl<'a> CharAsserter<'a> {
         self
     }
 
-    pub fn has_status<T: 'static>(self) -> CharAsserter<'a> {
-        assert!(get_char!(self).statuses.get_status::<T>().is_some());
+    pub fn has_status(self, status_discr: StatusEnumDiscriminants) -> CharAsserter<'a> {
+        assert!(get_char!(self).statuses.get_status(status_discr).is_some());
         self
     }
 

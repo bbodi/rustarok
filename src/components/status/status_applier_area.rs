@@ -2,7 +2,7 @@ use crate::common::{v2, Vec2};
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
-use crate::components::status::status::{ApplyStatusComponent, ApplyStatusComponentPayload};
+use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::AssetResources;
@@ -13,7 +13,7 @@ use specs::ReadStorage;
 
 pub struct StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
+    F: FnMut(ElapsedTime) -> StatusEnum,
 {
     pub collider_handle: DefaultColliderHandle,
     pub extents: Vector2<u16>,
@@ -26,7 +26,7 @@ where
 
 impl<F> StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
+    F: FnMut(ElapsedTime) -> StatusEnum,
 {
     pub fn new(
         name: String,
@@ -55,7 +55,7 @@ where
 
 impl<F> SkillManifestation for StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> ApplyStatusComponentPayload,
+    F: FnMut(ElapsedTime) -> StatusEnum,
 {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         if self.next_action_at.has_already_passed(params.now()) {

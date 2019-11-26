@@ -1,19 +1,18 @@
+use crate::common::Vec2;
+use crate::components::char::ActionPlayMode;
 use crate::components::char::Percentage;
-use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
-use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
-};
+use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::components::{
     HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
 };
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::SystemVariables;
+use crate::systems::AssetResources;
 use crate::ElapsedTime;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SacrificeStatus {
     pub sacrifice_caster_id: CharEntityId,
     pub started: ElapsedTime,
@@ -43,12 +42,8 @@ impl SacrificeStatus {
     }
 }
 
-impl Status for SacrificeStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+impl SacrificeStatus {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
@@ -63,7 +58,7 @@ impl Status for SacrificeStatus {
         }
     }
 
-    fn hp_mod_is_calculated_but_not_applied_yet(
+    pub fn hp_mod_is_calculated_but_not_applied_yet(
         &mut self,
         mut outcome: HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
@@ -113,32 +108,25 @@ impl Status for SacrificeStatus {
         }
     }
 
-    fn render(
+    pub fn render(
         &self,
-        char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        char_pos: Vec2,
+        now: ElapsedTime,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Ramadan,
             self.animation_started,
-            &char_state.pos(),
-            &sys_vars.assets,
-            sys_vars.time,
+            &char_pos,
+            assets,
+            now,
             render_commands,
             ActionPlayMode::Repeat,
         );
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::Replace
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive
     }
 }

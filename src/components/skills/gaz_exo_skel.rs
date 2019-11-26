@@ -1,24 +1,19 @@
-use crate::asset::SpriteResource;
 use crate::common::ElapsedTime;
 use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
-    StatusUpdateResult,
+    ApplyStatusComponent, StatusEnum, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
-use crate::consts::JobId;
 use crate::effect::StrEffectType;
-use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{Sex, SystemVariables};
+use crate::systems::SystemVariables;
 use specs::{Entities, LazyUpdate};
 
 pub struct ExoSkeletonSkill;
@@ -41,10 +36,10 @@ impl SkillDef for ExoSkeletonSkill {
         let duration_seconds = configs.duration_seconds;
         sys_vars
             .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
+            .push(ApplyStatusComponent::from_status(
                 params.caster_entity_id,
                 params.caster_entity_id,
-                Box::new(ExoSkeletonStatus::new(
+                StatusEnum::ExoSkeletonStatus(ExoSkeletonStatus::new(
                     now,
                     duration_seconds,
                     configs.armor,
@@ -62,10 +57,10 @@ impl SkillDef for ExoSkeletonSkill {
     }
 }
 
-#[derive(Clone)]
-struct ExoSkeletonStatus {
+#[derive(Clone, Debug)]
+pub struct ExoSkeletonStatus {
     started: ElapsedTime,
-    until: ElapsedTime,
+    pub until: ElapsedTime,
     armor: Percentage,
     attack_range: Percentage,
     movement_speed: Percentage,
@@ -95,28 +90,13 @@ impl ExoSkeletonStatus {
     }
 }
 
-impl Status for ExoSkeletonStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn get_body_sprite<'a>(
-        &self,
-        sys_vars: &'a SystemVariables,
-        _job_id: JobId,
-        _sex: Sex,
-    ) -> Option<&'a SpriteResource> {
-        Some(&sys_vars.assets.sprites.exoskeleton)
-    }
-
-    fn on_apply(
+impl ExoSkeletonStatus {
+    pub fn on_apply(
         &mut self,
-        _self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        sys_vars: &SystemVariables,
-        _physics_world: &mut PhysicEngine,
+        now: ElapsedTime,
     ) {
         target_char.basic_attack = BasicAttack::Ranged {
             bullet_type: WeaponType::SilverBullet,
@@ -126,14 +106,14 @@ impl Status for ExoSkeletonStatus {
             StrEffectComponent {
                 effect_id: StrEffectType::Cart.into(),
                 pos: target_char.pos(),
-                start_time: sys_vars.time,
+                start_time: now,
                 die_at: None,
                 play_mode: ActionPlayMode::Once,
             },
         );
     }
 
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+    pub fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         modifiers.change_armor(
             CharAttributeModifier::AddPercentage(self.armor),
             self.started,
@@ -161,7 +141,7 @@ impl Status for ExoSkeletonStatus {
         );
     }
 
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             params.target_char.basic_attack = BasicAttack::MeleeSimple;
             StatusUpdateResult::RemoveIt
@@ -170,21 +150,7 @@ impl Status for ExoSkeletonStatus {
         }
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::DontAddTheNewStatus
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive
-    }
-
-    // mount is disabled
-    // splash damage
-    // átváltozó és lebomló animáció
-    // castolás szüntesse meg a mount statuszt
-    // amikor meghal a combo animáciüó, 1 pillanatra felvillan
 }

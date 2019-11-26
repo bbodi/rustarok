@@ -1,10 +1,8 @@
 use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
-use crate::components::status::status::{
-    Status, StatusNature, StatusUpdateParams, StatusUpdateResult,
-};
+use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::ElapsedTime;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArmorModifierStatus {
     pub started: ElapsedTime,
     pub until: ElapsedTime,
@@ -21,12 +19,8 @@ impl ArmorModifierStatus {
     }
 }
 
-impl Status for ArmorModifierStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+impl ArmorModifierStatus {
+    pub fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         modifiers.change_armor(
             CharAttributeModifier::AddPercentage(self.modifier),
             self.started,
@@ -34,20 +28,16 @@ impl Status for ArmorModifierStatus {
         );
     }
 
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
         }
     }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive // depends
-    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WalkingSpeedModifierStatus {
     pub started: ElapsedTime,
     pub until: ElapsedTime,
@@ -68,12 +58,8 @@ impl WalkingSpeedModifierStatus {
     }
 }
 
-impl Status for WalkingSpeedModifierStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
+impl WalkingSpeedModifierStatus {
+    pub fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {
         modifiers.change_walking_speed(
             CharAttributeModifier::AddPercentage(self.modifier),
             self.started,
@@ -81,15 +67,11 @@ impl Status for WalkingSpeedModifierStatus {
         );
     }
 
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
         }
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Supportive // depends
     }
 }

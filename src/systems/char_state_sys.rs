@@ -7,6 +7,8 @@ use crate::components::char::{
 use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
+use crate::components::status::status::StatusEnum;
+use crate::components::status::status::StatusEnumDiscriminants;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
@@ -66,23 +68,27 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 log::debug!("Entity has died {:?}", char_entity_id);
                 char_comp.set_state(CharState::Dead, char_comp.dir());
                 char_comp.statuses.remove_all();
-                char_comp.statuses.add(DeathStatus::new(
-                    sys_vars.time,
-                    npc_storage.get(char_entity_id.0).is_some(),
-                ));
+                char_comp
+                    .statuses
+                    .add(StatusEnum::DeathStatus(DeathStatus::new(
+                        sys_vars.time,
+                        npc_storage.get(char_entity_id.0).is_some(),
+                    )));
                 // remove rigid bodies from the physic simulation
                 collisions_resource.remove_collider_handle(char_comp.collider_handle);
                 physics_world.bodies.remove(char_comp.body_handle);
                 continue;
             } else if is_dead && npc_storage.get(char_entity_id.0).is_some() {
-                let remove_char_at = char_comp
+                if let StatusEnum::DeathStatus(status) = char_comp
                     .statuses
-                    .with_status::<_, DeathStatus, _>(|status| status.remove_char_at)
-                    .unwrap();
-                if remove_char_at.has_already_passed(sys_vars.time) {
-                    entities.delete(char_entity_id.0).unwrap();
+                    .get_status(StatusEnumDiscriminants::DeathStatus)
+                    .unwrap()
+                {
+                    if status.remove_char_at.has_already_passed(sys_vars.time) {
+                        entities.delete(char_entity_id.0).unwrap();
+                    }
+                    continue;
                 }
-                continue;
             }
 
             char_comp.update_statuses(

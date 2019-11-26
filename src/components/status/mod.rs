@@ -1,6 +1,5 @@
 #[macro_use]
 pub mod status;
-pub mod absorb_shield;
 pub mod attack_heal_status;
 pub mod attrib_mod;
 pub mod death_status;

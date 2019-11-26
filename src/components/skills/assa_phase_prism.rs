@@ -3,13 +3,12 @@ use nalgebra::Isometry2;
 use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::CharEntityId;
-use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
+    ApplyStatusComponent, StatusEnum, StatusEnumDiscriminants, StatusUpdateParams,
     StatusUpdateResult,
 };
 use crate::configs::DevConfig;
@@ -146,10 +145,10 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                         params
                             .remove_component::<SkillManifestationComponent>(params.self_entity_id);
 
-                        params.apply_status(ApplyStatusComponent::from_secondary_status(
+                        params.apply_status(ApplyStatusComponent::from_status(
                             self.caster_id,
                             self.caster_id,
-                            Box::new(AssaPhasePrismStatus {
+                            StatusEnum::AssaPhasePrismStatus(AssaPhasePrismStatus {
                                 caster_entity_id: self.caster_id,
                                 started_at: now,
                                 ends_at,
@@ -158,10 +157,10 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                             }),
                         ));
                         // add status to the target
-                        params.apply_status(ApplyStatusComponent::from_secondary_status(
+                        params.apply_status(ApplyStatusComponent::from_status(
                             self.caster_id,
                             target_char_entity_id,
-                            Box::new(AssaPhasePrismStatus {
+                            StatusEnum::AssaPhasePrismStatus(AssaPhasePrismStatus {
                                 caster_entity_id: self.caster_id,
                                 started_at: now,
                                 ends_at,
@@ -173,7 +172,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                     if let Some(caster) = params.char_storage.get_mut(self.caster_id.0) {
                         caster
                             .statuses
-                            .remove::<AssaBladeDashStatus, _>(|_status| true);
+                            .remove(StatusEnumDiscriminants::AssaBladeDashStatus);
                     }
                 }
             }
@@ -197,7 +196,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AssaPhasePrismStatus {
     pub caster_entity_id: CharEntityId,
     pub started_at: ElapsedTime,
@@ -206,24 +205,8 @@ pub struct AssaPhasePrismStatus {
     pub vector: Vec2,
 }
 
-impl Status for AssaPhasePrismStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn can_target_move(&self) -> bool {
-        false
-    }
-
-    fn can_target_cast(&self) -> bool {
-        false
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [0, 255, 255, 255]
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+impl AssaPhasePrismStatus {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if let Some(body) = params
             .physics_world
             .bodies
@@ -244,13 +227,5 @@ impl Status for AssaPhasePrismStatus {
         } else {
             StatusUpdateResult::RemoveIt
         }
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::Replace
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Neutral
     }
 }

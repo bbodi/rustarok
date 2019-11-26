@@ -10,9 +10,7 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
 };
-use crate::components::status::status::{
-    ApplyStatusComponentPayload, ApplyStatusInAreaComponent, StatusNature,
-};
+use crate::components::status::status::{ApplyStatusInAreaComponent, StatusEnum, StatusNature};
 use crate::components::status::stun::StunStatus;
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
@@ -134,12 +132,10 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                     });
                     params.apply_area_status(ApplyStatusInAreaComponent {
                         source_entity_id: self.caster_id,
-                        status: ApplyStatusComponentPayload::from_secondary(Box::new(
-                            StunStatus::new(
-                                self.caster_id,
-                                params.now(),
-                                self.configs.stun_duration_seconds,
-                            ),
+                        status: StatusEnum::StunStatus(StunStatus::new(
+                            self.caster_id,
+                            params.now(),
+                            self.configs.stun_duration_seconds,
                         )),
                         area_shape,
                         area_isom,

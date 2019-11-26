@@ -1,5 +1,4 @@
 use nalgebra::{Isometry2, Vector2};
-use specs::{Entities, LazyUpdate};
 
 use crate::common::{v2, v2_to_v3, ElapsedTime, Vec2};
 use crate::components::char::{
@@ -12,15 +11,13 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::components::status::status::{
-    ApplyStatusComponent, Status, StatusNature, StatusStackingResult, StatusUpdateParams,
-    StatusUpdateResult,
+    ApplyStatusComponent, StatusEnum, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
-use crate::systems::SystemVariables;
+use crate::systems::{AssetResources, SystemVariables};
 
 pub struct AssaBladeDashSkill;
 
@@ -56,10 +53,10 @@ impl SkillDef for AssaBladeDashSkill {
             let now = sys_vars.time;
             sys_vars
                 .apply_statuses
-                .push(ApplyStatusComponent::from_secondary_status(
+                .push(ApplyStatusComponent::from_status(
                     params.caster_entity_id,
                     params.caster_entity_id,
-                    Box::new(AssaBladeDashStatus {
+                    StatusEnum::AssaBladeDashStatus(AssaBladeDashStatus {
                         caster_entity_id: params.caster_entity_id,
                         started_at: now,
                         ends_at: now.add_seconds(configs.duration_seconds),
@@ -85,7 +82,7 @@ impl SkillDef for AssaBladeDashSkill {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AssaBladeDashStatus {
     pub caster_entity_id: CharEntityId,
     pub started_at: ElapsedTime,
@@ -102,37 +99,8 @@ pub struct AssaBladeDashStatus {
     pub configs: AssaBladeDashSkillConfig,
 }
 
-impl Status for AssaBladeDashStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn on_apply(
-        &mut self,
-        _self_entity_id: CharEntityId,
-        target_char: &mut CharacterStateComponent,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-        _sys_vars: &SystemVariables,
-        physics_world: &mut PhysicEngine,
-    ) {
-        // allow to go through anything
-        target_char.set_noncollidable(physics_world);
-    }
-
-    fn can_target_move(&self) -> bool {
-        false
-    }
-
-    fn can_target_cast(&self) -> bool {
-        true
-    }
-
-    fn get_render_color(&self, _now: ElapsedTime) -> [u8; 4] {
-        [0, 0, 0, 0]
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+impl AssaBladeDashStatus {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if let Some(body) = params
             .physics_world
             .bodies
@@ -211,15 +179,14 @@ impl Status for AssaBladeDashStatus {
         }
     }
 
-    fn render(
+    pub fn render(
         &self,
         char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        now: ElapsedTime,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
-        let duration_percentage = sys_vars
-            .time
-            .percentage_between(self.started_at, self.ends_at);
+        let duration_percentage = now.percentage_between(self.started_at, self.ends_at);
         match char_state.outlook {
             CharOutlook::Player {
                 job_sprite_id,
@@ -227,11 +194,11 @@ impl Status for AssaBladeDashStatus {
                 sex,
             } => {
                 let body_sprite = {
-                    let sprites = &sys_vars.assets.sprites.character_sprites;
+                    let sprites = &assets.sprites.character_sprites;
                     &sprites[&job_sprite_id][1][sex as usize]
                 };
                 let head_res = {
-                    let sprites = &sys_vars.assets.sprites.head_sprites;
+                    let sprites = &assets.sprites.head_sprites;
                     &sprites[sex as usize][head_index]
                 };
                 for (pos, alpha, time_offset) in &[
@@ -261,7 +228,7 @@ impl Status for AssaBladeDashStatus {
                         }
                     };
                     let offset = render_single_layer_action(
-                        sys_vars.time,
+                        now,
                         &anim_descr,
                         body_sprite,
                         &v2_to_v3(pos),
@@ -274,7 +241,7 @@ impl Status for AssaBladeDashStatus {
                     );
 
                     render_single_layer_action(
-                        sys_vars.time,
+                        now,
                         &anim_descr,
                         head_res,
                         &v2_to_v3(pos),
@@ -289,13 +256,5 @@ impl Status for AssaBladeDashStatus {
             }
             CharOutlook::Monster(_monster_id) => {}
         }
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::DontAddTheNewStatus
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Neutral
     }
 }

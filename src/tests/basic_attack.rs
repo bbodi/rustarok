@@ -3,7 +3,7 @@ use crate::components::char::{percentage, CharState, EntityTarget, Team};
 use crate::components::status::attack_heal_status::AttackHealStatus;
 use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
-use crate::components::status::status::ApplyStatusComponent;
+use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::tests::setup_ecs_world;
 use std::time::Duration;
 
@@ -39,10 +39,10 @@ fn reflection() {
 
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+    test_util.apply_status(ApplyStatusComponent::from_status(
         attacked_id,
         attacked_id,
-        Box::new(ReflectDamageStatus::new(
+        StatusEnum::ReflectDamageStatus(ReflectDamageStatus::new(
             attacked_id,
             percentage(10),
             ElapsedTime(0.0),
@@ -80,10 +80,10 @@ fn vampiric_attack() {
 
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+    test_util.apply_status(ApplyStatusComponent::from_status(
         attacker_id,
         attacker_id,
-        Box::new(AttackHealStatus::new(
+        StatusEnum::AttackHealStatus(AttackHealStatus::new(
             percentage(10),
             ElapsedTime(0.0),
             10.0,
@@ -122,10 +122,10 @@ fn sacrifice() {
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+    test_util.apply_status(ApplyStatusComponent::from_status(
         attacked_id,
         attacked_id,
-        Box::new(SacrificeStatus::new(
+        StatusEnum::SacrificeStatus(SacrificeStatus::new(
             sacrifice_id,
             percentage(10),
             ElapsedTime(0.0),
@@ -169,10 +169,10 @@ fn sacrifice_100_percent() {
     let attacker_id = test_util.create_char(v2(10.0, 10.0), Team::Left);
     let attacked_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
     let sacrifice_id = test_util.create_char(v2(10.0, 10.0), Team::Right);
-    test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+    test_util.apply_status(ApplyStatusComponent::from_status(
         attacked_id,
         attacked_id,
-        Box::new(SacrificeStatus::new(
+        StatusEnum::SacrificeStatus(SacrificeStatus::new(
             sacrifice_id,
             percentage(100),
             ElapsedTime(0.0),

@@ -3,7 +3,9 @@ use crate::components::char::Team;
 use crate::components::char::{percentage, CharState, EntityTarget};
 use crate::components::skills::skills::Skills;
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
-use crate::components::status::status::{ApplyStatusComponent, MainStatuses, MountedStatus};
+use crate::components::status::status::{
+    ApplyStatusComponent, StatusEnum, StatusEnumDiscriminants,
+};
 use crate::tests::setup_ecs_world;
 use std::time::Duration;
 
@@ -24,7 +26,7 @@ fn finishing_mounting_skill_should_result_in_mounted_state() {
         .assert_on_character(char_entity_id)
         .state(CharState::Idle)
         .movement_speed(percentage(130))
-        .has_status::<MountedStatus>();
+        .has_status(StatusEnumDiscriminants::MountedStatus);
 }
 
 #[test]
@@ -77,10 +79,12 @@ fn first_char_is_twice_as_fast_as_second() {
     test_util.set_char_target(a_id, EntityTarget::Pos(v2(10.0, 30.0)));
     test_util.set_char_target(b_id, EntityTarget::Pos(v2(13.0, 30.0)));
 
-    test_util.apply_status(ApplyStatusComponent::from_main_status(
+    test_util.apply_status(ApplyStatusComponent::from_status(
         b_id,
         b_id,
-        MainStatuses::Mounted,
+        StatusEnum::MountedStatus {
+            speedup: percentage(30),
+        },
     ));
 
     // it needs one frame for setting its state to Walking
@@ -121,10 +125,10 @@ fn many_chars_with_different_movement_speed() {
             let x = 10 + 3 * i;
             let char_id = test_util.create_char(v2(x as f32, 10.0), Team::Right);
             test_util.set_char_target(char_id, EntityTarget::Pos(v2(x as f32, 10.0 + distance)));
-            test_util.apply_status(ApplyStatusComponent::from_secondary_status(
+            test_util.apply_status(ApplyStatusComponent::from_status(
                 char_id,
                 char_id,
-                Box::new(WalkingSpeedModifierStatus::new(
+                StatusEnum::WalkingSpeedModifierStatus(WalkingSpeedModifierStatus::new(
                     ElapsedTime(0.0),
                     percentage(i),
                     1000.0,

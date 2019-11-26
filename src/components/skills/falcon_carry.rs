@@ -1,22 +1,14 @@
-use specs::{Entities, LazyUpdate};
-
 use crate::common::{ElapsedTime, Vec2};
-use crate::components::char::{
-    CharState, CharacterStateComponent, SpriteRenderDescriptorComponent,
-};
-use crate::components::controller::{CharEntityId, ControllerComponent, ControllerEntityId};
+use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
+use crate::components::controller::{ControllerComponent, ControllerEntityId};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
-use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
-};
-use crate::components::ApplyForceComponent;
+use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::configs::DevConfig;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
-use crate::systems::SystemVariables;
+use crate::systems::{AssetResources, SystemVariables};
 use specs::prelude::*;
 
 pub struct FalconCarrySkill;
@@ -93,7 +85,7 @@ impl SkillDef for FalconCarrySkill {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FalconCarryStatus {
     pub started_at: ElapsedTime,
     pub ends_at: ElapsedTime,
@@ -101,37 +93,8 @@ pub struct FalconCarryStatus {
     pub end_pos: Vec2,
 }
 
-impl Status for FalconCarryStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn on_apply(
-        &mut self,
-        _self_entity_id: CharEntityId,
-        target_char: &mut CharacterStateComponent,
-        _entities: &Entities,
-        _updater: &mut LazyUpdate,
-        _sys_vars: &SystemVariables,
-        physics_world: &mut PhysicEngine,
-    ) {
-        target_char.set_noncollidable(physics_world);
-        target_char.set_state(CharState::StandBy, 0);
-    }
-
-    fn can_target_move(&self) -> bool {
-        false
-    }
-
-    fn can_target_be_controlled(&self) -> bool {
-        false
-    }
-
-    fn can_target_cast(&self) -> bool {
-        false
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+impl FalconCarryStatus {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.ends_at.has_already_passed(params.sys_vars.time) {
             params.target_char.set_collidable(params.physics_world);
             StatusUpdateResult::RemoveIt
@@ -140,16 +103,7 @@ impl Status for FalconCarryStatus {
         }
     }
 
-    fn allow_push(&self, _push: &ApplyForceComponent) -> bool {
-        false
-    }
-
-    fn render(
-        &self,
-        _char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
-        render_commands: &mut RenderCommandCollector,
-    ) {
+    pub fn render(&self, assets: &AssetResources, render_commands: &mut RenderCommandCollector) {
         if !self.carry_owner {
             render_commands
                 .circle_3d()
@@ -165,11 +119,11 @@ impl Status for FalconCarryStatus {
                 .color_rgb(&[0, 255, 0])
                 .scale(0.5)
                 .pos(&self.end_pos)
-                .add(sys_vars.assets.sprites.falcon.textures[2])
+                .add(assets.sprites.falcon.textures[2])
         }
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         if self.carry_owner {
             Some((
                 self.ends_at,
@@ -178,13 +132,5 @@ impl Status for FalconCarryStatus {
         } else {
             None
         }
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::Replace
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Neutral
     }
 }

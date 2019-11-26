@@ -9,8 +9,8 @@ use crate::components::char::{percentage, CharacterStateComponent};
 use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::status::status::{
-    ApplyStatusComponent, ApplyStatusComponentPayload, ApplyStatusInAreaComponent, MainStatuses,
-    RemoveStatusComponent, RemoveStatusComponentPayload,
+    ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
+    RemoveStatusComponentPayload,
 };
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, FlyingNumberComponent, FlyingNumberType,
@@ -40,7 +40,6 @@ impl<'a> System<'a> for AttackSystem {
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
         WriteExpect<'a, SystemVariables>,
-        ReadExpect<'a, DevConfig>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
         Write<'a, LazyUpdate>,
@@ -53,7 +52,6 @@ impl<'a> System<'a> for AttackSystem {
             entities,
             mut char_state_storage,
             mut sys_vars,
-            dev_configs,
             mut physics_world,
             mut system_benchmark,
             mut updater,
@@ -159,6 +157,7 @@ impl<'a> System<'a> for AttackSystem {
             log::trace!("Attack outcomes: {:?}", hp_mod_req_results);
 
             for hp_mod_req_result in hp_mod_req_results.into_iter() {
+                dbg!(&hp_mod_req_result);
                 let (hp_mod_req_result, char_pos) = {
                     let attacked_entity_state = char_state_storage.get_mut(attacked_id.0).unwrap();
                     let hp_mod_req_result = AttackCalculation::alter_requests_by_attacked_statuses(
@@ -234,7 +233,6 @@ impl<'a> System<'a> for AttackSystem {
             status_changes,
             &mut char_state_storage,
             &sys_vars,
-            &dev_configs,
             &entities,
             &mut updater,
             &mut physics_world,
@@ -501,45 +499,32 @@ impl AttackSystem {
         status_changes: Vec<ApplyStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
         sys_vars: &SystemVariables,
-        dev_configs: &DevConfig,
         entities: &Entities,
         updater: &mut LazyUpdate,
         physics_world: &mut PhysicEngine,
     ) {
-        for status_change in status_changes.into_iter() {
+        for mut status_change in status_changes.into_iter() {
             if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
             {
                 if target_char.hp <= 0 {
                     continue;
                 }
                 let target_entity_id = status_change.target_entity_id;
-                match status_change.status {
-                    ApplyStatusComponentPayload::MainStatus(status_name) => {
-                        log::debug!(
-                            "Applying state '{:?}' on {:?}",
-                            status_name,
-                            status_change.target_entity_id
-                        );
-                        match status_name {
-                            MainStatuses::Mounted => {
-                                let mounted_speedup =
-                                    AttackSystem::calc_mounted_speedup(target_char, &dev_configs);
-                                target_char.statuses.switch_mounted(mounted_speedup);
-                            }
-                        }
-                    }
-                    ApplyStatusComponentPayload::SecondaryStatus(mut box_status) => {
-                        box_status.on_apply(
-                            status_change.target_entity_id,
-                            target_char,
-                            entities,
-                            updater,
-                            sys_vars,
-                            physics_world,
-                        );
-                        target_char.statuses.add(box_status);
-                    }
-                }
+                log::debug!(
+                    "Applying state '{:?}' on {:?}",
+                    status_change.status,
+                    status_change.target_entity_id
+                );
+
+                status_change.status.on_apply(
+                    status_change.target_entity_id,
+                    target_char,
+                    entities,
+                    updater,
+                    sys_vars,
+                    physics_world,
+                );
+                target_char.statuses.add(status_change.status);
                 target_char.recalc_attribs_based_on_statuses();
                 log::trace!(
                     "Status added. Attributes({:?}): bonuses: {:?}, current: {:?}",
@@ -551,7 +536,7 @@ impl AttackSystem {
         }
     }
 
-    fn calc_mounted_speedup(
+    pub fn calc_mounted_speedup(
         target_char: &CharacterStateComponent,
         configs: &DevConfig,
     ) -> Percentage {
@@ -571,6 +556,9 @@ impl AttackSystem {
                 match &status_change.status {
                     RemoveStatusComponentPayload::RemovingStatusType(status_type) => {
                         target_char.statuses.remove_by_nature(*status_type);
+                    }
+                    RemoveStatusComponentPayload::RemovingStatusDiscr(discr) => {
+                        target_char.statuses.remove(*discr)
                     }
                 }
                 target_char.recalc_attribs_based_on_statuses();

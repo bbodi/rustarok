@@ -6,7 +6,7 @@ use crate::components::controller::{
     CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention,
 };
 use crate::components::skills::falcon_carry::FalconCarryStatus;
-use crate::components::status::status::ApplyStatusComponent;
+use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
@@ -226,18 +226,18 @@ impl<'a> System<'a> for FalconAiSystem {
                     } else if duration_percentage < 1.0 {
                         if !target_is_caught {
                             sprite.action_index = CharActionIndex::Idle as usize;
-                            sys_vars.apply_statuses.push(
-                                ApplyStatusComponent::from_secondary_status(
+                            sys_vars
+                                .apply_statuses
+                                .push(ApplyStatusComponent::from_status(
                                     falcon.owner_entity_id,
                                     falcon.owner_entity_id,
-                                    Box::new(FalconCarryStatus {
+                                    StatusEnum::FalconCarryStatus(FalconCarryStatus {
                                         started_at,
                                         ends_at,
                                         carry_owner: true,
                                         end_pos: Vector2::zeros(),
                                     }),
-                                ),
-                            );
+                                ));
                             falcon.state = FalconState::CarryOwner {
                                 owner_controller_id,
                                 started_at,
@@ -349,18 +349,18 @@ impl<'a> System<'a> for FalconAiSystem {
                                         end_pos.y,
                                     ),
                                 };
-                                sys_vars.apply_statuses.push(
-                                    ApplyStatusComponent::from_secondary_status(
+                                sys_vars
+                                    .apply_statuses
+                                    .push(ApplyStatusComponent::from_status(
                                         falcon.owner_entity_id,
                                         target_id,
-                                        Box::new(FalconCarryStatus {
+                                        StatusEnum::FalconCarryStatus(FalconCarryStatus {
                                             started_at,
                                             ends_at,
                                             carry_owner: false,
                                             end_pos,
                                         }),
-                                    ),
-                                );
+                                    ));
                                 falcon.state = FalconState::CarryAlly {
                                     target_id,
                                     start_pos,

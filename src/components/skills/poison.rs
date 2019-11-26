@@ -4,7 +4,7 @@ use crate::components::char::ActionPlayMode;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
-use crate::components::status::status::{ApplyStatusComponent, PoisonStatus};
+use crate::components::status::status::{ApplyStatusComponent, PoisonStatus, StatusEnum};
 use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
@@ -41,10 +41,10 @@ impl SkillDef for PosionSkill {
         let configs = &ecs_world.read_resource::<DevConfig>().skills.poison;
         sys_vars
             .apply_statuses
-            .push(ApplyStatusComponent::from_secondary_status(
+            .push(ApplyStatusComponent::from_status(
                 params.caster_entity_id,
                 params.target_entity.unwrap(),
-                Box::new(PoisonStatus {
+                StatusEnum::PoisonStatus(PoisonStatus {
                     poison_caster_entity_id: params.caster_entity_id,
                     started: now,
                     until: now.add_seconds(configs.duration_seconds),

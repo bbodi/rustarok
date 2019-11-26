@@ -1,21 +1,18 @@
+use crate::common::Vec2;
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharState, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::CharEntityId;
-use crate::components::status::status::{
-    Status, StatusNature, StatusStackingResult, StatusUpdateParams, StatusUpdateResult,
-};
+use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::components::SoundEffectComponent;
-use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_action;
-use crate::systems::SystemVariables;
+use crate::systems::AssetResources;
 use crate::ElapsedTime;
-use specs::prelude::*;
 use specs::{Entities, LazyUpdate};
 
-#[derive(Clone, Component)]
+#[derive(Clone, Debug)]
 pub struct StunStatus {
     pub caster_entity_id: CharEntityId,
     pub started: ElapsedTime,
@@ -32,19 +29,15 @@ impl StunStatus {
     }
 }
 
-impl Status for StunStatus {
-    fn dupl(&self) -> Box<dyn Status + Send> {
-        Box::new(self.clone())
-    }
-
-    fn on_apply(
+impl StunStatus {
+    pub fn on_apply(
         &mut self,
         self_entity_id: CharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        sys_vars: &SystemVariables,
-        _physics_world: &mut PhysicEngine,
+        assets: &AssetResources,
+        now: ElapsedTime,
     ) {
         target_char.set_state(CharState::StandBy, target_char.dir());
         let entity = entities.create();
@@ -52,26 +45,14 @@ impl Status for StunStatus {
             entity,
             SoundEffectComponent {
                 target_entity_id: self_entity_id,
-                sound_id: sys_vars.assets.sounds.stun,
+                sound_id: assets.sounds.stun,
                 pos: target_char.pos(),
-                start_time: sys_vars.time,
+                start_time: now,
             },
         );
     }
 
-    fn can_target_move(&self) -> bool {
-        false
-    }
-
-    fn can_target_be_controlled(&self) -> bool {
-        true
-    }
-
-    fn can_target_cast(&self) -> bool {
-        false
-    }
-
-    fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
             StatusUpdateResult::RemoveIt
         } else {
@@ -79,10 +60,11 @@ impl Status for StunStatus {
         }
     }
 
-    fn render(
+    pub fn render(
         &self,
-        char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        char_pos: Vec2,
+        now: ElapsedTime,
+        assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         let anim = SpriteRenderDescriptorComponent {
@@ -94,10 +76,10 @@ impl Status for StunStatus {
             fps_multiplier: 1.0,
         };
         render_action(
-            sys_vars.time,
+            now,
             &anim,
-            &sys_vars.assets.sprites.stun,
-            &char_state.pos(),
+            &assets.sprites.stun,
+            &char_pos,
             [0, -100],
             false,
             1.0,
@@ -107,15 +89,7 @@ impl Status for StunStatus {
         );
     }
 
-    fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
-    }
-
-    fn stack(&self, _other: &Box<dyn Status>) -> StatusStackingResult {
-        StatusStackingResult::Replace
-    }
-
-    fn typ(&self) -> StatusNature {
-        StatusNature::Harmful
     }
 }

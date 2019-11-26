@@ -1,12 +1,17 @@
 use specs::LazyUpdate;
 
-use crate::components::char::ActionPlayMode;
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
-use crate::components::status::status::{ApplyStatusComponent, MainStatuses};
+use crate::components::status::status::{
+    ApplyStatusComponent, RemoveStatusComponent, RemoveStatusComponentPayload, StatusEnum,
+    StatusEnumDiscriminants,
+};
 use crate::components::StrEffectComponent;
+use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
+use crate::systems::atk_calc::AttackSystem;
 use crate::systems::SystemVariables;
 
 pub struct MountingSkill;
@@ -39,13 +44,34 @@ impl SkillDef for MountingSkill {
             );
         }
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-        sys_vars
-            .apply_statuses
-            .push(ApplyStatusComponent::from_main_status(
-                params.caster_entity_id,
-                params.caster_entity_id,
-                MainStatuses::Mounted,
-            ));
+        if let Some(target_char) = ecs_world
+            .read_storage::<CharacterStateComponent>()
+            .get(params.caster_entity_id.0)
+        {
+            if target_char.statuses.is_mounted() {
+                sys_vars.remove_statuses.push(RemoveStatusComponent {
+                    source_entity_id: params.caster_entity_id,
+                    target_entity_id: params.caster_entity_id,
+                    status: RemoveStatusComponentPayload::RemovingStatusDiscr(
+                        StatusEnumDiscriminants::MountedStatus,
+                    ),
+                })
+            } else {
+                let mounted_speedup = AttackSystem::calc_mounted_speedup(
+                    target_char,
+                    &ecs_world.read_resource::<DevConfig>(),
+                );
+                sys_vars
+                    .apply_statuses
+                    .push(ApplyStatusComponent::from_status(
+                        params.caster_entity_id,
+                        params.caster_entity_id,
+                        StatusEnum::MountedStatus {
+                            speedup: mounted_speedup,
+                        },
+                    ));
+            }
+        }
         None
     }
 
