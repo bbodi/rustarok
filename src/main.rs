@@ -13,24 +13,15 @@ unused_qualifications,
 clippy::all
 )]
 
-//use byteorder;
-//use config;
 use crossbeam_channel;
 use encoding;
-//#[macro_use]
-//use imgui;
-//use imgui_opengl_renderer;
-//use imgui_sdl2;
 use log;
 use notify;
 use sdl2;
-#[macro_use]
-extern crate serde_json;
 use specs;
 #[macro_use]
 extern crate specs_derive;
 use strum;
-use websocket;
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -51,15 +42,13 @@ use crate::components::char::{
     CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,
     SpriteRenderDescriptorComponent, Team,
 };
-use crate::components::controller::{
-    CameraComponent, CharEntityId, ControllerEntityId, HumanInputComponent,
-};
+use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
 use crate::components::skills::skills::SkillManifestationComponent;
-use crate::components::{BrowserClient, MinionComponent};
+use crate::components::MinionComponent;
 use crate::configs::{AppConfig, DevConfig};
 use crate::consts::{JobId, JobSpriteId};
 use crate::my_gl::MyGlEnum;
-use crate::network::{handle_client_handshakes, handle_new_connections};
+//use crate::network::{handle_client_handshakes, handle_new_connections};
 use crate::notify::Watcher;
 use crate::runtime_assets::audio::init_audio_and_load_sounds;
 use crate::runtime_assets::ecs::create_ecs_world;
@@ -74,7 +63,7 @@ use crate::systems::console_system::{
 };
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
 use crate::systems::frame_end_system::FrameEndSystem;
-use crate::systems::input_sys::{BrowserInputProducerSystem, InputConsumerSystem};
+use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::next_action_applier_sys::{
@@ -84,7 +73,6 @@ use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::render::falcon_render_sys::FalconRenderSys;
 use crate::systems::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
-use crate::systems::render::websocket_browser_render_sys::WebSocketBrowserRenderSystem;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::sound_sys::SoundSystem;
@@ -93,7 +81,6 @@ use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations, SystemVariables,
 };
 use crate::video::Video;
-use crate::web_server::start_web_server;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -114,13 +101,10 @@ mod shaders;
 #[cfg(test)]
 mod tests;
 mod video;
-mod web_server;
 
 #[macro_use]
 mod components;
 mod systems;
-
-// TODO: throttle: if browser is not able to keep up e.g. 140 FPS, slow down render command sending
 
 // simulations per second
 pub const SIMULATION_FREQ: u64 = 30;
@@ -321,15 +305,6 @@ fn main() {
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
-    log::info!(">>> bind websocket");
-    let mut websocket_server = websocket::sync::Server::bind("0.0.0.0:6969").unwrap();
-    websocket_server.set_nonblocking(true).unwrap();
-    log::info!("<<< bind websocket");
-
-    log::info!(">>> start webserver");
-    start_web_server();
-    log::info!("<<< start webserver");
-
     ecs_world
         .write_storage::<ConsoleComponent>()
         .get_mut(desktop_client_controller.0)
@@ -344,9 +319,9 @@ fn main() {
             &mut ecs_world.write_resource::<MapRenderData>(),
         );
 
-        handle_new_connections(map_name, &mut ecs_world, &mut websocket_server);
+        //        handle_new_connections(map_name, &mut ecs_world, &mut websocket_server);
 
-        handle_client_handshakes(&mut ecs_world, &config);
+        //        handle_client_handshakes(&mut ecs_world, &config);
 
         let quit = !update_desktop_inputs(&mut video, &mut ecs_world, desktop_client_controller);
         if quit {
@@ -413,8 +388,6 @@ fn main() {
                 .unwrap();
 
             video.set_title(&format!("Rustarok {} FPS", fps));
-
-            send_ping_packets(&mut ecs_world)
         }
         fps_counter += 1;
 
@@ -450,16 +423,11 @@ fn register_systems<'a, 'b>(
         let mut char_control_deps = vec!["friction_sys"];
         if !for_test {
             ecs_dispatcher_builder = ecs_dispatcher_builder
-                .with(BrowserInputProducerSystem, "browser_input_processor", &[])
-                .with(
-                    InputConsumerSystem,
-                    "input_handler",
-                    &["browser_input_processor"],
-                )
+                .with(InputConsumerSystem, "input_handler", &[])
                 .with(
                     InputToNextActionSystem,
                     "input_to_next_action_sys",
-                    &["input_handler", "browser_input_processor"],
+                    &["input_handler"],
                 )
                 .with(CameraSystem, "camera_system", &["input_handler"]);
             char_control_deps.push("input_to_next_action_sys");
@@ -526,8 +494,7 @@ fn register_systems<'a, 'b>(
             ecs_dispatcher_builder = ecs_dispatcher_builder
                 .with_thread_local(RenderDesktopClientSystem::new())
                 .with_thread_local(FalconRenderSys)
-                .with_thread_local(opengl_render_sys.unwrap())
-                .with_thread_local(WebSocketBrowserRenderSystem::new());
+                .with_thread_local(opengl_render_sys.unwrap());
         }
         if let Some(sound_system) = maybe_sound_system {
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
@@ -566,18 +533,6 @@ pub fn get_current_ms(now: SystemTime) -> u64 {
     now.duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64
-}
-
-fn send_ping_packets(ecs_world: &mut World) -> () {
-    let now_ms = get_current_ms(SystemTime::now());
-    let data = now_ms.to_le_bytes();
-    let mut browser_storage = ecs_world.write_storage::<BrowserClient>();
-    let camera_storage = ecs_world.read_storage::<CameraComponent>();
-
-    for (browser_client, _no_camera) in (&mut browser_storage, &camera_storage).join() {
-        browser_client.send_ping(&data);
-        browser_client.reset_byte_per_second();
-    }
 }
 
 fn spawn_minions(ecs_world: &mut World) -> () {
@@ -822,171 +777,6 @@ fn get_all_map_names(asset_loader: &AssetLoader) -> Vec<String> {
         .collect::<Vec<String>>();
     all_map_names
 }
-
-//fn imgui_frame(
-//    desktop_client_entity: ControllerEntityId,
-//    video: &mut Video,
-//    ecs_world: &mut World,
-//    fps: u64,
-//    fps_history: &[f32],
-//    fov: &mut f32,
-//    cam_angle: &mut f32,
-//    window_opened: &mut bool,
-//    system_frame_durations: &SystemFrameDurations,
-//) -> (Option<String>, bool) {
-//    let ui = video.imgui_sdl2.frame(
-//        &video.window,
-//        &mut video.imgui,
-//        &video.event_pump.mouse_state(),
-//    );
-//    let mut ret = (None, false); // (map, show_cursor)
-//    {
-//        // IMGUI
-//        ui.window(im_str!("Graphic options"))
-//            .position((0.0, 0.0), imgui::ImGuiCond::FirstUseEver)
-//            .size((300.0, 600.0), imgui::ImGuiCond::FirstUseEver)
-//            .opened(window_opened)
-//            .build(|| {
-//                ret.1 = ui.is_window_hovered();
-//                if ui
-//                    .slider_float(im_str!("Perspective"), fov, 0.1, std::f32::consts::PI)
-//                    .build()
-//                {
-//                    ecs_world
-//                        .write_resource::<SystemVariables>()
-//                        .matrices
-//                        .projection = Mat4::new_perspective(
-//                        VIDEO_WIDTH as f32 / VIDEO_HEIGHT as f32,
-//                        *fov,
-//                        0.1f32,
-//                        1000.0f32,
-//                    );
-//                }
-//
-//                if ui
-//                    .slider_float(im_str!("Camera"), cam_angle, -120.0, 120.0)
-//                    .build()
-//                {
-//                    let mut storage = ecs_world.write_storage::<CameraComponent>();
-//                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
-//                    controller.camera.rotate(*cam_angle, 270.0);
-//                }
-//
-//                let map_render_data = &mut ecs_world.write_resource::<MapRenderData>();
-//                ui.checkbox(
-//                    im_str!("Use tile_colors"),
-//                    &mut map_render_data.use_tile_colors,
-//                );
-//                if ui.checkbox(
-//                    im_str!("Use use_lighting"),
-//                    &mut map_render_data.use_lighting,
-//                ) {
-//                    map_render_data.use_lightmaps =
-//                        map_render_data.use_lighting && map_render_data.use_lightmaps;
-//                }
-//                if ui.checkbox(im_str!("Use lightmaps"), &mut map_render_data.use_lightmaps) {
-//                    map_render_data.use_lighting =
-//                        map_render_data.use_lighting || map_render_data.use_lightmaps;
-//                }
-//                ui.checkbox(im_str!("Models"), &mut map_render_data.draw_models);
-//                ui.checkbox(im_str!("Ground"), &mut map_render_data.draw_ground);
-//
-//                let camera = ecs_world
-//                    .read_storage::<CameraComponent>()
-//                    .get(desktop_client_entity.0)
-//                    .unwrap()
-//                    .clone();
-//                let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-//
-//                {
-//                    let controller = storage.get_mut(desktop_client_entity.0).unwrap();
-//                    ui.text(im_str!(
-//                        "Mouse world pos: {}, {}",
-//                        controller.mouse_world_pos.x,
-//                        controller.mouse_world_pos.y,
-//                    ));
-//                }
-//
-//                ui.drag_float3(
-//                    im_str!("light_dir"),
-//                    &mut map_render_data.light.direction,
-//                )
-//                .min(-1.0)
-//                .max(1.0)
-//                .speed(0.05)
-//                .build();
-//                ui.color_edit(
-//                    im_str!("light_ambient"),
-//                    &mut map_render_data.light.ambient,
-//                )
-//                .inputs(false)
-//                .format(imgui::ColorFormat::Float)
-//                .build();
-//                ui.color_edit(
-//                    im_str!("light_diffuse"),
-//                    &mut map_render_data.light.diffuse,
-//                )
-//                .inputs(false)
-//                .format(imgui::ColorFormat::Float)
-//                .build();
-//                ui.drag_float(
-//                    im_str!("light_opacity"),
-//                    &mut map_render_data.light.opacity,
-//                )
-//                .min(0.0)
-//                .max(1.0)
-//                .speed(0.05)
-//                .build();
-//
-//                ui.text(im_str!(
-//                    "Maps: {},{},{}",
-//                    camera.camera.pos().x,
-//                    camera.camera.pos().y,
-//                    camera.camera.pos().z
-//                ));
-//                ui.text(im_str!("yaw: {}, pitch: {}", camera.yaw, camera.pitch));
-//                ui.text(im_str!("FPS: {}", fps));
-//
-//                ui.plot_histogram(im_str!("FPS"), fps_history)
-//                    .scale_min(100.0)
-//                    .scale_max(145.0)
-//                    .graph_size(ImVec2::new(0.0f32, 200.0f32))
-//                    .build();
-//                ui.text(im_str!("Systems[micro sec]: "));
-//                for (sys_name, durations) in system_frame_durations.0.iter() {
-//                    let diff = (durations.max / 100) as f32 / (durations.min / 100).max(1) as f32;
-//
-//                    let color = if diff < 1.5 && durations.avg < 5000 {
-//                        (0.0, 1.0, 0.0, 1.0)
-//                    } else if diff < 2.0 && durations.avg < 5000 {
-//                        (1.0, 0.75, 0.0, 1.0)
-//                    } else if diff < 2.5 && durations.avg < 5000 {
-//                        (1.0, 0.5, 0.0, 1.0)
-//                    } else if durations.avg < 5000 {
-//                        (1.0, 0.25, 0.0, 1.0)
-//                    } else {
-//                        (1.0, 0.0, 0.0, 1.0)
-//                    };
-//                    ui.text_colored(
-//                        color,
-//                        im_str!(
-//                            "{}: {}, {}, {}",
-//                            sys_name,
-//                            durations.min,
-//                            durations.max,
-//                            durations.avg
-//                        ),
-//                    );
-//                }
-//                let browser_storage = ecs_world.read_storage::<BrowserClient>();
-//                for browser_client in browser_storage.join() {
-//                    ui.bullet_text(im_str!("Ping: {} ms", browser_client.ping));
-//                }
-//            });
-//    }
-//    video.renderer.render(ui);
-//    return ret;
-//}
 
 fn create_random_char_minion(ecs_world: &mut World, pos2d: Vec2, team: Team) -> CharEntityId {
     let mut rng = rand::thread_rng();

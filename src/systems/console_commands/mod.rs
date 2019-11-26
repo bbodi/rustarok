@@ -17,7 +17,7 @@ use crate::components::status::heal_area::HealApplierArea;
 use crate::components::status::status::{ApplyStatusComponent, PoisonStatus, StatusEnum};
 use crate::components::status::status_applier_area::StatusApplierArea;
 use crate::components::{
-    BrowserClient, DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
+    DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
@@ -689,24 +689,25 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
                         ConsoleWordType::CommandName,
                     ),
                 );
-                for (entity_id, human) in (
+                for (_entity_id, human) in (
                     &ecs_world.entities(),
                     &ecs_world.read_storage::<HumanInputComponent>(),
                 )
                     .join()
                 {
-                    let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) = ecs_world
-                        .read_storage::<BrowserClient>()
-                        .get(entity_id)
-                        .map(|it| {
-                            (
-                                it.prev_bytes_per_second,
-                                it.sum_sent_bytes,
-                                it.ping,
-                                it.sending_fps,
-                            )
-                        })
-                        .unwrap_or((0, 0, 0, 1.0));
+                    let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) = None
+                        //                        ecs_world
+                        //                        .read_storage::<BrowserClient>()
+                        //                        .get(entity_id)
+                        //                        .map(|it| {
+                        //                            (
+                        //                                it.prev_bytes_per_second,
+                        //                                it.sum_sent_bytes,
+                        //                                it.ping,
+                        //                                it.sending_fps,
+                        //                            )
+                        //                        })
+                        .unwrap_or((0, 0, 0, 1.0f32));
                     print_console(
                         &mut ecs_world.write_storage::<ConsoleComponent>(),
                         self_controller_id,
@@ -1338,82 +1339,82 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
     }
 }
 
-pub(super) fn cmd_set_server_fps() -> CommandDefinition {
-    CommandDefinition {
-        name: "set_server_fps".to_string(),
-        arguments: vec![
-            ("username", CommandParamType::String, true),
-            ("fps", CommandParamType::Int, true),
-        ],
-        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |index, username_completor, input_storage| {
-                if index == 0 {
-                    Some(username_completor(input_storage))
-                } else {
-                    None
-                }
-            },
-        ),
-        action: Box::new(
-            |_self_controller_id, _self_char_id, args, ecs_world, _video| {
-                let username = args.as_str(0).unwrap();
-                let fps = args.as_int(1).unwrap().max(1);
+//pub(super) fn cmd_set_server_fps() -> CommandDefinition {
+//    CommandDefinition {
+//        name: "set_server_fps".to_string(),
+//        arguments: vec![
+//            ("username", CommandParamType::String, true),
+//            ("fps", CommandParamType::Int, true),
+//        ],
+//        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+//            |index, username_completor, input_storage| {
+//                if index == 0 {
+//                    Some(username_completor(input_storage))
+//                } else {
+//                    None
+//                }
+//            },
+//        ),
+//        action: Box::new(
+//            |_self_controller_id, _self_char_id, args, ecs_world, _video| {
+//                let username = args.as_str(0).unwrap();
+//                let fps = args.as_int(1).unwrap().max(1);
+//
+//                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+//                if let Some(target_entity_id) = target_entity_id {
+//                    if let Some(browser) = ecs_world
+//                        .write_storage::<BrowserClient>()
+//                        .get_mut(target_entity_id.0)
+//                    {
+//                        browser.set_sending_fps(fps as u32);
+//                        Ok(())
+//                    } else {
+//                        Err("User is not a browser".to_owned())
+//                    }
+//                } else {
+//                    Err("The user was not found".to_owned())
+//                }
+//            },
+//        ),
+//    }
+//}
 
-                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-                if let Some(target_entity_id) = target_entity_id {
-                    if let Some(browser) = ecs_world
-                        .write_storage::<BrowserClient>()
-                        .get_mut(target_entity_id.0)
-                    {
-                        browser.set_sending_fps(fps as u32);
-                        Ok(())
-                    } else {
-                        Err("User is not a browser".to_owned())
-                    }
-                } else {
-                    Err("The user was not found".to_owned())
-                }
-            },
-        ),
-    }
-}
-
-pub(super) fn cmd_get_server_fps() -> CommandDefinition {
-    CommandDefinition {
-        name: "get_server_fps".to_string(),
-        arguments: vec![("username", CommandParamType::String, true)],
-        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
-        ),
-        action: Box::new(
-            |self_controller_id, _self_char_id, args, ecs_world, _video| {
-                let username = args.as_str(0).unwrap();
-
-                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
-                if let Some(target_entity_id) = target_entity_id {
-                    if let Some(browser) = ecs_world
-                        .read_storage::<BrowserClient>()
-                        .get(target_entity_id.0)
-                    {
-                        print_console(
-                            &mut ecs_world.write_storage::<ConsoleComponent>(),
-                            self_controller_id,
-                            ConsoleEntry::new().add(
-                                &format!("{}", (1.0 / browser.sending_fps).round() as u32),
-                                ConsoleWordType::Normal,
-                            ),
-                        );
-                        Ok(())
-                    } else {
-                        Err("User is not a browser".to_owned())
-                    }
-                } else {
-                    Err("The user was not found".to_owned())
-                }
-            },
-        ),
-    }
-}
+//pub(super) fn cmd_get_server_fps() -> CommandDefinition {
+//    CommandDefinition {
+//        name: "get_server_fps".to_string(),
+//        arguments: vec![("username", CommandParamType::String, true)],
+//        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+//            |_index, username_completor, input_storage| Some(username_completor(input_storage)),
+//        ),
+//        action: Box::new(
+//            |self_controller_id, _self_char_id, args, ecs_world, _video| {
+//                let username = args.as_str(0).unwrap();
+//
+//                let target_entity_id = ConsoleSystem::get_user_id_by_name(ecs_world, username);
+//                if let Some(target_entity_id) = target_entity_id {
+//                    if let Some(browser) = ecs_world
+//                        .read_storage::<BrowserClient>()
+//                        .get(target_entity_id.0)
+//                    {
+//                        print_console(
+//                            &mut ecs_world.write_storage::<ConsoleComponent>(),
+//                            self_controller_id,
+//                            ConsoleEntry::new().add(
+//                                &format!("{}", (1.0 / browser.sending_fps).round() as u32),
+//                                ConsoleWordType::Normal,
+//                            ),
+//                        );
+//                        Ok(())
+//                    } else {
+//                        Err("User is not a browser".to_owned())
+//                    }
+//                } else {
+//                    Err("The user was not found".to_owned())
+//                }
+//            },
+//        ),
+//    }
+//}
 
 pub(super) fn cmd_follow_char() -> CommandDefinition {
     CommandDefinition {

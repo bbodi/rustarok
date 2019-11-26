@@ -11,8 +11,7 @@ use crate::components::controller::{
 };
 use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
-    BrowserClient, FlyingNumberComponent, FlyingNumberType, SoundEffectComponent,
-    StrEffectComponent,
+    FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
 use crate::configs::DevConfig;
 use crate::cursor::CURSOR_TARGET;
@@ -66,7 +65,6 @@ impl RenderDesktopClientSystem {
         updater: &Write<'a, LazyUpdate>,
         system_benchmark: &mut SystemFrameDurations,
         asset_db: &AssetDatabase,
-        render_only_chars: bool,
         map_render_data: &MapRenderData,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
@@ -84,10 +82,6 @@ impl RenderDesktopClientSystem {
                 asset_db,
                 //                &map_render_data.gat,
             );
-        }
-
-        if render_only_chars {
-            return;
         }
 
         {
@@ -653,7 +647,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         WriteStorage<'a, AudioCommandCollectorComponent>,
         ReadExpect<'a, AssetDatabase>,
         ReadStorage<'a, NpcComponent>,
-        ReadStorage<'a, BrowserClient>,
         ReadExpect<'a, MapRenderData>,
     );
 
@@ -679,7 +672,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             mut audio_commands_storage,
             asset_db,
             npc_storage,
-            browser_storage,
             map_render_data,
         ): Self::SystemData,
     ) {
@@ -708,18 +700,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     }
                 });
 
-            let render_only_chars = if let Some(browser) = browser_storage.get(controller_id.0) {
-                if browser.next_send_at.has_not_passed_yet(sys_vars.time) {
-                    // commands won't be sent to the client in this frame, so render only characters
-                    // for getting their bounding rects
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
             {
                 self.render_for_controller(
                     &mut controller_and_controlled,
@@ -738,7 +718,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     &updater,
                     &mut system_benchmark,
                     &asset_db,
-                    render_only_chars,
                     &map_render_data,
                 );
             }
@@ -781,7 +760,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     &npc_storage,
                     &entities,
                     &camera.camera.pos(),
-                    browser_storage.get(controller_id.0).is_some(),
                     &asset_db,
                     &map_render_data,
                 );

@@ -2,7 +2,8 @@
 - Statuses are now simple enums and not Boxed traits. 
     - no malloc
     - no ugly hacky reflection
-    - easier serialization 
+    - easier serialization
+- Remove websocket and BrowserClient functionality (performance was not sufficient, so usual netcode will be implemented) 
 #### 2019.11.15
 - Added cylinder effect to Heal  
 ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/c67f321d831cfb317c1f95558e584cce/Peek_2019-11-15_21-51.gif)

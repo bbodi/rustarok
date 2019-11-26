@@ -1,12 +1,8 @@
+use crate::asset::asset_loader::AssetLoader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::{GlTexture, TextureId};
 use crate::common::{Mat3, Mat4};
 use crate::my_gl::{Gl, MyGlEnum};
-use byteorder::{LittleEndian, WriteBytesExt};
-//use imgui::ImGui;
-//use imgui_opengl_renderer::Renderer;
-//use imgui_sdl2::ImguiSdl2;
-use crate::asset::asset_loader::AssetLoader;
 use sdl2::render::BlendMode;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{DisplayMode, FullscreenType, Window};
@@ -302,16 +298,6 @@ impl VertexArray {
                 vertex_array: self,
             }
         }
-    }
-
-    pub fn write_into(&self, dst_buf: &mut Vec<u8>) {
-        dst_buf
-            .write_u32::<LittleEndian>(self.vertex_count as u32)
-            .unwrap();
-        dst_buf
-            .write_u32::<LittleEndian>(self.raw.len() as u32)
-            .unwrap();
-        dst_buf.extend_from_slice(self.raw.as_slice());
     }
 
     pub fn new_static<T>(

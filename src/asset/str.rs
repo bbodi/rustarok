@@ -3,8 +3,6 @@ use crate::asset::binary_reader::BinaryReader;
 use crate::asset::database::AssetDatabase;
 use crate::asset::texture::TextureId;
 use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
-use byteorder::{LittleEndian, WriteBytesExt};
-use encoding::ByteWriter;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -42,48 +40,6 @@ pub struct StrKeyFrame {
 }
 
 impl StrFile {
-    pub fn write_into(&self, buffer: &mut Vec<u8>) {
-        buffer.write_u32::<LittleEndian>(self.max_key).unwrap();
-
-        buffer.write_u32::<LittleEndian>(self.fps).unwrap();
-        buffer
-            .write_u16::<LittleEndian>(self.layers.len() as u16)
-            .unwrap();
-        buffer
-            .write_u16::<LittleEndian>(self.textures.len() as u16)
-            .unwrap();
-        for texture in &self.textures {
-            buffer.write_u32::<LittleEndian>(texture.0 as u32).unwrap();
-        }
-        for layer in &self.layers {
-            buffer
-                .write_u16::<LittleEndian>(layer.key_frames.len() as u16)
-                .unwrap();
-            for frame in &layer.key_frames {
-                buffer.write_i32::<LittleEndian>(frame.frame).unwrap();
-                buffer.write_byte(frame.typ as u8);
-                buffer.write_f32::<LittleEndian>(frame.pos[0]).unwrap();
-                buffer.write_f32::<LittleEndian>(frame.pos[1]).unwrap();
-                for xy in &frame.xy {
-                    buffer.write_f32::<LittleEndian>(*xy).unwrap();
-                }
-                for color in &frame.color {
-                    buffer.write_u8(*color).unwrap();
-                }
-                buffer.write_f32::<LittleEndian>(frame.angle).unwrap();
-                buffer
-                    .write_i32::<LittleEndian>(frame.src_alpha as i32)
-                    .unwrap();
-                buffer
-                    .write_i32::<LittleEndian>(frame.dst_alpha as i32)
-                    .unwrap();
-                buffer
-                    .write_u16::<LittleEndian>(frame.texture_index as u16)
-                    .unwrap();
-            }
-        }
-    }
-
     pub(super) fn load(
         gl: &Gl,
         asset_loader: &AssetLoader,

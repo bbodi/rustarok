@@ -33,7 +33,6 @@ impl RenderUI {
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &Entities,
         camera_pos: &Vec3,
-        is_browser: bool,
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
     ) {
@@ -108,19 +107,17 @@ impl RenderUI {
             map_render_data,
         );
 
-        if !is_browser {
-            render_action_2d(
-                &sys_vars,
-                &controller.cursor_anim_descr,
-                &sys_vars.assets.sprites.cursors,
-                &Vec2i::new(input.last_mouse_x as i16, input.last_mouse_y as i16),
-                &controller.cursor_color,
-                render_commands,
-                UiLayer2d::Cursor,
-                1.0,
-                asset_db,
-            );
-        }
+        render_action_2d(
+            &sys_vars,
+            &controller.cursor_anim_descr,
+            &sys_vars.assets.sprites.cursors,
+            &Vec2i::new(input.last_mouse_x as i16, input.last_mouse_y as i16),
+            &controller.cursor_color,
+            render_commands,
+            UiLayer2d::Cursor,
+            1.0,
+            asset_db,
+        )
     }
 
     fn draw_minimap(

@@ -1,12 +1,9 @@
 use crate::asset::rsm::BoundingBox;
 use crate::asset::texture::{GlNativeTextureId, GlTexture, TextureId};
-use crate::my_gl::{Gl, MyGlEnum};
+use crate::my_gl::Gl;
 use crate::runtime_assets::map::ModelRenderData;
-use byteorder::{LittleEndian, WriteBytesExt};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::Write;
-use std::os::raw::c_void;
 
 #[derive(Debug, Serialize)]
 struct TextureDatabase {
@@ -159,75 +156,5 @@ impl AssetDatabase {
             }
         });
         return ret;
-    }
-
-    pub fn copy_model_into(&self, name: &str, dst_buf: &mut Vec<u8>) {
-        if let Some(index) = self.model_name_to_index.get(name) {
-            dst_buf
-                .write_u16::<LittleEndian>(name.len() as u16)
-                .unwrap();
-            dst_buf.write(name.as_bytes()).unwrap();
-
-            let model: &ModelRenderData = &self.models[*index];
-
-            dst_buf
-                .write_u16::<LittleEndian>(model.model.len() as u16)
-                .unwrap();
-            for node in &model.model {
-                dst_buf
-                    .write_u16::<LittleEndian>(node.len() as u16)
-                    .unwrap();
-                for same_texture_face in node {
-                    dst_buf
-                        .write_u16::<LittleEndian>(same_texture_face.texture_name.len() as u16)
-                        .unwrap();
-                    dst_buf
-                        .write(same_texture_face.texture_name.as_bytes())
-                        .unwrap();
-                    same_texture_face.vao.write_into(dst_buf);
-                }
-            }
-        }
-    }
-
-    pub fn copy_texture_into(&self, gl: &Gl, path_in_byte_form: &str, dst_buf: &mut Vec<u8>) {
-        if let Some(texture_id) = self.texture_db.entries.get(path_in_byte_form) {
-            let texture_entry = &self.textures[texture_id.0];
-            let mut offset = 0;
-            dst_buf
-                .write_u16::<LittleEndian>(path_in_byte_form.len() as u16)
-                .unwrap();
-            offset += 2;
-            dst_buf.write(path_in_byte_form.as_bytes()).unwrap();
-            offset += path_in_byte_form.len();
-
-            dst_buf
-                .write_u16::<LittleEndian>(texture_entry.width as u16)
-                .unwrap();
-            offset += std::mem::size_of::<u16>();
-            dst_buf
-                .write_u16::<LittleEndian>(texture_entry.height as u16)
-                .unwrap();
-            offset += std::mem::size_of::<u16>();
-
-            let raw_size = std::mem::size_of::<u8>()
-                * (texture_entry.width as usize)
-                * (texture_entry.height as usize)
-                * 4;
-            for _ in 0..raw_size {
-                dst_buf.push(0)
-            }
-            unsafe {
-                gl.active_texture(MyGlEnum::TEXTURE0);
-                gl.bind_texture(MyGlEnum::TEXTURE_2D, texture_entry.id());
-                gl.get_tex_image(
-                    MyGlEnum::TEXTURE_2D,
-                    0,
-                    MyGlEnum::RGBA,
-                    MyGlEnum::UNSIGNED_BYTE,
-                    dst_buf.as_mut_ptr().offset(offset as isize) as *mut c_void,
-                );
-            }
-        }
     }
 }

@@ -5,7 +5,7 @@ use crate::components::char::{
 use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{
-    BrowserClient, FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
+    FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
 };
 use crate::systems::console_system::ConsoleComponent;
 use crate::systems::falcon_ai_sys::FalconComponent;
@@ -15,7 +15,7 @@ use specs::World;
 
 pub fn create_ecs_world() -> World {
     let mut ecs_world = specs::World::new();
-    ecs_world.register::<BrowserClient>();
+    //    ecs_world.register::<BrowserClient>();
     ecs_world.register::<NpcComponent>();
     ecs_world.register::<TurretComponent>();
     ecs_world.register::<TurretControllerComponent>();

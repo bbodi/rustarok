@@ -10,7 +10,6 @@ use crate::asset::str::{KeyFrameType, StrFile, StrLayer};
 use crate::asset::texture::GlTexture;
 use crate::common::{rotate_vec2, v2_to_v3, Mat3, Mat4};
 use crate::components::controller::CameraComponent;
-use crate::components::BrowserClient;
 use crate::effect::StrEffectId;
 use crate::my_gl::{Gl, MyGlBlendEnum, MyGlEnum};
 use crate::runtime_assets::map::MapRenderData;
@@ -754,7 +753,7 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
 impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
         ReadStorage<'a, RenderCommandCollector>,
-        ReadStorage<'a, BrowserClient>,
+        //        ReadStorage<'a, BrowserClient>,
         ReadStorage<'a, CameraComponent>,
         WriteExpect<'a, SystemFrameDurations>,
         ReadExpect<'a, SystemVariables>,
@@ -767,7 +766,7 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
         &mut self,
         (
             render_commands_storage,
-            browser_client_storage,
+            //            browser_client_storage,
             camera_storage,
             mut system_benchmark,
             sys_vars,
@@ -781,10 +780,10 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
         }
 
         let gl = &gl;
-        for (render_commands, camera, _not_browser) in (
+        for (render_commands, camera /*_not_browser*/) in (
             &render_commands_storage,
             &camera_storage,
-            !&browser_client_storage,
+            //            !&browser_client_storage,
         )
             .join()
         {

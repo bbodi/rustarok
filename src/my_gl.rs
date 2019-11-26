@@ -66,6 +66,7 @@ pub enum MyGlBlendEnum {
     ONE_MINUS_CONSTANT_ALPHA = gl::ONE_MINUS_CONSTANT_ALPHA as isize,
 }
 
+#[allow(dead_code)]
 impl Gl {
     pub fn new(
         video: &sdl2::VideoSubsystem,

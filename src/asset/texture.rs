@@ -9,12 +9,6 @@ pub const DUMMY_TEXTURE_ID_FOR_TEST: TextureId = TextureId(0);
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct TextureId(pub(super) usize);
 
-impl TextureId {
-    pub fn as_u32(&self) -> u32 {
-        return self.0 as u32;
-    }
-}
-
 struct GlTextureContext {
     native_id: GlNativeTextureId,
     gl_for_drop: Gl,
