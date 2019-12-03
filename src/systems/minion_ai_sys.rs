@@ -1,10 +1,8 @@
 use crate::common::{v2, v2_to_p2, Vec2};
 use crate::components::char::{CharacterStateComponent, EntityTarget, Team};
-use crate::components::controller::{
-    CharEntityId, ControllerComponent, ControllerEntityId, PlayerIntention,
-};
+use crate::components::controller::{ControllerComponent, ControllerEntityId, PlayerIntention};
 use crate::components::MinionComponent;
-use crate::systems::SystemFrameDurations;
+use crate::systems::{CharEntityId, SystemFrameDurations};
 use specs::prelude::*;
 
 pub struct MinionAiSystem;
@@ -32,7 +30,7 @@ impl MinionAiSystem {
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
         for (entity_id, char_state) in (entities, char_state_storage).join() {
-            let entity_id = CharEntityId(entity_id);
+            let entity_id = CharEntityId::from(entity_id);
             let pos = char_state.pos();
             if entity_id == except
                 || !char_state.team.is_enemy_to(self_team)
@@ -75,7 +73,7 @@ impl<'a> System<'a> for MinionAiSystem {
             (&entities, &mut controller_storage, &minion_storage).join()
         {
             let controller_id = ControllerEntityId(controller_id);
-            let char_state = char_state_storage.get(controller.controlled_entity.0);
+            let char_state = char_state_storage.get(controller.controlled_entity.into());
 
             if let Some(char_state) = char_state {
                 // Hack
@@ -84,7 +82,7 @@ impl<'a> System<'a> for MinionAiSystem {
                 let current_target_entity = match char_state.target {
                     Some(EntityTarget::OtherEntity(target_id)) => {
                         current_target_id = Some(target_id);
-                        char_state_storage.get(target_id.0)
+                        char_state_storage.get(target_id.into())
                     }
                     _ => None,
                 };

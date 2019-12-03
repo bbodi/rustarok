@@ -3,7 +3,7 @@ use crate::components::char::{ActionPlayMode, Percentage};
 use crate::components::char::{
     CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
 };
-use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
+use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -98,7 +98,7 @@ impl ExoSkeletonStatus {
         updater: &mut LazyUpdate,
         now: ElapsedTime,
     ) {
-        target_char.basic_attack = BasicAttack::Ranged {
+        target_char.basic_attack_type = BasicAttackType::Ranged {
             bullet_type: WeaponType::SilverBullet,
         };
         updater.insert(
@@ -143,7 +143,7 @@ impl ExoSkeletonStatus {
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.until.has_already_passed(params.sys_vars.time) {
-            params.target_char.basic_attack = BasicAttack::MeleeSimple;
+            params.target_char.basic_attack_type = BasicAttackType::MeleeSimple;
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

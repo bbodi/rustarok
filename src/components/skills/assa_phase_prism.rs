@@ -2,7 +2,6 @@ use nalgebra::Isometry2;
 
 use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -15,7 +14,7 @@ use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
 use specs::ReadStorage;
 
@@ -127,8 +126,8 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                         continue;
                     }
                     let ends_at = if let (Some(caster), Some(target)) = (
-                        params.char_storage.get(self.caster_id.0),
-                        params.char_storage.get(target_char_entity_id.0),
+                        params.char_storage.get(self.caster_id.into()),
+                        params.char_storage.get(target_char_entity_id.into()),
                     ) {
                         caster.set_noncollidable(params.physics_world);
                         target.set_noncollidable(params.physics_world);
@@ -169,7 +168,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
                             }),
                         ));
                     }
-                    if let Some(caster) = params.char_storage.get_mut(self.caster_id.0) {
+                    if let Some(caster) = params.char_storage.get_mut(self.caster_id.into()) {
                         caster
                             .statuses
                             .remove(StatusEnumDiscriminants::AssaBladeDashStatus);

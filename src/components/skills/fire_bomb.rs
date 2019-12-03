@@ -2,7 +2,6 @@ use nalgebra::Isometry2;
 
 use crate::common::Vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -17,7 +16,7 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use crate::ElapsedTime;
 
 pub struct FireBombSkill;
@@ -36,7 +35,7 @@ impl SkillDef for FireBombSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get(params.caster_entity_id.0)
+            .get(params.caster_entity_id.into())
         {
             let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
             let now = sys_vars.time;

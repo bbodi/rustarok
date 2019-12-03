@@ -1,11 +1,10 @@
 use crate::common::{v2, Vec2};
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::AssetResources;
+use crate::systems::{AssetResources, CharEntityId};
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;

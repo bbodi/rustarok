@@ -2,7 +2,6 @@ use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharAttributes, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     SkillManifestation, SkillManifestationComponent, SkillManifestationUpdateParam,
 };
@@ -16,12 +15,14 @@ use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use serde::Deserialize;
+use serde::Serialize;
 use specs::ReadStorage;
 
 #[derive(Clone, Debug, PartialEq)]
 #[allow(variant_size_differences)]
-pub enum BasicAttack {
+pub enum BasicAttackType {
     MeleeSimple,
     #[allow(dead_code)]
     MeleeCombo {
@@ -33,7 +34,7 @@ pub enum BasicAttack {
     },
 }
 
-impl BasicAttack {
+impl BasicAttackType {
     pub fn finish_attack(
         &self,
         calculated_attribs: &CharAttributes,
@@ -44,7 +45,7 @@ impl BasicAttack {
         sys_vars: &mut SystemVariables,
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
-            BasicAttack::MeleeSimple => {
+            BasicAttackType::MeleeSimple => {
                 sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: caster_entity_id,
                     dst_entity: target_entity_id,
@@ -56,7 +57,7 @@ impl BasicAttack {
                 });
                 None
             }
-            BasicAttack::MeleeCombo {
+            BasicAttackType::MeleeCombo {
                 combo_count,
                 base_dmg_percentage_for_each_combo,
             } => {
@@ -74,7 +75,7 @@ impl BasicAttack {
                 });
                 None
             }
-            BasicAttack::Ranged { bullet_type } => Some(Box::new(BasicRangeAttackBullet::new(
+            BasicAttackType::Ranged { bullet_type } => Some(Box::new(BasicRangeAttackBullet::new(
                 caster_pos,
                 caster_entity_id,
                 target_entity_id,
@@ -87,7 +88,7 @@ impl BasicAttack {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum WeaponType {
     Sword,
     Arrow,
@@ -159,7 +160,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
             .now()
             .percentage_between(self.started_at, self.ends_at);
         if travel_duration_percentage < 1.0 {
-            if let Some(target) = params.char_storage.get(self.target_id.0) {
+            if let Some(target) = params.char_storage.get(self.target_id.into()) {
                 let dir = target.pos() - self.start_pos;
                 self.current_pos = self.start_pos + dir * travel_duration_percentage;
                 self.target_pos = target.pos();
@@ -167,7 +168,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
         } else {
             let attack_dmg = params
                 .char_storage
-                .get(self.caster_id.0)
+                .get(self.caster_id.into())
                 .map(|caster| caster.calculated_attribs().attack_damage as u32);
             if let Some(attack_dmg) = attack_dmg {
                 params.add_hp_mod_request(HpModificationRequest {

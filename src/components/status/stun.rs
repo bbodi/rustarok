@@ -3,12 +3,11 @@ use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharState, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::components::SoundEffectComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_action;
-use crate::systems::AssetResources;
+use crate::systems::{AssetResources, CharEntityId};
 use crate::ElapsedTime;
 use specs::{Entities, LazyUpdate};
 

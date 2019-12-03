@@ -1,6 +1,8 @@
 use crate::ElapsedTime;
+use serde::Deserialize;
+use serde::Serialize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeathStatus {
     pub started: ElapsedTime,
     pub remove_char_at: ElapsedTime,

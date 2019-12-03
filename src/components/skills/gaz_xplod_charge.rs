@@ -5,7 +5,6 @@ use crate::common::{v3, Vec2};
 use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -22,7 +21,7 @@ use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use specs::ReadStorage;
 use vek::QuadraticBezier3;
 
@@ -114,7 +113,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
             if end_time.has_already_passed(params.now()) {
                 if let Some(caster_team) = params
                     .char_storage
-                    .get(self.caster_id.0)
+                    .get(self.caster_id.into())
                     .map(|caster| caster.team)
                 {
                     let area_shape =

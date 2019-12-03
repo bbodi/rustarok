@@ -2,7 +2,6 @@ use crate::asset::str::StrFile;
 use crate::asset::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::common::Mat4;
 use crate::components::char::CharState;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
@@ -19,6 +18,9 @@ use crate::{
     get_current_ms, DeltaTime, ElapsedTime, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME,
 };
 use nphysics2d::object::DefaultColliderHandle;
+use serde::Deserialize;
+use serde::Serialize;
+use specs::Entity;
 use std::collections::HashMap;
 use std::time::{Instant, SystemTime};
 
@@ -50,7 +52,7 @@ pub struct EffectSprites {
     pub plasma: SpriteResource,
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Sex {
     Male,
     Female,
@@ -170,6 +172,24 @@ pub enum SystemEvent {
         dst: CharEntityId,
         result: HpModificationResult,
     },
+}
+
+// TODO: it should be independent from Serde, th server should map this ID to an Entity
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CharEntityId(Entity);
+
+impl Into<Entity> for CharEntityId {
+    fn into(self) -> Entity {
+        //        unsafe { std::mem::transmute(self) }
+        self.0
+    }
+}
+
+impl From<Entity> for CharEntityId {
+    fn from(entity: Entity) -> Self {
+        CharEntityId(entity)
+        //        unsafe { std::mem::transmute(entity) }
+    }
 }
 
 pub struct SystemVariables {

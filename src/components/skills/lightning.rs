@@ -3,7 +3,6 @@ use specs::{Entity, ReadStorage};
 
 use crate::common::Vec2;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -15,7 +14,7 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use crate::ElapsedTime;
 
 pub struct LightningSkill;

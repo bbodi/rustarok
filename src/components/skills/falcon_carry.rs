@@ -30,7 +30,7 @@ impl SkillDef for FalconCarrySkill {
         let target_entity = params.target_entity.unwrap();
         let target_pos = {
             let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
-            if let Some(target) = char_storage.get(target_entity.0) {
+            if let Some(target) = char_storage.get(target_entity.into()) {
                 target.pos()
             } else {
                 return None;

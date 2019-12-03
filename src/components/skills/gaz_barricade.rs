@@ -1,6 +1,5 @@
 use crate::common::{v2, Vec2};
 use crate::components::char::{CharacterStateComponent, NpcComponent};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType, Skills,
 };
@@ -8,6 +7,7 @@ use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
+use crate::systems::CharEntityId;
 use nalgebra::Vector2;
 use specs::prelude::*;
 use specs::LazyUpdate;
@@ -29,8 +29,8 @@ impl SkillDef for GazBarricadeSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         let entities = &ecs_world.entities();
         let updater = &ecs_world.read_resource::<LazyUpdate>();
-        let char_entity_id = CharEntityId(entities.create());
-        updater.insert(char_entity_id.0, NpcComponent);
+        let char_entity_id = CharEntityId::from(entities.create());
+        updater.insert(char_entity_id.into(), NpcComponent);
         let tile_pos = {
             let pos = params.skill_pos.unwrap();
             Vec2::new((pos.x as i32) as f32, (pos.y as i32) as f32)

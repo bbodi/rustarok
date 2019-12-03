@@ -6,7 +6,7 @@ use crate::components::char::{
     CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    CameraComponent, ControllerComponent, ControllerEntityId, HumanInputComponent,
 };
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::basic_attack::WeaponType;
@@ -30,7 +30,7 @@ use crate::systems::console_system::{
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::input_sys_scancodes::ScancodeNames;
-use crate::systems::{RenderMatrices, Sex, SystemVariables};
+use crate::systems::{CharEntityId, RenderMatrices, Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
 use rand::Rng;
@@ -347,18 +347,18 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                 )
                     .join()
                 {
-                    let entity_id = CharEntityId(entity_id);
+                    let entity_id = CharEntityId::from(entity_id);
                     let need_delete = match type_name {
                         "all" => true,
                         "left_team" => char_state.team == Team::Left,
                         "right_team" => char_state.team == Team::Right,
                         "npc" => ecs_world
                             .read_storage::<HumanInputComponent>()
-                            .get(entity_id.0)
+                            .get(entity_id.into())
                             .is_none(),
                         "player" => ecs_world
                             .read_storage::<HumanInputComponent>()
-                            .get(entity_id.0)
+                            .get(entity_id.into())
                             .is_some(),
                         _ => {
                             if let Ok(job_id) = JobId::from_str(type_name) {
@@ -375,7 +375,7 @@ pub(super) fn cmd_kill_all() -> CommandDefinition {
                 for entity_id in entity_ids {
                     ecs_world
                         .write_storage::<CharacterStateComponent>()
-                        .get_mut(entity_id.0)
+                        .get_mut(entity_id.into())
                         .unwrap()
                         .hp = 0;
                 }
@@ -513,7 +513,7 @@ fn create_guard(
     outlook: Option<CharOutlook>,
     y: f32,
 ) -> CharEntityId {
-    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
 
     let updater = &ecs_world.read_resource::<LazyUpdate>();
     CharacterEntityBuilder::new(char_entity_id, "Guard")
@@ -544,7 +544,7 @@ fn create_dummy(
     job_id: JobId,
     outlook: Option<CharOutlook>,
 ) -> CharEntityId {
-    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
     let updater = &ecs_world.read_resource::<LazyUpdate>();
     CharacterEntityBuilder::new(
         char_entity_id,
@@ -601,7 +601,7 @@ fn create_random_char_minion(
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
     let updater = &ecs_world.read_resource::<LazyUpdate>();
     let head_index = rng.gen::<usize>() % head_count;
     CharacterEntityBuilder::new(char_entity_id, "minion")
@@ -1472,7 +1472,7 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
 
                 if let Some(target_char_id) = target_char_id {
                     // create a new entity with the same outlook
-                    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+                    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
 
                     let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
 

@@ -3,7 +3,6 @@ use nalgebra::{Isometry2, Vector2};
 use crate::common::{v2, ElapsedTime, Vec2};
 use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -16,7 +15,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
 use specs::prelude::*;
 use std::collections::HashSet;
@@ -80,7 +79,7 @@ impl SkillDef for FalconAttackSkill {
                     falcon_owner_id: params.caster_entity_id,
                     team: ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(params.caster_entity_id.0)
+                        .get(params.caster_entity_id.into())
                         .unwrap()
                         .team,
                     damage: configs.damage,
@@ -138,7 +137,8 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
-                    if let Some(target_char) = params.char_storage.get(target_char_entity_id.0) {
+                    if let Some(target_char) = params.char_storage.get(target_char_entity_id.into())
+                    {
                         if !self.team.can_attack(target_char.team)
                             || self.damaged_entities.contains(&target_char_entity_id)
                         {

@@ -3,14 +3,12 @@ use crate::common::{Vec2i, Vec3};
 use crate::components::char::{
     CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{
-    CharEntityId, ControllerComponent, HumanInputComponent, SkillKey,
-};
+use crate::components::controller::{ControllerComponent, HumanInputComponent, SkillKey};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
-use crate::systems::SystemVariables;
+use crate::systems::{CharEntityId, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
 use specs::prelude::*;
 use specs::ReadStorage;
@@ -154,7 +152,7 @@ impl RenderUI {
         let real_to_map_scale_w = minimap_w as f32 / (map_render_data.ground_width * 2) as f32;
         let real_to_map_scale_h = minimap_h as f32 / (map_render_data.ground_height * 2) as f32;
         for (entity_id, char_state) in (entities, char_state_storage).join() {
-            let entity_id = CharEntityId(entity_id);
+            let entity_id = CharEntityId::from(entity_id);
             let head_index = if npc_storage.get(entity_id.0).is_none() {
                 if let CharOutlook::Player {
                     head_index, sex, ..

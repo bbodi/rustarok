@@ -42,7 +42,7 @@ use crate::components::char::{
     CharActionIndex, CharOutlook, CharacterEntityBuilder, CharacterStateComponent,
     SpriteRenderDescriptorComponent, Team,
 };
-use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
+use crate::components::controller::{ControllerEntityId, HumanInputComponent};
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::MinionComponent;
 use crate::configs::{AppConfig, DevConfig};
@@ -78,7 +78,8 @@ use crate::systems::skill_sys::SkillSystem;
 use crate::systems::sound_sys::SoundSystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
-    CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations, SystemVariables,
+    CharEntityId, CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations,
+    SystemVariables,
 };
 use crate::video::Video;
 use std::fs::File;
@@ -252,7 +253,7 @@ fn main() {
     log::info!("<<< add resources");
 
     log::info!(">>> create player");
-    let desktop_client_char = CharEntityId(ecs_world.create_entity().build());
+    let desktop_client_char = CharEntityId::from(ecs_world.create_entity().build());
     let desktop_client_controller = ControllerEntityId(ecs_world.create_entity().build());
     components::char::attach_human_player_components(
         "sharp",
@@ -547,7 +548,7 @@ fn spawn_minions(ecs_world: &mut World) -> () {
         );
         let mut storage = ecs_world.write_storage();
         storage
-            .insert(entity_id.0, MinionComponent { fountain_up: false })
+            .insert(entity_id.into(), MinionComponent { fountain_up: false })
             .unwrap();
     }
     {
@@ -561,7 +562,7 @@ fn spawn_minions(ecs_world: &mut World) -> () {
         );
         let mut storage = ecs_world.write_storage();
         storage
-            .insert(entity_id.0, MinionComponent { fountain_up: false })
+            .insert(entity_id.into(), MinionComponent { fountain_up: false })
             .unwrap();
     }
 }
@@ -797,7 +798,7 @@ fn create_random_char_minion(ecs_world: &mut World, pos2d: Vec2, team: Team) -> 
         .sprites
         .head_sprites[Sex::Male as usize]
         .len();
-    let char_entity_id = CharEntityId(ecs_world.create_entity().build());
+    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
     let updater = &ecs_world.read_resource::<LazyUpdate>();
     let head_index = rng.gen::<usize>() % head_count;
     CharacterEntityBuilder::new(char_entity_id, "minion")

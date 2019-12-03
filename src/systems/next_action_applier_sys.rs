@@ -3,13 +3,11 @@ use crate::components::char::{
     CastingSkillData, CharState, CharacterStateComponent, EntityTarget,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{
-    CharEntityId, ControllerComponent, EntitiesBelowCursor, PlayerIntention,
-};
+use crate::components::controller::{ControllerComponent, EntitiesBelowCursor, PlayerIntention};
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::configs::DevConfig;
 use crate::systems::render_sys::DIRECTION_TABLE;
-use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
+use crate::systems::{CharEntityId, SystemEvent, SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use specs::prelude::*;
 
@@ -93,10 +91,6 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
         // update character's sprite based on its state
         for (char_comp, sprite) in (&char_state_storage, &mut sprite_storage).join() {
             let now = sys_vars.time;
-            // it was removed due to a bug in falcon carry
-            //            if char_comp.statuses.can_be_controlled() == false {
-            //                continue;
-            //            }
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
             let state: CharState = char_comp.state().clone();

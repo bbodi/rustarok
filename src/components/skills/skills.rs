@@ -4,12 +4,12 @@ use std::sync::{Arc, Mutex};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use serde::Deserialize;
+use serde::Serialize;
 use specs::prelude::*;
 use strum_macros::EnumIter;
 
 use crate::common::{v2_to_v3, DeltaTime, Vec2};
 use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
 use crate::components::skills::cure::CURE_SKILL;
@@ -39,7 +39,7 @@ use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, Collision, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 
 pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
@@ -241,7 +241,7 @@ pub trait SkillDef {
                 dev_configs,
             );
         } else if let Some(target_entity) = casting_state.target_entity {
-            if let Some(target_char) = char_storage.get(target_entity.0) {
+            if let Some(target_char) = char_storage.get(target_entity.into()) {
                 render_commands
                     .horizontal_texture_3d()
                     .rotation_rad(sys_vars.time.0 % 6.28)
@@ -261,7 +261,7 @@ pub trait SkillDef {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Skills {
     AttackMove,
     FireWall,

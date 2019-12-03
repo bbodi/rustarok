@@ -7,13 +7,12 @@ use crate::components::skills::skills::{
 
 use crate::common::ElapsedTime;
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::CharEntityId;
 use crate::components::{HpModificationRequest, HpModificationType, SoundEffectComponent};
 use crate::configs::DevConfig;
 use crate::systems::render::opengl_render_sys::Trimesh3dType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 
 pub struct HealSkill;
 
@@ -93,7 +92,7 @@ impl SkillManifestation for HealSkillManifest {
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
-        if let Some(target_char) = char_entity_storage.get(self.target_entity_id.0) {
+        if let Some(target_char) = char_entity_storage.get(self.target_entity_id.into()) {
             let first_half = now
                 .percentage_between(self.created_at, self.middle)
                 .min(1.0);

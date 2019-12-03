@@ -1,5 +1,6 @@
 use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use serde::Deserialize;
+use serde::Serialize;
 use std::time::{Duration, Instant};
 
 pub type Mat3 = Matrix3<f32>;
@@ -79,7 +80,7 @@ pub fn rotate_vec2(rad: f32, vec: &Vec2) -> Vec2 {
 #[derive(Copy, Clone, Debug)]
 pub struct DeltaTime(pub f32);
 
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(from = "f32")]
 pub struct ElapsedTime(pub f32);
 

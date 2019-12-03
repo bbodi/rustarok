@@ -1,7 +1,6 @@
 use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
 use crate::components::char::Percentage;
-use crate::components::controller::CharEntityId;
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::components::{
     DamageDisplayType, HpModificationRequest, HpModificationResult, HpModificationResultType,
@@ -10,7 +9,7 @@ use crate::components::{
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::AssetResources;
+use crate::systems::{AssetResources, CharEntityId};
 use crate::ElapsedTime;
 
 #[derive(Clone, Debug)]

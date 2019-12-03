@@ -5,7 +5,6 @@ use crate::components::char::{
     ActionPlayMode, CharActionIndex, CharOutlook, CharacterStateComponent,
     SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
@@ -17,7 +16,7 @@ use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationTy
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::render_single_layer_action;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 
 pub struct AssaBladeDashSkill;
 
@@ -35,7 +34,7 @@ impl SkillDef for AssaBladeDashSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .write_storage::<CharacterStateComponent>()
-            .get_mut(params.caster_entity_id.0)
+            .get_mut(params.caster_entity_id.into())
         {
             let angle = params.char_to_skill_dir.angle(&Vector2::y());
             let angle = if params.char_to_skill_dir.x > 0.0 {

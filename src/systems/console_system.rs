@@ -1,5 +1,5 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{CharEntityId, ControllerEntityId, HumanInputComponent};
+use crate::components::controller::{ControllerEntityId, HumanInputComponent};
 use crate::configs::DevConfig;
 use crate::systems::console_commands::{
     cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear, cmd_clone_char, cmd_control_char,
@@ -11,7 +11,7 @@ use crate::systems::console_commands::{
 };
 use crate::systems::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::systems::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
-use crate::systems::SystemVariables;
+use crate::systems::{CharEntityId, SystemVariables};
 use crate::video::Video;
 use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
@@ -653,7 +653,7 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if char_state.name == username {
-                return Some(CharEntityId(entity_id));
+                return Some(CharEntityId::from(entity_id));
             }
         }
         return None;

@@ -2,13 +2,14 @@ use crate::components::char::{
     CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent, TurretComponent,
     TurretControllerComponent,
 };
-use crate::components::controller::{CharEntityId, ControllerComponent, ControllerEntityId};
+use crate::components::controller::{ControllerComponent, ControllerEntityId};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
+use crate::systems::CharEntityId;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -28,12 +29,12 @@ impl SkillDef for GazTurretSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get(params.caster_entity_id.0)
+            .get(params.caster_entity_id.into())
         {
             let entities = &ecs_world.entities();
             let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let char_entity_id = CharEntityId(entities.create());
-            updater.insert(char_entity_id.0, NpcComponent);
+            let char_entity_id = CharEntityId::from(entities.create());
+            updater.insert(char_entity_id.into(), NpcComponent);
             CharacterEntityBuilder::new(char_entity_id, "turret")
                 .insert_sprite_render_descr_component(updater)
                 .insert_turret_component(params.caster_entity_id, updater)
@@ -78,7 +79,7 @@ impl SkillDef for GazDestroyTurretSkill {
             .and_then(|it| {
                 ecs_world
                     .read_storage::<TurretComponent>()
-                    .get(it.0)
+                    .get(it.into())
                     .map(|turret| turret.owner_entity_id == params.caster_entity_id)
             })
             .unwrap_or(false)
@@ -86,7 +87,7 @@ impl SkillDef for GazDestroyTurretSkill {
             let target_entity = params.target_entity.unwrap();
             if let Some(turret) = ecs_world
                 .write_storage::<CharacterStateComponent>()
-                .get_mut(target_entity.0)
+                .get_mut(target_entity.into())
             {
                 turret.hp = 0;
             }

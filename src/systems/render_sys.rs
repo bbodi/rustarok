@@ -6,7 +6,7 @@ use crate::components::char::{
     NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
 };
 use crate::components::controller::{
-    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
+    CameraComponent, ControllerComponent, ControllerEntityId, EntitiesBelowCursor,
     HumanInputComponent, PlayerIntention, SkillKey,
 };
 use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
@@ -20,7 +20,7 @@ use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::ui::RenderUI;
-use crate::systems::{AssetResources, SystemFrameDurations, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
 use nalgebra::{Isometry2, Vector2, Vector3};
 use specs::prelude::*;
@@ -332,7 +332,7 @@ impl RenderDesktopClientSystem {
         for (rendering_entity_id, animated_sprite, char_state) in
             (entities, sprite_storage, char_state_storage).join()
         {
-            let rendering_entity_id = CharEntityId(rendering_entity_id);
+            let rendering_entity_id = CharEntityId::from(rendering_entity_id);
             // for autocompletion
             let char_state: &CharacterStateComponent = char_state;
 
@@ -738,7 +738,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     .as_ref()
                     .map(|it| it.controller.controlled_entity)
                     .unwrap_or(
-                        CharEntityId(controller_id.0), // controller_id is the controller id, so no character will match with it, ~dummy value
+                        CharEntityId::from(controller_id.0), // controller_id is the controller id, so no character will match with it, ~dummy value
                     ),
                 controller_and_controlled
                     .as_ref()

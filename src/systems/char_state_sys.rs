@@ -4,13 +4,14 @@ use crate::common::{v2_to_p2, Vec2};
 use crate::components::char::{
     CharState, CharacterStateComponent, EntityTarget, NpcComponent, Team,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
 use crate::components::status::status::StatusEnum;
 use crate::components::status::status::StatusEnumDiscriminants;
 use crate::systems::next_action_applier_sys::NextActionApplierSystem;
-use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
+use crate::systems::{
+    CharEntityId, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables,
+};
 use crate::{ElapsedTime, PhysicEngine};
 use std::collections::HashMap;
 
@@ -104,6 +105,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
             }
 
             let char_pos = char_comp.pos();
+            // TODO: why clone?
             match char_comp.state().clone() {
                 CharState::CastingSkill(casting_info) => {
                     if casting_info.cast_ends.has_already_passed(now) {
@@ -228,12 +230,8 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                     // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the attack)
                     let dir = (target_pos - char_comp.pos()).normalize();
                     // 100% movement speed = 5 units/second
-                    let speed =
+                    let force =
                         dir * char_comp.calculated_attribs().movement_speed.as_f32() * (5.0);
-                    //                    let speed = dir
-                    //                        * char_comp.calculated_attribs().movement_speed.as_f32()
-                    //                        * (600.0 * sys_vars.dt.0);
-                    let force = speed;
                     let body = physics_world
                         .bodies
                         .rigid_body_mut(char_comp.body_handle)
@@ -295,7 +293,7 @@ impl CharacterStateUpdateSystem {
                             let new_state = CharState::Attacking {
                                 damage_occurs_at,
                                 target: *target_entity,
-                                basic_attack: char_comp.basic_attack.clone(),
+                                basic_attack: char_comp.basic_attack_type.clone(),
                             };
                             char_comp.set_state(
                                 new_state,

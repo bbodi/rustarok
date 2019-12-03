@@ -5,10 +5,10 @@ use specs::prelude::*;
 
 use crate::common::Vec2;
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
 use crate::systems::sound_sys::SoundId;
+use crate::systems::CharEntityId;
 use crate::ElapsedTime;
 
 pub mod char;

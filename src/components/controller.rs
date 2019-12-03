@@ -2,6 +2,7 @@ use crate::cam::Camera;
 use crate::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
 use crate::components::skills::skills::Skills;
+use crate::systems::CharEntityId;
 use crate::ElapsedTime;
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
@@ -198,9 +199,6 @@ pub struct EntitiesBelowCursor {
     friendly: Vec<CharEntityId>,
     enemy: Vec<CharEntityId>,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CharEntityId(pub Entity);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ControllerEntityId(pub Entity);

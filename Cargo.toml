@@ -9,7 +9,6 @@ assert_approx_eq = "1.1.0"
 singleton_gl_dont_use_it = { package = "gl", version = "0.13.0" }
 byteorder = "1.3.2"
 encoding = "0.2.33"
-nalgebra = "0.18.0"
 ncollide2d = "0.20.0"
 nphysics2d = "0.12.0"
 rand = "0.6.5"
@@ -31,6 +30,10 @@ vek = "0.9.9"
 version = "0.14.3"
 default-features = false
 features = []
+
+[dependencies.nalgebra]
+version = "0.18.0"
+features = ["serde-serialize"]
 
 [dependencies.sdl2]
 version = "0.32.2"

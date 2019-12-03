@@ -8,14 +8,14 @@ use nphysics2d::object::{
     RigidBodyDesc,
 };
 use serde::Deserialize;
+use serde::Serialize;
 use specs::prelude::*;
 
 use crate::asset::SpriteResource;
 use crate::components::controller::{
-    CameraComponent, CharEntityId, ControllerComponent, ControllerEntityId, HumanInputComponent,
-    SkillKey,
+    CameraComponent, ControllerComponent, ControllerEntityId, HumanInputComponent, SkillKey,
 };
-use crate::components::skills::basic_attack::{BasicAttack, WeaponType};
+use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::{StatusNature, Statuses};
 use crate::configs::DevConfig;
@@ -23,7 +23,7 @@ use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::systems::{CharEntityId, Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
 
 #[derive(Clone, Copy)]
@@ -298,7 +298,7 @@ impl CharacterEntityBuilder {
     }
 
     pub fn insert_npc_component(self, updater: &LazyUpdate) -> CharacterEntityBuilder {
-        updater.insert(self.char_id.0, NpcComponent);
+        updater.insert(self.char_id.into(), NpcComponent);
         self
     }
 
@@ -308,7 +308,7 @@ impl CharacterEntityBuilder {
         updater: &LazyUpdate,
     ) -> CharacterEntityBuilder {
         updater.insert(
-            self.char_id.0,
+            self.char_id.into(),
             TurretComponent {
                 owner_entity_id,
                 preferred_target: None,
@@ -321,7 +321,7 @@ impl CharacterEntityBuilder {
         self,
         updater: &LazyUpdate,
     ) -> CharacterEntityBuilder {
-        updater.insert(self.char_id.0, SpriteRenderDescriptorComponent::new());
+        updater.insert(self.char_id.into(), SpriteRenderDescriptorComponent::new());
         self
     }
 
@@ -331,7 +331,7 @@ impl CharacterEntityBuilder {
     {
         let char_builder = char_builder_func(CharStateComponentBuilder::new());
         updater.insert(
-            self.char_id.0,
+            self.char_id.into(),
             CharacterStateComponent::new(
                 self.name,
                 char_builder.y,
@@ -420,7 +420,7 @@ pub enum CharState {
     Attacking {
         target: CharEntityId,
         damage_occurs_at: ElapsedTime,
-        basic_attack: BasicAttack,
+        basic_attack: BasicAttackType,
     },
     ReceivingDamage,
     Dead,
@@ -636,8 +636,7 @@ mod tests {
     }
 }
 
-#[derive(Eq, PartialEq)]
-#[allow(dead_code)]
+#[derive(Eq, PartialEq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum CharType {
     Player,
@@ -647,7 +646,7 @@ pub enum CharType {
     Guard,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(variant_size_differences)]
 pub enum CharOutlook {
     Monster(MonsterId),
@@ -808,7 +807,7 @@ pub enum CharAttributeModifier {
     IncreaseByPercentage(Percentage),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BonusDurations {
     pub max_hp_bonus_ends_at: ElapsedTime,
     pub walking_speed_bonus_ends_at: ElapsedTime,
@@ -988,7 +987,7 @@ impl CharAttributeModifierCollector {
     }
 }
 
-#[derive(Eq, Debug, PartialEq, Clone, Copy)]
+#[derive(Eq, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum Team {
     Left,  // red
@@ -1108,26 +1107,13 @@ impl Component for NpcComponent {
     type Storage = FlaggedStorage<Self, DenseVecStorage<Self>>;
 }
 
-//fn can_target_move(&self) -> bool {
-//    false
-//}
-//
-//fn can_target_be_controlled(&self) -> bool {
-//    true
-//}
-//
-//fn can_target_cast(&self) -> bool {
-//    false
-//}
-//fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
-//    Some((self.until, now.percentage_between(self.started, self.until)))
-//}
-
+// TODO: extract attributes which won't change frame-by-frame (team, job id etc)
+// TODO: extract everything which is not serializable
 #[derive(Component)]
 pub struct CharacterStateComponent {
-    pub name: String,
     // characters also has names so it is possible to follow them with a camera
-    pub basic_attack: BasicAttack,
+    pub name: String,
+    pub basic_attack_type: BasicAttackType,
     pos: Vec2,
     y: f32,
     pub team: Team,
@@ -1145,6 +1131,7 @@ pub struct CharacterStateComponent {
     base_attributes: CharAttributes,
     calculated_attribs: CharAttributes,
     attrib_bonuses: CharAttributesBonuses,
+    // TODO: the whole Statuses struct needs for simulation but not for state representation. Extract the array from it for serialization
     pub statuses: Statuses,
     pub body_handle: DefaultBodyHandle,
     pub collider_handle: DefaultColliderHandle,
@@ -1200,20 +1187,20 @@ impl CharacterStateComponent {
         let base_attributes = Statuses::get_base_attributes(job_id, dev_configs);
         let calculated_attribs = base_attributes.clone();
         CharacterStateComponent {
-            basic_attack: match job_id {
-                JobId::GUNSLINGER => BasicAttack::Ranged {
+            basic_attack_type: match job_id {
+                JobId::GUNSLINGER => BasicAttackType::Ranged {
                     bullet_type: WeaponType::SilverBullet,
                 },
-                JobId::RangedMinion => BasicAttack::Ranged {
+                JobId::RangedMinion => BasicAttackType::Ranged {
                     bullet_type: WeaponType::Arrow,
                 },
-                JobId::RANGER => BasicAttack::Ranged {
+                JobId::RANGER => BasicAttackType::Ranged {
                     bullet_type: WeaponType::Arrow,
                 },
-                JobId::Turret => BasicAttack::Ranged {
+                JobId::Turret => BasicAttackType::Ranged {
                     bullet_type: WeaponType::SilverBullet,
                 },
-                _ => BasicAttack::MeleeSimple,
+                _ => BasicAttackType::MeleeSimple,
             },
             job_id,
             name,

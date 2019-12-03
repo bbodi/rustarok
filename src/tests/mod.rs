@@ -8,7 +8,7 @@ use crate::components::char::Percentage;
 use crate::components::char::{
     CharState, CharacterEntityBuilder, CharacterStateComponent, EntityTarget, Team,
 };
-use crate::components::controller::{CharEntityId, EntitiesBelowCursor};
+use crate::components::controller::EntitiesBelowCursor;
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
 use crate::components::status::status::StatusEnumDiscriminants;
@@ -23,8 +23,8 @@ use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use crate::systems::{
-    CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent, SystemFrameDurations,
-    SystemVariables,
+    CharEntityId, CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent,
+    SystemFrameDurations, SystemVariables,
 };
 use crate::{register_systems, run_main_frame};
 use assert_approx_eq::assert_approx_eq;
@@ -109,7 +109,7 @@ macro_rules! get_char {
         $self
             .ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get($self.char_id.0)
+            .get($self.char_id.into())
             .unwrap()
     };
 }
@@ -457,7 +457,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
     }
 
     pub fn create_char(&mut self, pos: Vec2, team: Team) -> CharEntityId {
-        let char_id = CharEntityId(self.ecs_world.create_entity().build());
+        let char_id = CharEntityId::from(self.ecs_world.create_entity().build());
         {
             let updater = &self.ecs_world.read_resource::<LazyUpdate>();
             let physics_world = &mut self.ecs_world.write_resource::<PhysicEngine>();
@@ -500,7 +500,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
 
     pub fn cast_skill_on_pos(&mut self, char_id: CharEntityId, skill: Skills, pos: Vec2) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
-        let char_state = char_storage.get_mut(char_id.0).unwrap();
+        let char_state = char_storage.get_mut(char_id.into()).unwrap();
         dbg!(char_state.pos());
         dbg!(pos);
         NextActionApplierSystem::try_cast_skill(
@@ -517,7 +517,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
 
     pub fn cast_skill_on_self(&mut self, char_id: CharEntityId, skill: Skills) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
-        let char_state = char_storage.get_mut(char_id.0).unwrap();
+        let char_state = char_storage.get_mut(char_id.into()).unwrap();
         NextActionApplierSystem::try_cast_skill(
             skill,
             self.ecs_world.read_resource::<SystemVariables>().time,
@@ -532,7 +532,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
 
     pub fn set_char_target(&mut self, char_id: CharEntityId, target: EntityTarget) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
-        let char_state = char_storage.get_mut(char_id.0).unwrap();
+        let char_state = char_storage.get_mut(char_id.into()).unwrap();
         char_state.target = Some(target);
     }
 

@@ -5,7 +5,6 @@ use crate::common::{v2, Vec2};
 use crate::components::char::{
     ActionPlayMode, CastingSkillData, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -21,7 +20,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::{render_action, RenderDesktopClientSystem, COLOR_WHITE};
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use crate::ElapsedTime;
 
 pub struct WizPyroBlastSkill;
@@ -92,7 +91,7 @@ impl SkillDef for WizPyroBlastSkill {
             .time
             .percentage_between(casting_state.cast_started, casting_state.cast_ends);
 
-        if let Some(target_char) = char_storage.get(casting_state.target_entity.unwrap().0) {
+        if let Some(target_char) = char_storage.get(casting_state.target_entity.unwrap().into()) {
             render_commands
                 .horizontal_texture_3d()
                 .pos(&target_char.pos())
@@ -160,7 +159,7 @@ impl PyroBlastManifest {
 impl SkillManifestation for PyroBlastManifest {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         let (target_pos, collide) =
-            if let Some(target_char) = params.char_storage.get_mut(self.target_entity_id.0) {
+            if let Some(target_char) = params.char_storage.get_mut(self.target_entity_id.into()) {
                 let target_pos = target_char.pos();
                 let dir_vector = target_pos - self.pos;
                 let distance = dir_vector.magnitude();

@@ -6,7 +6,6 @@ use specs::LazyUpdate;
 use crate::common::Vec2;
 use crate::components::char::Percentage;
 use crate::components::char::{percentage, CharacterStateComponent};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
@@ -20,7 +19,7 @@ use crate::components::{
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::runtime_assets::audio::Sounds;
-use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
+use crate::systems::{CharEntityId, SystemEvent, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
 
 pub struct AttackSystem {

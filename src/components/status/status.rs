@@ -4,7 +4,6 @@ use crate::components::char::{
     percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
     CharAttributes, CharState, CharacterStateComponent, Percentage, Team,
 };
-use crate::components::controller::CharEntityId;
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::assa_phase_prism::AssaPhasePrismStatus;
@@ -27,7 +26,7 @@ use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, Sex, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, Sex, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use specs::{Entities, LazyUpdate};

@@ -2,7 +2,6 @@ use nalgebra::Isometry2;
 
 use crate::common::{v2, Vec2};
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
@@ -12,7 +11,7 @@ use crate::configs::DevConfig;
 use crate::systems::render::opengl_render_sys::Trimesh3dType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use crate::ElapsedTime;
 use specs::ReadStorage;
 

@@ -3,13 +3,17 @@ use encoding::types::Encoding;
 use encoding::DecoderTrap;
 use std::collections::HashMap;
 
+use serde::Deserialize;
+use serde::Serialize;
 use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 
 // Sprites are loaded based on the enum names, so non-camelcase names must be allowed
 #[allow(non_camel_case_types)]
-#[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(
+    EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
 pub enum MonsterId {
     Baphomet,
     Poring,
@@ -20,7 +24,9 @@ pub enum MonsterId {
     Dimik,
 }
 
-#[derive(EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(
+    EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
 pub enum JobId {
     CRUSADER,
     SWORDMAN,
@@ -109,7 +115,9 @@ impl JobSpriteId {
 //GUNSLINGER: °Ç³Ê
 //HUNTER: ÇåÅÍ
 
-#[derive(EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(
+    EnumIter, EnumString, Debug, Display, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
 pub enum JobSpriteId {
     NOVICE = 0,
     SWORDMAN = 1,

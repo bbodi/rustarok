@@ -46,7 +46,7 @@ impl SkillDef for MountingSkill {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         if let Some(target_char) = ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get(params.caster_entity_id.0)
+            .get(params.caster_entity_id.into())
         {
             if target_char.statuses.is_mounted() {
                 sys_vars.remove_statuses.push(RemoveStatusComponent {

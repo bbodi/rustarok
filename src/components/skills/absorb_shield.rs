@@ -1,6 +1,5 @@
 use crate::common::{ElapsedTime, Vec2};
 use crate::components::char::ActionPlayMode;
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -14,7 +13,7 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 
 pub struct AbsorbShieldSkill;
 

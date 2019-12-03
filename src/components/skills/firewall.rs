@@ -6,7 +6,6 @@ use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::common::{rotate_vec2, v2, Vec2, Vec2i};
 use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
-use crate::components::controller::CharEntityId;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
@@ -20,7 +19,7 @@ use crate::effect::StrEffectType;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::render::render_command::RenderCommandCollector;
 use crate::systems::sound_sys::AudioCommandCollectorComponent;
-use crate::systems::{AssetResources, SystemVariables};
+use crate::systems::{AssetResources, CharEntityId, SystemVariables};
 use crate::ElapsedTime;
 
 pub struct FireWallSkill;
@@ -39,7 +38,7 @@ impl SkillDef for FireWallSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
             .read_storage::<CharacterStateComponent>()
-            .get(params.caster_entity_id.0)
+            .get(params.caster_entity_id.into())
         {
             let angle_in_rad = params.char_to_skill_dir.angle(&Vector2::y());
             let angle_in_rad = if params.char_to_skill_dir.x > 0.0 {
@@ -202,7 +201,7 @@ impl SkillManifestation for PushBackWallSkill {
                 if let Some((target_char_entity_id, body_handle)) = collider {
                     let target = params
                         .char_storage
-                        .get(target_char_entity_id.0)
+                        .get(target_char_entity_id.into())
                         .map(|target| (target.pos(), target.team));
                     if let Some((target_pos, target_team)) = target {
                         if !self.team.can_attack(target_team)
