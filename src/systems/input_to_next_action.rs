@@ -12,6 +12,7 @@ use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 use strum::IntoEnumIterator;
 
+// Singleton
 pub struct InputToNextActionSystem;
 
 impl<'a> System<'a> for InputToNextActionSystem {

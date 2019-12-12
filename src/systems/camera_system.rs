@@ -7,6 +7,7 @@ use crate::systems::SystemVariables;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 
+// TODO: singleton
 pub struct CameraSystem;
 
 impl<'a> System<'a> for CameraSystem {

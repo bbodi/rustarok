@@ -26,7 +26,7 @@ use crate::systems::{
     CharEntityId, CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent,
     SystemFrameDurations, SystemVariables,
 };
-use crate::{register_systems, run_main_frame};
+use crate::{register_client_systems, run_main_frame};
 use assert_approx_eq::assert_approx_eq;
 use log::LevelFilter;
 use nalgebra::Vector2;
@@ -81,7 +81,7 @@ fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
         768,
     );
 
-    let ecs_dispatcher = register_systems(None, None, None, true);
+    let ecs_dispatcher = register_client_systems(None, None, None, true);
 
     ecs_world.add_resource(sys_vars);
     ecs_world.add_resource(DevConfig::new().unwrap());

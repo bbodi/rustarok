@@ -180,7 +180,6 @@ pub struct CharEntityId(Entity);
 
 impl Into<Entity> for CharEntityId {
     fn into(self) -> Entity {
-        //        unsafe { std::mem::transmute(self) }
         self.0
     }
 }
@@ -188,7 +187,6 @@ impl Into<Entity> for CharEntityId {
 impl From<Entity> for CharEntityId {
     fn from(entity: Entity) -> Self {
         CharEntityId(entity)
-        //        unsafe { std::mem::transmute(entity) }
     }
 }
 

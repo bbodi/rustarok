@@ -10,6 +10,8 @@ use sdl2::keyboard::Scancode;
 use sdl2::mouse::MouseButton;
 use specs::prelude::*;
 
+// TODO: make a Singleton System from it
+// HumanInputComponent, CameraComponent
 pub struct InputConsumerSystem;
 
 impl<'a> System<'a> for InputConsumerSystem {

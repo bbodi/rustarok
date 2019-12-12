@@ -62,7 +62,7 @@ use crate::systems::console_system::{
     CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
 };
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
-use crate::systems::frame_end_system::FrameEndSystem;
+use crate::systems::frame_end_system::{ClientFrameEndSystem, ServerFrameEndSystem};
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
@@ -223,15 +223,15 @@ fn main() {
     log::info!("<<< Populate SystemVariables");
 
     log::info!(">>> register systems");
-    let mut ecs_dispatcher = {
+    let mut ecs_client_dispatcher = {
         let console_sys = ConsoleSystem::new(&command_defs);
-        register_systems(
+        register_only_client_systems(
             Some(opengl_render_sys),
             maybe_sound_system,
             Some(console_sys),
-            false,
         )
     };
+    let mut ecs_server_dispatcher = register_server_systems();
     log::info!("<<< register systems");
     log::info!(">>> add resources");
     ecs_world.add_resource(sys_vars);
@@ -336,7 +336,8 @@ fn main() {
             desktop_client_controller,
             &mut video,
         );
-        run_main_frame(&mut ecs_world, &mut ecs_dispatcher);
+        ecs_server_dispatcher.dispatch(&mut ecs_world.res);
+        run_main_frame(&mut ecs_world, &mut ecs_client_dispatcher);
 
         //        let (new_map, show_cursor) = imgui_frame(
         //            desktop_client_controller,
@@ -413,7 +414,87 @@ pub fn run_main_frame(mut ecs_world: &mut World, ecs_dispatcher: &mut Dispatcher
     ecs_world.maintain();
 }
 
-fn register_systems<'a, 'b>(
+fn register_server_systems<'a, 'b>() -> Dispatcher<'a, 'b> {
+    let ecs_dispatcher = {
+        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
+        ecs_dispatcher_builder = ecs_dispatcher_builder.with(FrictionSystem, "friction_sys", &[]);
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with(MinionAiSystem, "minion_ai_sys", &[])
+            .with(TurretAiSystem, "turret_ai_sys", &[])
+            .with(FalconAiSystem, "falcon_ai_sys", &[])
+            .with(NextActionApplierSystem, "char_control", &["friction_sys"]);
+        ecs_dispatcher_builder.add(
+            SavePreviousCharStateSystem,
+            "SavePreviousCharStateSystem",
+            &["char_control"],
+        );
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with(
+                CharacterStateUpdateSystem,
+                "char_state_update",
+                &["char_control"],
+            )
+            .with(
+                PhysCollisionCollectorSystem,
+                "collision_collector",
+                &["char_state_update"],
+            )
+            .with(SkillSystem, "skill_sys", &["collision_collector"])
+            .with(AttackSystem::new(), "attack_sys", &["collision_collector"]);
+        ecs_dispatcher_builder
+            .with_thread_local(ServerFrameEndSystem)
+            .build()
+    };
+    ecs_dispatcher
+}
+
+fn register_only_client_systems<'a, 'b>(
+    opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
+    maybe_sound_system: Option<SoundSystem>,
+    console_system: Option<ConsoleSystem<'b>>,
+) -> Dispatcher<'a, 'b> {
+    let ecs_dispatcher = {
+        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with(InputConsumerSystem, "input_handler", &[])
+            .with(
+                InputToNextActionSystem,
+                "input_to_next_action_sys",
+                &["input_handler"],
+            )
+            // these should come after the server
+            .with(CameraSystem, "camera_system", &["input_handler"]);
+        ecs_dispatcher_builder.add(
+            UpdateCharSpriteBasedOnStateSystem,
+            "UpdateCharSpriteBasedOnStateSystem",
+            &[],
+        );
+        ecs_dispatcher_builder.add(
+            SavePreviousCharStateSystem,
+            "SavePreviousCharStateSystem",
+            &["UpdateCharSpriteBasedOnStateSystem"],
+        );
+        if let Some(console_system) = console_system {
+            // thread_local to avoid Send fields
+            ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);
+        }
+        ecs_dispatcher_builder = ecs_dispatcher_builder
+            .with_thread_local(RenderDesktopClientSystem::new())
+            .with_thread_local(FalconRenderSys)
+            .with_thread_local(opengl_render_sys.unwrap());
+        if let Some(sound_system) = maybe_sound_system {
+            ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
+        }
+
+        ecs_dispatcher_builder
+            .with_thread_local(ClientFrameEndSystem)
+            .build()
+    };
+    ecs_dispatcher
+}
+
+#[allow(dead_code)] // for tests
+fn register_client_systems<'a, 'b>(
     opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
     maybe_sound_system: Option<SoundSystem>,
     console_system: Option<ConsoleSystem<'b>>,
@@ -438,19 +519,6 @@ fn register_systems<'a, 'b>(
             .with(MinionAiSystem, "minion_ai_sys", &[])
             .with(TurretAiSystem, "turret_ai_sys", &[])
             .with(FalconAiSystem, "falcon_ai_sys", &[])
-            //////////////////////////////////////
-            // statuses
-            /////////////////////////////////////
-            //            .with(
-            //                CharStatusCleanerSysem,
-            //                "CharStatusCleanerSysem",
-            //                &["input_handler"],
-            //            )
-            /////////////////////////////////////
-            //            .with(StunStatusSystem, "StunStatusSystem", &["input_handler"])
-            /////////////////////////////////////
-            // statuses end
-            /////////////////////////////////////
             .with(
                 NextActionApplierSystem,
                 "char_control",
@@ -502,7 +570,7 @@ fn register_systems<'a, 'b>(
         }
 
         ecs_dispatcher_builder
-            .with_thread_local(FrameEndSystem)
+            .with_thread_local(ClientFrameEndSystem)
             .build()
     };
     ecs_dispatcher

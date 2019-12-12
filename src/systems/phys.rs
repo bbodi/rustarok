@@ -30,7 +30,7 @@ impl<'a> System<'a> for FrictionSystem {
                 {
                     body.set_linear_velocity(Vector2::zeros());
                 } else {
-                    // damping seems unpredicatble so I use this to stop arrived players
+                    // damping seems unpredictable so I use this to stop arrived players
                     let linear = body.velocity().linear;
                     if linear.x != 0.0 || linear.y != 0.0 {
                         let dir = linear.normalize();

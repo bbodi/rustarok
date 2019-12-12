@@ -99,6 +99,7 @@ pub struct ControllerComponent {
     pub select_skill_target: Option<(SkillKey, Skills)>,
     pub controlled_entity: CharEntityId,
     pub next_action: Option<PlayerIntention>,
+    // only client
     pub last_action: Option<PlayerIntention>,
     pub repeat_next_action: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
@@ -245,6 +246,7 @@ impl EntitiesBelowCursor {
     }
 }
 
+// Singleton Component
 #[derive(Component)]
 pub struct HumanInputComponent {
     pub is_console_open: bool,

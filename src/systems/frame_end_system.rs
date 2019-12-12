@@ -4,9 +4,9 @@ use crate::systems::sound_sys::AudioCommandCollectorComponent;
 use crate::systems::SystemVariables;
 use specs::prelude::*;
 
-pub struct FrameEndSystem;
+pub struct ClientFrameEndSystem;
 
-impl<'a> System<'a> for FrameEndSystem {
+impl<'a> System<'a> for ClientFrameEndSystem {
     type SystemData = (
         WriteStorage<'a, RenderCommandCollector>,
         WriteStorage<'a, AudioCommandCollectorComponent>,
@@ -15,7 +15,7 @@ impl<'a> System<'a> for FrameEndSystem {
 
     fn run(
         &mut self,
-        (mut render_commands_storage, mut audio_commands_storage, mut sys_vars): Self::SystemData,
+        (mut render_commands_storage, mut audio_commands_storage, mut _sys_vars): Self::SystemData,
     ) {
         for render_commands in (&mut render_commands_storage).join() {
             render_commands.clear();
@@ -23,6 +23,19 @@ impl<'a> System<'a> for FrameEndSystem {
         for audio_commands in (&mut audio_commands_storage).join() {
             audio_commands.clear();
         }
+        // when client and server will be separated, client has to update its timer as well
+        //        let now = std::time::SystemTime::now();
+        //        let now_ms = get_current_ms(now);
+        //        sys_vars.update_timers(now_ms);
+    }
+}
+
+pub struct ServerFrameEndSystem;
+
+impl<'a> System<'a> for ServerFrameEndSystem {
+    type SystemData = (WriteExpect<'a, SystemVariables>);
+
+    fn run(&mut self, mut sys_vars: Self::SystemData) {
         let now = std::time::SystemTime::now();
         let now_ms = get_current_ms(now);
         sys_vars.update_timers(now_ms);
