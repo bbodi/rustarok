@@ -13,10 +13,11 @@ use crate::components::{
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::common::Vec2;
 use rustarok_common::common::{rotate_vec2, v2};
+use rustarok_common::common::{EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 
 pub struct BrutalTestSkill;
 
@@ -49,7 +50,7 @@ impl SkillDef for BrutalTestSkill {
                 .skills
                 .brutal_test_skill
                 .damage,
-            ecs_world.read_resource::<SystemVariables>().time,
+            ecs_world.read_resource::<EngineTime>().time,
             entities,
             &mut updater,
         )))
@@ -139,16 +140,16 @@ impl BrutalSkillManifest {
 
 impl SkillManifestation for BrutalSkillManifest {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        if self.die_at.has_already_passed(params.now()) {
+        if self.die_at.has_already_passed(params.time().now()) {
             params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
             for effect_id in &self.effect_ids {
                 params.remove_component::<StrEffectComponent>(*effect_id);
             }
         } else {
-            if self.next_damage_at.has_not_passed_yet(params.now()) {
+            if self.next_damage_at.has_not_passed_yet(params.time().now()) {
                 return;
             }
-            self.next_damage_at = params.now().add_seconds(0.5);
+            self.next_damage_at = params.time().now().add_seconds(0.5);
             params.add_area_hp_mod_request(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
                 area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),

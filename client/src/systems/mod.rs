@@ -13,9 +13,10 @@ use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::strum::IntoEnumIterator;
 use crate::video::ortho;
-use crate::{get_current_ms, SpriteResource, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use crate::{get_current_ms, SpriteResource};
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{DeltaTime, ElapsedTime, Mat4};
+use rustarok_common::common::{DeltaTime, ElapsedTime, Mat4, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use rustarok_common::components::char::CharEntityId;
 use serde::Deserialize;
 use serde::Serialize;
 use specs::Entity;
@@ -135,11 +136,15 @@ pub struct AssetResources {
 pub struct RenderMatrices {
     pub projection: Mat4,
     pub ortho: Mat4,
+    pub resolution_w: u32,
+    pub resolution_h: u32,
 }
 
 impl RenderMatrices {
     pub fn new(fov: f32, resolution_w: u32, resolution_h: u32) -> RenderMatrices {
         RenderMatrices {
+            resolution_w,
+            resolution_h,
             projection: Mat4::new_perspective(
                 resolution_w as f32 / resolution_h as f32,
                 fov,
@@ -169,32 +174,8 @@ pub enum SystemEvent {
     },
 }
 
-// TODO: it should be independent from Serde, th server should map this ID to an Entity
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CharEntityId(Entity);
-
-impl Into<Entity> for CharEntityId {
-    fn into(self) -> Entity {
-        self.0
-    }
-}
-
-impl From<Entity> for CharEntityId {
-    fn from(entity: Entity) -> Self {
-        CharEntityId(entity)
-    }
-}
-
 pub struct SystemVariables {
-    pub resolution_w: u32,
-    pub resolution_h: u32,
     pub assets: AssetResources,
-    pub tick: u64,
-    pub last_tick_time: u64,
-    /// seconds the last frame required
-    pub dt: DeltaTime,
-    /// extract from the struct?
-    pub time: ElapsedTime,
     pub matrices: RenderMatrices,
     pub hp_mod_requests: Vec<HpModificationRequest>,
     pub area_hp_mod_requests: Vec<AreaAttackComponent>,
@@ -203,7 +184,6 @@ pub struct SystemVariables {
     pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
     pub remove_statuses: Vec<RemoveStatusComponent>,
-    pub fix_dt_for_test: f32,
 }
 
 impl SystemVariables {
@@ -220,8 +200,6 @@ impl SystemVariables {
         resolution_h: u32,
     ) -> SystemVariables {
         SystemVariables {
-            resolution_w,
-            resolution_h,
             assets: AssetResources {
                 sprites,
                 texts,
@@ -230,10 +208,6 @@ impl SystemVariables {
                 sounds,
                 str_effects,
             },
-            last_tick_time: get_current_ms(SystemTime::now()),
-            tick: 1,
-            dt: DeltaTime(0.0),
-            time: ElapsedTime(0.0),
             matrices: render_matrices,
             hp_mod_requests: Vec::with_capacity(128),
             area_hp_mod_requests: Vec::with_capacity(128),
@@ -242,21 +216,7 @@ impl SystemVariables {
             just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
             remove_statuses: Vec::with_capacity(128),
-            fix_dt_for_test,
         }
-    }
-
-    pub fn update_timers(&mut self, now_ms: u64) {
-        let dt = if cfg!(test) {
-            self.fix_dt_for_test
-        } else {
-            let dt = (now_ms - self.last_tick_time) as f32 / 1000.0;
-            self.last_tick_time = now_ms;
-            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME)
-        };
-        self.tick += 1;
-        self.dt.0 = dt;
-        self.time.0 += dt;
     }
 }
 

@@ -13,7 +13,7 @@ use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
-use rustarok_common::common::ElapsedTime;
+use rustarok_common::common::{ElapsedTime, EngineTime};
 use specs::{Entities, LazyUpdate};
 
 pub struct ExoSkeletonSkill;
@@ -31,7 +31,7 @@ impl SkillDef for ExoSkeletonSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = sys_vars.time;
+        let now = ecs_world.read_resource::<EngineTime>().now();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.exoskeleton;
         let duration_seconds = configs.duration_seconds;
         sys_vars
@@ -142,7 +142,7 @@ impl ExoSkeletonStatus {
     }
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             params.target_char.basic_attack_type = BasicAttackType::MeleeSimple;
             StatusUpdateResult::RemoveIt
         } else {

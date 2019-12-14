@@ -19,9 +19,10 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::{render_action, RenderDesktopClientSystem, COLOR_WHITE};
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::common::{v2, Vec2};
+use rustarok_common::common::{v2, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
 
 pub struct WizPyroBlastSkill;
 
@@ -59,7 +60,7 @@ impl SkillDef for WizPyroBlastSkill {
             params.caster_entity_id,
             params.caster_pos,
             params.target_entity.unwrap(),
-            sys_vars.time,
+            ecs_world.read_resource::<EngineTime>().now(),
             &mut ecs_world.write_resource::<PhysicEngine>(),
             configs,
         )))
@@ -73,7 +74,8 @@ impl SkillDef for WizPyroBlastSkill {
         &self,
         char_pos: &Vec2,
         casting_state: &CastingSkillData,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
@@ -82,13 +84,13 @@ impl SkillDef for WizPyroBlastSkill {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            &sys_vars.assets,
-            sys_vars.time,
+            assets,
+            time.now(),
             render_commands,
             ActionPlayMode::Repeat,
         );
-        let casting_percentage = sys_vars
-            .time
+        let casting_percentage = time
+            .now()
             .percentage_between(casting_state.cast_started, casting_state.cast_ends);
 
         if let Some(target_char) = char_storage.get(casting_state.target_entity.unwrap().into()) {
@@ -102,20 +104,20 @@ impl SkillDef for WizPyroBlastSkill {
                         * casting_percentage)
                         .max(0.5),
                 )
-                .add(sys_vars.assets.sprites.magic_target)
+                .add(assets.sprites.magic_target)
         }
         let anim_descr = SpriteRenderDescriptorComponent {
             action_index: 16,
             animation_started: casting_state.cast_started,
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: Some(dev_configs.skills.wiz_pyroblast.attributes.casting_time),
-            direction: 0,
+            direction: CharDir::South,
             fps_multiplier: 1.0,
         };
         render_action(
-            sys_vars.time,
+            time.now(),
             &anim_descr,
-            &sys_vars.assets.sprites.effect_sprites.plasma,
+            &assets.sprites.effect_sprites.plasma,
             &(char_pos + casting_state.char_to_skill_dir_when_casted),
             [0, 0],
             false,
@@ -158,29 +160,30 @@ impl PyroBlastManifest {
 
 impl SkillManifestation for PyroBlastManifest {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let (target_pos, collide) =
-            if let Some(target_char) = params.char_storage.get_mut(self.target_entity_id.into()) {
-                let target_pos = target_char.pos();
-                let dir_vector = target_pos - self.pos;
-                let distance = dir_vector.magnitude();
-                if distance > 2.0 {
-                    let dir_vector = dir_vector.normalize();
-                    self.pos = self.pos + (dir_vector * params.dt().0 * self.configs.moving_speed);
-                    (target_pos, false)
-                } else {
-                    target_char.statuses.remove_if(|status| {
-                        if let StatusEnum::PyroBlastTargetStatus(status) = status {
-                            status.caster_entity_id == self.caster_entity_id
-                        } else {
-                            false
-                        }
-                    });
-                    (target_pos, true)
-                }
+        let (target_pos, collide) = if let Some(target_char) =
+            params.char_storage.get_mut(self.target_entity_id.into())
+        {
+            let target_pos = target_char.pos();
+            let dir_vector = target_pos - self.pos;
+            let distance = dir_vector.magnitude();
+            if distance > 2.0 {
+                let dir_vector = dir_vector.normalize();
+                self.pos = self.pos + (dir_vector * params.time().dt.0 * self.configs.moving_speed);
+                (target_pos, false)
             } else {
-                params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
-                (v2(0.0, 0.0), false)
-            };
+                target_char.statuses.remove_if(|status| {
+                    if let StatusEnum::PyroBlastTargetStatus(status) = status {
+                        status.caster_entity_id == self.caster_entity_id
+                    } else {
+                        false
+                    }
+                });
+                (target_pos, true)
+            }
+        } else {
+            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+            (v2(0.0, 0.0), false)
+        };
         if collide {
             params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
             params.add_hp_mod_request(HpModificationRequest {
@@ -206,7 +209,7 @@ impl SkillManifestation for PyroBlastManifest {
             params.create_entity_with_comp(StrEffectComponent {
                 effect_id: StrEffectType::Explosion.into(),
                 pos: target_pos,
-                start_time: params.now(),
+                start_time: params.time().now(),
                 die_at: None,
                 play_mode: ActionPlayMode::Once,
             });
@@ -227,7 +230,7 @@ impl SkillManifestation for PyroBlastManifest {
             animation_started: ElapsedTime(0.0),
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: None,
-            direction: 0,
+            direction: CharDir::South,
             fps_multiplier: 1.0,
         };
         render_action(

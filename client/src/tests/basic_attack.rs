@@ -1,10 +1,11 @@
-use crate::components::char::{percentage, CharState, EntityTarget, Team};
+use crate::components::char::{percentage, CharState, Team};
 use crate::components::status::attack_heal_status::AttackHealStatus;
 use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::tests::setup_ecs_world;
 use rustarok_common::common::{v2, ElapsedTime};
+use rustarok_common::components::char::EntityTarget;
 use std::time::Duration;
 
 #[test]

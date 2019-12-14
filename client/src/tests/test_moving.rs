@@ -1,5 +1,5 @@
 use crate::components::char::Team;
-use crate::components::char::{percentage, CharState, EntityTarget};
+use crate::components::char::{percentage, CharState};
 use crate::components::skills::skills::Skills;
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::{
@@ -7,6 +7,7 @@ use crate::components::status::status::{
 };
 use crate::tests::setup_ecs_world;
 use rustarok_common::common::{v2, ElapsedTime};
+use rustarok_common::components::char::EntityTarget;
 use std::time::Duration;
 
 #[test]

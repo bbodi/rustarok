@@ -3,6 +3,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
+pub const SIMULATION_FREQ: u64 = 30;
+pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
+
 pub type Mat3 = Matrix3<f32>;
 pub type Mat4 = Matrix4<f32>;
 
@@ -10,6 +13,57 @@ pub type Vec2 = Vector2<f32>;
 pub type Vec3 = Vector3<f32>;
 pub type Vec2i = Vector2<i16>;
 pub type Vec2u = Vector2<u16>;
+
+pub struct EngineTime {
+    pub tick: u64,
+    pub end_of_last_frame_ms: u64,
+    pub time: ElapsedTime,
+    /// seconds the previous frame required
+    pub dt: DeltaTime,
+    // TODO: #[cfg(test)]
+    pub fix_dt_for_test: f32,
+}
+
+impl EngineTime {
+    pub fn new() -> EngineTime {
+        EngineTime {
+            fix_dt_for_test: 0.0,
+            tick: 1,
+            end_of_last_frame_ms: 0,
+            time: ElapsedTime(0.0),
+            dt: DeltaTime(1.0),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_for_tests(fix_dt_for_test: f32) -> EngineTime {
+        EngineTime {
+            fix_dt_for_test,
+            tick: 1,
+            end_of_last_frame_ms: 0,
+            time: ElapsedTime(0.0),
+            dt: DeltaTime(1.0),
+        }
+    }
+
+    pub fn update_timers(&mut self, now_ms: u64) {
+        let dt = if cfg!(test) {
+            self.fix_dt_for_test
+        } else {
+            let dt = (now_ms - self.end_of_last_frame_ms) as f32 / 1000.0;
+            self.end_of_last_frame_ms = now_ms;
+            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME)
+        };
+        self.tick += 1;
+        self.dt.0 = dt;
+        self.time.0 += dt;
+    }
+
+    #[inline]
+    pub fn now(&self) -> ElapsedTime {
+        self.time
+    }
+}
 
 pub fn measure_time<T, F: FnOnce() -> T>(f: F) -> (Duration, T) {
     let start = Instant::now();

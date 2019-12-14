@@ -2,9 +2,10 @@ use crate::components::char::{CharOutlook, CharacterEntityBuilder, NpcComponent,
 use crate::configs::DevConfig;
 use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::CharEntityId;
+
 use nphysics2d::object::BodyStatus;
 use rustarok_common::common::Vec2;
+use rustarok_common::components::char::CharEntityId;
 use specs::prelude::*;
 use specs::LazyUpdate;
 

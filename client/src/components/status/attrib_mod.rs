@@ -29,7 +29,7 @@ impl ArmorModifierStatus {
     }
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
@@ -68,7 +68,7 @@ impl WalkingSpeedModifierStatus {
     }
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

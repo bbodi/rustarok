@@ -11,9 +11,11 @@ use crate::systems::console_commands::{
     cmd_set_pos, cmd_set_resolution, cmd_set_team, cmd_spawn_area, cmd_spawn_entity,
     cmd_toggle_console,
 };
-use crate::systems::{CharEntityId, SystemVariables};
+use crate::systems::SystemVariables;
 use crate::video::Video;
 use crate::ElapsedTime;
+use rustarok_common::common::EngineTime;
+use rustarok_common::components::char::CharEntityId;
 use sdl2::keyboard::Scancode;
 use serde::export::fmt::{Debug, Error};
 use serde::export::Formatter;
@@ -1034,6 +1036,7 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
         WriteStorage<'a, ConsoleComponent>,
         WriteStorage<'a, RenderCommandCollector>,
         ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, EngineTime>,
         ReadExpect<'a, DevConfig>,
     );
 
@@ -1044,6 +1047,7 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
             mut console_storage,
             mut render_collector_storage,
             sys_vars,
+            time,
             dev_configs,
         ): Self::SystemData,
     ) {
@@ -1054,9 +1058,9 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
         )
             .join()
         {
-            let now = sys_vars.time;
+            let now = time.now();
             let console_color = dev_configs.console.color;
-            let console_height = (sys_vars.resolution_h / 3) as i32;
+            let console_height = (sys_vars.matrices.resolution_h / 3) as i32;
             let repeat_time = 0.1;
             if !input.is_console_open {
                 if console.y_pos > 0 {
@@ -1066,9 +1070,9 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
                 if console.y_pos < console_height {
                     console.y_pos += 4;
                 }
-                if console.cursor_change.has_already_passed(sys_vars.time) {
+                if console.cursor_change.has_already_passed(time.now()) {
                     console.cursor_shown = !console.cursor_shown;
-                    console.cursor_change = sys_vars.time.add_seconds(0.5);
+                    console.cursor_change = time.now().add_seconds(0.5);
                 }
 
                 if input.is_key_just_pressed(Scancode::Up) {
@@ -1213,7 +1217,7 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
                 render_commands
                     .rectangle_2d()
                     .screen_pos(0, 0)
-                    .size(sys_vars.resolution_w as u16, console.y_pos as u16)
+                    .size(sys_vars.matrices.resolution_w as u16, console.y_pos as u16)
                     .color(&console_color)
                     .layer(UiLayer2d::Console)
                     .add();

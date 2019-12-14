@@ -4,7 +4,7 @@ use crate::components::char::{
     CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, ControllerEntityId, HumanInputComponent,
+    CameraComponent, ControllerEntityId, HumanInputComponent, LocalPlayerControllerComponent,
 };
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::basic_attack::WeaponType;
@@ -28,11 +28,12 @@ use crate::systems::console_system::{
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::input_sys_scancodes::ScancodeNames;
-use crate::systems::{CharEntityId, RenderMatrices, Sex, SystemVariables};
+use crate::systems::{RenderMatrices, Sex, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
 use rand::Rng;
-use rustarok_common::common::{v2, v2u, Vec2};
+use rustarok_common::common::{v2, v2u, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
 use rustarok_common::grf::gat::CellType;
 use sdl2::keyboard::Scancode;
 use sdl2::pixels::PixelFormatEnum;
@@ -137,7 +138,7 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                 if let Some(target_char_id) = target_char_id {
                     if let Some(target_char) = ecs_world
                         .write_storage::<CharacterStateComponent>()
-                        .get_mut(target_char_id.0)
+                        .get_mut(target_char_id.into())
                     {
                         if let Ok(job_id) = JobId::from_str(job_name) {
                             attach_human_player_components(
@@ -156,8 +157,14 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                                 1,
                                 target_char.team,
                                 &ecs_world.read_resource::<DevConfig>(),
-                                ecs_world.read_resource::<SystemVariables>().resolution_w,
-                                ecs_world.read_resource::<SystemVariables>().resolution_h,
+                                ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .matrices
+                                    .resolution_w,
+                                ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .matrices
+                                    .resolution_h,
                             );
                             Ok(())
                         } else {
@@ -217,7 +224,7 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
                 if let Some(target_char_id) = target_char_id {
                     if let Some(target_char) = ecs_world
                         .write_storage::<CharacterStateComponent>()
-                        .get_mut(target_char_id.0)
+                        .get_mut(target_char_id.into())
                     {
                         if let Some(outlook) = get_outlook(job_name, Some(&target_char.outlook)) {
                             target_char.outlook = outlook;
@@ -435,7 +442,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                         let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                         let hero_pos = {
                             let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                            let char_state = storage.get(self_char_id.0).unwrap();
+                            let char_state = storage.get(self_char_id.into()).unwrap();
                             char_state.pos()
                         };
                         let mut rng = rand::thread_rng();
@@ -476,7 +483,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             );
                             ecs_world
                                 .create_entity()
-                                .with(ControllerComponent::new(char_entity_id))
+                                .with(LocalPlayerControllerComponent::new(char_entity_id))
                                 .with(MinionComponent { fountain_up: false })
                                 .build();
                         }
@@ -721,8 +728,6 @@ pub(super) fn cmd_set_resolution(resolutions: Vec<String>) -> CommandDefinition 
                     {
                         let sys_vars = &mut ecs_world.write_resource::<SystemVariables>();
                         sys_vars.matrices = RenderMatrices::new(0.638, w as u32, h as u32);
-                        sys_vars.resolution_w = w as u32;
-                        sys_vars.resolution_h = h as u32;
                     }
                 }
                 return r;
@@ -885,7 +890,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
                 let (pos, caster_team) = {
                     let (hero_pos, team) = {
                         let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(self_char_id.0).unwrap();
+                        let char_state = storage.get(self_char_id.into()).unwrap();
                         (char_state.pos(), char_state.team)
                     };
                     (v2(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
@@ -1013,7 +1018,7 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
         action: Box::new(
             |_self_controller_id, self_char_id, args, ecs_world, _video| {
                 let status_name = args.as_str(0).unwrap();
-                let time = args.as_int(1).unwrap();
+                let duration = args.as_int(1).unwrap();
                 let value = args.as_int(2).unwrap_or(0);
 
                 let username = args.as_str(3);
@@ -1025,10 +1030,10 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
 
                 if let Some(entity_id) = entity_id {
                     let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-                    let now = sys_vars.time;
+                    let now = ecs_world.read_resource::<EngineTime>().now();
                     let team = ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(self_char_id.0)
+                        .get(self_char_id.into())
                         .unwrap()
                         .team;
                     sys_vars.apply_statuses.push(ApplyStatusComponent {
@@ -1038,7 +1043,7 @@ pub(super) fn cmd_add_status() -> CommandDefinition {
                             status_name,
                             entity_id,
                             now,
-                            time,
+                            duration,
                             value,
                             team,
                         )?,
@@ -1070,7 +1075,7 @@ pub(super) fn cmd_list_statuses() -> CommandDefinition {
 
                 if let Some(entity_id) = entity_id {
                     let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
-                    if let Some(target_char) = char_storage.get(entity_id.0) {
+                    if let Some(target_char) = char_storage.get(entity_id.into()) {
                         for status in target_char.statuses.get_statuses().iter() {
                             if let Some(status) = status {
                                 print_console(
@@ -1125,7 +1130,7 @@ pub(super) fn cmd_set_team() -> CommandDefinition {
 
                 if let Some(target_char_id) = target_entity_id {
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                    let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
 
                     if let Some(collider) = ecs_world
                         .write_resource::<PhysicEngine>()
@@ -1181,7 +1186,7 @@ pub(super) fn cmd_enable_collision() -> CommandDefinition {
 
                 if let Some(target_char_id) = target_char_id {
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                    let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
 
                     char_state.set_collidable(&mut ecs_world.write_resource::<PhysicEngine>());
 
@@ -1219,7 +1224,7 @@ pub(super) fn cmd_disable_collision() -> CommandDefinition {
 
                 if let Some(target_char_id) = target_char_id {
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                    let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
 
                     char_state.set_noncollidable(&mut ecs_world.write_resource::<PhysicEngine>());
 
@@ -1253,7 +1258,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                     let pos2d = {
                         // remove death status (that is the only status a death character has)
                         let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                        let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                        let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
                         char_state.statuses.remove_all();
                         char_state.set_state(CharState::Idle, char_state.dir());
 
@@ -1272,7 +1277,7 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                         .physics_handles
                         .unwrap();
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                    let char_state = char_storage.get_mut(target_char_id.0).unwrap();
+                    let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
                     char_state.collider_handle = physics_component.0;
                     char_state.body_handle = physics_component.1;
 
@@ -1304,7 +1309,7 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
                     }
 
                     ecs_world
-                        .write_storage::<ControllerComponent>()
+                        .write_storage::<LocalPlayerControllerComponent>()
                         .remove(self_controller_id.0);
 
                     // set camera to follow target
@@ -1345,7 +1350,7 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
 
                     let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
 
-                    let cloning_char = char_storage.get(target_char_id.0).unwrap();
+                    let cloning_char = char_storage.get(target_char_id.into()).unwrap();
                     let updater = &ecs_world.read_resource::<LazyUpdate>();
                     CharacterEntityBuilder::new(char_entity_id, "Clone")
                         .insert_npc_component(updater)
@@ -1390,15 +1395,15 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
                     // remove current controller and add a new one
                     // TODO: skills should be reassigned as well
                     ecs_world
-                        .write_storage::<ControllerComponent>()
+                        .write_storage::<LocalPlayerControllerComponent>()
                         .remove(self_controller_id.0)
                         .expect("");
 
                     ecs_world
-                        .write_storage::<ControllerComponent>()
+                        .write_storage::<LocalPlayerControllerComponent>()
                         .insert(
                             self_controller_id.0,
-                            ControllerComponent::new(target_char_id),
+                            LocalPlayerControllerComponent::new(target_char_id),
                         )
                         .expect("");
 
@@ -1446,7 +1451,7 @@ pub(super) fn cmd_set_mass() -> CommandDefinition {
                 if let Some(entity_id) = entity_id {
                     let body_handle = ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(entity_id.0)
+                        .get(entity_id.into())
                         .map(|it| it.body_handle)
                         .unwrap();
                     let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -1493,7 +1498,7 @@ pub(super) fn cmd_set_damping() -> CommandDefinition {
                 if let Some(entity_id) = entity_id {
                     let body_handle = ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(entity_id.0)
+                        .get(entity_id.into())
                         .map(|it| it.body_handle)
                         .unwrap();
                     let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -1526,12 +1531,12 @@ pub(super) fn cmd_goto() -> CommandDefinition {
                 if let Some(target_char_id) = target_char_id {
                     let target_pos = {
                         let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(target_char_id.0).unwrap();
+                        let char_state = storage.get(target_char_id.into()).unwrap();
                         char_state.pos()
                     };
                     let self_body_handle = ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(self_char_id.0)
+                        .get(self_char_id.into())
                         .map(|it| it.body_handle)
                         .unwrap();
                     let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -1569,7 +1574,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
                 if let Some(entity_id) = entity_id {
                     let hero_pos = {
                         let storage = ecs_world.read_storage::<CharacterStateComponent>();
-                        let char_state = storage.get(entity_id.0).unwrap();
+                        let char_state = storage.get(entity_id.into()).unwrap();
                         char_state.pos()
                     };
                     print_console(
@@ -1621,7 +1626,7 @@ pub(super) fn cmd_set_pos() -> CommandDefinition {
                 };
 
                 let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
-                if let Some(char_state) = char_id.and_then(|it| char_storage.get_mut(it.0)) {
+                if let Some(char_state) = char_id.and_then(|it| char_storage.get_mut(it.into())) {
                     let body_handle = char_state.body_handle;
 
                     let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
@@ -1666,7 +1671,7 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
                 if let Some(char_id) = char_id {
                     let pos = ecs_world
                         .read_storage::<CharacterStateComponent>()
-                        .get(char_id.0)
+                        .get(char_id.into())
                         .map(|it| it.pos())
                         .unwrap();
 
@@ -1678,7 +1683,7 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
                             fps_multiplier: 1.0,
                             animation_started: ElapsedTime(0.0),
                             forced_duration: None,
-                            direction: 0,
+                            direction: CharDir::South,
                             animation_ends_at: ElapsedTime(0.0),
                         })
                         .build();

@@ -18,10 +18,10 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::next_action_applier_sys::NextActionApplierSystem;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
-use rustarok_common::common::{v2_to_v3, v3_to_v2, ElapsedTime};
+use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::common::{v2_to_v3, v3_to_v2, ElapsedTime, EngineTime};
 use rustarok_common::common::{v3, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
 use specs::ReadStorage;
 use vek::QuadraticBezier3;
 
@@ -44,7 +44,7 @@ impl SkillDef for GazXplodiumChargeSkill {
             params.caster_pos,
             params.skill_pos.unwrap(),
             &mut ecs_world.write_resource::<PhysicEngine>(),
-            ecs_world.read_resource::<SystemVariables>().time,
+            ecs_world.read_resource::<EngineTime>().now(),
             ecs_world
                 .read_resource::<DevConfig>()
                 .skills
@@ -97,7 +97,7 @@ impl GazXplodiumChargeSkillManifestation {
 
 impl SkillManifestation for GazXplodiumChargeSkillManifestation {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let travel_duration_percentage = params.now().percentage_between(
+        let travel_duration_percentage = params.time().now().percentage_between(
             self.started_at,
             self.started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds),
@@ -110,7 +110,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds)
                 .add_seconds(self.configs.detonation_duration);
-            if end_time.has_already_passed(params.now()) {
+            if end_time.has_already_passed(params.time().now()) {
                 if let Some(caster_team) = params
                     .char_storage
                     .get(self.caster_id.into())
@@ -133,7 +133,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         source_entity_id: self.caster_id,
                         status: StatusEnum::StunStatus(StunStatus::new(
                             self.caster_id,
-                            params.now(),
+                            params.time().now(),
                             self.configs.stun_duration_seconds,
                         )),
                         area_shape,
@@ -145,7 +145,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                     params.create_entity_with_comp(StrEffectComponent {
                         effect_id: StrEffectType::Explosion.into(),
                         pos: self.end_pos,
-                        start_time: params.now(),
+                        start_time: params.time().now(),
                         die_at: None,
                         play_mode: ActionPlayMode::Once,
                     });
@@ -168,7 +168,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
             .started_at
             .add_seconds(self.configs.missile_travel_duration_seconds)
             .has_already_passed(now);
-        let dir = NextActionApplierSystem::determine_dir(
+        let dir = CharDir::determine_dir(
             &v3_to_v2(&self.current_target_pos),
             &v3_to_v2(&self.current_pos),
         );
@@ -213,7 +213,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 animation_started: ElapsedTime(0.0),
                 animation_ends_at: ElapsedTime(0.0),
                 forced_duration: None,
-                direction: number,
+                direction: CharDir::from(number),
                 fps_multiplier: 1.0,
             };
             render_single_layer_action(

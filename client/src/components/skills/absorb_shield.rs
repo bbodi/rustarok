@@ -12,8 +12,9 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
-use rustarok_common::common::{ElapsedTime, Vec2};
+use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::common::{ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 
 pub struct AbsorbShieldSkill;
 
@@ -30,7 +31,7 @@ impl SkillDef for AbsorbShieldSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
-        let now = sys_vars.time;
+        let now = ecs_world.read_resource::<EngineTime>().now();
         let duration_seconds = ecs_world
             .read_resource::<DevConfig>()
             .skills

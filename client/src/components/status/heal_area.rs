@@ -3,11 +3,12 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::components::{HpModificationRequest, HpModificationType};
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::{AssetResources, CharEntityId};
+use crate::systems::AssetResources;
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, Vec2, Vec2u};
+use rustarok_common::components::char::CharEntityId;
 use specs::ReadStorage;
 
 pub struct HealApplierArea {
@@ -52,7 +53,7 @@ impl HealApplierArea {
 
 impl SkillManifestation for HealApplierArea {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        if self.next_action_at.has_already_passed(params.now()) {
+        if self.next_action_at.has_already_passed(params.time().now()) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = params
                 .all_collisions_in_world
@@ -73,7 +74,7 @@ impl SkillManifestation for HealApplierArea {
                     dst_entity: char_entity_id,
                     typ: self.attack_type,
                 });
-                self.next_action_at = params.now().add_seconds(self.interval);
+                self.next_action_at = params.time().now().add_seconds(self.interval);
             }
         }
     }

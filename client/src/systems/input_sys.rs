@@ -1,11 +1,10 @@
-use crate::components::controller::{
-    CameraComponent, CameraMode, HumanInputComponent, PlayerIntention, SkillKey,
-};
+use crate::components::controller::{CameraComponent, CameraMode, HumanInputComponent, SkillKey};
 use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::systems::SystemVariables;
 use crate::ConsoleCommandBuffer;
 use nalgebra::Vector4;
 use rustarok_common::common::{v2, v3, Mat4, Vec2, Vec3};
+use rustarok_common::components::controller::PlayerIntention;
 use sdl2::keyboard::Scancode;
 use sdl2::mouse::MouseButton;
 use specs::prelude::*;
@@ -191,8 +190,8 @@ impl<'a> System<'a> for InputConsumerSystem {
                         input.camera_movement_mode = CameraMode::FollowChar;
                         camera.reset_y_and_angle(
                             &sys_vars.matrices.projection,
-                            sys_vars.resolution_w,
-                            sys_vars.resolution_h,
+                            sys_vars.matrices.resolution_w,
+                            sys_vars.matrices.resolution_h,
                         );
                     }
                     CameraMode::FollowChar => {
@@ -210,8 +209,8 @@ impl<'a> System<'a> for InputConsumerSystem {
                 &camera.camera.pos(),
                 &sys_vars.matrices.projection,
                 &camera.view_matrix,
-                sys_vars.resolution_w,
-                sys_vars.resolution_h,
+                sys_vars.matrices.resolution_w,
+                sys_vars.matrices.resolution_h,
             );
             input.mouse_world_pos = mouse_world_pos;
 
@@ -257,7 +256,9 @@ impl InputConsumerSystem {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_definition().get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);
-            Some(PlayerIntention::Casting(skill, false, mouse_pos))
+            // TODO2
+            //Some(PlayerIntention::Casting(skill, false, mouse_pos))
+            None
         } else {
             None
         }

@@ -1,8 +1,10 @@
-use crate::components::char::{CharacterStateComponent, EntityTarget, Team};
-use crate::components::controller::{ControllerComponent, ControllerEntityId, PlayerIntention};
+use crate::components::char::{CharacterStateComponent, Team};
+use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
 use crate::components::MinionComponent;
-use crate::systems::{CharEntityId, SystemFrameDurations};
+use crate::systems::SystemFrameDurations;
 use rustarok_common::common::{v2, v2_to_p2, Vec2};
+use rustarok_common::components::char::{CharEntityId, EntityTarget};
+use rustarok_common::components::controller::PlayerIntention;
 use specs::prelude::*;
 
 pub struct MinionAiSystem;
@@ -52,7 +54,7 @@ impl MinionAiSystem {
 impl<'a> System<'a> for MinionAiSystem {
     type SystemData = (
         Entities<'a>,
-        WriteStorage<'a, ControllerComponent>,
+        WriteStorage<'a, LocalPlayerControllerComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, MinionComponent>,
         WriteExpect<'a, SystemFrameDurations>,

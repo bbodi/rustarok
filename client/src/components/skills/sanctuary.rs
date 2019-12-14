@@ -10,9 +10,10 @@ use crate::components::{AreaAttackComponent, HpModificationType};
 use crate::configs::DevConfig;
 use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::common::{v2, Vec2};
+use rustarok_common::common::{v2, EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 use specs::ReadStorage;
 
 pub struct SanctuarySkill;
@@ -35,7 +36,7 @@ impl SkillDef for SanctuarySkill {
             &params.skill_pos.unwrap(),
             configs.heal,
             configs.heal_freq_seconds,
-            ecs_world.read_resource::<SystemVariables>().time,
+            ecs_world.read_resource::<EngineTime>().now(),
             configs.duration,
         )))
     }
@@ -95,13 +96,13 @@ impl SanctuarySkillManifest {
 
 impl SkillManifestation for SanctuarySkillManifest {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        if self.die_at.has_already_passed(params.now()) {
+        if self.die_at.has_already_passed(params.time().now()) {
             params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
         } else {
-            if self.next_heal_at.has_not_passed_yet(params.now()) {
+            if self.next_heal_at.has_not_passed_yet(params.time().now()) {
                 return;
             }
-            self.next_heal_at = params.now().add_seconds(self.heal_freq);
+            self.next_heal_at = params.time().now().add_seconds(self.heal_freq);
             params.add_area_hp_mod_request(AreaAttackComponent {
                 area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2(2.5, 2.5))),
                 area_isom: Isometry2::new(self.pos, 0.0),

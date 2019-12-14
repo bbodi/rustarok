@@ -7,9 +7,9 @@ use crate::audio::sound_sys::SoundId;
 use crate::components::char::ActionPlayMode;
 use crate::components::skills::basic_attack::WeaponType;
 use crate::effect::StrEffectId;
-use crate::systems::CharEntityId;
 use crate::ElapsedTime;
 use rustarok_common::common::Vec2;
+use rustarok_common::components::char::CharEntityId;
 
 pub mod char;
 pub mod controller;

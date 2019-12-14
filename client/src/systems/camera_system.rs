@@ -1,6 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CameraComponent, CameraMode, ControllerComponent, HumanInputComponent,
+    CameraComponent, CameraMode, HumanInputComponent, LocalPlayerControllerComponent,
 };
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::SystemVariables;
@@ -14,7 +14,7 @@ impl<'a> System<'a> for CameraSystem {
     type SystemData = (
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, HumanInputComponent>,
-        ReadStorage<'a, ControllerComponent>,
+        ReadStorage<'a, LocalPlayerControllerComponent>,
         WriteStorage<'a, CameraComponent>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, MapRenderData>,
@@ -64,11 +64,11 @@ impl<'a> System<'a> for CameraSystem {
                                 camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
                                 camera.camera.update_visible_z_range(
                                     &sys_vars.matrices.projection,
-                                    sys_vars.resolution_w,
-                                    sys_vars.resolution_h,
+                                    sys_vars.matrices.resolution_w,
+                                    sys_vars.matrices.resolution_h,
                                 );
                             };
-                            if let Some(char_state) = char_state_storage.get(followed_char.0) {
+                            if let Some(char_state) = char_state_storage.get(followed_char.into()) {
                                 let pos = char_state.pos();
                                 camera.camera.set_x(pos.x);
                                 let z_range = camera.camera.visible_z_range;
@@ -82,8 +82,8 @@ impl<'a> System<'a> for CameraSystem {
                         camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
                         camera.camera.update_visible_z_range(
                             &sys_vars.matrices.projection,
-                            sys_vars.resolution_w,
-                            sys_vars.resolution_h,
+                            sys_vars.matrices.resolution_w,
+                            sys_vars.matrices.resolution_h,
                         );
                     }
                     if !input.is_console_open {

@@ -3,9 +3,7 @@ mod test_firewall;
 mod test_moving;
 
 use crate::components::char::Percentage;
-use crate::components::char::{
-    CharState, CharacterEntityBuilder, CharacterStateComponent, EntityTarget, Team,
-};
+use crate::components::char::{CharState, CharacterEntityBuilder, CharacterStateComponent, Team};
 use crate::components::controller::EntitiesBelowCursor;
 use crate::components::skills::skills::Skills;
 use crate::components::status::status::ApplyStatusComponent;
@@ -19,17 +17,17 @@ use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::graphic::Texts;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::next_action_applier_sys::NextActionApplierSystem;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
 use crate::systems::{
-    CharEntityId, CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent,
-    SystemFrameDurations, SystemVariables,
+    CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemEvent, SystemFrameDurations,
+    SystemVariables,
 };
 use crate::{register_server_systems, run_main_frame};
 use assert_approx_eq::assert_approx_eq;
 use log::LevelFilter;
 use nalgebra::Vector2;
 use rustarok_common::common::Vec2;
+use rustarok_common::components::char::{CharEntityId, EntityTarget};
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::time::Duration;

@@ -13,9 +13,10 @@ use crate::components::{
 };
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
-use crate::systems::next_action_applier_sys::NextActionApplierSystem;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
-use rustarok_common::common::{v2, v3, ElapsedTime, Vec2};
+use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::common::{v2, v3, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::systems::NextActionApplierSystem;
 use serde::Deserialize;
 use serde::Serialize;
 use specs::ReadStorage;
@@ -43,6 +44,7 @@ impl BasicAttackType {
         target_pos: Vec2,
         target_entity_id: CharEntityId,
         sys_vars: &mut SystemVariables,
+        time: &EngineTime,
     ) -> Option<Box<dyn SkillManifestation>> {
         match self {
             BasicAttackType::MeleeSimple => {
@@ -80,9 +82,9 @@ impl BasicAttackType {
                 caster_entity_id,
                 target_entity_id,
                 target_pos,
-                sys_vars.time,
+                time.now(),
                 *bullet_type,
-                sys_vars.tick,
+                time.tick,
             ))),
         }
     }
@@ -133,8 +135,8 @@ impl BasicRangeAttackBullet {
 
 impl SkillManifestation for BasicRangeAttackBullet {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let now = params.now();
-        if params.tick() == self.started_tick + 1 {
+        let now = params.time().now();
+        if params.time().tick == self.started_tick + 1 {
             match self.weapon_type {
                 WeaponType::Arrow => {
                     params.create_entity_with_comp(SoundEffectComponent {
@@ -157,6 +159,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
         }
 
         let travel_duration_percentage = params
+            .time()
             .now()
             .percentage_between(self.started_at, self.ends_at);
         if travel_duration_percentage < 1.0 {
@@ -195,7 +198,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
         render_commands: &mut RenderCommandCollector,
         _audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
-        let dir = NextActionApplierSystem::determine_dir(&self.target_pos, &self.start_pos);
+        let dir = CharDir::determine_dir(&self.target_pos, &self.start_pos);
         let anim = SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: ElapsedTime(0.0),

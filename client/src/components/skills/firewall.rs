@@ -18,9 +18,10 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::common::{rotate_vec2, v2, Vec2, Vec2i};
+use rustarok_common::common::{rotate_vec2, v2, EngineTime, Vec2, Vec2i};
+use rustarok_common::components::char::CharEntityId;
 
 pub struct FireWallSkill;
 
@@ -46,7 +47,7 @@ impl SkillDef for FireWallSkill {
             } else {
                 -angle_in_rad
             };
-            let sys_vars = ecs_world.read_resource::<SystemVariables>();
+            let time = ecs_world.read_resource::<EngineTime>();
             let entities = &ecs_world.entities();
             let mut updater = ecs_world.write_resource::<LazyUpdate>();
             let configs = ecs_world.read_resource::<DevConfig>();
@@ -59,8 +60,8 @@ impl SkillDef for FireWallSkill {
                 &mut ecs_world.write_resource::<PhysicEngine>(),
                 &params.skill_pos.unwrap(),
                 angle_in_rad,
-                sys_vars.time,
-                sys_vars.tick,
+                time.now(),
+                time.tick,
                 entities,
                 &mut updater,
                 configs.skills.firewall.duration_seconds,
@@ -170,7 +171,7 @@ impl PushBackWallSkill {
 
 impl SkillManifestation for PushBackWallSkill {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let now = params.now();
+        let now = params.time().now();
         let self_collider_handle = self.collider_handle;
         if self.die_at.has_already_passed(now) {
             params.physics_world.colliders.remove(self_collider_handle);

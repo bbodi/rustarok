@@ -17,7 +17,7 @@ a Ragnarok Online client and add:
  - tdata.grf
  - gepard.grf
 
-to the [config.toml](../config.toml) file. If you are running on Linux, then you
+to the [config.toml](../build/config.toml) file. If you are running on Linux, then you
 will need to build a Singularity container with wine to download the client,
 and copy the assets. We use Singularity because it has seamless environment and interaction
 with the host, so we don't have any issues using the display, Specifically, 

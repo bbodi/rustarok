@@ -18,9 +18,10 @@ use crate::components::{
 use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::runtime_assets::audio::Sounds;
-use crate::systems::{CharEntityId, SystemEvent, SystemFrameDurations, SystemVariables};
+use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use rustarok_common::common::Vec2;
+use rustarok_common::common::{EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 
 pub struct AttackSystem {
     hp_mod_requests: Vec<HpModificationRequest>,
@@ -41,6 +42,7 @@ impl<'a> System<'a> for AttackSystem {
         WriteExpect<'a, SystemVariables>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
+        ReadExpect<'a, EngineTime>,
         Write<'a, LazyUpdate>,
         Option<Write<'a, Vec<SystemEvent>>>,
     );
@@ -53,6 +55,7 @@ impl<'a> System<'a> for AttackSystem {
             mut sys_vars,
             mut physics_world,
             mut system_benchmark,
+            time,
             mut updater,
             mut events,
         ): Self::SystemData,
@@ -99,18 +102,18 @@ impl<'a> System<'a> for AttackSystem {
         for apply_force in &sys_vars.pushes {
             if let Some(char_body) = physics_world.bodies.rigid_body_mut(apply_force.body_handle) {
                 let char_state = char_state_storage
-                    .get_mut(apply_force.dst_entity.0)
+                    .get_mut(apply_force.dst_entity.into())
                     .unwrap();
                 log::trace!("Try to apply push {:?}", apply_force);
                 if char_state.statuses.allow_push(apply_force) {
                     log::trace!("Push was allowed");
                     char_body.set_linear_velocity(apply_force.force);
                     let char_state = char_state_storage
-                        .get_mut(apply_force.dst_entity.0)
+                        .get_mut(apply_force.dst_entity.into())
                         .unwrap();
                     char_state
                         .cannot_control_until
-                        .run_at_least_until_seconds(sys_vars.time, apply_force.duration);
+                        .run_at_least_until_seconds(time.now(), apply_force.duration);
                 } else {
                     log::trace!("Push was denied");
                 }
@@ -126,39 +129,39 @@ impl<'a> System<'a> for AttackSystem {
             // copy them so hp_mod_req can be moved into the closure
             let attacker_id = hp_mod_req.src_entity;
             let attacked_id = hp_mod_req.dst_entity;
-            let hp_mod_req_results =
-                char_state_storage
-                    .get(hp_mod_req.src_entity.0)
-                    .and_then(|src_char_state| {
-                        char_state_storage
-                            .get(hp_mod_req.dst_entity.0)
-                            .filter(|it| {
-                                let is_valid = it.state().is_alive()
-                                    && match hp_mod_req.typ {
-                                        HpModificationType::Heal(_) => {
-                                            src_char_state.team.can_support(it.team)
-                                        }
-                                        _ => src_char_state.team.can_attack(it.team),
-                                    };
-                                if !is_valid {
-                                    log::warn!("Invalid hp_mod_req: {:?}", hp_mod_req);
-                                }
-                                is_valid
-                            })
-                            .and_then(|dst_char_state| {
-                                Some(AttackCalculation::apply_armor_calc(
-                                    src_char_state,
-                                    dst_char_state,
-                                    hp_mod_req,
-                                ))
-                            })
-                    });
+            let hp_mod_req_results = char_state_storage
+                .get(hp_mod_req.src_entity.into())
+                .and_then(|src_char_state| {
+                    char_state_storage
+                        .get(hp_mod_req.dst_entity.into())
+                        .filter(|it| {
+                            let is_valid = it.state().is_alive()
+                                && match hp_mod_req.typ {
+                                    HpModificationType::Heal(_) => {
+                                        src_char_state.team.can_support(it.team)
+                                    }
+                                    _ => src_char_state.team.can_attack(it.team),
+                                };
+                            if !is_valid {
+                                log::warn!("Invalid hp_mod_req: {:?}", hp_mod_req);
+                            }
+                            is_valid
+                        })
+                        .and_then(|dst_char_state| {
+                            Some(AttackCalculation::apply_armor_calc(
+                                src_char_state,
+                                dst_char_state,
+                                hp_mod_req,
+                            ))
+                        })
+                });
             log::trace!("Attack outcomes: {:?}", hp_mod_req_results);
 
             for hp_mod_req_result in hp_mod_req_results.into_iter() {
                 dbg!(&hp_mod_req_result);
                 let (hp_mod_req_result, char_pos) = {
-                    let attacked_entity_state = char_state_storage.get_mut(attacked_id.0).unwrap();
+                    let attacked_entity_state =
+                        char_state_storage.get_mut(attacked_id.into()).unwrap();
                     let hp_mod_req_result = AttackCalculation::alter_requests_by_attacked_statuses(
                         hp_mod_req_result,
                         attacked_entity_state,
@@ -168,7 +171,7 @@ impl<'a> System<'a> for AttackSystem {
                     AttackCalculation::apply_damage(
                         attacked_entity_state,
                         &hp_mod_req_result,
-                        sys_vars.time,
+                        time.now(),
                     );
 
                     attacked_entity_state
@@ -185,7 +188,8 @@ impl<'a> System<'a> for AttackSystem {
                 };
 
                 {
-                    let attacker_entity_state = char_state_storage.get_mut(attacker_id.0).unwrap();
+                    let attacker_entity_state =
+                        char_state_storage.get_mut(attacker_id.into()).unwrap();
                     attacker_entity_state
                         .statuses
                         .hp_mod_has_been_applied_on_enemy(
@@ -200,7 +204,7 @@ impl<'a> System<'a> for AttackSystem {
                     char_pos,
                     attacked_id,
                     &hp_mod_req_result,
-                    sys_vars.time,
+                    time.now(),
                     &mut updater,
                     &sys_vars.assets.sounds,
                 );
@@ -211,12 +215,12 @@ impl<'a> System<'a> for AttackSystem {
                     attacker_id,
                     attacked_id,
                     &char_pos,
-                    sys_vars.time,
+                    time.now(),
                 );
 
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::HpModification {
-                        timestamp: sys_vars.tick,
+                        timestamp: time.tick,
                         src: attacker_id,
                         dst: attacked_id,
                         result: hp_mod_req_result,
@@ -232,6 +236,7 @@ impl<'a> System<'a> for AttackSystem {
             status_changes,
             &mut char_state_storage,
             &sys_vars,
+            &time,
             &entities,
             &mut updater,
             &mut physics_world,
@@ -268,7 +273,7 @@ impl AttackCalculation {
     ) -> Vec<HpModificationRequest> {
         let mut result_attacks = vec![];
         for (target_entity_id, char_state) in (entities, char_storage).join() {
-            let target_entity_id = CharEntityId(target_entity_id);
+            let target_entity_id = CharEntityId::new(target_entity_id);
             if area_hpmod_req
                 .except
                 .map(|it| it == target_entity_id)
@@ -304,7 +309,7 @@ impl AttackCalculation {
     ) -> Vec<ApplyStatusComponent> {
         let mut result_statuses = vec![];
         for (target_entity_id, target_char) in (entities, char_storage).join() {
-            let target_entity_id = CharEntityId(target_entity_id);
+            let target_entity_id = CharEntityId::new(target_entity_id);
             if area_status
                 .except
                 .map(|it| it == target_entity_id)
@@ -466,7 +471,7 @@ impl AttackCalculation {
                         (
                             FlyingNumberType::Combo {
                                 single_attack_damage,
-                                attack_count: attack_count,
+                                attack_count,
                             },
                             value,
                         )
@@ -498,12 +503,14 @@ impl AttackSystem {
         status_changes: Vec<ApplyStatusComponent>,
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
         sys_vars: &SystemVariables,
+        time: &EngineTime,
         entities: &Entities,
         updater: &mut LazyUpdate,
         physics_world: &mut PhysicEngine,
     ) {
         for mut status_change in status_changes.into_iter() {
-            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
+            if let Some(target_char) =
+                char_state_storage.get_mut(status_change.target_entity_id.into())
             {
                 if target_char.hp <= 0 {
                     continue;
@@ -520,7 +527,8 @@ impl AttackSystem {
                     target_char,
                     entities,
                     updater,
-                    sys_vars,
+                    &sys_vars.assets,
+                    time,
                     physics_world,
                 );
                 target_char.statuses.add(status_change.status);
@@ -550,7 +558,8 @@ impl AttackSystem {
         char_state_storage: &mut WriteStorage<CharacterStateComponent>,
     ) {
         for status_change in status_changes.into_iter() {
-            if let Some(target_char) = char_state_storage.get_mut(status_change.target_entity_id.0)
+            if let Some(target_char) =
+                char_state_storage.get_mut(status_change.target_entity_id.into())
             {
                 match &status_change.status {
                     RemoveStatusComponentPayload::RemovingStatusType(status_type) => {

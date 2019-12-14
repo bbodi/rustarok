@@ -3,7 +3,9 @@ use crate::components::char::{
     CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent, TurretComponent,
     TurretControllerComponent,
 };
-use crate::components::controller::{CameraComponent, ControllerComponent, HumanInputComponent};
+use crate::components::controller::{
+    CameraComponent, HumanInputComponent, LocalPlayerControllerComponent,
+};
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{
     FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
@@ -11,6 +13,8 @@ use crate::components::{
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::console_system::ConsoleComponent;
 use crate::systems::falcon_ai_sys::FalconComponent;
+use rustarok_common::components::char::AuthorizedCharStateComponent;
+use rustarok_common::components::controller::ControllerComponent;
 use specs::World;
 
 pub fn create_ecs_world() -> World {
@@ -29,8 +33,11 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<StrEffectComponent>();
     ecs_world.register::<SkillManifestationComponent>();
     ecs_world.register::<CameraComponent>();
-    ecs_world.register::<ControllerComponent>();
+    ecs_world.register::<LocalPlayerControllerComponent>();
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<ConsoleComponent>();
+
+    ecs_world.register::<AuthorizedCharStateComponent>();
+    ecs_world.register::<ControllerComponent>();
     ecs_world
 }

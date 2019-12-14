@@ -6,9 +6,10 @@ use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::components::SoundEffectComponent;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_action;
-use crate::systems::{AssetResources, CharEntityId};
+use crate::systems::AssetResources;
 use crate::ElapsedTime;
 use rustarok_common::common::Vec2;
+use rustarok_common::components::char::{CharDir, CharEntityId};
 use specs::{Entities, LazyUpdate};
 
 #[derive(Clone, Debug)]
@@ -52,7 +53,7 @@ impl StunStatus {
     }
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt
@@ -71,7 +72,7 @@ impl StunStatus {
             animation_started: self.started,
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: None,
-            direction: 0,
+            direction: CharDir::South,
             fps_multiplier: 1.0,
         };
         render_action(

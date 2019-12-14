@@ -19,7 +19,7 @@ use crate::components::skills::lightning::LIGHTNING_SKILL;
 use crate::components::skills::mounting::MOUNTING_SKILL;
 use crate::components::skills::poison::POISON_SKILL;
 use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
-use rustarok_common::common::{v2_to_v3, DeltaTime, Vec2};
+use rustarok_common::common::{v2_to_v3, DeltaTime, EngineTime, Vec2};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
@@ -39,8 +39,9 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, CharEntityId, Collision, SystemVariables};
+use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
+use rustarok_common::components::char::CharEntityId;
 
 pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
 
@@ -48,6 +49,7 @@ pub struct SkillManifestationUpdateParam<'a, 'longer> {
     pub self_entity_id: Entity,
     pub all_collisions_in_world: &'longer WorldCollisions,
     sys_vars: &'longer mut SystemVariables,
+    engine_time: &'longer EngineTime,
     entities: &'a Entities<'a>,
     pub char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
     pub physics_world: &'longer mut PhysicEngine,
@@ -59,6 +61,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         self_entity_id: Entity,
         all_collisions_in_world: &'longer WorldCollisions,
         sys_vars: &'longer mut SystemVariables,
+        engine_time: &'longer EngineTime,
         entities: &'a Entities,
         char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
         physics_world: &'longer mut PhysicEngine,
@@ -68,6 +71,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
             self_entity_id,
             all_collisions_in_world,
             sys_vars,
+            engine_time,
             entities,
             char_storage,
             physics_world,
@@ -96,16 +100,8 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         self.insert_comp(self.entities.create(), comp);
     }
 
-    pub fn now(&self) -> ElapsedTime {
-        self.sys_vars.time
-    }
-
-    pub fn tick(&self) -> u64 {
-        self.sys_vars.tick
-    }
-
-    pub fn dt(&self) -> DeltaTime {
-        self.sys_vars.dt
+    pub fn time(&self) -> &EngineTime {
+        self.engine_time
     }
 
     pub fn assets(&self) -> &AssetResources {
@@ -218,7 +214,8 @@ pub trait SkillDef {
         &self,
         char_pos: &Vec2,
         casting_state: &CastingSkillData,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<CharacterStateComponent>,
@@ -227,8 +224,8 @@ pub trait SkillDef {
             StrEffectType::Moonstar,
             casting_state.cast_started,
             char_pos,
-            &sys_vars.assets,
-            sys_vars.time,
+            assets,
+            time.now(),
             render_commands,
             ActionPlayMode::Repeat,
         );
@@ -244,9 +241,9 @@ pub trait SkillDef {
             if let Some(target_char) = char_storage.get(target_entity.into()) {
                 render_commands
                     .horizontal_texture_3d()
-                    .rotation_rad(sys_vars.time.0 % 6.28)
+                    .rotation_rad(time.now().0 % 6.28)
                     .pos(&target_char.pos())
-                    .add(sys_vars.assets.sprites.magic_target)
+                    .add(assets.sprites.magic_target)
             }
         }
     }

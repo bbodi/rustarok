@@ -11,8 +11,9 @@ use crate::components::{HpModificationRequest, HpModificationType, SoundEffectCo
 use crate::configs::DevConfig;
 use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
-use rustarok_common::common::ElapsedTime;
+use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::common::{ElapsedTime, EngineTime};
+use rustarok_common::components::char::CharEntityId;
 
 pub struct HealSkill;
 
@@ -32,6 +33,7 @@ impl SkillDef for HealSkill {
         let entities = &ecs_world.entities();
         let updater = ecs_world.read_resource::<LazyUpdate>();
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
+        let now = ecs_world.read_resource::<EngineTime>().now();
         let entity = entities.create();
         updater.insert(
             entity,
@@ -39,7 +41,7 @@ impl SkillDef for HealSkill {
                 target_entity_id,
                 sound_id: sys_vars.assets.sounds.heal,
                 pos: params.caster_pos,
-                start_time: sys_vars.time,
+                start_time: now,
             },
         );
         sys_vars.hp_mod_requests.push(HpModificationRequest {
@@ -47,10 +49,7 @@ impl SkillDef for HealSkill {
             dst_entity: target_entity_id,
             typ: HpModificationType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
         });
-        return Some(Box::new(HealSkillManifest::new(
-            target_entity_id,
-            sys_vars.time,
-        )));
+        return Some(Box::new(HealSkillManifest::new(target_entity_id, now)));
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {
@@ -78,7 +77,7 @@ impl HealSkillManifest {
 
 impl SkillManifestation for HealSkillManifest {
     fn update(&mut self, params: SkillManifestationUpdateParam) {
-        if self.die_at.has_already_passed(params.now()) {
+        if self.die_at.has_already_passed(params.time().now()) {
             params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
         }
     }

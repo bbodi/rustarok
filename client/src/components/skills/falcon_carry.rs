@@ -1,5 +1,5 @@
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
-use crate::components::controller::{ControllerComponent, ControllerEntityId};
+use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -8,7 +8,7 @@ use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
-use rustarok_common::common::{ElapsedTime, Vec2};
+use rustarok_common::common::{ElapsedTime, EngineTime, Vec2};
 use specs::prelude::*;
 
 pub struct FalconCarrySkill;
@@ -25,7 +25,7 @@ impl SkillDef for FalconCarrySkill {
         params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let sys_vars = ecs_world.read_resource::<SystemVariables>();
+        let now = ecs_world.read_resource::<EngineTime>().now();
         let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
         let target_entity = params.target_entity.unwrap();
         let target_pos = {
@@ -50,7 +50,7 @@ impl SkillDef for FalconCarrySkill {
                     // falcon.state = FalconState::CarryOwner
                     for (entity_id, controller) in (
                         &ecs_world.entities(),
-                        &ecs_world.read_storage::<ControllerComponent>(),
+                        &ecs_world.read_storage::<LocalPlayerControllerComponent>(),
                     )
                         .join()
                     {
@@ -58,7 +58,7 @@ impl SkillDef for FalconCarrySkill {
                             falcon.carry_owner(
                                 ControllerEntityId(entity_id),
                                 &target_pos,
-                                sys_vars.time,
+                                now,
                                 configs.carry_owner_duration,
                                 sprite,
                             );
@@ -69,7 +69,7 @@ impl SkillDef for FalconCarrySkill {
                     falcon.carry_ally(
                         target_entity,
                         &target_pos,
-                        sys_vars.time,
+                        now,
                         configs.carry_ally_duration,
                         sprite,
                     );
@@ -95,7 +95,7 @@ pub struct FalconCarryStatus {
 
 impl FalconCarryStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.ends_at.has_already_passed(params.sys_vars.time) {
+        if self.ends_at.has_already_passed(params.time.now()) {
             params.target_char.set_collidable(params.physics_world);
             StatusUpdateResult::RemoveIt
         } else {

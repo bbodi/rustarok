@@ -1,9 +1,10 @@
 use crate::components::char::CharacterStateComponent;
-use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
+use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations};
 use crate::PhysicEngine;
 use nalgebra::Vector2;
 use ncollide2d::narrow_phase::ContactEvent;
 use ncollide2d::query::Proximity;
+use rustarok_common::common::EngineTime;
 use specs::prelude::*;
 
 pub struct FrictionSystem;
@@ -12,13 +13,13 @@ impl<'a> System<'a> for FrictionSystem {
     type SystemData = (
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
-        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, EngineTime>,
         WriteStorage<'a, CharacterStateComponent>,
     );
 
     fn run(
         &mut self,
-        (mut physics_world, mut system_benchmark, sys_vars, mut char_storage): Self::SystemData,
+        (mut physics_world, mut system_benchmark, time, mut char_storage): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         for char_state in (&mut char_storage).join() {
@@ -26,7 +27,7 @@ impl<'a> System<'a> for FrictionSystem {
             if let Some(body) = body {
                 if char_state
                     .cannot_control_until
-                    .has_already_passed(sys_vars.time)
+                    .has_already_passed(time.now())
                 {
                     body.set_linear_velocity(Vector2::zeros());
                 } else {
@@ -57,7 +58,7 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
         Entities<'a>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
-        ReadExpect<'a, SystemVariables>,
+        ReadExpect<'a, EngineTime>,
         WriteExpect<'a, CollisionsFromPrevFrame>,
     );
 
@@ -67,13 +68,13 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
             _entities,
             mut physics_world,
             mut system_benchmark,
-            sys_vars,
+            time,
             mut collisions_resource,
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
-        physics_world.step(sys_vars.dt.0);
+        physics_world.step(time.dt.0);
 
         for event in physics_world.geometrical_world.proximity_events() {
             let collider1 = physics_world.colliders.get(event.collider1).unwrap();

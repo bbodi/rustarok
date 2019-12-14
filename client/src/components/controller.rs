@@ -1,9 +1,11 @@
 use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
 use crate::components::skills::skills::Skills;
-use crate::systems::CharEntityId;
+
 use crate::ElapsedTime;
 use rustarok_common::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
+use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::controller::PlayerIntention;
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
 use specs::prelude::*;
@@ -69,18 +71,6 @@ impl SkillKey {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum PlayerIntention {
-    MoveTowardsMouse(Vec2),
-    /// Move to the coordination, or if an enemy stands there, attack her.
-    MoveTo(Vec2),
-    Attack(CharEntityId),
-    /// Move to the coordination, attack any enemy on the way.
-    AttackTowards(Vec2),
-    /// bool = is self cast
-    Casting(Skills, bool, Vec2),
-}
-
 #[derive(PartialEq, Eq, Debug, Deserialize, Clone, Copy)]
 pub enum CastMode {
     /// Pressing the skill key moves you into target selection mode, then
@@ -95,7 +85,7 @@ pub enum CastMode {
 
 // Camera follows a controller, a Controller controls a Character
 #[derive(Component)]
-pub struct ControllerComponent {
+pub struct LocalPlayerControllerComponent {
     pub select_skill_target: Option<(SkillKey, Skills)>,
     pub controlled_entity: CharEntityId,
     pub next_action: Option<PlayerIntention>,
@@ -109,9 +99,9 @@ pub struct ControllerComponent {
     pub cursor_color: [u8; 3],
 }
 
-impl ControllerComponent {
-    pub fn new(controlled_entity: CharEntityId) -> ControllerComponent {
-        ControllerComponent {
+impl LocalPlayerControllerComponent {
+    pub fn new(controlled_entity: CharEntityId) -> LocalPlayerControllerComponent {
+        LocalPlayerControllerComponent {
             select_skill_target: None,
             controlled_entity,
             repeat_next_action: false,
@@ -126,7 +116,7 @@ impl ControllerComponent {
                 animation_started: ElapsedTime(0.0),
                 animation_ends_at: ElapsedTime(0.0),
                 forced_duration: None,
-                direction: 0,
+                direction: CharDir::South,
                 fps_multiplier: 1.0,
             },
         }

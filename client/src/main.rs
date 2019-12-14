@@ -66,17 +66,18 @@ use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::input_to_next_action::InputToNextActionSystem;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::next_action_applier_sys::{
-    NextActionApplierSystem, SavePreviousCharStateSystem, UpdateCharSpriteBasedOnStateSystem,
+    SavePreviousCharStateSystem, UpdateCharSpriteBasedOnStateSystem,
 };
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
-    CharEntityId, CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations,
-    SystemVariables,
+    CollisionsFromPrevFrame, RenderMatrices, Sex, Sprites, SystemFrameDurations, SystemVariables,
 };
 use crate::video::Video;
-use rustarok_common::common::{measure_time, v2, ElapsedTime, Vec2};
+use rustarok_common::common::{measure_time, v2, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::systems::NextActionApplierSystem;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -90,21 +91,17 @@ mod cursor;
 mod effect;
 mod grf;
 mod my_gl;
-mod network;
 mod runtime_assets;
 mod shaders;
-#[cfg(test)]
-mod tests;
+// TODO2
+//#[cfg(test)]
+//mod tests;
 mod video;
 
 #[macro_use]
 mod components;
 mod render;
 mod systems;
-
-// simulations per second
-pub const SIMULATION_FREQ: u64 = 30;
-pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
 
 fn main() {
     log::info!("Loading config file config.toml");
@@ -214,13 +211,14 @@ fn main() {
     log::info!(">>> register systems");
     let mut ecs_client_dispatcher = {
         let console_sys = ConsoleSystem::new(&command_defs);
-        register_only_client_systems(
+        register_systems(
             Some(opengl_render_sys),
             maybe_sound_system,
             Some(console_sys),
+            false,
         )
     };
-    let mut ecs_server_dispatcher = register_server_systems();
+    //    let mut ecs_server_dispatcher = register_server_systems();
     log::info!("<<< register systems");
     log::info!(">>> add resources");
     ecs_world.add_resource(sys_vars);
@@ -230,6 +228,7 @@ fn main() {
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
     ecs_world.add_resource(command_buffer);
+    ecs_world.add_resource(EngineTime::new());
 
     ecs_world.add_resource(asset_db);
 
@@ -278,7 +277,7 @@ fn main() {
             fps_multiplier: 1.0,
             animation_started: ElapsedTime(0.0),
             forced_duration: None,
-            direction: 0,
+            direction: CharDir::South,
             animation_ends_at: ElapsedTime(0.0),
         })
         .build();
@@ -321,7 +320,7 @@ fn main() {
             desktop_client_controller,
             &mut video,
         );
-        ecs_server_dispatcher.dispatch(&mut ecs_world.res);
+        //        ecs_server_dispatcher.dispatch(&mut ecs_world.res);
         run_main_frame(&mut ecs_world, &mut ecs_client_dispatcher);
 
         video.gl_swap_window();
@@ -352,7 +351,7 @@ fn main() {
         }
         fps_counter += 1;
 
-        let now = ecs_world.read_resource::<SystemVariables>().time;
+        let now = ecs_world.read_resource::<EngineTime>().now();
         if next_minion_spawn.has_already_passed(now)
             && ecs_world.read_resource::<DevConfig>().minions_enabled
         {
@@ -373,20 +372,88 @@ pub fn run_main_frame(mut ecs_world: &mut World, ecs_dispatcher: &mut Dispatcher
     ecs_world.maintain();
 }
 
-fn register_server_systems<'a, 'b>() -> Dispatcher<'a, 'b> {
+//fn register_server_systems<'a, 'b>() -> Dispatcher<'a, 'b> {
+//    let ecs_dispatcher = {
+//        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
+//        ecs_dispatcher_builder = ecs_dispatcher_builder.with(FrictionSystem, "friction_sys", &[]);
+//        ecs_dispatcher_builder = ecs_dispatcher_builder
+//            .with(MinionAiSystem, "minion_ai_sys", &[])
+//            .with(TurretAiSystem, "turret_ai_sys", &[])
+//            .with(FalconAiSystem, "falcon_ai_sys", &[])
+//            .with(NextActionApplierSystem, "char_control", &["friction_sys"]);
+//        ecs_dispatcher_builder.add(
+//            SavePreviousCharStateSystem,
+//            "SavePreviousCharStateSystem",
+//            &["char_control"],
+//        );
+//        ecs_dispatcher_builder = ecs_dispatcher_builder
+//            .with(
+//                CharacterStateUpdateSystem,
+//                "char_state_update",
+//                &["char_control"],
+//            )
+//            .with(
+//                PhysCollisionCollectorSystem,
+//                "collision_collector",
+//                &["char_state_update"],
+//            )
+//            .with(SkillSystem, "skill_sys", &["collision_collector"])
+//            .with(AttackSystem::new(), "attack_sys", &["collision_collector"]);
+//        ecs_dispatcher_builder
+//            .with_thread_local(ServerFrameEndSystem)
+//            .build()
+//    };
+//    ecs_dispatcher
+//}
+
+fn register_systems<'a, 'b>(
+    opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
+    maybe_sound_system: Option<SoundSystem>,
+    console_system: Option<ConsoleSystem<'b>>,
+    for_test: bool,
+) -> Dispatcher<'a, 'b> {
     let ecs_dispatcher = {
         let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
+        let mut char_control_deps = vec!["friction_sys"];
+        if !for_test {
+            ecs_dispatcher_builder = ecs_dispatcher_builder
+                .with(InputConsumerSystem, "input_handler", &[])
+                .with(
+                    InputToNextActionSystem,
+                    "input_to_next_action_sys",
+                    &["input_handler"],
+                )
+                .with(CameraSystem, "camera_system", &["input_handler"]);
+            char_control_deps.push("input_to_next_action_sys");
+        }
         ecs_dispatcher_builder = ecs_dispatcher_builder.with(FrictionSystem, "friction_sys", &[]);
         ecs_dispatcher_builder = ecs_dispatcher_builder
             .with(MinionAiSystem, "minion_ai_sys", &[])
             .with(TurretAiSystem, "turret_ai_sys", &[])
             .with(FalconAiSystem, "falcon_ai_sys", &[])
-            .with(NextActionApplierSystem, "char_control", &["friction_sys"]);
-        ecs_dispatcher_builder.add(
-            SavePreviousCharStateSystem,
-            "SavePreviousCharStateSystem",
-            &["char_control"],
-        );
+            .with(
+                NextActionApplierSystem,
+                "char_control",
+                char_control_deps.as_slice(),
+            );
+        if !for_test {
+            ecs_dispatcher_builder.add(
+                UpdateCharSpriteBasedOnStateSystem,
+                "UpdateCharSpriteBasedOnStateSystem",
+                &["char_control"],
+            );
+            ecs_dispatcher_builder.add(
+                SavePreviousCharStateSystem,
+                "SavePreviousCharStateSystem",
+                &["UpdateCharSpriteBasedOnStateSystem"],
+            );
+        } else {
+            ecs_dispatcher_builder.add(
+                SavePreviousCharStateSystem,
+                "SavePreviousCharStateSystem",
+                &["char_control"],
+            );
+        }
         ecs_dispatcher_builder = ecs_dispatcher_builder
             .with(
                 CharacterStateUpdateSystem,
@@ -400,47 +467,16 @@ fn register_server_systems<'a, 'b>() -> Dispatcher<'a, 'b> {
             )
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem::new(), "attack_sys", &["collision_collector"]);
-        ecs_dispatcher_builder
-            .with_thread_local(ServerFrameEndSystem)
-            .build()
-    };
-    ecs_dispatcher
-}
-
-fn register_only_client_systems<'a, 'b>(
-    opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
-    maybe_sound_system: Option<SoundSystem>,
-    console_system: Option<ConsoleSystem<'b>>,
-) -> Dispatcher<'a, 'b> {
-    let ecs_dispatcher = {
-        let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
-        ecs_dispatcher_builder = ecs_dispatcher_builder
-            .with(InputConsumerSystem, "input_handler", &[])
-            .with(
-                InputToNextActionSystem,
-                "input_to_next_action_sys",
-                &["input_handler"],
-            )
-            // these should come after the server
-            .with(CameraSystem, "camera_system", &["input_handler"]);
-        ecs_dispatcher_builder.add(
-            UpdateCharSpriteBasedOnStateSystem,
-            "UpdateCharSpriteBasedOnStateSystem",
-            &[],
-        );
-        ecs_dispatcher_builder.add(
-            SavePreviousCharStateSystem,
-            "SavePreviousCharStateSystem",
-            &["UpdateCharSpriteBasedOnStateSystem"],
-        );
         if let Some(console_system) = console_system {
             // thread_local to avoid Send fields
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);
         }
-        ecs_dispatcher_builder = ecs_dispatcher_builder
-            .with_thread_local(RenderDesktopClientSystem::new())
-            .with_thread_local(FalconRenderSys)
-            .with_thread_local(opengl_render_sys.unwrap());
+        if !for_test {
+            ecs_dispatcher_builder = ecs_dispatcher_builder
+                .with_thread_local(RenderDesktopClientSystem::new())
+                .with_thread_local(FalconRenderSys)
+                .with_thread_local(opengl_render_sys.unwrap());
+        }
         if let Some(sound_system) = maybe_sound_system {
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
         }
@@ -451,7 +487,6 @@ fn register_only_client_systems<'a, 'b>(
     };
     ecs_dispatcher
 }
-
 fn update_desktop_inputs(
     video: &mut Video,
     ecs_world: &mut World,

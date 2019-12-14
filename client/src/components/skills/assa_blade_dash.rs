@@ -15,8 +15,9 @@ use crate::components::{AreaAttackComponent, DamageDisplayType, HpModificationTy
 use crate::configs::{AssaBladeDashSkillConfig, DevConfig};
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
-use rustarok_common::common::{v2, v2_to_v3, ElapsedTime, Vec2};
+use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::common::{v2, v2_to_v3, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
 
 pub struct AssaBladeDashSkill;
 
@@ -49,7 +50,7 @@ impl SkillDef for AssaBladeDashSkill {
                 .skills
                 .assa_blade_dash
                 .clone();
-            let now = sys_vars.time;
+            let now = ecs_world.read_resource::<EngineTime>().now();
             sys_vars
                 .apply_statuses
                 .push(ApplyStatusComponent::from_status(
@@ -105,13 +106,13 @@ impl AssaBladeDashStatus {
             .bodies
             .rigid_body_mut(params.target_char.body_handle)
         {
-            if self.ends_at.has_already_passed(params.sys_vars.time) {
+            if self.ends_at.has_already_passed(params.time.now()) {
                 params.target_char.set_collidable(params.physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
                 let duration_percentage = params
-                    .sys_vars
                     .time
+                    .now()
                     .percentage_between(self.started_at, self.ends_at);
                 let pos = if duration_percentage < 0.5 {
                     let forward_perc = duration_percentage * 2.0;
@@ -222,7 +223,7 @@ impl AssaBladeDashStatus {
                                 .add_seconds(self.half_duration + *time_offset),
                             animation_ends_at: ElapsedTime(0.0),
                             forced_duration: Some(ElapsedTime(self.half_duration)),
-                            direction: (char_state.dir() + 4) % 8,
+                            direction: CharDir::from((char_state.dir().as_usize() + 4) % 8),
                             fps_multiplier: 1.0,
                         }
                     };

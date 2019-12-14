@@ -1,15 +1,18 @@
 use crate::components::char::{
     CharOutlook, CharState, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{ControllerComponent, HumanInputComponent, SkillKey};
+use crate::components::controller::{
+    HumanInputComponent, LocalPlayerControllerComponent, SkillKey,
+};
 use crate::grf::database::AssetDatabase;
 use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
-use crate::systems::{CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, RenderMatrices, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
-use rustarok_common::common::{Vec2i, Vec3};
+use rustarok_common::common::{EngineTime, Vec2i, Vec3};
+use rustarok_common::components::char::CharEntityId;
 use specs::prelude::*;
 use specs::ReadStorage;
 
@@ -24,9 +27,10 @@ impl RenderUI {
         &mut self,
         self_char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &ControllerComponent,
+        controller: &LocalPlayerControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        sys_vars: &mut SystemVariables,
+        sys_vars: &SystemVariables,
+        time: &EngineTime,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &Entities,
@@ -46,10 +50,10 @@ impl RenderUI {
                 {
                     let mut draw_rect = |x: i32, y: i32, w: i32, h: i32, color: &[u8; 4]| {
                         let bar_w = 540;
-                        let bar_x = ((sys_vars.resolution_w / 2) - (bar_w / 2) - 2) as i32;
+                        let bar_x = ((sys_vars.matrices.resolution_w / 2) - (bar_w / 2) - 2) as i32;
                         render_commands
                             .rectangle_2d()
-                            .screen_pos(bar_x + x, sys_vars.resolution_h as i32 - 200 + y)
+                            .screen_pos(bar_x + x, sys_vars.matrices.resolution_h as i32 - 200 + y)
                             .size(w as u16, h as u16)
                             .color(&color)
                             .layer(UiLayer2d::SelfCastingBar)
@@ -57,8 +61,8 @@ impl RenderUI {
                     };
                     draw_rect(0, 0, 540, 30, &[36, 92, 201, 77]); // transparent blue background
                     draw_rect(2, 2, 536, 26, &[0, 0, 0, 255]); // black background
-                    let percentage = sys_vars
-                        .time
+                    let percentage = time
+                        .now()
                         .percentage_between(casting_info.cast_started, casting_info.cast_ends);
                     draw_rect(3, 3, (percentage * 543.0) as i32, 24, &[36, 92, 201, 255]);
                     // inner fill
@@ -73,6 +77,7 @@ impl RenderUI {
             controller,
             render_commands,
             &sys_vars,
+            time,
         );
 
         RenderUI::draw_secondary_skill_bar(
@@ -81,6 +86,7 @@ impl RenderUI {
             controller,
             render_commands,
             &sys_vars,
+            time,
             main_skill_bar_top,
         );
 
@@ -90,13 +96,15 @@ impl RenderUI {
             input,
             controller,
             render_commands,
-            &sys_vars,
+            &sys_vars.assets,
+            &time,
         );
 
         self.draw_minimap(
             self_char_state,
             render_commands,
-            sys_vars,
+            &sys_vars.matrices,
+            &sys_vars.assets,
             char_state_storage,
             npc_storage,
             entities,
@@ -106,7 +114,7 @@ impl RenderUI {
         );
 
         render_action_2d(
-            &sys_vars,
+            time,
             &controller.cursor_anim_descr,
             &sys_vars.assets.sprites.cursors,
             &Vec2i::new(input.last_mouse_x as i16, input.last_mouse_y as i16),
@@ -122,7 +130,8 @@ impl RenderUI {
         &mut self,
         self_char_state: &CharacterStateComponent,
         render_commands: &mut RenderCommandCollector,
-        sys_vars: &mut SystemVariables,
+        matrices: &RenderMatrices,
+        assets: &AssetResources,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &Entities,
@@ -133,14 +142,14 @@ impl RenderUI {
         // prontera minimaps has empty spaces: left 52, right 45 pixels
         // 6 pixel padding on left and bottom, 7 on top and right
         let minimap_texture = asset_db.get_texture(map_render_data.minimap_texture_id);
-        let scale = (sys_vars.resolution_h as i32 / 4).min(minimap_texture.height) as f32
+        let scale = (matrices.resolution_h as i32 / 4).min(minimap_texture.height) as f32
             / minimap_texture.height as f32;
         let all_minimap_w = (minimap_texture.width as f32 * scale) as i32;
-        let minimap_render_x = sys_vars.resolution_w as i32 - all_minimap_w - 20;
+        let minimap_render_x = matrices.resolution_w as i32 - all_minimap_w - 20;
         let offset_x = ((52.0 + 6.0) * scale) as i32;
         let minimap_x = minimap_render_x + offset_x;
         let minimap_h = (minimap_texture.height as f32 * scale) as i32;
-        let minimap_y = sys_vars.resolution_h as i32 - minimap_h - 20;
+        let minimap_y = matrices.resolution_h as i32 - minimap_h - 20;
         render_commands
             .sprite_2d()
             .scale(scale)
@@ -153,7 +162,7 @@ impl RenderUI {
         let real_to_map_scale_h = minimap_h as f32 / (map_render_data.ground_height * 2) as f32;
         for (entity_id, char_state) in (entities, char_state_storage).join() {
             let entity_id = CharEntityId::from(entity_id);
-            let head_index = if npc_storage.get(entity_id.0).is_none() {
+            let head_index = if npc_storage.get(entity_id.into()).is_none() {
                 if let CharOutlook::Player {
                     head_index, sex, ..
                 } = char_state.outlook
@@ -179,7 +188,7 @@ impl RenderUI {
 
             if let Some((sex, head_index)) = head_index {
                 let head_texture_id = {
-                    let sprites = &sys_vars.assets.sprites.head_sprites;
+                    let sprites = &assets.sprites.head_sprites;
                     sprites[sex as usize][head_index].textures[0]
                 };
 
@@ -223,31 +232,31 @@ impl RenderUI {
 
         // draw camera rectangle
         let right_top = InputConsumerSystem::project_screen_pos_to_world_pos(
-            sys_vars.resolution_w as u16,
+            matrices.resolution_w as u16,
             0,
             camera_pos,
-            &sys_vars.matrices.projection,
+            &matrices.projection,
             &render_commands.view_matrix,
-            sys_vars.resolution_w,
-            sys_vars.resolution_h,
+            matrices.resolution_w,
+            matrices.resolution_h,
         );
         let left_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
             0,
-            sys_vars.resolution_h as u16,
+            matrices.resolution_h as u16,
             camera_pos,
-            &sys_vars.matrices.projection,
+            &matrices.projection,
             &render_commands.view_matrix,
-            sys_vars.resolution_w,
-            sys_vars.resolution_h,
+            matrices.resolution_w,
+            matrices.resolution_h,
         );
         let right_bottom = InputConsumerSystem::project_screen_pos_to_world_pos(
-            sys_vars.resolution_w as u16,
-            sys_vars.resolution_h as u16,
+            matrices.resolution_w as u16,
+            matrices.resolution_h as u16,
             camera_pos,
-            &sys_vars.matrices.projection,
+            &matrices.projection,
             &render_commands.view_matrix,
-            sys_vars.resolution_w,
-            sys_vars.resolution_h,
+            matrices.resolution_w,
+            matrices.resolution_h,
         );
 
         let h = right_bottom.y - right_top.y;
@@ -270,17 +279,18 @@ impl RenderUI {
     fn draw_targeting_skill_name(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &ControllerComponent,
+        controller: &LocalPlayerControllerComponent,
         render_commands: &mut RenderCommandCollector,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
     ) {
         if let Some((_skill_key, skill)) = controller.select_skill_target {
-            let texture = sys_vars.assets.texts.skill_name_texts[&skill];
+            let texture = assets.texts.skill_name_texts[&skill];
             let not_castable = char_state
                 .skill_cast_allowed_at
                 .get(&skill)
                 .unwrap_or(&ElapsedTime(0.0))
-                .has_not_passed_yet(sys_vars.time);
+                .has_not_passed_yet(time.now());
             render_commands
                 .sprite_2d()
                 .color(
@@ -306,9 +316,10 @@ impl RenderUI {
     fn draw_secondary_skill_bar(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &ControllerComponent,
+        controller: &LocalPlayerControllerComponent,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
+        time: &EngineTime,
         main_skill_bar_top: i32,
     ) {
         let single_icon_size = 32;
@@ -322,7 +333,7 @@ impl RenderUI {
             + count * single_icon_size
             + inner_border * count * 2
             + (count - 1) * space;
-        let start_x = sys_vars.resolution_w as i32 / 2 - skill_bar_width / 2;
+        let start_x = sys_vars.matrices.resolution_w as i32 / 2 - skill_bar_width / 2;
         let y = main_skill_bar_top - single_icon_size - inner_border * 2 - outer_border * 2;
 
         let mut x = start_x + outer_border;
@@ -333,7 +344,7 @@ impl RenderUI {
                     .skill_cast_allowed_at
                     .get(&skill)
                     .unwrap_or(&ElapsedTime(0.0))
-                    .has_not_passed_yet(sys_vars.time);
+                    .has_not_passed_yet(time.now());
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
                 } else {
@@ -417,9 +428,10 @@ impl RenderUI {
     fn draw_main_skill_bar(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &ControllerComponent,
+        controller: &LocalPlayerControllerComponent,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
+        time: &EngineTime,
     ) -> i32 {
         let single_icon_size = RenderUI::SINGLE_MAIN_ICON_SIZE;
         let inner_border = 3;
@@ -438,8 +450,8 @@ impl RenderUI {
             + count * single_icon_size
             + inner_border * count * 2
             + (count - 1) * space;
-        let start_x = sys_vars.resolution_w as i32 / 2 - skill_bar_width / 2;
-        let y = sys_vars.resolution_h as i32
+        let start_x = sys_vars.matrices.resolution_w as i32 / 2 - skill_bar_width / 2;
+        let y = sys_vars.matrices.resolution_h as i32
             - single_icon_size
             - 20
             - outer_border * 2
@@ -453,7 +465,7 @@ impl RenderUI {
                     .skill_cast_allowed_at
                     .get(&skill)
                     .unwrap_or(&ElapsedTime(0.0))
-                    .has_not_passed_yet(sys_vars.time);
+                    .has_not_passed_yet(time.now());
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
                 } else {
@@ -536,7 +548,7 @@ impl RenderUI {
 }
 
 fn render_action_2d(
-    sys_vars: &SystemVariables,
+    time: &EngineTime,
     animated_sprite: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vec2i,
@@ -552,9 +564,7 @@ fn render_action_2d(
     let frame_index = {
         let frame_count = action.frames.len();
         let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 4.0;
-        let elapsed_time = sys_vars
-            .time
-            .elapsed_since(animated_sprite.animation_started);
+        let elapsed_time = time.now().elapsed_since(animated_sprite.animation_started);
         (elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count
     };
     let animation = &action.frames[frame_index];

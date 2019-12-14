@@ -6,9 +6,10 @@ use crate::configs::DevConfig;
 use crate::consts::JobId;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
-use crate::systems::CharEntityId;
+
 use nalgebra::Vector2;
 use rustarok_common::common::{v2, Vec2};
+use rustarok_common::components::char::CharEntityId;
 use specs::prelude::*;
 use specs::LazyUpdate;
 

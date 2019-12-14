@@ -3,11 +3,12 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::{AssetResources, CharEntityId};
+use crate::systems::AssetResources;
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, Vec2};
+use rustarok_common::components::char::CharEntityId;
 use specs::ReadStorage;
 
 pub struct StatusApplierArea<F>
@@ -57,7 +58,7 @@ where
     F: FnMut(ElapsedTime) -> StatusEnum,
 {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        if self.next_action_at.has_already_passed(params.now()) {
+        if self.next_action_at.has_already_passed(params.time().now()) {
             let self_collider_handle = self.collider_handle;
             let my_collisions = params
                 .all_collisions_in_world
@@ -76,9 +77,9 @@ where
                 params.apply_status(ApplyStatusComponent {
                     source_entity_id: self.caster_entity_id,
                     target_entity_id: char_entity_id,
-                    status: (self.status_creator)(params.now()),
+                    status: (self.status_creator)(params.time().now()),
                 });
-                self.next_action_at = params.now().add_seconds(2.0);
+                self.next_action_at = params.time().now().add_seconds(2.0);
             }
         }
     }

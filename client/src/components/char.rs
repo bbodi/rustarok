@@ -6,14 +6,15 @@ use nphysics2d::object::{
     BodyPartHandle, BodyStatus, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle,
     RigidBodyDesc,
 };
-use rustarok_common::common::{v2, Mat4, Vec2};
+use rustarok_common::common::{v2, EngineTime, Mat4, Vec2};
 use serde::Deserialize;
 use serde::Serialize;
 use specs::prelude::*;
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::controller::{
-    CameraComponent, ControllerComponent, ControllerEntityId, HumanInputComponent, SkillKey,
+    CameraComponent, ControllerEntityId, HumanInputComponent, LocalPlayerControllerComponent,
+    SkillKey,
 };
 use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
 use crate::components::skills::skills::Skills;
@@ -23,8 +24,9 @@ use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::grf::SpriteResource;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
-use crate::systems::{CharEntityId, Sex, Sprites, SystemVariables};
+use crate::systems::{Sex, Sprites, SystemVariables};
 use crate::ElapsedTime;
+use rustarok_common::components::char::{CharDir, CharEntityId, EntityTarget};
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -95,7 +97,10 @@ pub fn attach_human_player_components(
     updater.insert(controller_id.0, RenderCommandCollector::new());
     updater.insert(controller_id.0, AudioCommandCollectorComponent::new());
     updater.insert(controller_id.0, human_player);
-    updater.insert(controller_id.0, ControllerComponent::new(char_entity_id));
+    updater.insert(
+        controller_id.0,
+        LocalPlayerControllerComponent::new(char_entity_id),
+    );
     // camera
     {
         let mut camera_component = CameraComponent::new(Some(controller_id));
@@ -487,13 +492,6 @@ impl SpriteBoundingRect {
         self.top_right[0] = self.top_right[0].max(other.top_right[0]);
         self.top_right[1] = self.top_right[1].min(other.top_right[1]);
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum EntityTarget {
-    OtherEntity(CharEntityId),
-    Pos(Vec2),
-    PosWhileAttacking(Vec2, Option<CharEntityId>),
 }
 
 const PERCENTAGE_FACTOR: i32 = 1000;
@@ -1106,7 +1104,7 @@ pub struct CharacterStateComponent {
     pub typ: CharType,
     state: CharState,
     prev_state: CharState,
-    dir: usize,
+    dir: CharDir,
     pub attack_delay_ends_at: ElapsedTime,
     pub skill_cast_allowed_at: HashMap<Skills, ElapsedTime>,
     pub cannot_control_until: ElapsedTime,
@@ -1198,7 +1196,7 @@ impl CharacterStateComponent {
             skill_cast_allowed_at: HashMap::new(),
             state: CharState::Idle,
             prev_state: CharState::Idle,
-            dir: 0,
+            dir: CharDir::South,
             cannot_control_until: ElapsedTime(0.0),
             attack_delay_ends_at: ElapsedTime(0.0),
             hp: calculated_attribs.max_hp,
@@ -1244,6 +1242,7 @@ impl CharacterStateComponent {
         &mut self,
         self_char_id: CharEntityId,
         sys_vars: &mut SystemVariables,
+        time: &EngineTime,
         entities: &Entities,
         updater: &mut LazyUpdate,
         phyisics_world: &mut PhysicEngine,
@@ -1256,6 +1255,7 @@ impl CharacterStateComponent {
             self,
             phyisics_world,
             sys_vars,
+            time,
             entities,
             updater,
         );
@@ -1345,11 +1345,11 @@ impl CharacterStateComponent {
         }
     }
 
-    pub fn dir(&self) -> usize {
+    pub fn dir(&self) -> CharDir {
         self.dir
     }
 
-    pub fn set_state(&mut self, state: CharState, dir: usize) {
+    pub fn set_state(&mut self, state: CharState, dir: CharDir) {
         self.state = state;
         self.dir = dir;
     }
@@ -1370,7 +1370,7 @@ impl CharacterStateComponent {
     }
 
     #[allow(dead_code)]
-    pub fn set_dir(&mut self, dir: usize) {
+    pub fn set_dir(&mut self, dir: CharDir) {
         self.dir = dir;
     }
 }
@@ -1390,7 +1390,7 @@ pub struct SpriteRenderDescriptorComponent {
     pub fps_multiplier: f32,
     pub animation_started: ElapsedTime,
     pub forced_duration: Option<ElapsedTime>,
-    pub direction: usize,
+    pub direction: CharDir,
     /// duration of the current animation
     pub animation_ends_at: ElapsedTime,
 }
@@ -1402,7 +1402,7 @@ impl SpriteRenderDescriptorComponent {
             animation_started: ElapsedTime(0.0),
             animation_ends_at: ElapsedTime(0.0),
             forced_duration: None,
-            direction: 0,
+            direction: CharDir::South,
             fps_multiplier: 1.0,
         }
     }

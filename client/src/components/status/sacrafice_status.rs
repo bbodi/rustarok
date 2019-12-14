@@ -7,9 +7,10 @@ use crate::components::{
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
-use crate::systems::{AssetResources, CharEntityId};
+use crate::systems::AssetResources;
 use crate::ElapsedTime;
 use rustarok_common::common::Vec2;
+use rustarok_common::components::char::CharEntityId;
 
 #[derive(Clone, Debug)]
 pub struct SacrificeStatus {
@@ -43,15 +44,15 @@ impl SacrificeStatus {
 
 impl SacrificeStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             StatusUpdateResult::RemoveIt
         } else {
             if self
                 .animation_started
                 .add_seconds(2.0)
-                .has_already_passed(params.sys_vars.time)
+                .has_already_passed(params.time.now())
             {
-                self.animation_started = params.sys_vars.time.add_seconds(-1.9);
+                self.animation_started = params.time.now().add_seconds(-1.9);
             }
             StatusUpdateResult::KeepIt
         }

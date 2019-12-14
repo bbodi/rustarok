@@ -1,13 +1,15 @@
 use specs::prelude::*;
 
 use crate::components::char::{
-    CharacterStateComponent, EntityTarget, TurretComponent, TurretControllerComponent,
+    CharacterStateComponent, TurretComponent, TurretControllerComponent,
 };
-use crate::components::controller::{ControllerComponent, ControllerEntityId, PlayerIntention};
+use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
 use crate::configs::DevConfig;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::v2_to_p2;
+use rustarok_common::components::char::EntityTarget;
+use rustarok_common::components::controller::PlayerIntention;
 
 pub struct TurretAiSystem;
 
@@ -16,7 +18,7 @@ impl TurretAiSystem {}
 impl<'a> System<'a> for TurretAiSystem {
     type SystemData = (
         Entities<'a>,
-        WriteStorage<'a, ControllerComponent>,
+        WriteStorage<'a, LocalPlayerControllerComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, TurretControllerComponent>,
         ReadStorage<'a, TurretComponent>,
@@ -46,12 +48,12 @@ impl<'a> System<'a> for TurretAiSystem {
         {
             let controller_id = ControllerEntityId(controller_id);
             let radius = dev_configs.skills.gaz_turret.turret.attack_range.as_f32() * 100.0;
-            let char_state = char_state_storage.get(controller.controlled_entity.0);
+            let char_state = char_state_storage.get(controller.controlled_entity.into());
 
             if let Some(char_state) = char_state {
                 // at this point, preferred target is an enemy for sure
                 let preferred_target_id = turret_storage
-                    .get(controller.controlled_entity.0)
+                    .get(controller.controlled_entity.into())
                     .unwrap()
                     .preferred_target;
                 if let Some(preferred_target_id) = preferred_target_id {
@@ -67,7 +69,7 @@ impl<'a> System<'a> for TurretAiSystem {
                         .unwrap_or(true)
                     {
                         if let Some(preferred_target) =
-                            char_state_storage.get(preferred_target_id.0)
+                            char_state_storage.get(preferred_target_id.into())
                         {
                             let current_distance = nalgebra::distance(
                                 &v2_to_p2(&preferred_target.pos()),
@@ -89,7 +91,7 @@ impl<'a> System<'a> for TurretAiSystem {
                 let current_target_entity = match char_state.target {
                     Some(EntityTarget::OtherEntity(target_id)) => {
                         current_target_id = Some(target_id);
-                        char_state_storage.get(target_id.0)
+                        char_state_storage.get(target_id.into())
                     }
                     _ => None,
                 };

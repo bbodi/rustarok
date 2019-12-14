@@ -13,9 +13,10 @@ use crate::components::status::status::{
 use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{v2, ElapsedTime, Vec2};
+use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 use specs::ReadStorage;
 
 pub struct AssaPhasePrismSkill;
@@ -37,12 +38,13 @@ impl SkillDef for AssaPhasePrismSkill {
             .read_resource::<DevConfig>()
             .skills
             .assa_phase_prism;
+        let now = ecs_world.read_resource::<EngineTime>().now();
         Some(Box::new(AssaPhasePrismSkillManifestation::new(
             params.caster_entity_id,
             params.caster_pos,
             params.char_to_skill_dir,
             &mut ecs_world.write_resource::<PhysicEngine>(),
-            sys_vars.time,
+            now,
             configs.duration_seconds,
             configs.attributes.casting_range,
             configs.swap_duration_unit_per_second,
@@ -95,7 +97,7 @@ impl AssaPhasePrismSkillManifestation {
 
 impl SkillManifestation for AssaPhasePrismSkillManifestation {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let now = params.now();
+        let now = params.time().now();
         let self_collider_handle = self.collider_handle;
         if self.ends_at.has_already_passed(now) {
             params.physics_world.colliders.remove(self_collider_handle);
@@ -211,13 +213,13 @@ impl AssaPhasePrismStatus {
             .bodies
             .rigid_body_mut(params.target_char.body_handle)
         {
-            if self.ends_at.has_already_passed(params.sys_vars.time) {
+            if self.ends_at.has_already_passed(params.time.now()) {
                 params.target_char.set_collidable(params.physics_world);
                 StatusUpdateResult::RemoveIt
             } else {
                 let duration_percentage = params
-                    .sys_vars
                     .time
+                    .now()
                     .percentage_between(self.started_at, self.ends_at);
                 let pos = self.start_pos + self.vector * duration_percentage;
                 body.set_position(Isometry2::translation(pos.x, pos.y));

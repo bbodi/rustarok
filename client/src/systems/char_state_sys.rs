@@ -1,18 +1,14 @@
 use specs::prelude::*;
 
-use crate::components::char::{
-    CharState, CharacterStateComponent, EntityTarget, NpcComponent, Team,
-};
+use crate::components::char::{CharState, CharacterStateComponent, NpcComponent, Team};
 use crate::components::skills::skills::{FinishCast, SkillManifestationComponent};
 use crate::components::status::death_status::DeathStatus;
 use crate::components::status::status::StatusEnum;
 use crate::components::status::status::StatusEnumDiscriminants;
-use crate::systems::next_action_applier_sys::NextActionApplierSystem;
-use crate::systems::{
-    CharEntityId, CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables,
-};
+use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use rustarok_common::common::{v2_to_p2, Vec2};
+use rustarok_common::common::{v2_to_p2, EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId, EntityTarget};
 use std::collections::HashMap;
 
 pub struct CharacterStateUpdateSystem;
@@ -23,6 +19,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         ReadStorage<'a, NpcComponent>,
         WriteStorage<'a, CharacterStateComponent>,
         WriteExpect<'a, SystemVariables>,
+        ReadExpect<'a, EngineTime>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, CollisionsFromPrevFrame>,
         WriteExpect<'a, SystemFrameDurations>,
@@ -36,6 +33,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
             npc_storage,
             mut char_state_storage,
             mut sys_vars,
+            time,
             mut physics_world,
             mut collisions_resource,
             mut system_benchmark,
@@ -43,7 +41,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         ): Self::SystemData,
     ) {
         let _stopwatch = system_benchmark.start_measurement("CharacterStateUpdateSystem");
-        let now = sys_vars.time;
+        let now = time.now();
 
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
@@ -54,14 +52,14 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 if char_comp.state().is_dead() {
                     continue;
                 }
-                let char_entity_id = CharEntityId(char_entity_id);
+                let char_entity_id = CharEntityId::new(char_entity_id);
                 char_positions.insert(char_entity_id, (char_comp.pos(), char_comp.team));
             }
             char_positions
         };
 
         for (char_entity_id, char_comp) in (&entities, &mut char_state_storage).join() {
-            let char_entity_id = CharEntityId(char_entity_id);
+            let char_entity_id = CharEntityId::new(char_entity_id);
             // pakold külön componensbe augy a dolgokat, hogy innen be tudjam álltiani a
             // target et None-ra ha az halott, meg a fenti position hack se kelllejn
             let is_dead = *char_comp.state() == CharState::Dead;
@@ -72,21 +70,21 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 char_comp
                     .statuses
                     .add(StatusEnum::DeathStatus(DeathStatus::new(
-                        sys_vars.time,
-                        npc_storage.get(char_entity_id.0).is_some(),
+                        time.now(),
+                        npc_storage.get(char_entity_id.into()).is_some(),
                     )));
                 // remove rigid bodies from the physic simulation
                 collisions_resource.remove_collider_handle(char_comp.collider_handle);
                 physics_world.bodies.remove(char_comp.body_handle);
                 continue;
-            } else if is_dead && npc_storage.get(char_entity_id.0).is_some() {
+            } else if is_dead && npc_storage.get(char_entity_id.into()).is_some() {
                 if let StatusEnum::DeathStatus(status) = char_comp
                     .statuses
                     .get_status(StatusEnumDiscriminants::DeathStatus)
                     .unwrap()
                 {
-                    if status.remove_char_at.has_already_passed(sys_vars.time) {
-                        entities.delete(char_entity_id.0).unwrap();
+                    if status.remove_char_at.has_already_passed(time.now()) {
+                        entities.delete(char_entity_id.into()).unwrap();
                     }
                     continue;
                 }
@@ -95,6 +93,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
             char_comp.update_statuses(
                 char_entity_id,
                 &mut sys_vars,
+                &time,
                 &entities,
                 &mut updater,
                 &mut physics_world,
@@ -146,6 +145,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                                 target_pos.0,
                                 target,
                                 &mut sys_vars,
+                                &time,
                             ) {
                                 let skill_manifest_id = entities.create();
                                 updater.insert(
@@ -297,7 +297,7 @@ impl CharacterStateUpdateSystem {
                             };
                             char_comp.set_state(
                                 new_state,
-                                NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                                CharDir::determine_dir(target_pos, &char_pos),
                             );
                             let attack_anim_duration = ElapsedTime(
                                 1.0 / char_comp.calculated_attribs().attack_speed.as_f32(),
@@ -310,7 +310,7 @@ impl CharacterStateUpdateSystem {
                         // move closer
                         char_comp.set_state(
                             CharState::Walking(*target_pos),
-                            NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                            CharDir::determine_dir(target_pos, &char_pos),
                         );
                     }
                 } else {
@@ -329,7 +329,7 @@ impl CharacterStateUpdateSystem {
                     // move closer
                     char_comp.set_state(
                         CharState::Walking(*target_pos),
-                        NextActionApplierSystem::determine_dir(target_pos, &char_pos),
+                        CharDir::determine_dir(target_pos, &char_pos),
                     );
                 }
             }

@@ -9,6 +9,7 @@ use crate::components::StrEffectComponent;
 use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
+use rustarok_common::common::EngineTime;
 
 pub struct PosionSkill;
 
@@ -27,7 +28,7 @@ impl SkillDef for PosionSkill {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let entities = &ecs_world.entities();
         let updater = ecs_world.read_resource::<LazyUpdate>();
-        let now = sys_vars.time;
+        let now = ecs_world.read_resource::<EngineTime>().now();
         updater.insert(
             entities.create(),
             StrEffectComponent {

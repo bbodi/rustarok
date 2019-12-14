@@ -6,6 +6,7 @@ use crate::components::skills::skills::{
 };
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
+use rustarok_common::common::EngineTime;
 
 pub struct SkillSystem;
 
@@ -14,6 +15,7 @@ impl<'a> System<'a> for SkillSystem {
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
         WriteExpect<'a, SystemVariables>,
+        ReadExpect<'a, EngineTime>,
         WriteExpect<'a, CollisionsFromPrevFrame>,
         WriteExpect<'a, SystemFrameDurations>,
         WriteExpect<'a, PhysicEngine>,
@@ -27,6 +29,7 @@ impl<'a> System<'a> for SkillSystem {
             entities,
             mut char_storage,
             mut sys_vars,
+            time,
             collisions_resource,
             mut system_benchmark,
             mut physics_world,
@@ -40,6 +43,7 @@ impl<'a> System<'a> for SkillSystem {
                 entity_id,
                 &collisions_resource.collisions,
                 &mut sys_vars,
+                &time,
                 &entities,
                 &mut char_storage,
                 &mut physics_world,

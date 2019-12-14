@@ -12,12 +12,19 @@
 //clippy::all
 //)]
 
+#[macro_use]
+extern crate specs_derive;
+
+use specs;
+
 use log::LevelFilter;
 use notify::Watcher;
 use rustarok_common::common::measure_time;
-use rustarok_common::components::char::AuthorizedCharStateComponent;
+use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId};
+use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::grf::asset_loader::CommonAssetLoader;
 use serde::Deserialize;
+use specs::prelude::*;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -62,6 +69,9 @@ fn main() {
             .expect("Could not open grf files. Please configure them in 'config.toml'")
     });
     log::info!("<<< GRF loading: {}ms", elapsed.as_millis());
+
+    let mut ecs_world = create_ecs_world();
+    let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
 }
 
 pub fn create_ecs_world() -> specs::World {

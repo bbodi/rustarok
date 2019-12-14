@@ -25,10 +25,11 @@ use crate::grf::SpriteResource;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{AssetResources, CharEntityId, Sex, SystemVariables};
+use crate::systems::{AssetResources, Sex, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use rustarok_common::common::Vec2;
+use rustarok_common::common::{EngineTime, Vec2};
+use rustarok_common::components::char::{CharDir, CharEntityId};
 use specs::{Entities, LazyUpdate};
 use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
@@ -47,6 +48,7 @@ pub struct StatusUpdateParams<'a> {
     pub sys_vars: &'a mut SystemVariables,
     pub entities: &'a Entities<'a>,
     pub updater: &'a mut LazyUpdate,
+    pub time: &'a EngineTime,
 }
 
 const NONSTACKABLE_STATUS_COUNT: usize = 6;
@@ -168,14 +170,14 @@ impl StatusEnum {
 
     pub fn get_body_sprite<'a>(
         &self,
-        sys_vars: &'a SystemVariables,
+        assets: &'a AssetResources,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
         match self {
             StatusEnum::AbsorbStatus(_) => None,
             StatusEnum::MountedStatus { .. } => {
-                let sprites = &sys_vars.assets.sprites;
+                let sprites = &assets.sprites;
                 sprites
                     .mounted_character_sprites
                     .get(&job_id)
@@ -185,7 +187,7 @@ impl StatusEnum {
             StatusEnum::AssaBladeDashStatus(_) => None,
             StatusEnum::AssaPhasePrismStatus(_) => None,
             StatusEnum::FalconCarryStatus(_) => None,
-            StatusEnum::ExoSkeletonStatus(_) => Some(&sys_vars.assets.sprites.exoskeleton),
+            StatusEnum::ExoSkeletonStatus(_) => Some(&assets.sprites.exoskeleton),
             StatusEnum::FireBombStatus(_) => None,
             StatusEnum::PyroBlastTargetStatus(_) => None,
             StatusEnum::AttackHealStatus(_) => None,
@@ -204,7 +206,8 @@ impl StatusEnum {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
         physics_world: &mut PhysicEngine,
     ) {
         match self {
@@ -214,18 +217,18 @@ impl StatusEnum {
             }
             StatusEnum::FalconCarryStatus(_) => {
                 target_char.set_noncollidable(physics_world);
-                target_char.set_state(CharState::StandBy, 0);
+                target_char.set_state(CharState::StandBy, CharDir::South);
             }
             StatusEnum::ExoSkeletonStatus(status) => {
-                status.on_apply(target_char, entities, updater, sys_vars.time)
+                status.on_apply(target_char, entities, updater, time.now())
             }
             StatusEnum::StunStatus(status) => status.on_apply(
                 self_entity_id,
                 target_char,
                 entities,
                 updater,
-                &sys_vars.assets,
-                sys_vars.time,
+                assets,
+                time.now(),
             ),
             StatusEnum::AbsorbStatus(_)
             | StatusEnum::MountedStatus { .. }
@@ -308,7 +311,7 @@ impl StatusEnum {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         match self {
             StatusEnum::AbsorbStatus(status) => status.update(
-                params.sys_vars.time,
+                params.time.now(),
                 params.self_char_id,
                 &mut params.sys_vars.hp_mod_requests,
             ),
@@ -460,72 +463,45 @@ impl StatusEnum {
     pub fn render(
         &self,
         char_state: &CharacterStateComponent,
-        system_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
         render_commands: &mut RenderCommandCollector,
     ) {
+        let now = time.now();
         match self {
-            StatusEnum::AbsorbStatus(status) => status.render(
-                system_vars.time,
-                &system_vars.assets,
-                char_state.pos(),
-                render_commands,
-            ),
+            StatusEnum::AbsorbStatus(status) => {
+                status.render(now, assets, char_state.pos(), render_commands)
+            }
             StatusEnum::MountedStatus { .. } => {}
             StatusEnum::ExoSkeletonStatus(_) => {}
-            StatusEnum::FireBombStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::PyroBlastTargetStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::AttackHealStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
+            StatusEnum::FireBombStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
+            StatusEnum::PyroBlastTargetStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
+            StatusEnum::AttackHealStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
             StatusEnum::ArmorModifierStatus(_) => {}
             StatusEnum::WalkingSpeedModifierStatus(_) => {}
-            StatusEnum::ReflectDamageStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::SacrificeStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::PoisonStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::StunStatus(status) => status.render(
-                char_state.pos(),
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::DeathStatus(_) => {}
-            StatusEnum::AssaBladeDashStatus(status) => status.render(
-                char_state,
-                system_vars.time,
-                &system_vars.assets,
-                render_commands,
-            ),
-            StatusEnum::FalconCarryStatus(status) => {
-                status.render(&system_vars.assets, render_commands)
+            StatusEnum::ReflectDamageStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
             }
+            StatusEnum::SacrificeStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
+            StatusEnum::PoisonStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
+            StatusEnum::StunStatus(status) => {
+                status.render(char_state.pos(), now, assets, render_commands)
+            }
+            StatusEnum::DeathStatus(_) => {}
+            StatusEnum::AssaBladeDashStatus(status) => {
+                status.render(char_state, now, assets, render_commands)
+            }
+            StatusEnum::FalconCarryStatus(status) => status.render(assets, render_commands),
             StatusEnum::AssaPhasePrismStatus(_) => {}
         }
     }
@@ -695,6 +671,7 @@ impl Statuses {
         char_state: &mut CharacterStateComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
+        time: &EngineTime,
         entities: &Entities,
         updater: &mut LazyUpdate,
     ) -> u32 {
@@ -713,6 +690,7 @@ impl Statuses {
                 sys_vars,
                 entities,
                 updater,
+                time,
             });
             match result {
                 StatusUpdateResult::RemoveIt => {
@@ -737,7 +715,8 @@ impl Statuses {
     pub fn render(
         &self,
         char_state: &CharacterStateComponent,
-        sys_vars: &SystemVariables,
+        assets: &AssetResources,
+        time: &EngineTime,
         render_commands: &mut RenderCommandCollector,
     ) {
         let mut already_rendered: [bool; STATUSENUM_COUNT] = [false; STATUSENUM_COUNT];
@@ -745,7 +724,7 @@ impl Statuses {
             let status = status.as_ref().unwrap();
             let type_id = StatusEnumDiscriminants::from(status) as usize;
             if !already_rendered[type_id] {
-                status.render(char_state, sys_vars, render_commands);
+                status.render(char_state, assets, time, render_commands);
                 already_rendered[type_id] = true;
             }
         }
@@ -827,7 +806,7 @@ impl Statuses {
 
     pub fn calc_body_sprite<'a>(
         &self,
-        sys_vars: &'a SystemVariables,
+        assets: &'a AssetResources,
         job_id: JobId,
         sex: Sex,
     ) -> Option<&'a SpriteResource> {
@@ -841,7 +820,7 @@ impl Statuses {
             let body = status
                 .as_ref()
                 .unwrap()
-                .get_body_sprite(sys_vars, job_id, sex);
+                .get_body_sprite(assets, job_id, sex);
             if body.is_some() {
                 ret = body;
             }
@@ -1111,16 +1090,16 @@ pub struct PoisonStatus {
 
 impl PoisonStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if self.until.has_already_passed(params.sys_vars.time) {
+        if self.until.has_already_passed(params.time.now()) {
             StatusUpdateResult::RemoveIt
         } else {
-            if self.next_damage_at.has_already_passed(params.sys_vars.time) {
+            if self.next_damage_at.has_already_passed(params.time.now()) {
                 params.sys_vars.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: params.self_char_id,
                     typ: HpModificationType::Poison(30),
                 });
-                self.next_damage_at = params.sys_vars.time.add_seconds(1.0);
+                self.next_damage_at = params.time.now().add_seconds(1.0);
             }
             StatusUpdateResult::KeepIt
         }

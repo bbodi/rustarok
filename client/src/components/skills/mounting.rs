@@ -13,6 +13,7 @@ use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::SystemVariables;
+use rustarok_common::common::EngineTime;
 
 pub struct MountingSkill;
 
@@ -31,7 +32,7 @@ impl SkillDef for MountingSkill {
         {
             let entities = &ecs_world.entities();
             let updater = ecs_world.read_resource::<LazyUpdate>();
-            let now = ecs_world.read_resource::<SystemVariables>().time;
+            let now = ecs_world.read_resource::<EngineTime>().now();
             updater.insert(
                 entities.create(),
                 StrEffectComponent {

@@ -14,9 +14,10 @@ use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
-use crate::systems::{AssetResources, CharEntityId, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{v2, ElapsedTime, Vec2};
+use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::CharEntityId;
 use specs::prelude::*;
 use std::collections::HashSet;
 
@@ -55,8 +56,9 @@ impl SkillDef for FalconAttackSkill {
                 }
                 let end_pos = params.caster_pos
                     + (params.char_to_skill_dir * configs.attributes.casting_range);
+                let now = ecs_world.read_resource::<EngineTime>().now();
                 falcon.set_state_to_attack(
-                    sys_vars.time,
+                    now,
                     configs.duration_in_seconds,
                     params.caster_pos,
                     end_pos,
@@ -73,8 +75,8 @@ impl SkillDef for FalconAttackSkill {
                     start_pos: params.caster_pos,
                     path: end_pos - params.caster_pos,
                     rot_angle_in_rad: angle_in_rad,
-                    created_at: sys_vars.time,
-                    die_at: sys_vars.time.add_seconds(configs.duration_in_seconds),
+                    created_at: now,
+                    die_at: now.add_seconds(configs.duration_in_seconds),
                     falcon_collider_handle: coll_handle,
                     falcon_owner_id: params.caster_entity_id,
                     team: ecs_world
@@ -116,7 +118,7 @@ struct FalconAttackSkillManifestation {
 impl SkillManifestation for FalconAttackSkillManifestation {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         let falcon_collider_handle = self.falcon_collider_handle;
-        if self.die_at.has_already_passed(params.now()) {
+        if self.die_at.has_already_passed(params.time().now()) {
             params
                 .physics_world
                 .colliders
@@ -157,7 +159,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                             target_char_entity_id,
                             StatusEnum::WalkingSpeedModifierStatus(
                                 WalkingSpeedModifierStatus::new(
-                                    params.now(),
+                                    params.time().now(),
                                     self.slow,
                                     self.slow_duration,
                                 ),
@@ -168,6 +170,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                 }
             }
             let duration_percentage = params
+                .time()
                 .now()
                 .percentage_between(self.created_at, self.die_at);
             let new_pos = self.start_pos + self.path * duration_percentage;
