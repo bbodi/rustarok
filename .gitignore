@@ -2,3 +2,13 @@
 *.sif
 /target
 **/*.rs.bk
+build
+.idea
+.vscode
+Cargo.lock
+*.cache
+out
+projectFilesBackup
+*.cel
+*.iml
+
