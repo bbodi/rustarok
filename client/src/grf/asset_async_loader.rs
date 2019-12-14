@@ -812,7 +812,7 @@ impl<'a> BackgroundAssetLoader<'a> {
         &self,
         path: &str,
         palette_index: Option<usize>,
-        palette: Option<Vec<u8>>,
+        palette: Option<&[u8]>,
         texture_id_pool: &mut Vec<TextureId>,
         reserved_textures: &mut Vec<ReservedTexturedata>,
     ) -> Result<SpriteResource, String> {
@@ -1156,7 +1156,7 @@ impl<'a> BackgroundAssetLoader<'a> {
             .load_spr_and_act_with_palette(
                 &file_path,
                 palette_id,
-                palette,
+                palette.as_slice(),
                 texture_id_pool,
                 reserved_textures,
             )
@@ -1172,7 +1172,7 @@ impl<'a> BackgroundAssetLoader<'a> {
         &self,
         path: &str,
         palette_index: usize,
-        palette: Vec<u8>,
+        palette: &[u8],
         texture_id_pool: &mut Vec<TextureId>,
         reserved_textures: &mut Vec<ReservedTexturedata>,
     ) -> Result<SpriteResource, String> {

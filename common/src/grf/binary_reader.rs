@@ -36,42 +36,27 @@ impl BinaryReader {
     }
 
     pub fn next_f32(&mut self) -> f32 {
-        let bytes = [
-            self.buf[self.index],
-            self.buf[self.index + 1],
-            self.buf[self.index + 2],
-            self.buf[self.index + 3],
-        ];
+        let result = unsafe { *(self.buf.as_ptr().offset(self.index as isize) as *const f32) };
         self.index += 4;
-        unsafe { std::mem::transmute(bytes) }
+        return result;
     }
 
     pub fn next_i32(&mut self) -> i32 {
-        let bytes = [
-            self.buf[self.index],
-            self.buf[self.index + 1],
-            self.buf[self.index + 2],
-            self.buf[self.index + 3],
-        ];
+        let result = unsafe { *(self.buf.as_ptr().offset(self.index as isize) as *const i32) };
         self.index += 4;
-        i32::from_le_bytes(bytes)
+        return result;
     }
 
     pub fn next_u32(&mut self) -> u32 {
-        let bytes = [
-            self.buf[self.index],
-            self.buf[self.index + 1],
-            self.buf[self.index + 2],
-            self.buf[self.index + 3],
-        ];
+        let result = unsafe { *(self.buf.as_ptr().offset(self.index as isize) as *const u32) };
         self.index += 4;
-        u32::from_le_bytes(bytes)
+        return result;
     }
 
     pub fn next_u16(&mut self) -> u16 {
-        let bytes = [self.buf[self.index], self.buf[self.index + 1]];
+        let result = unsafe { *(self.buf.as_ptr().offset(self.index as isize) as *const u16) };
         self.index += 2;
-        u16::from_le_bytes(bytes)
+        return result;
     }
 
     pub fn string(&mut self, max_len: u32) -> String {
@@ -95,9 +80,9 @@ impl BinaryReader {
         self.index += size as usize;
     }
 
-    pub fn next(&mut self, size: u32) -> Vec<u8> {
+    pub fn next(&mut self, size: u32) -> &[u8] {
         let from = self.index;
         self.index += size as usize;
-        self.buf[from..self.index].to_vec()
+        &self.buf[from..self.index]
     }
 }

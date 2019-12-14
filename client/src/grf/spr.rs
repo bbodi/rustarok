@@ -31,7 +31,7 @@ impl SpriteFile {
 
     pub(super) fn load(
         mut buf: BinaryReader,
-        palette: Option<Vec<u8>>,
+        palette: Option<&[u8]>,
         version: f32,
         indexed_frame_count: usize,
         rgba_frame_count: u16,
@@ -49,7 +49,7 @@ impl SpriteFile {
                 buf.skip(((buf.len() - 1024) - buf.tell()) as u32);
                 buf.next(1024)
             } else {
-                Vec::new()
+                &[]
             };
             palette.map(|it| it).unwrap_or(default_palette)
         };
@@ -75,13 +75,13 @@ impl SpriteFile {
                     typ: SpriteType::PAL,
                     width: width as usize,
                     height: height as usize,
-                    data: buf.next(width as u32 * height as u32),
+                    data: buf.next(width as u32 * height as u32).to_vec(),
                 }
             })
             .collect()
     }
 
-    fn to_rgba(frame: SprFrame, pal: &Vec<u8>) -> SprFrame {
+    fn to_rgba(frame: SprFrame, pal: &[u8]) -> SprFrame {
         let mut buf = Vec::<u8>::with_capacity(frame.width * frame.height * 4);
         for y in 0..frame.height {
             for x in 0..frame.width {
@@ -138,7 +138,7 @@ impl SpriteFile {
             .map(|_i| {
                 let width = buf.next_u16();
                 let height = buf.next_u16();
-                let mut data = buf.next(width as u32 * height as u32 * 4);
+                let mut data = buf.next(width as u32 * height as u32 * 4).to_vec();
                 // it seems ABGR sprites are stored upside down
                 data.reverse();
                 SprFrame {

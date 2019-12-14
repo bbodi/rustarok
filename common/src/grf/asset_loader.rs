@@ -150,7 +150,7 @@ impl<'a> CommonAssetLoader {
         let real_size = buf.next_u32();
         let data = buf.next(pack_size);
         let mut out = Vec::<u8>::with_capacity(real_size as usize);
-        let mut decoder = libflate::zlib::Decoder::new(data.as_slice()).unwrap();
+        let mut decoder = libflate::zlib::Decoder::new(data).unwrap();
         std::io::copy(&mut decoder, &mut out).unwrap();
 
         let mut table_reader = BinaryReader::from_vec(out);

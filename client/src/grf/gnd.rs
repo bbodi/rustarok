@@ -632,7 +632,7 @@ impl Gnd {
         LightmapData {
             per_cell,
             count,
-            data: buf.next(count * per_cell * 4),
+            data: buf.next(count * per_cell * 4).to_vec(),
         }
     }
 
