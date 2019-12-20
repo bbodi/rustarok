@@ -1,4 +1,3 @@
-use crate::components::char::Team;
 use crate::components::char::{percentage, CharState};
 use crate::components::skills::skills::Skills;
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;

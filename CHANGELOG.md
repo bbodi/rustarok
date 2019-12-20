@@ -1,3 +1,9 @@
+#### 2019.12.20
+- Initial client and server code separation (client, server, common)
+- Basic client side prediction
+- First working netcode
+  ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/09a580a89ea26f3ff0ce50bdace71769/first_network.gif) 
+
 #### 2019.11.26
 - Statuses are now simple enums and not Boxed traits. 
     - no malloc

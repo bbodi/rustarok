@@ -22,7 +22,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{v2, EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{AuthorizedCharStateComponent, CharDir, CharEntityId};
 
 pub struct WizPyroBlastSkill;
 
@@ -78,7 +78,7 @@ impl SkillDef for WizPyroBlastSkill {
         time: &EngineTime,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
-        char_storage: &ReadStorage<CharacterStateComponent>,
+        char_storage: &ReadStorage<AuthorizedCharStateComponent>,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Moonstar,
@@ -160,60 +160,61 @@ impl PyroBlastManifest {
 
 impl SkillManifestation for PyroBlastManifest {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let (target_pos, collide) = if let Some(target_char) =
-            params.char_storage.get_mut(self.target_entity_id.into())
-        {
-            let target_pos = target_char.pos();
-            let dir_vector = target_pos - self.pos;
-            let distance = dir_vector.magnitude();
-            if distance > 2.0 {
-                let dir_vector = dir_vector.normalize();
-                self.pos = self.pos + (dir_vector * params.time().dt.0 * self.configs.moving_speed);
-                (target_pos, false)
-            } else {
-                target_char.statuses.remove_if(|status| {
-                    if let StatusEnum::PyroBlastTargetStatus(status) = status {
-                        status.caster_entity_id == self.caster_entity_id
-                    } else {
-                        false
-                    }
-                });
-                (target_pos, true)
-            }
-        } else {
-            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
-            (v2(0.0, 0.0), false)
-        };
-        if collide {
-            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
-            params.add_hp_mod_request(HpModificationRequest {
-                src_entity: self.caster_entity_id,
-                dst_entity: self.target_entity_id,
-                typ: HpModificationType::SpellDamage(
-                    self.configs.damage,
-                    DamageDisplayType::SingleNumber,
-                ),
-            });
-            let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
-            let area_isom = Isometry2::new(target_pos, 0.0);
-            params.add_area_hp_mod_request(AreaAttackComponent {
-                area_shape,
-                area_isom,
-                source_entity_id: self.caster_entity_id,
-                typ: HpModificationType::SpellDamage(
-                    self.configs.secondary_damage,
-                    DamageDisplayType::SingleNumber,
-                ),
-                except: Some(self.target_entity_id),
-            });
-            params.create_entity_with_comp(StrEffectComponent {
-                effect_id: StrEffectType::Explosion.into(),
-                pos: target_pos,
-                start_time: params.time().now(),
-                die_at: None,
-                play_mode: ActionPlayMode::Once,
-            });
-        }
+        // TODO2
+        //        let (target_pos, collide) = if let Some(target_char) =
+        //            params.char_storage.get_mut(self.target_entity_id.into())
+        //        {
+        //            let target_pos = target_char.pos();
+        //            let dir_vector = target_pos - self.pos;
+        //            let distance = dir_vector.magnitude();
+        //            if distance > 2.0 {
+        //                let dir_vector = dir_vector.normalize();
+        //                self.pos = self.pos + (dir_vector * params.time().dt() * self.configs.moving_speed);
+        //                (target_pos, false)
+        //            } else {
+        //                target_char.statuses.remove_if(|status| {
+        //                    if let StatusEnum::PyroBlastTargetStatus(status) = status {
+        //                        status.caster_entity_id == self.caster_entity_id
+        //                    } else {
+        //                        false
+        //                    }
+        //                });
+        //                (target_pos, true)
+        //            }
+        //        } else {
+        //            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+        //            (v2(0.0, 0.0), false)
+        //        };
+        //        if collide {
+        //            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+        //            params.add_hp_mod_request(HpModificationRequest {
+        //                src_entity: self.caster_entity_id,
+        //                dst_entity: self.target_entity_id,
+        //                typ: HpModificationType::SpellDamage(
+        //                    self.configs.damage,
+        //                    DamageDisplayType::SingleNumber,
+        //                ),
+        //            });
+        //            let area_shape = Box::new(ncollide2d::shape::Ball::new(self.configs.splash_radius));
+        //            let area_isom = Isometry2::new(target_pos, 0.0);
+        //            params.add_area_hp_mod_request(AreaAttackComponent {
+        //                area_shape,
+        //                area_isom,
+        //                source_entity_id: self.caster_entity_id,
+        //                typ: HpModificationType::SpellDamage(
+        //                    self.configs.secondary_damage,
+        //                    DamageDisplayType::SingleNumber,
+        //                ),
+        //                except: Some(self.target_entity_id),
+        //            });
+        //            params.create_entity_with_comp(StrEffectComponent {
+        //                effect_id: StrEffectType::Explosion.into(),
+        //                pos: target_pos,
+        //                start_time: params.time().now(),
+        //                die_at: None,
+        //                play_mode: ActionPlayMode::Once,
+        //            });
+        //        }
     }
 
     fn render(

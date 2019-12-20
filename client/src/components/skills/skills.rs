@@ -8,7 +8,7 @@ use serde::Serialize;
 use specs::prelude::*;
 use strum_macros::EnumIter;
 
-use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent, Team};
+use crate::components::char::{ActionPlayMode, CastingSkillData, CharacterStateComponent};
 use crate::components::skills::absorb_shield::ABSORB_SHIELD_SKILL;
 use crate::components::skills::brutal_test_skill::BRUTAL_TEST_SKILL;
 use crate::components::skills::cure::CURE_SKILL;
@@ -19,7 +19,7 @@ use crate::components::skills::lightning::LIGHTNING_SKILL;
 use crate::components::skills::mounting::MOUNTING_SKILL;
 use crate::components::skills::poison::POISON_SKILL;
 use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
-use rustarok_common::common::{v2_to_v3, DeltaTime, EngineTime, Vec2};
+use rustarok_common::common::{v2_to_v3, EngineTime, Vec2};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
@@ -41,7 +41,7 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId, Team};
 
 pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
 
@@ -52,6 +52,7 @@ pub struct SkillManifestationUpdateParam<'a, 'longer> {
     engine_time: &'longer EngineTime,
     entities: &'a Entities<'a>,
     pub char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+    pub auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
     pub physics_world: &'longer mut PhysicEngine,
     updater: &'longer mut LazyUpdate,
 }
@@ -64,6 +65,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         engine_time: &'longer EngineTime,
         entities: &'a Entities,
         char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+        auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
         physics_world: &'longer mut PhysicEngine,
         updater: &'longer mut LazyUpdate,
     ) -> SkillManifestationUpdateParam<'a, 'longer> {
@@ -76,6 +78,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
             char_storage,
             physics_world,
             updater,
+            auth_state_storage,
         }
     }
 
@@ -218,7 +221,7 @@ pub trait SkillDef {
         time: &EngineTime,
         dev_configs: &DevConfig,
         render_commands: &mut RenderCommandCollector,
-        char_storage: &ReadStorage<CharacterStateComponent>,
+        char_storage: &ReadStorage<AuthorizedCharStateComponent>,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Moonstar,

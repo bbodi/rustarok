@@ -1,4 +1,8 @@
 
+load_models = false
+load_sprites = true
+
+map_name = "prontera"
 resolution_w = 1024
 resolution_h = 768
 
@@ -8,8 +12,12 @@ start_pos_y = -65
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
 log_level = "DEBUG"
 
+
 grf_paths = [
   "/media/sharp/9C16370C1636E744/Games/TalonRO/rdata.grf",
   "/media/sharp/9C16370C1636E744/Games/TalonRO/sdata.grf",
   "/media/sharp/9C16370C1636E744/Games/TalonRO/tdata.grf",
 ]
+
+server_port = 6969
+server_addr = "127.0.0.1:6969"

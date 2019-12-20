@@ -1,4 +1,4 @@
-use crate::components::char::CharState;
+use crate::components::char::ClientCharState;
 use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
@@ -6,17 +6,18 @@ use crate::components::status::status::{
 use crate::components::{
     ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
 };
-use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
+use crate::consts::PLAYABLE_CHAR_SPRITES;
 use crate::grf::str::StrFile;
 use crate::grf::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::strum::IntoEnumIterator;
 use crate::video::ortho;
-use crate::{get_current_ms, SpriteResource};
+use crate::SpriteResource;
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{DeltaTime, ElapsedTime, Mat4, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::common::{ElapsedTime, Mat4, MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME};
+use rustarok_common::components::char::{CharEntityId, CharState, JobId, MonsterId};
+use rustarok_common::components::job_ids::JobSpriteId;
 use serde::Deserialize;
 use serde::Serialize;
 use specs::Entity;
@@ -25,18 +26,20 @@ use std::time::{Instant, SystemTime};
 
 pub mod atk_calc;
 pub mod camera_system;
-pub mod char_state_sys;
 pub mod console_commands;
 pub mod console_system;
 pub mod falcon_ai_sys;
-pub mod frame_end_system;
+pub mod frame_cleanup_system;
+pub mod frame_client_end_system;
 pub mod input_sys;
 pub mod input_sys_scancodes;
 pub mod input_to_next_action;
+pub mod intention_sender_sys;
 pub mod minion_ai_sys;
 pub mod next_action_applier_sys;
 pub mod phys;
 pub mod skill_sys;
+pub mod snapshot_sys;
 pub mod spawn_entity_system;
 pub mod turret_ai_sys;
 pub mod ui;
@@ -46,12 +49,6 @@ pub struct EffectSprites {
     pub fire_wall: SpriteResource,
     pub fire_ball: SpriteResource,
     pub plasma: SpriteResource,
-}
-
-#[derive(Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
-pub enum Sex {
-    Male,
-    Female,
 }
 
 pub struct Sprites {

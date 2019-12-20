@@ -12,6 +12,10 @@ libflate = "0.1.25"
 serde = {version = "1.0.97", features = ["derive"]}
 serde_json = "1.0.40"
 specs-derive = "0.4.0"
+strum = "0.15.0" # for iterating over enums
+strum_macros = "0.15.0"
+hexplay = "0.2.1"
+bincode = "1.2.1"
 
 [dependencies.nalgebra]
 version = "0.18.0"

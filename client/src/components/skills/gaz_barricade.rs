@@ -3,7 +3,6 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType, Skills,
 };
 use crate::configs::DevConfig;
-use crate::consts::JobId;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::spawn_entity_system::SpawnEntitySystem;
 
@@ -28,36 +27,38 @@ impl SkillDef for GazBarricadeSkill {
         params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let entities = &ecs_world.entities();
-        let updater = &ecs_world.read_resource::<LazyUpdate>();
-        let char_entity_id = CharEntityId::from(entities.create());
-        updater.insert(char_entity_id.into(), NpcComponent);
-        let tile_pos = {
-            let pos = params.skill_pos.unwrap();
-            Vec2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
-        };
-
-        for char_state in (&mut ecs_world.read_storage::<CharacterStateComponent>()).join() {
-            if char_state.job_id != JobId::Barricade {
-                continue;
-            }
-            if char_state.pos().x as i32 == tile_pos.x as i32
-                && char_state.pos().y as i32 == tile_pos.y as i32
-            {
-                // tile is already occupied
-                return None;
-            }
-        }
-
-        SpawnEntitySystem::create_barricade(
-            entities,
-            &updater,
-            &mut ecs_world.write_resource(),
-            &ecs_world.read_resource(),
-            params.caster_team,
-            tile_pos,
-        );
-        return None;
+        None
+        // TODO2
+        //        let entities = &ecs_world.entities();
+        //        let updater = &ecs_world.read_resource::<LazyUpdate>();
+        //        let char_entity_id = CharEntityId::from(entities.create());
+        //        updater.insert(char_entity_id.into(), NpcComponent);
+        //        let tile_pos = {
+        //            let pos = params.skill_pos.unwrap();
+        //            Vec2::new((pos.x as i32) as f32, (pos.y as i32) as f32)
+        //        };
+        //
+        //        for char_state in (&mut ecs_world.read_storage::<CharacterStateComponent>()).join() {
+        //            if char_state.job_id != JobId::Barricade {
+        //                continue;
+        //            }
+        //            if char_state.pos().x as i32 == tile_pos.x as i32
+        //                && char_state.pos().y as i32 == tile_pos.y as i32
+        //            {
+        //                // tile is already occupied
+        //                return None;
+        //            }
+        //        }
+        //
+        //        SpawnEntitySystem::create_barricade(
+        //            entities,
+        //            &updater,
+        //            &mut ecs_world.write_resource(),
+        //            &ecs_world.read_resource(),
+        //            params.caster_team,
+        //            tile_pos,
+        //        );
+        //        return None;
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

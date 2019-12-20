@@ -1,5 +1,5 @@
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
-use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
+use crate::components::controller::LocalPlayerControllerComponent;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -25,59 +25,61 @@ impl SkillDef for FalconCarrySkill {
         params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let now = ecs_world.read_resource::<EngineTime>().now();
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
-        let target_entity = params.target_entity.unwrap();
-        let target_pos = {
-            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
-            if let Some(target) = char_storage.get(target_entity.into()) {
-                target.pos()
-            } else {
-                return None;
-            }
-        };
-        {
-            for (falcon, sprite) in (
-                &mut ecs_world.write_storage::<FalconComponent>(),
-                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
-            )
-                .join()
-            {
-                if falcon.owner_entity_id != params.caster_entity_id {
-                    continue;
-                }
-                if target_entity == params.caster_entity_id {
-                    // falcon.state = FalconState::CarryOwner
-                    for (entity_id, controller) in (
-                        &ecs_world.entities(),
-                        &ecs_world.read_storage::<LocalPlayerControllerComponent>(),
-                    )
-                        .join()
-                    {
-                        if controller.controlled_entity == falcon.owner_entity_id {
-                            falcon.carry_owner(
-                                ControllerEntityId(entity_id),
-                                &target_pos,
-                                now,
-                                configs.carry_owner_duration,
-                                sprite,
-                            );
-                            break;
-                        }
-                    }
-                } else {
-                    falcon.carry_ally(
-                        target_entity,
-                        &target_pos,
-                        now,
-                        configs.carry_ally_duration,
-                        sprite,
-                    );
-                };
-                break;
-            }
-        }
         None
+        // TODO2
+        //        let now = ecs_world.read_resource::<EngineTime>().now();
+        //        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
+        //        let target_entity = params.target_entity.unwrap();
+        //        let target_pos = {
+        //            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+        //            if let Some(target) = char_storage.get(target_entity.into()) {
+        //                target.pos()
+        //            } else {
+        //                return None;
+        //            }
+        //        };
+        //        {
+        //            for (falcon, sprite) in (
+        //                &mut ecs_world.write_storage::<FalconComponent>(),
+        //                &mut ecs_world.write_storage::<SpriteRenderDescriptorComponent>(),
+        //            )
+        //                .join()
+        //            {
+        //                if falcon.owner_entity_id != params.caster_entity_id {
+        //                    continue;
+        //                }
+        //                if target_entity == params.caster_entity_id {
+        //                    // falcon.state = FalconState::CarryOwner
+        //                    for (entity_id, controller) in (
+        //                        &ecs_world.entities(),
+        //                        &ecs_world.read_storage::<LocalPlayerControllerComponent>(),
+        //                    )
+        //                        .join()
+        //                    {
+        //                        if controller.controlled_entity == falcon.owner_entity_id {
+        //                            falcon.carry_owner(
+        //                                ControllerEntityId(entity_id),
+        //                                &target_pos,
+        //                                now,
+        //                                configs.carry_owner_duration,
+        //                                sprite,
+        //                            );
+        //                            break;
+        //                        }
+        //                    }
+        //                } else {
+        //                    falcon.carry_ally(
+        //                        target_entity,
+        //                        &target_pos,
+        //                        now,
+        //                        configs.carry_ally_duration,
+        //                        sprite,
+        //                    );
+        //                };
+        //                break;
+        //            }
+        //        }
+        //        None
     }
 
     fn get_skill_target_type(&self) -> SkillTargetType {

@@ -8,7 +8,7 @@ use encoding::DecoderTrap;
 use std::fmt::Write;
 
 use crate::components::char::CharActionIndex;
-use crate::consts::{job_name_table, JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
+use crate::consts::{job_name_table, PLAYABLE_CHAR_SPRITES};
 use crate::grf::act::ActionFile;
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::gnd::{Gnd, MeshVertex};
@@ -22,6 +22,8 @@ use crate::runtime_assets::map::{ModelInstance, SameTextureNodeFacesRaw};
 use crate::systems::{EffectSprites, Sprites};
 use nalgebra::{Point3, Rotation3};
 use rustarok_common::common::{measure_time, v3, Mat4, Vec2, Vec3};
+use rustarok_common::components::char::{JobId, MonsterId};
+use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::grf::asset_loader::CommonAssetLoader;
 use rustarok_common::grf::binary_reader::BinaryReader;
 use rustarok_common::grf::gat::{BlockingRectangle, CellType, Gat};

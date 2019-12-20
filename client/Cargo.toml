@@ -41,5 +41,5 @@ version = "0.32.2"
 default-features = false
 features = ["image", "ttf", "mixer"]
 
-[dev-dependencies]
+[dev]
 assert_approx_eq = "1.1.0"

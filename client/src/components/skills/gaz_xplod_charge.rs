@@ -8,7 +8,7 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
 };
-use crate::components::status::status::{ApplyStatusInAreaComponent, StatusEnum, StatusNature};
+use crate::components::status::status::{ApplyStatusInAreaComponent, StatusEnum};
 use crate::components::status::stun::StunStatus;
 use crate::components::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
@@ -21,7 +21,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::common::{v2_to_v3, v3_to_v2, ElapsedTime, EngineTime};
 use rustarok_common::common::{v3, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{CharDir, CharEntityId, StatusNature};
 use specs::ReadStorage;
 use vek::QuadraticBezier3;
 

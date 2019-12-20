@@ -91,31 +91,23 @@ impl SkillManifestation for HealSkillManifest {
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
-        if let Some(target_char) = char_entity_storage.get(self.target_entity_id.into()) {
-            let first_half = now
-                .percentage_between(self.created_at, self.middle)
-                .min(1.0);
-            let second_half = now
-                .percentage_between(self.middle, self.die_at)
-                .max(0.0)
-                .min(1.0);
-
-            let a = ((first_half - second_half) * 255.0) as u8;
-
-            render_commands
-                .trimesh3d()
-                .pos_2d(&target_char.pos())
-                .color(&[196, 255, 196, a])
-                .add(Trimesh3dType::SphericalCylinder);
-            //            RenderDesktopClientSystem::render_str(
-            //                StrEffectType::Superstar,
-            //                self.created_at,
-            //                &target_char.pos(),
-            //                assets,
-            //                now,
-            //                render_commands,
-            //                ActionPlayMode::Repeat,
-            //            );
-        }
+        // TODO2
+        //        if let Some(target_char) = char_entity_storage.get(self.target_entity_id.into()) {
+        //            let first_half = now
+        //                .percentage_between(self.created_at, self.middle)
+        //                .min(1.0);
+        //            let second_half = now
+        //                .percentage_between(self.middle, self.die_at)
+        //                .max(0.0)
+        //                .min(1.0);
+        //
+        //            let a = ((first_half - second_half) * 255.0) as u8;
+        //
+        //            render_commands
+        //                .trimesh3d()
+        //                .pos_2d(&target_char.pos())
+        //                .color(&[196, 255, 196, a])
+        //                .add(Trimesh3dType::SphericalCylinder);
+        //        }
     }
 }

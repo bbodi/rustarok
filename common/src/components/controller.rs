@@ -1,8 +1,10 @@
 use crate::common::Vec2;
 use crate::components::char::CharEntityId;
+use serde::Deserialize;
+use serde::Serialize;
 use specs::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PlayerIntention {
     /// param: direction vector between the char and the mouse world position, towards the mouse
     MoveTowardsMouse(Vec2),
@@ -18,6 +20,15 @@ pub enum PlayerIntention {
 // It can be a player, an AI, script etc
 #[derive(Component)]
 pub struct ControllerComponent {
-    pub next_action: Option<PlayerIntention>,
+    pub intention: Option<PlayerIntention>,
     pub controlled_entity: CharEntityId,
+}
+
+impl ControllerComponent {
+    pub fn new(controlled_entity: CharEntityId) -> ControllerComponent {
+        ControllerComponent {
+            intention: None,
+            controlled_entity,
+        }
+    }
 }

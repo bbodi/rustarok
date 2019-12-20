@@ -4,6 +4,8 @@ use crate::components::controller::{
 };
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::SystemVariables;
+use rustarok_common::components::char::AuthorizedCharStateComponent;
+use rustarok_common::components::controller::ControllerComponent;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 
@@ -12,9 +14,9 @@ pub struct CameraSystem;
 
 impl<'a> System<'a> for CameraSystem {
     type SystemData = (
-        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, HumanInputComponent>,
-        ReadStorage<'a, LocalPlayerControllerComponent>,
+        ReadStorage<'a, ControllerComponent>,
         WriteStorage<'a, CameraComponent>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, MapRenderData>,
@@ -23,7 +25,7 @@ impl<'a> System<'a> for CameraSystem {
     fn run(
         &mut self,
         (
-            char_state_storage,
+            auth_char_state_storage,
             input_storage,
             controller_storage,
             mut camera_storage,
@@ -57,7 +59,7 @@ impl<'a> System<'a> for CameraSystem {
                 CameraMode::FollowChar => {
                     if let Some(followed_controller) = camera.followed_controller {
                         if let Some(followed_char) = controller_storage
-                            .get(followed_controller.0)
+                            .get(followed_controller.into())
                             .map(|it| it.controlled_entity)
                         {
                             if input.mouse_wheel != 0 {
@@ -68,7 +70,9 @@ impl<'a> System<'a> for CameraSystem {
                                     sys_vars.matrices.resolution_h,
                                 );
                             };
-                            if let Some(char_state) = char_state_storage.get(followed_char.into()) {
+                            if let Some(char_state) =
+                                auth_char_state_storage.get(followed_char.into())
+                            {
                                 let pos = char_state.pos();
                                 camera.camera.set_x(pos.x);
                                 let z_range = camera.camera.visible_z_range;

@@ -5,7 +5,7 @@ use nphysics2d::object::{DefaultBodyHandle, DefaultColliderHandle};
 use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
-use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
@@ -21,7 +21,7 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{rotate_vec2, v2, EngineTime, Vec2, Vec2i};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, Team};
 
 pub struct FireWallSkill;
 
@@ -171,78 +171,79 @@ impl PushBackWallSkill {
 
 impl SkillManifestation for PushBackWallSkill {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
-        let now = params.time().now();
-        let self_collider_handle = self.collider_handle;
-        if self.die_at.has_already_passed(now) {
-            params.physics_world.colliders.remove(self_collider_handle);
-            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
-            for effect_id in &self.effect_ids {
-                params.remove_component::<StrEffectComponent>(*effect_id);
-            }
-        } else {
-            // TODO: wouldn't it be better to use the area push functionality?
-            let my_collisions = params
-                .all_collisions_in_world
-                .iter()
-                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
-            for (_key, coll) in my_collisions {
-                let collider: Option<(CharEntityId, DefaultBodyHandle)> = params
-                    .physics_world
-                    .colliders
-                    .get(coll.character_coll_handle)
-                    .map(|char_collider| {
-                        (
-                            *char_collider
-                                .user_data()
-                                .map(|v| v.downcast_ref().unwrap())
-                                .unwrap(),
-                            char_collider.body(),
-                        )
-                    });
-                if let Some((target_char_entity_id, body_handle)) = collider {
-                    let target = params
-                        .char_storage
-                        .get(target_char_entity_id.into())
-                        .map(|target| (target.pos(), target.team));
-                    if let Some((target_pos, target_team)) = target {
-                        if !self.team.can_attack(target_team)
-                            || !self
-                                .cannot_damage_until
-                                .get(&target_char_entity_id)
-                                .unwrap_or(&now)
-                                .has_already_passed(now)
-                        {
-                            continue;
-                        }
-                        let push_dir = self.pos - target_pos;
-                        let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
-                            v2(1.0, 0.0) // "random"
-                        } else {
-                            -push_dir.normalize()
-                        };
-                        params.add_hp_mod_request(HpModificationRequest {
-                            src_entity: self.caster_entity_id,
-                            dst_entity: target_char_entity_id,
-                            typ: HpModificationType::SpellDamage(
-                                self.damage,
-                                DamageDisplayType::SingleNumber,
-                            ),
-                        });
-                        params.apply_force(ApplyForceComponent {
-                            src_entity: self.caster_entity_id,
-                            dst_entity: target_char_entity_id,
-                            force: push_dir * self.pushback_force,
-                            body_handle,
-                            duration: self.force_duration_seconds,
-                        });
-                        self.cannot_damage_until.insert(
-                            target_char_entity_id,
-                            now.add_seconds(self.force_duration_seconds),
-                        );
-                    }
-                }
-            }
-        }
+        // TODO2
+        //        let now = params.time().now();
+        //        let self_collider_handle = self.collider_handle;
+        //        if self.die_at.has_already_passed(now) {
+        //            params.physics_world.colliders.remove(self_collider_handle);
+        //            params.remove_component::<SkillManifestationComponent>(params.self_entity_id);
+        //            for effect_id in &self.effect_ids {
+        //                params.remove_component::<StrEffectComponent>(*effect_id);
+        //            }
+        //        } else {
+        //            // TODO: wouldn't it be better to use the area push functionality?
+        //            let my_collisions = params
+        //                .all_collisions_in_world
+        //                .iter()
+        //                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
+        //            for (_key, coll) in my_collisions {
+        //                let collider: Option<(CharEntityId, DefaultBodyHandle)> = params
+        //                    .physics_world
+        //                    .colliders
+        //                    .get(coll.character_coll_handle)
+        //                    .map(|char_collider| {
+        //                        (
+        //                            *char_collider
+        //                                .user_data()
+        //                                .map(|v| v.downcast_ref().unwrap())
+        //                                .unwrap(),
+        //                            char_collider.body(),
+        //                        )
+        //                    });
+        //                if let Some((target_char_entity_id, body_handle)) = collider {
+        //                    let target = params
+        //                        .char_storage
+        //                        .get(target_char_entity_id.into())
+        //                        .map(|target| (target.pos(), target.team));
+        //                    if let Some((target_pos, target_team)) = target {
+        //                        if !self.team.can_attack(target_team)
+        //                            || !self
+        //                                .cannot_damage_until
+        //                                .get(&target_char_entity_id)
+        //                                .unwrap_or(&now)
+        //                                .has_already_passed(now)
+        //                        {
+        //                            continue;
+        //                        }
+        //                        let push_dir = self.pos - target_pos;
+        //                        let push_dir = if push_dir.x == 0.0 && push_dir.y == 0.0 {
+        //                            v2(1.0, 0.0) // "random"
+        //                        } else {
+        //                            -push_dir.normalize()
+        //                        };
+        //                        params.add_hp_mod_request(HpModificationRequest {
+        //                            src_entity: self.caster_entity_id,
+        //                            dst_entity: target_char_entity_id,
+        //                            typ: HpModificationType::SpellDamage(
+        //                                self.damage,
+        //                                DamageDisplayType::SingleNumber,
+        //                            ),
+        //                        });
+        //                        params.apply_force(ApplyForceComponent {
+        //                            src_entity: self.caster_entity_id,
+        //                            dst_entity: target_char_entity_id,
+        //                            force: push_dir * self.pushback_force,
+        //                            body_handle,
+        //                            duration: self.force_duration_seconds,
+        //                        });
+        //                        self.cannot_damage_until.insert(
+        //                            target_char_entity_id,
+        //                            now.add_seconds(self.force_duration_seconds),
+        //                        );
+        //                    }
+        //                }
+        //            }
+        //        }
     }
 
     fn render(

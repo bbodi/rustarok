@@ -1,11 +1,10 @@
-use crate::components::char::{CharOutlook, CharacterEntityBuilder, NpcComponent, Team};
+use crate::components::char::{CharacterEntityBuilder, NpcComponent};
 use crate::configs::DevConfig;
-use crate::consts::{JobId, MonsterId};
 use crate::runtime_assets::map::PhysicEngine;
 
 use nphysics2d::object::BodyStatus;
 use rustarok_common::common::Vec2;
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, CharOutlook, JobId, MonsterId, Team};
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -30,7 +29,7 @@ impl SpawnEntitySystem {
                     .rectangle(1.0, 1.0)
                     .body_status(BodyStatus::Static)
             })
-            .char_state(updater, dev_configs, |ch| {
+            .char_state(updater, dev_configs, pos2d, |ch| {
                 ch.outlook(CharOutlook::Monster(MonsterId::Barricade))
                     .job_id(JobId::Barricade)
                     .team(team)

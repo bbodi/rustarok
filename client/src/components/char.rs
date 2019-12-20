@@ -13,20 +13,23 @@ use specs::prelude::*;
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::controller::{
-    CameraComponent, ControllerEntityId, HumanInputComponent, LocalPlayerControllerComponent,
-    SkillKey,
+    CameraComponent, HumanInputComponent, LocalPlayerControllerComponent, SkillKey,
 };
 use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
 use crate::components::skills::skills::Skills;
-use crate::components::status::status::{StatusNature, Statuses};
+use crate::components::status::status::Statuses;
 use crate::configs::DevConfig;
-use crate::consts::{JobId, JobSpriteId, MonsterId};
 use crate::grf::SpriteResource;
 use crate::render::render_command::RenderCommandCollector;
-use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
-use crate::systems::{Sex, Sprites, SystemVariables};
+use crate::runtime_assets::map::PhysicEngine;
+use crate::systems::{Sprites, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::components::char::{CharDir, CharEntityId, EntityTarget};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
+    CollisionGroup, ControllerEntityId, EntityTarget, JobId, MonsterId, Sex, Team,
+};
+use rustarok_common::components::controller::ControllerComponent;
+use rustarok_common::components::job_ids::JobSpriteId;
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -78,7 +81,7 @@ pub fn attach_human_player_components(
                 .collision_group(team.get_collision_group())
                 .circle(1.0)
         })
-        .char_state(updater, dev_configs, |ch| {
+        .char_state(updater, dev_configs, pos2d, |ch| {
             ch.outlook_player(sex, JobSpriteId::from_job_id(job_id), head_index)
                 .job_id(job_id)
                 .team(team)
@@ -94,18 +97,19 @@ pub fn attach_human_player_components(
     human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
     human_player.assign_skill(SkillKey::Y, Skills::Mounting);
 
-    updater.insert(controller_id.0, RenderCommandCollector::new());
-    updater.insert(controller_id.0, AudioCommandCollectorComponent::new());
-    updater.insert(controller_id.0, human_player);
+    updater.insert(controller_id.into(), RenderCommandCollector::new());
+    updater.insert(controller_id.into(), AudioCommandCollectorComponent::new());
+    updater.insert(controller_id.into(), human_player);
+    updater.insert(controller_id.into(), LocalPlayerControllerComponent::new());
     updater.insert(
-        controller_id.0,
-        LocalPlayerControllerComponent::new(char_entity_id),
+        controller_id.into(),
+        ControllerComponent::new(char_entity_id),
     );
     // camera
     {
         let mut camera_component = CameraComponent::new(Some(controller_id));
         camera_component.reset_y_and_angle(&projection_mat, resolution_w, resolution_h);
-        updater.insert(controller_id.0, camera_component);
+        updater.insert(controller_id.into(), camera_component);
     }
 }
 
@@ -322,9 +326,14 @@ impl CharacterEntityBuilder {
         self
     }
 
-    pub fn char_state<F>(self, updater: &LazyUpdate, dev_configs: &DevConfig, char_builder_func: F)
-    where
-        F: Fn(CharStateComponentBuilder) -> CharStateComponentBuilder,
+    pub fn char_state<F>(
+        self,
+        updater: &LazyUpdate,
+        dev_configs: &DevConfig,
+        pos: Vec2,
+        char_builder_func: F,
+    ) where
+        F: FnOnce(CharStateComponentBuilder) -> CharStateComponentBuilder,
     {
         let char_builder = char_builder_func(CharStateComponentBuilder::new());
         updater.insert(
@@ -350,6 +359,7 @@ impl CharacterEntityBuilder {
                 self.physics_handles.expect("Initialize the physics component on this entity by calling 'physics()' on the builder!"),
             ),
         );
+        updater.insert(self.char_id.into(), AuthorizedCharStateComponent::new(pos))
     }
 
     pub fn physics<F>(
@@ -410,7 +420,7 @@ pub struct CastingSkillData {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum CharState {
+pub enum ClientCharState {
     Idle,
     Walking(Vec2),
     StandBy,
@@ -424,57 +434,54 @@ pub enum CharState {
     CastingSkill(CastingSkillData),
 }
 
-unsafe impl Sync for CharState {}
+unsafe impl Sync for ClientCharState {}
 
-unsafe impl Send for CharState {}
+unsafe impl Send for ClientCharState {}
 
-impl CharState {
-    pub fn discriminant_eq(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
-    }
-}
-
-impl CharState {
+impl ClientCharState {
     pub fn is_walking(&self) -> bool {
         match self {
-            CharState::Walking(_pos) => true,
+            ClientCharState::Walking(_pos) => true,
             _ => false,
         }
     }
 
     pub fn is_alive(&self) -> bool {
         match self {
-            CharState::Dead => false,
+            ClientCharState::Dead => false,
             _ => true,
         }
     }
 
     pub fn is_dead(&self) -> bool {
         match self {
-            CharState::Dead => true,
+            ClientCharState::Dead => true,
             _ => false,
         }
     }
+}
 
-    pub fn get_sprite_index(&self, is_monster: bool) -> usize {
-        match (self, is_monster) {
-            (CharState::Idle, false) => CharActionIndex::Idle as usize,
-            (CharState::Walking(_pos), false) => CharActionIndex::Walking as usize,
-            (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
-            (CharState::Attacking { .. }, false) => CharActionIndex::Attacking3 as usize,
-            (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
-            (CharState::Dead, false) => CharActionIndex::Dead as usize,
-            (CharState::CastingSkill { .. }, false) => CharActionIndex::CastingSpell as usize,
+pub fn get_sprite_index(state: &CharState, is_monster: bool) -> usize {
+    // TODO2
+    match (state, is_monster) {
+        (CharState::Idle, false) => CharActionIndex::Idle as usize,
+        (CharState::Walking(_pos), false) => CharActionIndex::Walking as usize,
+        //        (CharState::StandBy, false) => CharActionIndex::StandBy as usize,
+        //        (CharState::Attacking { .. }, false) => CharActionIndex::Attacking3 as usize,
+        //        (CharState::ReceivingDamage, false) => CharActionIndex::ReceivingDamage as usize,
+        //        (CharState::Dead, false) => CharActionIndex::Dead as usize,
+        //        (CharState::CastingSkill { .. }, false) => CharActionIndex::CastingSpell as usize,
 
-            // monster
-            (CharState::Idle, true) => MonsterActionIndex::Idle as usize,
-            (CharState::Walking(_pos), true) => MonsterActionIndex::Walking as usize,
-            (CharState::StandBy, true) => MonsterActionIndex::Idle as usize,
-            (CharState::Attacking { .. }, true) => MonsterActionIndex::Attack as usize,
-            (CharState::ReceivingDamage, true) => MonsterActionIndex::ReceivingDamage as usize,
-            (CharState::Dead, true) => MonsterActionIndex::Die as usize,
-            (CharState::CastingSkill { .. }, true) => MonsterActionIndex::Attack as usize,
-        }
+        // monster
+        (CharState::Idle, true) => MonsterActionIndex::Idle as usize,
+        (CharState::Walking(_pos), true) => MonsterActionIndex::Walking as usize,
+        //        (CharState::StandBy, true) => MonsterActionIndex::Idle as usize,
+        //        (CharState::Attacking { .. }, true) => MonsterActionIndex::Attack as usize,
+        //        (CharState::ReceivingDamage, true) => {
+        //            MonsterActionIndex::ReceivingDamage as usize
+        //        }
+        //        (CharState::Dead, true) => MonsterActionIndex::Die as usize,
+        //        (CharState::CastingSkill { .. }, true) => MonsterActionIndex::Attack as usize,
     }
 }
 
@@ -619,55 +626,31 @@ mod tests {
     }
 }
 
-#[derive(Eq, PartialEq, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub enum CharType {
-    Player,
-    Minion,
-    Mercenary,
-    Boss,
-    Guard,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[allow(variant_size_differences)]
-pub enum CharOutlook {
-    Monster(MonsterId),
-    // TODO: this variant can be smaller, e.g sex 1 bit, head_index ~8 bit etc
-    Player {
-        job_sprite_id: JobSpriteId,
-        head_index: usize,
-        sex: Sex,
-    },
-}
-
-impl CharOutlook {
-    pub fn get_sprite_and_action_index<'a>(
-        &self,
-        sprites: &'a Sprites,
-        char_state: &CharState,
-    ) -> (&'a SpriteResource, usize) {
-        return match self {
-            CharOutlook::Player {
-                job_sprite_id,
-                head_index: _,
-                sex,
-            } => {
-                let sprites = &sprites.character_sprites;
-                (
-                    // this function is used only for
-                    // getting animation duration information,
-                    // so color (the first array index) does not matter
-                    &sprites[&job_sprite_id][Team::Left as usize][*sex as usize],
-                    char_state.get_sprite_index(false),
-                )
-            }
-            CharOutlook::Monster(monster_id) => (
-                &sprites.monster_sprites[&monster_id],
-                char_state.get_sprite_index(true),
-            ),
-        };
-    }
+pub fn get_sprite_and_action_index<'a>(
+    outlook: &CharOutlook,
+    sprites: &'a Sprites,
+    char_state: &CharState,
+) -> (&'a SpriteResource, usize) {
+    return match outlook {
+        CharOutlook::Player {
+            job_sprite_id,
+            head_index: _,
+            sex,
+        } => {
+            let sprites = &sprites.character_sprites;
+            (
+                // this function is used only for
+                // getting animation duration information,
+                // so color (the first array index) does not matter
+                &sprites[&job_sprite_id][Team::Left as usize][*sex as usize],
+                get_sprite_index(char_state, false),
+            )
+        }
+        CharOutlook::Monster(monster_id) => (
+            &sprites.monster_sprites[&monster_id],
+            get_sprite_index(char_state, true),
+        ),
+    };
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -970,108 +953,6 @@ impl CharAttributeModifierCollector {
     }
 }
 
-#[derive(Eq, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub enum Team {
-    Left,  // red
-    Right, // blue
-    Neutral,
-    EnemyForAll,
-    AllyForAll,
-}
-
-impl Team {
-    pub fn get_collision_group(&self) -> CollisionGroup {
-        match self {
-            Team::Left => CollisionGroup::LeftPlayer,
-            Team::Right => CollisionGroup::RightPlayer,
-            _ => CollisionGroup::NeutralPlayerPlayer,
-        }
-    }
-
-    pub fn get_barricade_collision_group(&self) -> CollisionGroup {
-        match self {
-            Team::Left => CollisionGroup::LeftBarricade,
-            Team::Right => CollisionGroup::RightBarricade,
-            _ => panic!(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn get_enemy_collision_group(&self) -> CollisionGroup {
-        match self {
-            Team::Left => CollisionGroup::RightPlayer,
-            Team::Right => CollisionGroup::LeftPlayer,
-            _ => CollisionGroup::NeutralPlayerPlayer,
-        }
-    }
-
-    pub fn is_compatible(&self, nature: StatusNature, other_team: Team) -> bool {
-        match nature {
-            StatusNature::Harmful => self.can_attack(other_team),
-            StatusNature::Supportive => self.can_support(other_team),
-        }
-    }
-
-    pub fn is_ally_to(&self, other_team: Team) -> bool {
-        match self {
-            Team::Left => match other_team {
-                Team::Left => true,
-                Team::Right => false,
-                Team::Neutral => false,
-                Team::EnemyForAll => false,
-                Team::AllyForAll => true,
-            },
-            Team::Right => match other_team {
-                Team::Left => false,
-                Team::Right => true,
-                Team::Neutral => false,
-                Team::EnemyForAll => false,
-                Team::AllyForAll => true,
-            },
-            Team::Neutral => false,
-            Team::EnemyForAll => false,
-            Team::AllyForAll => true,
-        }
-    }
-
-    pub fn get_palette_index(&self, other_team: Team) -> usize {
-        self.is_ally_to(other_team) as usize
-    }
-
-    pub fn is_enemy_to(&self, other_team: Team) -> bool {
-        match self {
-            Team::Left => match other_team {
-                Team::Left => false,
-                Team::Right => true,
-                Team::Neutral => false,
-                Team::EnemyForAll => true,
-                Team::AllyForAll => false,
-            },
-            Team::Right => match other_team {
-                Team::Left => true,
-                Team::Right => false,
-                Team::Neutral => false,
-                Team::EnemyForAll => true,
-                Team::AllyForAll => false,
-            },
-            Team::Neutral => false,
-            Team::EnemyForAll => true,
-            Team::AllyForAll => false,
-        }
-    }
-
-    #[inline]
-    pub fn can_attack(&self, other: Team) -> bool {
-        !self.is_ally_to(other)
-    }
-
-    #[inline]
-    pub fn can_support(&self, other: Team) -> bool {
-        !self.is_enemy_to(other)
-    }
-}
-
 pub struct TurretControllerComponent;
 
 impl Component for TurretControllerComponent {
@@ -1097,14 +978,11 @@ pub struct CharacterStateComponent {
     // characters also has names so it is possible to follow them with a camera
     pub name: String,
     pub basic_attack_type: BasicAttackType,
-    pos: Vec2,
     y: f32,
     pub team: Team,
     pub target: Option<EntityTarget>,
     pub typ: CharType,
-    state: CharState,
     prev_state: CharState,
-    dir: CharDir,
     pub attack_delay_ends_at: ElapsedTime,
     pub skill_cast_allowed_at: HashMap<Skills, ElapsedTime>,
     pub cannot_control_until: ElapsedTime,
@@ -1187,16 +1065,13 @@ impl CharacterStateComponent {
             },
             job_id,
             name,
-            pos: v2(0.0, 0.0),
             y,
             team,
             typ: char_type,
             outlook,
             target: None,
             skill_cast_allowed_at: HashMap::new(),
-            state: CharState::Idle,
             prev_state: CharState::Idle,
-            dir: CharDir::South,
             cannot_control_until: ElapsedTime(0.0),
             attack_delay_ends_at: ElapsedTime(0.0),
             hp: calculated_attribs.max_hp,
@@ -1273,106 +1148,76 @@ impl CharacterStateComponent {
         }
     }
 
-    pub fn set_pos_dont_use_it(&mut self, pos: Vec2) {
-        self.pos = pos;
-    }
-
     pub fn set_y(&mut self, y: f32) {
         self.y = y;
-    }
-
-    pub fn pos(&self) -> Vec2 {
-        self.pos
     }
 
     pub fn get_y(&self) -> f32 {
         self.y
     }
 
-    pub fn state_type_has_changed(&self) -> bool {
-        return !self.prev_state.discriminant_eq(&self.state);
+    pub fn state_type_has_changed(&self, state: &CharState) -> bool {
+        return !self.prev_state.discriminant_eq(state);
     }
 
-    pub fn save_prev_state(&mut self) {
-        self.prev_state = self.state.clone();
-    }
-
-    pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
-        let can_move_by_state = match &self.state {
-            CharState::CastingSkill(casting_info) => casting_info.can_move,
-            CharState::Idle => true,
-            CharState::Walking(_pos) => true,
-            CharState::StandBy => true,
-            CharState::Attacking { .. } => false,
-            CharState::ReceivingDamage => true,
-            CharState::Dead => false,
-        };
-        can_move_by_state
-            && self.cannot_control_until.has_already_passed(sys_time)
-            && self.statuses.can_move()
-    }
-
-    pub fn can_cast(&self, sys_time: ElapsedTime) -> bool {
-        let can_cast_by_state = match &self.state {
-            CharState::CastingSkill(_) => false,
-            CharState::Idle => true,
-            CharState::Walking(_pos) => true,
-            CharState::StandBy => true,
-            CharState::Attacking { .. } => false,
-            CharState::ReceivingDamage => false,
-            CharState::Dead => false,
-        };
-        can_cast_by_state
-            && self.cannot_control_until.has_already_passed(sys_time)
-            && self.statuses.can_cast()
-    }
-
-    pub fn state(&self) -> &CharState {
-        &self.state
+    pub fn save_prev_state(&mut self, state: &CharState) {
+        self.prev_state = state.clone();
     }
 
     pub fn prev_state(&self) -> &CharState {
         &self.prev_state
     }
 
-    pub fn went_from_casting_to_idle(&self) -> bool {
-        match self.state {
+    pub fn went_from_casting_to_idle(&self, current_state: &CharState) -> bool {
+        match current_state {
             CharState::Idle => match self.prev_state {
-                CharState::CastingSkill(_) => true,
+                // TODO2
+                //                CharState::CastingSkill(_) => true,
                 _ => false,
             },
             _ => false,
         }
     }
+}
 
-    pub fn dir(&self) -> CharDir {
-        self.dir
-    }
+pub fn can_char_cast(
+    char_state: &CharacterStateComponent,
+    state: &CharState,
+    sys_time: ElapsedTime,
+) -> bool {
+    let can_cast_by_state = match state {
+        // TODO2
+        //        CharState::CastingSkill(_) => false,
+        CharState::Idle => true,
+        CharState::Walking(_pos) => true,
+        //        CharState::StandBy => true,
+        //        CharState::Attacking { .. } => false,
+        //        CharState::ReceivingDamage => false,
+        //        CharState::Dead => false,
+    };
+    can_cast_by_state
+        && char_state.cannot_control_until.has_already_passed(sys_time)
+        && char_state.statuses.can_cast()
+}
 
-    pub fn set_state(&mut self, state: CharState, dir: CharDir) {
-        self.state = state;
-        self.dir = dir;
-    }
-
-    pub fn set_receiving_damage(&mut self) {
-        match &self.state {
-            CharState::Idle
-            | CharState::Walking(_)
-            | CharState::StandBy
-            | CharState::ReceivingDamage
-            | CharState::CastingSkill(_) => {
-                self.state = CharState::ReceivingDamage;
-            }
-            CharState::Attacking { .. } | CharState::Dead => {
-                // denied
-            }
-        };
-    }
-
-    #[allow(dead_code)]
-    pub fn set_dir(&mut self, dir: CharDir) {
-        self.dir = dir;
-    }
+pub fn can_char_move(
+    char_state: &CharacterStateComponent,
+    state: &CharState,
+    sys_time: ElapsedTime,
+) -> bool {
+    let can_move_by_state = match state {
+        //        CharState::CastingSkill(casting_info) => casting_info.can_move,
+        CharState::Idle => true,
+        CharState::Walking(_pos) => true,
+        // TODO2
+        //        CharState::StandBy => true,
+        //        CharState::Attacking { .. } => false,
+        //        CharState::ReceivingDamage => true,
+        //        CharState::Dead => false,
+    };
+    can_move_by_state
+        && char_state.cannot_control_until.has_already_passed(sys_time)
+        && char_state.statuses.can_move()
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]

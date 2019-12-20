@@ -1,8 +1,7 @@
 use nalgebra::{Isometry2, Vector2};
 
 use crate::components::char::{
-    ActionPlayMode, CharActionIndex, CharOutlook, CharacterStateComponent,
-    SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::skills::basic_attack::WeaponType;
 use crate::components::skills::skills::{
@@ -17,7 +16,9 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
 use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::common::{v2, v2_to_v3, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook,
+};
 
 pub struct AssaBladeDashSkill;
 
@@ -34,7 +35,7 @@ impl SkillDef for AssaBladeDashSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
-            .write_storage::<CharacterStateComponent>()
+            .write_storage::<AuthorizedCharStateComponent>()
             .get_mut(params.caster_entity_id.into())
         {
             let angle = params.char_to_skill_dir.angle(&Vector2::y());
@@ -182,6 +183,7 @@ impl AssaBladeDashStatus {
     pub fn render(
         &self,
         char_state: &CharacterStateComponent,
+        auth_state: &AuthorizedCharStateComponent,
         now: ElapsedTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
@@ -202,7 +204,7 @@ impl AssaBladeDashStatus {
                     &sprites[sex as usize][head_index]
                 };
                 for (pos, alpha, time_offset) in &[
-                    (char_state.pos(), 255, 0.0),
+                    (auth_state.pos(), 255, 0.0),
                     (self.shadow1_pos, 175, 0.05),
                     (self.shadow2_pos, 100, 0.1),
                 ] {
@@ -212,7 +214,7 @@ impl AssaBladeDashStatus {
                             animation_started: self.started_at.add_seconds(*time_offset),
                             animation_ends_at: ElapsedTime(0.0),
                             forced_duration: Some(ElapsedTime(self.half_duration)),
-                            direction: char_state.dir(),
+                            direction: auth_state.dir(),
                             fps_multiplier: 1.0,
                         }
                     } else {
@@ -223,7 +225,7 @@ impl AssaBladeDashStatus {
                                 .add_seconds(self.half_duration + *time_offset),
                             animation_ends_at: ElapsedTime(0.0),
                             forced_duration: Some(ElapsedTime(self.half_duration)),
-                            direction: CharDir::from((char_state.dir().as_usize() + 4) % 8),
+                            direction: CharDir::from((auth_state.dir().as_usize() + 4) % 8),
                             fps_multiplier: 1.0,
                         }
                     };

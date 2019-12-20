@@ -1,8 +1,9 @@
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
-use crate::components::status::status::{RemoveStatusComponent, StatusNature};
+use crate::components::status::status::RemoveStatusComponent;
 use crate::systems::SystemVariables;
+use rustarok_common::components::char::StatusNature;
 
 pub struct CureSkill;
 

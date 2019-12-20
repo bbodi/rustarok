@@ -98,19 +98,20 @@ impl ExoSkeletonStatus {
         updater: &mut LazyUpdate,
         now: ElapsedTime,
     ) {
-        target_char.basic_attack_type = BasicAttackType::Ranged {
-            bullet_type: WeaponType::SilverBullet,
-        };
-        updater.insert(
-            entities.create(),
-            StrEffectComponent {
-                effect_id: StrEffectType::Cart.into(),
-                pos: target_char.pos(),
-                start_time: now,
-                die_at: None,
-                play_mode: ActionPlayMode::Once,
-            },
-        );
+        // TODO2
+        //        target_char.basic_attack_type = BasicAttackType::Ranged {
+        //            bullet_type: WeaponType::SilverBullet,
+        //        };
+        //        updater.insert(
+        //            entities.create(),
+        //            StrEffectComponent {
+        //                effect_id: StrEffectType::Cart.into(),
+        //                pos: target_char.pos(),
+        //                start_time: now,
+        //                die_at: None,
+        //                play_mode: ActionPlayMode::Once,
+        //            },
+        //        );
     }
 
     pub fn calc_attribs(&self, modifiers: &mut CharAttributeModifierCollector) {

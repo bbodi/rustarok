@@ -1,4 +1,4 @@
-use crate::common::EngineTime;
+use crate::common::{v2, EngineTime};
 use crate::components::char::{AuthorizedCharStateComponent, EntityTarget};
 use crate::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
@@ -24,18 +24,19 @@ impl<'a> System<'a> for NextActionApplierSystem {
                 //                if char_state.statuses.can_be_controlled() == false {
                 //                    continue;
                 //                }
-                match controller.next_action {
+                match controller.intention {
                     Some(PlayerIntention::MoveTo(pos)) => {
-                        char_state.target = Some(EntityTarget::Pos(pos))
+                        char_state.target = Some(EntityTarget::Pos(v2(pos.x, -65.0)))
                     }
                     Some(PlayerIntention::Attack(target_entity_id)) => {
                         char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
                     }
                     Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                        char_state.target = Some(EntityTarget::Pos(pos));
+                        char_state.target = Some(EntityTarget::Pos(v2(pos.x, -65.0)));
                     }
                     Some(PlayerIntention::AttackTowards(pos)) => {
-                        char_state.target = Some(EntityTarget::PosWhileAttacking(pos, None));
+                        char_state.target =
+                            Some(EntityTarget::PosWhileAttacking(v2(pos.x, -65.0), None));
                     }
                     None => {} // TODO2
                                //                    Some(PlayerIntention::Casting(skill, is_self_cast, mouse_world_pos)) => {

@@ -1,5 +1,5 @@
 use crate::components::char::{
-    ActionPlayMode, CharActionIndex, CharState, CharacterStateComponent,
+    ActionPlayMode, CharActionIndex, CharacterStateComponent, ClientCharState,
     SpriteRenderDescriptorComponent,
 };
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
@@ -39,17 +39,18 @@ impl StunStatus {
         assets: &AssetResources,
         now: ElapsedTime,
     ) {
-        target_char.set_state(CharState::StandBy, target_char.dir());
-        let entity = entities.create();
-        updater.insert(
-            entity,
-            SoundEffectComponent {
-                target_entity_id: self_entity_id,
-                sound_id: assets.sounds.stun,
-                pos: target_char.pos(),
-                start_time: now,
-            },
-        );
+        // TODO2
+        //        target_char.set_state(ClientCharState::StandBy, target_char.dir());
+        //        let entity = entities.create();
+        //        updater.insert(
+        //            entity,
+        //            SoundEffectComponent {
+        //                target_entity_id: self_entity_id,
+        //                sound_id: assets.sounds.stun,
+        //                pos: target_char.pos(),
+        //                start_time: now,
+        //            },
+        //        );
     }
 
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {

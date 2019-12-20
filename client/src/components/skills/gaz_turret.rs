@@ -1,16 +1,18 @@
 use crate::components::char::{
-    CharOutlook, CharacterEntityBuilder, CharacterStateComponent, NpcComponent, TurretComponent,
+    CharacterEntityBuilder, CharacterStateComponent, NpcComponent, TurretComponent,
     TurretControllerComponent,
 };
-use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
+use crate::components::controller::LocalPlayerControllerComponent;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::configs::DevConfig;
-use crate::consts::{JobId, MonsterId};
-use crate::runtime_assets::map::{CollisionGroup, PhysicEngine};
+use crate::runtime_assets::map::PhysicEngine;
 
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{
+    CharEntityId, CharOutlook, CollisionGroup, ControllerEntityId, JobId, MonsterId,
+};
+use rustarok_common::components::controller::ControllerComponent;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -44,18 +46,23 @@ impl SkillDef for GazTurretSkill {
                     &mut ecs_world.write_resource::<PhysicEngine>(),
                     |builder| builder.collision_group(CollisionGroup::Turret).circle(1.0),
                 )
-                .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-                    ch.outlook(CharOutlook::Monster(MonsterId::Dimik))
-                        .job_id(JobId::Turret)
-                        .team(caster.team)
-                });
+                .char_state(
+                    updater,
+                    &ecs_world.read_resource::<DevConfig>(),
+                    params.skill_pos.unwrap(),
+                    |ch| {
+                        ch.outlook(CharOutlook::Monster(MonsterId::Dimik))
+                            .job_id(JobId::Turret)
+                            .team(caster.team)
+                    },
+                );
 
-            let controller_id = ControllerEntityId(entities.create());
+            let controller_id = ControllerEntityId::new(entities.create());
             updater.insert(
-                controller_id.0,
-                LocalPlayerControllerComponent::new(char_entity_id),
+                controller_id.into(),
+                ControllerComponent::new(char_entity_id),
             );
-            updater.insert(controller_id.0, TurretControllerComponent);
+            updater.insert(controller_id.into(), TurretControllerComponent);
         }
         None
     }

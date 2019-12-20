@@ -1,5 +1,5 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::{ControllerEntityId, HumanInputComponent};
+use crate::components::controller::HumanInputComponent;
 use crate::configs::DevConfig;
 use crate::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
@@ -15,7 +15,7 @@ use crate::systems::SystemVariables;
 use crate::video::Video;
 use crate::ElapsedTime;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, ControllerEntityId};
 use sdl2::keyboard::Scancode;
 use serde::export::fmt::{Debug, Error};
 use serde::export::Formatter;
@@ -641,7 +641,7 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if human.username == username {
-                return Some(ControllerEntityId(entity_id));
+                return Some(ControllerEntityId::new(entity_id));
             }
         }
         return None;

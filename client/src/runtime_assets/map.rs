@@ -18,22 +18,8 @@ use nphysics2d::solver::SignoriniModel;
 use nphysics2d::world::{DefaultGeometricalWorld, DefaultMechanicalWorld};
 use rustarok_common::common::{measure_time, Mat4};
 use rustarok_common::common::{v2, Vec2};
+use rustarok_common::components::char::CollisionGroup;
 use rustarok_common::grf::gat::{BlockingRectangle, Gat};
-
-#[derive(Clone, Copy)]
-pub enum CollisionGroup {
-    StaticModel,
-    LeftPlayer,
-    RightPlayer,
-    LeftBarricade,
-    RightBarricade,
-    NeutralPlayerPlayer,
-    NonCollidablePlayer,
-    Minion,
-    Turret,
-    Guard,
-    SkillArea,
-}
 
 pub struct ModelInstance {
     pub asset_db_model_index: usize,
@@ -105,6 +91,7 @@ pub fn load_map(
     map_name: &str,
     asset_loader: &GrfEntryLoader,
     asset_db: &mut AssetDatabase,
+    load_models: bool,
 ) -> (MapRenderData) {
     let (elapsed, world) = measure_time(|| asset_loader.load_map(&map_name).unwrap());
     log::info!("rsw loaded: {}ms", elapsed.as_millis());
@@ -148,7 +135,15 @@ pub fn load_map(
         lightmap_texture: DUMMY_TEXTURE_ID_FOR_TEST,
     };
 
-    asset_loader.start_loading_models(gl, world.models, asset_db, gat.width / 2, gat.height / 2);
+    if load_models {
+        asset_loader.start_loading_models(
+            gl,
+            world.models,
+            asset_db,
+            gat.width / 2,
+            gat.height / 2,
+        );
+    }
 
     let centered_sprite_vertex_array = VertexArray::new_static(
         gl,

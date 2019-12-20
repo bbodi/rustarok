@@ -37,7 +37,7 @@ impl Video {
             .window("Rustarok", resolution_w, resolution_h)
             .opengl()
             .allow_highdpi()
-            //            .resizable()
+            .resizable()
             .build()
             .unwrap();
         let (gl, gl_context) = Gl::new(&video, &window, resolution_w as i32, resolution_h as i32);

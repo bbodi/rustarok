@@ -1,12 +1,12 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharOutlook, CharState, CharType, CharacterStateComponent, NpcComponent,
-    SpriteBoundingRect, SpriteRenderDescriptorComponent, Team,
+    ActionPlayMode, CharacterStateComponent, ClientCharState, NpcComponent, SpriteBoundingRect,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CameraComponent, ControllerEntityId, EntitiesBelowCursor, HumanInputComponent,
-    LocalPlayerControllerComponent, SkillKey,
+    CameraComponent, EntitiesBelowCursor, HumanInputComponent, LocalPlayerControllerComponent,
+    SkillKey,
 };
 use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
@@ -23,8 +23,11 @@ use crate::systems::{AssetResources, RenderMatrices, SystemFrameDurations, Syste
 use crate::{ElapsedTime, SpriteResource};
 use nalgebra::{Isometry2, Vector2, Vector3};
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId, EntityTarget, DIRECTION_TABLE};
-use rustarok_common::components::controller::PlayerIntention;
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
+    ControllerEntityId, EntityTarget, Team, DIRECTION_TABLE,
+};
+use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
 
 pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
@@ -58,6 +61,7 @@ impl RenderDesktopClientSystem {
         time: &EngineTime,
         dev_configs: &DevConfig,
         char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
+        auth_char_state_storage: &ReadStorage<'a, AuthorizedCharStateComponent>,
         entities: &Entities<'a>,
         sprite_storage: &ReadStorage<'a, SpriteRenderDescriptorComponent>,
         skill_storage: &ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -79,6 +83,7 @@ impl RenderDesktopClientSystem {
                 time,
                 dev_configs,
                 char_state_storage,
+                auth_char_state_storage,
                 entities,
                 sprite_storage,
                 asset_db,
@@ -140,7 +145,7 @@ impl RenderDesktopClientSystem {
             render_models(
                 controller
                     .as_ref()
-                    .map(|it| it.controlled_char.pos())
+                    .map(|it| it.controlled_auth_char.pos())
                     .as_ref(),
                 &camera.camera,
                 &map_render_data,
@@ -154,8 +159,8 @@ impl RenderDesktopClientSystem {
                 {
                     let _stopwatch =
                         system_benchmark.start_measurement("render.select_skill_target");
-                    let char_pos = controller.controlled_char.pos();
-                    if let Some((_skill_key, skill)) = controller.controller.select_skill_target {
+                    let char_pos = controller.controlled_auth_char.pos();
+                    if let Some((_skill_key, skill)) = controller.desktop.select_skill_target {
                         let skill_def = skill.get_definition();
                         let skill_cast_attr =
                             skill.get_cast_attributes(&dev_configs, controller.controlled_char);
@@ -208,8 +213,8 @@ impl RenderDesktopClientSystem {
                 {
                     // render target position
                     // if there is a valid controller, there is char_state as well
-                    if let Some(PlayerIntention::MoveTo(pos)) = controller.controller.last_action {
-                        if CharState::Idle != *controller.controlled_char.state() {
+                    if let Some(PlayerIntention::MoveTo(pos)) = controller.desktop.last_intention {
+                        if CharState::Idle != *controller.controlled_auth_char.state() {
                             let cursor_anim_descr = SpriteRenderDescriptorComponent {
                                 action_index: CURSOR_TARGET.1,
                                 animation_started: ElapsedTime(0.0),
@@ -327,6 +332,7 @@ impl RenderDesktopClientSystem {
         time: &EngineTime,
         dev_configs: &DevConfig,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
+        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
@@ -334,14 +340,17 @@ impl RenderDesktopClientSystem {
         //        gat: &Gat,
     ) {
         // Draw players
-        for (rendering_entity_id, animated_sprite, char_state) in
-            (entities, sprite_storage, char_state_storage).join()
+        for (rendering_entity_id, animated_sprite, char_state, auth_state) in (
+            entities,
+            sprite_storage,
+            char_state_storage,
+            auth_char_state_storage,
+        )
+            .join()
         {
             let rendering_entity_id = CharEntityId::from(rendering_entity_id);
-            // for autocompletion
-            let char_state: &CharacterStateComponent = char_state;
 
-            let pos_2d = char_state.pos();
+            let pos_2d = auth_state.pos();
             if !camera.camera.is_visible(pos_2d) {
                 continue;
             }
@@ -384,7 +393,7 @@ impl RenderDesktopClientSystem {
                                 [sex as usize],
                         );
 
-                    let play_mode = if char_state.state().is_dead() {
+                    let play_mode = if auth_state.state().is_dead() {
                         ActionPlayMode::PlayThenHold
                     } else {
                         ActionPlayMode::Repeat
@@ -397,9 +406,9 @@ impl RenderDesktopClientSystem {
                     if let Some(controller) = &controller {
                         if RenderDesktopClientSystem::need_entity_highlighting(
                             controller.controller.controlled_entity,
-                            controller.controller.select_skill_target,
+                            controller.desktop.select_skill_target,
                             rendering_entity_id,
-                            &controller.controller.entities_below_cursor,
+                            &controller.desktop.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
                             let color =
@@ -491,7 +500,7 @@ impl RenderDesktopClientSystem {
                     };
 
                     // TODO: create a has_hp component and draw this on them only?
-                    if !char_state.state().is_dead() {
+                    if !auth_state.state().is_dead() {
                         self.draw_health_bar(
                             controller
                                 .as_ref()
@@ -511,7 +520,7 @@ impl RenderDesktopClientSystem {
 
                     if let Some(controller) = controller {
                         controller
-                            .controller
+                            .desktop
                             .bounding_rect_2d
                             .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
                     }
@@ -521,7 +530,7 @@ impl RenderDesktopClientSystem {
                         let sprites = &assets.sprites.monster_sprites;
                         &sprites[&monster_id]
                     };
-                    let play_mode = if char_state.state().is_dead() {
+                    let play_mode = if auth_state.state().is_dead() {
                         ActionPlayMode::PlayThenHold
                     } else {
                         ActionPlayMode::Repeat
@@ -529,9 +538,9 @@ impl RenderDesktopClientSystem {
                     if let Some(controller) = controller {
                         if RenderDesktopClientSystem::need_entity_highlighting(
                             controller.controller.controlled_entity,
-                            controller.controller.select_skill_target,
+                            controller.desktop.select_skill_target,
                             rendering_entity_id,
-                            &controller.controller.entities_below_cursor,
+                            &controller.desktop.entities_below_cursor,
                             &controller.controlled_char.target,
                         ) {
                             let color =
@@ -580,7 +589,7 @@ impl RenderDesktopClientSystem {
                             continue;
                         }
                     };
-                    if !char_state.state().is_dead() {
+                    if !auth_state.state().is_dead() {
                         self.draw_health_bar(
                             controller
                                 .as_ref()
@@ -600,25 +609,26 @@ impl RenderDesktopClientSystem {
 
                     if let Some(controller) = controller {
                         controller
-                            .controller
+                            .desktop
                             .bounding_rect_2d
                             .insert(rendering_entity_id, (bounding_rect, char_state.team));
                     }
                 }
             }
 
-            if let CharState::CastingSkill(casting_info) = char_state.state() {
-                let skill = casting_info.skill;
-                skill.get_definition().render_casting(
-                    &char_state.pos(),
-                    &casting_info,
-                    assets,
-                    time,
-                    dev_configs,
-                    render_commands,
-                    &char_state_storage,
-                );
-            }
+            // TODO2 casting
+            //            if let CharState::CastingSkill(casting_info) = auth_state.state() {
+            //                let skill = casting_info.skill;
+            //                skill.get_definition().render_casting(
+            //                    &char_state.pos(),
+            //                    &casting_info,
+            //                    assets,
+            //                    time,
+            //                    dev_configs,
+            //                    render_commands,
+            //                    &char_state_storage,
+            //                );
+            //            }
 
             char_state
                 .statuses
@@ -628,8 +638,10 @@ impl RenderDesktopClientSystem {
 }
 
 struct ControllerAndControlled<'a> {
-    controller: &'a mut LocalPlayerControllerComponent,
+    controller: &'a ControllerComponent,
+    desktop: &'a mut LocalPlayerControllerComponent,
     controlled_char: &'a CharacterStateComponent,
+    controlled_auth_char: &'a AuthorizedCharStateComponent,
 }
 
 impl<'a> System<'a> for RenderDesktopClientSystem {
@@ -638,6 +650,8 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, HumanInputComponent>,
         ReadStorage<'a, SpriteRenderDescriptorComponent>,
         ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, ControllerComponent>,
         WriteStorage<'a, LocalPlayerControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, DevConfig>,
@@ -664,7 +678,9 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             input_storage,
             sprite_storage,
             char_state_storage,
-            mut controller_storage,
+            auth_char_state_storage,
+            controller_storage,
+            mut local_desktop_storage,
             sys_vars,
             dev_configs,
             mut system_benchmark,
@@ -695,16 +711,18 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 .join()
         };
         for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
-            let controller_id = ControllerEntityId(entity_id);
+            let controller_id = ControllerEntityId::new(entity_id);
 
             let mut controller_and_controlled: Option<ControllerAndControlled> = camera
                 .followed_controller
-                .map(|controller_id| controller_storage.get_mut(controller_id.0).unwrap())
+                .map(|controller_id| controller_storage.get(controller_id.into()).unwrap())
                 .map(|controller| {
                     let entity = controller.controlled_entity;
                     ControllerAndControlled {
                         controller,
+                        desktop: local_desktop_storage.get_mut(controller_id.into()).unwrap(),
                         controlled_char: char_state_storage.get(entity.into()).unwrap(),
+                        controlled_auth_char: auth_char_state_storage.get(entity.into()).unwrap(),
                     }
                 });
 
@@ -721,6 +739,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     &time,
                     &dev_configs,
                     &char_state_storage,
+                    &auth_char_state_storage,
                     &entities,
                     &sprite_storage,
                     &skill_storage,
@@ -745,12 +764,14 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 &entities,
                 &numbers,
                 &char_state_storage,
+                &auth_char_state_storage,
                 controller_and_controlled
                     .as_ref()
                     .map(|it| it.controller.controlled_entity)
-                    .unwrap_or(
-                        CharEntityId::from(controller_id.0), // controller_id is the controller id, so no character will match with it, ~dummy value
-                    ),
+                    .unwrap_or({
+                        let entity1: Entity = controller_id.into();
+                        CharEntityId::from(entity1) // controller_id is the controller id, so no character will match with it, ~dummy value
+                    }),
                 controller_and_controlled
                     .as_ref()
                     .map(|it| it.controlled_char.team),
@@ -764,7 +785,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 self.render_ui_sys.run(
                     &controller_and_controlled.controlled_char,
                     &input,
-                    &controller_and_controlled.controller,
+                    &controller_and_controlled.desktop,
                     &mut render_commands,
                     &sys_vars,
                     &time,
@@ -1048,6 +1069,7 @@ impl DamageRenderSystem {
         entities: &Entities,
         numbers: &ReadStorage<FlyingNumberComponent>,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
+        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         followed_char_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
@@ -1059,6 +1081,7 @@ impl DamageRenderSystem {
             DamageRenderSystem::add_render_command(
                 number,
                 char_state_storage,
+                auth_char_state_storage,
                 followed_char_id,
                 desktop_entity_team,
                 now,
@@ -1075,6 +1098,7 @@ impl DamageRenderSystem {
     fn add_render_command(
         number: &FlyingNumberComponent,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
+        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         desktop_entity_id: CharEntityId,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
@@ -1141,6 +1165,7 @@ impl DamageRenderSystem {
                 DamageRenderSystem::add_render_command(
                     &sub_number,
                     char_state_storage,
+                    auth_char_state_storage,
                     desktop_entity_id,
                     desktop_entity_team,
                     now,
@@ -1153,10 +1178,10 @@ impl DamageRenderSystem {
         // TODO: don't render more than 1 damage in a single frame for the same target
         let (size, pos) = match number.typ {
             FlyingNumberType::Heal => {
-                DamageRenderSystem::calc_heal_size_pos(char_state_storage, number, width, perc)
+                DamageRenderSystem::calc_heal_size_pos(auth_char_state_storage, number, width, perc)
             }
             FlyingNumberType::Combo { .. } => {
-                let real_pos = char_state_storage
+                let real_pos = auth_char_state_storage
                     .get(number.target_entity_id.into())
                     .map(|it| it.pos())
                     .unwrap_or(number.start_pos);
@@ -1171,16 +1196,19 @@ impl DamageRenderSystem {
                 (size, pos)
             }
             FlyingNumberType::Damage => {
-                DamageRenderSystem::calc_damage_size_pos(char_state_storage, number, perc, 1.0)
+                DamageRenderSystem::calc_damage_size_pos(auth_char_state_storage, number, perc, 1.0)
             }
             FlyingNumberType::SubCombo => {
-                DamageRenderSystem::calc_damage_size_pos(char_state_storage, number, perc, 2.0)
+                DamageRenderSystem::calc_damage_size_pos(auth_char_state_storage, number, perc, 2.0)
             }
-            FlyingNumberType::Poison => {
-                DamageRenderSystem::calc_poison_size_pos(char_state_storage, number, width, perc)
-            }
+            FlyingNumberType::Poison => DamageRenderSystem::calc_poison_size_pos(
+                auth_char_state_storage,
+                number,
+                width,
+                perc,
+            ),
             FlyingNumberType::Block | FlyingNumberType::Absorb => {
-                let real_pos = char_state_storage
+                let real_pos = auth_char_state_storage
                     .get(number.target_entity_id.into())
                     .map(|it| it.pos())
                     .unwrap_or(number.start_pos);
@@ -1252,7 +1280,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_damage_size_pos(
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         number: &FlyingNumberComponent,
         perc: f32,
         speed: f32,
@@ -1273,7 +1301,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_poison_size_pos(
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         number: &FlyingNumberComponent,
         width: f32,
         perc: f32,
@@ -1292,7 +1320,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_heal_size_pos(
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         number: &FlyingNumberComponent,
         width: f32,
         perc: f32,

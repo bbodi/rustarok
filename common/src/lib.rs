@@ -12,10 +12,13 @@
 
 #[macro_use]
 extern crate specs_derive;
+extern crate hexplay;
 
 use specs;
 
 pub mod common;
 pub mod components;
 pub mod grf;
+pub mod packets;
+pub mod serde_remote;
 pub mod systems;

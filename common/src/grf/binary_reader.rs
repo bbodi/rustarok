@@ -9,14 +9,6 @@ pub struct BinaryReader {
 }
 
 impl BinaryReader {
-    pub fn tell(&self) -> usize {
-        self.index
-    }
-
-    pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
     pub fn new<P: AsRef<Path> + Clone>(path: P) -> Result<BinaryReader, std::io::Error> {
         let mut buf = BinaryReader {
             buf: Vec::new(),
@@ -28,6 +20,18 @@ impl BinaryReader {
 
     pub fn from_vec(vec: Vec<u8>) -> BinaryReader {
         BinaryReader { buf: vec, index: 0 }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.buf[self.index..]
+    }
+
+    pub fn tell(&self) -> usize {
+        self.index
+    }
+
+    pub fn len(&self) -> usize {
+        self.buf.len()
     }
 
     pub fn next_u8(&mut self) -> u8 {

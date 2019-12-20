@@ -1,6 +1,6 @@
 use crate::components::char::{
     percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
-    CharAttributes, CharState, CharacterStateComponent, Percentage, Team,
+    CharAttributes, CharacterStateComponent, ClientCharState, Percentage,
 };
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
@@ -19,17 +19,16 @@ use crate::components::{
     ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationType,
 };
 use crate::configs::DevConfig;
-use crate::consts::JobId;
 use crate::effect::StrEffectType;
 use crate::grf::SpriteResource;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::runtime_assets::map::PhysicEngine;
-use crate::systems::{AssetResources, Sex, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{CharDir, CharEntityId, JobId, Sex, StatusNature, Team};
 use specs::{Entities, LazyUpdate};
 use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
@@ -210,39 +209,40 @@ impl StatusEnum {
         time: &EngineTime,
         physics_world: &mut PhysicEngine,
     ) {
-        match self {
-            StatusEnum::AssaBladeDashStatus(_) => {
-                // allow to go through anything
-                target_char.set_noncollidable(physics_world);
-            }
-            StatusEnum::FalconCarryStatus(_) => {
-                target_char.set_noncollidable(physics_world);
-                target_char.set_state(CharState::StandBy, CharDir::South);
-            }
-            StatusEnum::ExoSkeletonStatus(status) => {
-                status.on_apply(target_char, entities, updater, time.now())
-            }
-            StatusEnum::StunStatus(status) => status.on_apply(
-                self_entity_id,
-                target_char,
-                entities,
-                updater,
-                assets,
-                time.now(),
-            ),
-            StatusEnum::AbsorbStatus(_)
-            | StatusEnum::MountedStatus { .. }
-            | StatusEnum::DeathStatus(_)
-            | StatusEnum::AssaPhasePrismStatus(_)
-            | StatusEnum::FireBombStatus(_)
-            | StatusEnum::PyroBlastTargetStatus(_)
-            | StatusEnum::AttackHealStatus(_)
-            | StatusEnum::ArmorModifierStatus(_)
-            | StatusEnum::WalkingSpeedModifierStatus(_)
-            | StatusEnum::ReflectDamageStatus(_)
-            | StatusEnum::SacrificeStatus(_)
-            | StatusEnum::PoisonStatus(_) => {}
-        }
+        // TODO2
+        //        match self {
+        //            StatusEnum::AssaBladeDashStatus(_) => {
+        //                // allow to go through anything
+        //                target_char.set_noncollidable(physics_world);
+        //            }
+        //            StatusEnum::FalconCarryStatus(_) => {
+        //                target_char.set_noncollidable(physics_world);
+        //                target_char.set_state(ClientCharState::StandBy, CharDir::South);
+        //            }
+        //            StatusEnum::ExoSkeletonStatus(status) => {
+        //                status.on_apply(target_char, entities, updater, time.now())
+        //            }
+        //            StatusEnum::StunStatus(status) => status.on_apply(
+        //                self_entity_id,
+        //                target_char,
+        //                entities,
+        //                updater,
+        //                assets,
+        //                time.now(),
+        //            ),
+        //            StatusEnum::AbsorbStatus(_)
+        //            | StatusEnum::MountedStatus { .. }
+        //            | StatusEnum::DeathStatus(_)
+        //            | StatusEnum::AssaPhasePrismStatus(_)
+        //            | StatusEnum::FireBombStatus(_)
+        //            | StatusEnum::PyroBlastTargetStatus(_)
+        //            | StatusEnum::AttackHealStatus(_)
+        //            | StatusEnum::ArmorModifierStatus(_)
+        //            | StatusEnum::WalkingSpeedModifierStatus(_)
+        //            | StatusEnum::ReflectDamageStatus(_)
+        //            | StatusEnum::SacrificeStatus(_)
+        //            | StatusEnum::PoisonStatus(_) => {}
+        //        }
     }
 
     pub fn get_render_color(&self, now: ElapsedTime) -> [u8; 4] {
@@ -467,43 +467,44 @@ impl StatusEnum {
         time: &EngineTime,
         render_commands: &mut RenderCommandCollector,
     ) {
-        let now = time.now();
-        match self {
-            StatusEnum::AbsorbStatus(status) => {
-                status.render(now, assets, char_state.pos(), render_commands)
-            }
-            StatusEnum::MountedStatus { .. } => {}
-            StatusEnum::ExoSkeletonStatus(_) => {}
-            StatusEnum::FireBombStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::PyroBlastTargetStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::AttackHealStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::ArmorModifierStatus(_) => {}
-            StatusEnum::WalkingSpeedModifierStatus(_) => {}
-            StatusEnum::ReflectDamageStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::SacrificeStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::PoisonStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::StunStatus(status) => {
-                status.render(char_state.pos(), now, assets, render_commands)
-            }
-            StatusEnum::DeathStatus(_) => {}
-            StatusEnum::AssaBladeDashStatus(status) => {
-                status.render(char_state, now, assets, render_commands)
-            }
-            StatusEnum::FalconCarryStatus(status) => status.render(assets, render_commands),
-            StatusEnum::AssaPhasePrismStatus(_) => {}
-        }
+        // TODO2
+        //        let now = time.now();
+        //        match self {
+        //            StatusEnum::AbsorbStatus(status) => {
+        //                status.render(now, assets, char_state.pos(), render_commands)
+        //            }
+        //            StatusEnum::MountedStatus { .. } => {}
+        //            StatusEnum::ExoSkeletonStatus(_) => {}
+        //            StatusEnum::FireBombStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::PyroBlastTargetStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::AttackHealStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::ArmorModifierStatus(_) => {}
+        //            StatusEnum::WalkingSpeedModifierStatus(_) => {}
+        //            StatusEnum::ReflectDamageStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::SacrificeStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::PoisonStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::StunStatus(status) => {
+        //                status.render(char_state.pos(), now, assets, render_commands)
+        //            }
+        //            StatusEnum::DeathStatus(_) => {}
+        //            StatusEnum::AssaBladeDashStatus(status) => {
+        //                status.render(char_state, now, assets, render_commands)
+        //            }
+        //            StatusEnum::FalconCarryStatus(status) => status.render(assets, render_commands),
+        //            StatusEnum::AssaPhasePrismStatus(_) => {}
+        //        }
     }
 
     pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
@@ -1143,12 +1144,6 @@ pub struct ApplyStatusInAreaComponent {
     pub except: Option<CharEntityId>,
     pub nature: StatusNature,
     pub caster_team: Team,
-}
-
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub enum StatusNature {
-    Supportive,
-    Harmful,
 }
 
 pub enum RemoveStatusComponentPayload {

@@ -16,7 +16,6 @@ use crate::render::render_sys::render_single_layer_action;
 use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::common::{v2, v3, ElapsedTime, EngineTime, Vec2};
 use rustarok_common::components::char::{CharDir, CharEntityId};
-use rustarok_common::systems::NextActionApplierSystem;
 use serde::Deserialize;
 use serde::Serialize;
 use specs::ReadStorage;
@@ -163,7 +162,7 @@ impl SkillManifestation for BasicRangeAttackBullet {
             .now()
             .percentage_between(self.started_at, self.ends_at);
         if travel_duration_percentage < 1.0 {
-            if let Some(target) = params.char_storage.get(self.target_id.into()) {
+            if let Some(target) = params.auth_state_storage.get(self.target_id.into()) {
                 let dir = target.pos() - self.start_pos;
                 self.current_pos = self.start_pos + dir * travel_duration_percentage;
                 self.target_pos = target.pos();

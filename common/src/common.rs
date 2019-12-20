@@ -5,6 +5,8 @@ use std::time::{Duration, Instant};
 
 pub const SIMULATION_FREQ: u64 = 30;
 pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
+pub const MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME: Duration =
+    Duration::from_millis(1000 / SIMULATION_FREQ);
 
 pub type Mat3 = Matrix3<f32>;
 pub type Mat4 = Matrix4<f32>;
@@ -14,54 +16,78 @@ pub type Vec3 = Vector3<f32>;
 pub type Vec2i = Vector2<i16>;
 pub type Vec2u = Vector2<u16>;
 
+pub const ALLOWED_F32_DIFF: f32 = 0.01;
+pub fn float_cmp(a: f32, b: f32) -> bool {
+    (a - b).abs() < ALLOWED_F32_DIFF
+}
+
+#[derive(Clone)]
 pub struct EngineTime {
     pub tick: u64,
-    pub end_of_last_frame_ms: u64,
+    pub end_of_last_frame: Instant,
     pub time: ElapsedTime,
     /// seconds the previous frame required
-    pub dt: DeltaTime,
+    pub dt: Duration,
     // TODO: #[cfg(test)]
-    pub fix_dt_for_test: f32,
+    pub fix_dt_for_test: Duration,
 }
 
 impl EngineTime {
     pub fn new() -> EngineTime {
         EngineTime {
-            fix_dt_for_test: 0.0,
+            fix_dt_for_test: Duration::from_millis(1),
             tick: 1,
-            end_of_last_frame_ms: 0,
+            end_of_last_frame: Instant::now(),
             time: ElapsedTime(0.0),
-            dt: DeltaTime(1.0),
+            dt: Duration::from_millis(1),
         }
     }
 
     #[cfg(test)]
-    pub fn new_for_tests(fix_dt_for_test: f32) -> EngineTime {
+    pub fn new_for_tests(fix_dt_for_test: Duration) -> EngineTime {
         EngineTime {
             fix_dt_for_test,
             tick: 1,
-            end_of_last_frame_ms: 0,
+            end_of_last_frame: Instant::now(),
             time: ElapsedTime(0.0),
-            dt: DeltaTime(1.0),
+            dt: Duration::from_millis(1),
         }
     }
 
-    pub fn update_timers(&mut self, now_ms: u64) {
+    pub fn update_timers(&mut self, dt: Duration, now: Instant) {
         let dt = if cfg!(test) {
             self.fix_dt_for_test
         } else {
-            let dt = (now_ms - self.end_of_last_frame_ms) as f32 / 1000.0;
-            self.end_of_last_frame_ms = now_ms;
-            dt.min(MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME)
+            self.end_of_last_frame = now;
+            dt.min(MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME)
         };
         self.tick += 1;
-        self.dt.0 = dt;
-        self.time.0 += dt;
+        self.dt = dt;
+        self.time.0 += dt.as_millis() as f32 / 1000.0;
+    }
+
+    pub fn update_timers_for_prediction(&mut self) {
+        let dt = MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME;
+        self.tick += 1;
+        self.dt = dt;
+        self.time.0 += dt.as_millis() as f32 / 1000.0;
     }
 
     #[inline]
     pub fn now(&self) -> ElapsedTime {
         self.time
+    }
+
+    pub fn dt(&self) -> f32 {
+        self.dt.as_millis() as f32 / 1000.0
+    }
+
+    pub fn reverted_to(&self, tick: u64) -> EngineTime {
+        EngineTime {
+            tick,
+            time: ElapsedTime((self.tick - tick) as f32 * MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME),
+            ..*self
+        }
     }
 }
 
@@ -130,9 +156,6 @@ pub fn rotate_vec2(rad: f32, vec: &Vec2) -> Vec2 {
     let rotated = rot_matrix.transform_point(&v2_to_p3(vec));
     return p3_to_v2(&rotated);
 }
-
-#[derive(Copy, Clone, Debug)]
-pub struct DeltaTime(pub f32);
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(from = "f32")]

@@ -1,10 +1,12 @@
-use crate::components::char::{CharacterStateComponent, Team};
-use crate::components::controller::{ControllerEntityId, LocalPlayerControllerComponent};
+use crate::components::char::CharacterStateComponent;
+use crate::components::controller::LocalPlayerControllerComponent;
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::{v2, v2_to_p2, Vec2};
-use rustarok_common::components::char::{CharEntityId, EntityTarget};
-use rustarok_common::components::controller::PlayerIntention;
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharEntityId, ControllerEntityId, EntityTarget, Team,
+};
+use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
 
 pub struct MinionAiSystem;
@@ -23,6 +25,7 @@ impl MinionAiSystem {
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
+        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         center: &Vec2,
         radius: f32,
         self_team: Team,
@@ -31,12 +34,14 @@ impl MinionAiSystem {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
-        for (entity_id, char_state) in (entities, char_state_storage).join() {
+        for (entity_id, char_state, auth_char_state) in
+            (entities, char_state_storage, auth_char_state_storage).join()
+        {
             let entity_id = CharEntityId::from(entity_id);
-            let pos = char_state.pos();
+            let pos = auth_char_state.pos();
             if entity_id == except
                 || !char_state.team.is_enemy_to(self_team)
-                || char_state.state().is_dead()
+                || auth_char_state.state().is_dead()
                 || (pos.x - center.x).abs() > radius
             {
                 continue;
@@ -54,8 +59,9 @@ impl MinionAiSystem {
 impl<'a> System<'a> for MinionAiSystem {
     type SystemData = (
         Entities<'a>,
-        WriteStorage<'a, LocalPlayerControllerComponent>,
+        WriteStorage<'a, ControllerComponent>,
         ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, MinionComponent>,
         WriteExpect<'a, SystemFrameDurations>,
     );
@@ -66,6 +72,7 @@ impl<'a> System<'a> for MinionAiSystem {
             entities,
             mut controller_storage,
             char_state_storage,
+            auth_char_state_storage,
             minion_storage,
             mut system_benchmark,
         ): Self::SystemData,
@@ -74,17 +81,20 @@ impl<'a> System<'a> for MinionAiSystem {
         for (controller_id, controller, _minion) in
             (&entities, &mut controller_storage, &minion_storage).join()
         {
-            let controller_id = ControllerEntityId(controller_id);
+            let controller_id = ControllerEntityId::new(controller_id);
             let char_state = char_state_storage.get(controller.controlled_entity.into());
 
             if let Some(char_state) = char_state {
+                let auth_char_state = auth_char_state_storage
+                    .get(controller.controlled_entity.into())
+                    .unwrap();
                 // Hack
                 let mut current_target_id = None;
                 // hack end
                 let current_target_entity = match char_state.target {
                     Some(EntityTarget::OtherEntity(target_id)) => {
                         current_target_id = Some(target_id);
-                        char_state_storage.get(target_id.into())
+                        auth_char_state_storage.get(target_id.into())
                     }
                     _ => None,
                 };
@@ -92,18 +102,19 @@ impl<'a> System<'a> for MinionAiSystem {
                     Some(target) => {
                         let current_distance = nalgebra::distance(
                             &v2_to_p2(&target.pos()),
-                            &v2_to_p2(&char_state.pos()),
+                            &v2_to_p2(&auth_char_state.pos()),
                         );
                         target.state().is_dead() || current_distance > 10.0
                     }
                     None => true,
                 };
 
-                controller.next_action = if no_target_or_dead_or_out_of_range {
+                controller.intention = if no_target_or_dead_or_out_of_range {
                     let maybe_enemy = MinionAiSystem::get_closest_enemy_in_area(
                         &entities,
                         &char_state_storage,
-                        &char_state.pos(),
+                        &auth_char_state_storage,
+                        &auth_char_state.pos(),
                         10.0,
                         char_state.team,
                         controller.controlled_entity,
@@ -114,7 +125,7 @@ impl<'a> System<'a> for MinionAiSystem {
                             let next_checkpoint = if char_state.team == Team::Right {
                                 let mut next_checkpoint = MinionAiSystem::CHECKPOINTS[5];
                                 for checkpoint in MinionAiSystem::CHECKPOINTS.iter() {
-                                    if checkpoint[0] < char_state.pos().x as i32 {
+                                    if checkpoint[0] < auth_char_state.pos().x as i32 {
                                         next_checkpoint = *checkpoint;
                                         break;
                                     }
@@ -123,7 +134,7 @@ impl<'a> System<'a> for MinionAiSystem {
                             } else {
                                 let mut next_checkpoint = MinionAiSystem::CHECKPOINTS[0];
                                 for checkpoint in MinionAiSystem::CHECKPOINTS.iter().rev() {
-                                    if checkpoint[0] > char_state.pos().x as i32 {
+                                    if checkpoint[0] > auth_char_state.pos().x as i32 {
                                         next_checkpoint = *checkpoint;
                                         break;
                                     }
@@ -141,7 +152,7 @@ impl<'a> System<'a> for MinionAiSystem {
                 }
             } else {
                 // the char might have died, remove the controller entity
-                entities.delete(controller_id.0).expect("");
+                entities.delete(controller_id.into()).expect("");
             }
         }
     }

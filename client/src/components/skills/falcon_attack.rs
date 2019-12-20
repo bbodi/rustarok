@@ -2,7 +2,7 @@ use nalgebra::{Isometry2, Vector2};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::char::Percentage;
-use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent, Team};
+use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
@@ -17,7 +17,7 @@ use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, Team};
 use specs::prelude::*;
 use std::collections::HashSet;
 

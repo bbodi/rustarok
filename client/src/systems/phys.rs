@@ -19,35 +19,36 @@ impl<'a> System<'a> for FrictionSystem {
 
     fn run(
         &mut self,
-        (mut physics_world, mut system_benchmark, time, mut char_storage): Self::SystemData,
+        (mut physics_world, mut system_benchmark, time, char_storage): Self::SystemData,
     ) {
-        let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
-        for char_state in (&mut char_storage).join() {
-            let body = physics_world.bodies.rigid_body_mut(char_state.body_handle);
-            if let Some(body) = body {
-                if char_state
-                    .cannot_control_until
-                    .has_already_passed(time.now())
-                {
-                    body.set_linear_velocity(Vector2::zeros());
-                } else {
-                    // damping seems unpredictable so I use this to stop arrived players
-                    let linear = body.velocity().linear;
-                    if linear.x != 0.0 || linear.y != 0.0 {
-                        let dir = linear.normalize();
-                        let slowing_vector = body.velocity().linear - (dir * 1.0);
-                        let len = slowing_vector.magnitude();
-                        if len <= 0.001 {
-                            body.set_linear_velocity(Vector2::zeros());
-                        } else {
-                            body.set_linear_velocity(slowing_vector);
-                        }
-                    }
-                }
-                let body_pos = body.position().translation.vector;
-                char_state.set_pos_dont_use_it(body_pos);
-            }
-        }
+        // TODO2 ??
+        //        let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
+        //        for char_state in (&mut char_storage).join() {
+        //            let body = physics_world.bodies.rigid_body_mut(char_state.body_handle);
+        //            if let Some(body) = body {
+        //                if char_state
+        //                    .cannot_control_until
+        //                    .has_already_passed(time.now())
+        //                {
+        //                    body.set_linear_velocity(Vector2::zeros());
+        //                } else {
+        //                    // damping seems unpredictable so I use this to stop arrived players
+        //                    let linear = body.velocity().linear;
+        //                    if linear.x != 0.0 || linear.y != 0.0 {
+        //                        let dir = linear.normalize();
+        //                        let slowing_vector = body.velocity().linear - (dir * 1.0);
+        //                        let len = slowing_vector.magnitude();
+        //                        if len <= 0.001 {
+        //                            body.set_linear_velocity(Vector2::zeros());
+        //                        } else {
+        //                            body.set_linear_velocity(slowing_vector);
+        //                        }
+        //                    }
+        //                }
+        //                let body_pos = body.position().translation.vector;
+        //                char_state.set_pos_dont_use_it(body_pos);
+        //            }
+        //        }
     }
 }
 
@@ -74,7 +75,7 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
     ) {
         let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
-        physics_world.step(time.dt.0);
+        physics_world.step(time.dt());
 
         for event in physics_world.geometrical_world.proximity_events() {
             let collider1 = physics_world.colliders.get(event.collider1).unwrap();

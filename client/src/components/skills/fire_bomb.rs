@@ -1,11 +1,11 @@
 use nalgebra::Isometry2;
 
-use crate::components::char::{ActionPlayMode, CharacterStateComponent, Team};
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::components::status::status::{
-    ApplyStatusComponent, ApplyStatusInAreaComponent, StatusEnum, StatusNature, StatusUpdateParams,
+    ApplyStatusComponent, ApplyStatusInAreaComponent, StatusEnum, StatusUpdateParams,
     StatusUpdateResult,
 };
 use crate::components::{
@@ -18,7 +18,7 @@ use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StatusNature, Team};
 
 pub struct FireBombSkill;
 
@@ -79,54 +79,56 @@ pub struct FireBombStatus {
 
 impl FireBombStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        let now = params.time.now();
-        if self.until.has_already_passed(now) {
-            let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
-            let area_isom = Isometry2::new(params.target_char.pos(), 0.0);
-            params
-                .sys_vars
-                .area_hp_mod_requests
-                .push(AreaAttackComponent {
-                    area_shape: area_shape.clone(),
-                    area_isom: area_isom.clone(),
-                    source_entity_id: self.caster_entity_id,
-                    typ: HpModificationType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
-                    except: None,
-                });
-            if self.spread_count < 1 {
-                params
-                    .sys_vars
-                    .apply_area_statuses
-                    .push(ApplyStatusInAreaComponent {
-                        source_entity_id: self.caster_entity_id,
-                        status: StatusEnum::FireBombStatus(FireBombStatus {
-                            caster_entity_id: self.caster_entity_id,
-                            started: now,
-                            until: now.add_seconds(2.0),
-                            damage: self.damage,
-                            spread_count: self.spread_count + 1,
-                            caster_team: self.caster_team,
-                        }),
-                        area_shape: area_shape.clone(),
-                        area_isom: area_isom.clone(),
-                        except: Some(params.self_char_id),
-                        nature: StatusNature::Harmful,
-                        caster_team: self.caster_team,
-                    });
-            }
-            let effect_comp = StrEffectComponent {
-                effect_id: StrEffectType::FirePillarBomb.into(),
-                pos: params.target_char.pos(),
-                start_time: now.add_seconds(-0.5),
-                die_at: Some(now.add_seconds(1.0)),
-                play_mode: ActionPlayMode::Repeat,
-            };
-            params.updater.insert(params.entities.create(), effect_comp);
-
-            StatusUpdateResult::RemoveIt
-        } else {
-            StatusUpdateResult::KeepIt
-        }
+        StatusUpdateResult::RemoveIt
+        // TODO2
+        //        let now = params.time.now();
+        //        if self.until.has_already_passed(now) {
+        //            let area_shape = Box::new(ncollide2d::shape::Ball::new(2.0));
+        //            let area_isom = Isometry2::new(params.target_char.pos(), 0.0);
+        //            params
+        //                .sys_vars
+        //                .area_hp_mod_requests
+        //                .push(AreaAttackComponent {
+        //                    area_shape: area_shape.clone(),
+        //                    area_isom: area_isom.clone(),
+        //                    source_entity_id: self.caster_entity_id,
+        //                    typ: HpModificationType::SpellDamage(self.damage, DamageDisplayType::Combo(10)),
+        //                    except: None,
+        //                });
+        //            if self.spread_count < 1 {
+        //                params
+        //                    .sys_vars
+        //                    .apply_area_statuses
+        //                    .push(ApplyStatusInAreaComponent {
+        //                        source_entity_id: self.caster_entity_id,
+        //                        status: StatusEnum::FireBombStatus(FireBombStatus {
+        //                            caster_entity_id: self.caster_entity_id,
+        //                            started: now,
+        //                            until: now.add_seconds(2.0),
+        //                            damage: self.damage,
+        //                            spread_count: self.spread_count + 1,
+        //                            caster_team: self.caster_team,
+        //                        }),
+        //                        area_shape: area_shape.clone(),
+        //                        area_isom: area_isom.clone(),
+        //                        except: Some(params.self_char_id),
+        //                        nature: StatusNature::Harmful,
+        //                        caster_team: self.caster_team,
+        //                    });
+        //            }
+        //            let effect_comp = StrEffectComponent {
+        //                effect_id: StrEffectType::FirePillarBomb.into(),
+        //                pos: params.target_char.pos(),
+        //                start_time: now.add_seconds(-0.5),
+        //                die_at: Some(now.add_seconds(1.0)),
+        //                play_mode: ActionPlayMode::Repeat,
+        //            };
+        //            params.updater.insert(params.entities.create(), effect_comp);
+        //
+        //            StatusUpdateResult::RemoveIt
+        //        } else {
+        //            StatusUpdateResult::KeepIt
+        //        }
     }
 
     pub fn render(

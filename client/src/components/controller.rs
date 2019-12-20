@@ -1,10 +1,10 @@
 use crate::cam::Camera;
-use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent, Team};
+use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
 use crate::components::skills::skills::Skills;
 
 use crate::ElapsedTime;
 use rustarok_common::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{CharDir, CharEntityId, ControllerEntityId, Team};
 use rustarok_common::components::controller::PlayerIntention;
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
@@ -87,10 +87,8 @@ pub enum CastMode {
 #[derive(Component)]
 pub struct LocalPlayerControllerComponent {
     pub select_skill_target: Option<(SkillKey, Skills)>,
-    pub controlled_entity: CharEntityId,
-    pub next_action: Option<PlayerIntention>,
     // only client
-    pub last_action: Option<PlayerIntention>,
+    pub last_intention: Option<PlayerIntention>,
     pub repeat_next_action: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
     pub bounding_rect_2d: HashMap<CharEntityId, (SpriteBoundingRect, Team)>,
@@ -100,13 +98,11 @@ pub struct LocalPlayerControllerComponent {
 }
 
 impl LocalPlayerControllerComponent {
-    pub fn new(controlled_entity: CharEntityId) -> LocalPlayerControllerComponent {
+    pub fn new() -> LocalPlayerControllerComponent {
         LocalPlayerControllerComponent {
             select_skill_target: None,
-            controlled_entity,
             repeat_next_action: false,
-            next_action: None,
-            last_action: None,
+            last_intention: None,
             entities_below_cursor: EntitiesBelowCursor::new(),
             bounding_rect_2d: HashMap::new(),
             cell_below_cursor_walkable: false,
@@ -190,9 +186,6 @@ pub struct EntitiesBelowCursor {
     friendly: Vec<CharEntityId>,
     enemy: Vec<CharEntityId>,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ControllerEntityId(pub Entity);
 
 impl EntitiesBelowCursor {
     pub fn new() -> EntitiesBelowCursor {

@@ -1,10 +1,9 @@
-use crate::components::char::Team;
 use crate::components::char::{
-    attach_human_player_components, percentage, CharActionIndex, CharOutlook, CharState,
-    CharacterEntityBuilder, CharacterStateComponent, SpriteRenderDescriptorComponent,
+    attach_human_player_components, percentage, CharActionIndex, CharacterEntityBuilder,
+    CharacterStateComponent, ClientCharState, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CameraComponent, ControllerEntityId, HumanInputComponent, LocalPlayerControllerComponent,
+    CameraComponent, HumanInputComponent, LocalPlayerControllerComponent,
 };
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::basic_attack::WeaponType;
@@ -18,7 +17,7 @@ use crate::components::{
     DamageDisplayType, HpModificationRequest, HpModificationType, MinionComponent,
 };
 use crate::configs::DevConfig;
-use crate::consts::{JobId, JobSpriteId, MonsterId, PLAYABLE_CHAR_SPRITES};
+use crate::consts::PLAYABLE_CHAR_SPRITES;
 use crate::my_gl::Gl;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::console_system::{
@@ -28,12 +27,17 @@ use crate::systems::console_system::{
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::input_sys_scancodes::ScancodeNames;
-use crate::systems::{RenderMatrices, Sex, SystemVariables};
+use crate::systems::{RenderMatrices, SystemVariables};
 use crate::{CollisionGroup, ElapsedTime, PhysicEngine};
 use nalgebra::Isometry2;
 use rand::Rng;
 use rustarok_common::common::{v2, v2u, EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState,
+    ControllerEntityId, JobId, MonsterId, Sex, Team,
+};
+use rustarok_common::components::controller::ControllerComponent;
+use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::grf::gat::CellType;
 use sdl2::keyboard::Scancode;
 use sdl2::pixels::PixelFormatEnum;
@@ -51,7 +55,7 @@ pub(super) fn cmd_toggle_console() -> CommandDefinition {
         action: Box::new(
             |self_controller_id, _self_char_id, _args, ecs_world, _video| {
                 let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
-                let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+                let input_comp = input_storage.get_mut(self_controller_id.into()).unwrap();
                 input_comp.is_console_open = !input_comp.is_console_open;
                 Ok(())
             },
@@ -89,7 +93,7 @@ pub(super) fn cmd_bind_key() -> CommandDefinition {
                     .collect::<Result<Vec<Scancode>, strum::ParseError>>();
                 if let Ok(keys) = keys {
                     let mut input_storage = ecs_world.write_storage::<HumanInputComponent>();
-                    let input_comp = input_storage.get_mut(self_controller_id.0).unwrap();
+                    let input_comp = input_storage.get_mut(self_controller_id.into()).unwrap();
                     let mut iter = keys.into_iter();
                     input_comp.key_bindings.push((
                         [iter.next(), iter.next(), iter.next(), iter.next()],
@@ -140,6 +144,9 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                         .write_storage::<CharacterStateComponent>()
                         .get_mut(target_char_id.into())
                     {
+                        let mut auth_state_storage =
+                            ecs_world.write_storage::<AuthorizedCharStateComponent>();
+                        let auth_state = auth_state_storage.get_mut(target_char_id.into()).unwrap();
                         if let Ok(job_id) = JobId::from_str(job_name) {
                             attach_human_player_components(
                                 &target_char.name,
@@ -151,7 +158,7 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                                     .read_resource::<SystemVariables>()
                                     .matrices
                                     .projection,
-                                target_char.pos(),
+                                auth_state.pos(),
                                 Sex::Male,
                                 job_id,
                                 1,
@@ -313,7 +320,7 @@ pub(super) fn cmd_list_entities() -> CommandDefinition {
                     for (name, count) in &entities {
                         ecs_world
                             .write_storage::<ConsoleComponent>()
-                            .get_mut(self_controller_id.0)
+                            .get_mut(self_controller_id.into())
                             .unwrap()
                             .add_entry(
                                 ConsoleEntry::new()
@@ -441,7 +448,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                     _ => {
                         let map_render_data = &ecs_world.read_resource::<MapRenderData>();
                         let hero_pos = {
-                            let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                            let storage = ecs_world.read_storage::<AuthorizedCharStateComponent>();
                             let char_state = storage.get(self_char_id.into()).unwrap();
                             char_state.pos()
                         };
@@ -483,7 +490,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
                             );
                             ecs_world
                                 .create_entity()
-                                .with(LocalPlayerControllerComponent::new(char_entity_id))
+                                .with(ControllerComponent::new(char_entity_id))
                                 .with(MinionComponent { fountain_up: false })
                                 .build();
                         }
@@ -531,16 +538,21 @@ fn create_guard(
             &mut ecs_world.write_resource::<PhysicEngine>(),
             |builder| builder.collision_group(CollisionGroup::Guard).circle(1.0),
         )
-        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-            ch.y_coord(y)
-                .outlook(outlook.clone().unwrap_or(if team == Team::Left {
-                    CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
-                } else {
-                    CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
-                }))
-                .job_id(JobId::Guard)
-                .team(team)
-        });
+        .char_state(
+            updater,
+            &ecs_world.read_resource::<DevConfig>(),
+            pos2d,
+            |ch| {
+                ch.y_coord(y)
+                    .outlook(outlook.clone().unwrap_or(if team == Team::Left {
+                        CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
+                    } else {
+                        CharOutlook::Monster(MonsterId::GEFFEN_MAGE_12)
+                    }))
+                    .job_id(JobId::Guard)
+                    .team(team)
+            },
+        );
 
     char_entity_id
 }
@@ -571,19 +583,24 @@ fn create_dummy(
                 .circle(1.0)
         },
     )
-    .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-        ch.outlook(outlook.clone().unwrap_or(if job_id == JobId::HealingDummy {
-            CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
-        } else {
-            CharOutlook::Monster(MonsterId::Barricade)
-        }))
-        .job_id(job_id)
-        .team(if job_id == JobId::HealingDummy {
-            Team::AllyForAll
-        } else {
-            Team::EnemyForAll
-        })
-    });
+    .char_state(
+        updater,
+        &ecs_world.read_resource::<DevConfig>(),
+        pos2d,
+        |ch| {
+            ch.outlook(outlook.clone().unwrap_or(if job_id == JobId::HealingDummy {
+                CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
+            } else {
+                CharOutlook::Monster(MonsterId::Barricade)
+            }))
+            .job_id(job_id)
+            .team(if job_id == JobId::HealingDummy {
+                Team::AllyForAll
+            } else {
+                Team::EnemyForAll
+            })
+        },
+    );
 
     char_entity_id
 }
@@ -619,19 +636,24 @@ fn create_random_char_minion(
             &mut ecs_world.write_resource::<PhysicEngine>(),
             |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
         )
-        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-            ch.outlook(outlook.clone().unwrap_or(CharOutlook::Player {
-                sex,
-                job_sprite_id: if job_id == JobId::MeleeMinion {
-                    JobSpriteId::SWORDMAN
-                } else {
-                    JobSpriteId::ARCHER
-                },
-                head_index,
-            }))
-            .job_id(job_id)
-            .team(team)
-        });
+        .char_state(
+            updater,
+            &ecs_world.read_resource::<DevConfig>(),
+            pos2d,
+            |ch| {
+                ch.outlook(outlook.clone().unwrap_or(CharOutlook::Player {
+                    sex,
+                    job_sprite_id: if job_id == JobId::MeleeMinion {
+                        JobSpriteId::SWORDMAN
+                    } else {
+                        JobSpriteId::ARCHER
+                    },
+                    head_index,
+                }))
+                .job_id(job_id)
+                .team(team)
+            },
+        );
     char_entity_id
 }
 
@@ -765,7 +787,7 @@ pub(super) fn cmd_clear() -> CommandDefinition {
             |self_controller_id, _self_char_id, _args, ecs_world, _video| {
                 ecs_world
                     .write_storage::<ConsoleComponent>()
-                    .get_mut(self_controller_id.0)
+                    .get_mut(self_controller_id.into())
                     .unwrap()
                     .clear();
                 Ok(())
@@ -806,7 +828,7 @@ fn print_console(
     entry: ConsoleEntry,
 ) {
     console_storage
-        .get_mut(self_controller_id.0)
+        .get_mut(self_controller_id.into())
         .unwrap()
         .add_entry(entry);
 }
@@ -889,9 +911,11 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
                 let (pos, caster_team) = {
                     let (hero_pos, team) = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let storage = ecs_world.read_storage::<AuthorizedCharStateComponent>();
+                        let storage2 = ecs_world.read_storage::<CharacterStateComponent>();
                         let char_state = storage.get(self_char_id.into()).unwrap();
-                        (char_state.pos(), char_state.team)
+                        let char_state2 = storage2.get(self_char_id.into()).unwrap();
+                        (char_state.pos(), char_state2.team)
                     };
                     (v2(x.unwrap_or(hero_pos.x), y.unwrap_or(hero_pos.y)), team)
                 };
@@ -1259,12 +1283,15 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                         // remove death status (that is the only status a death character has)
                         let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                         let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
+                        let mut auth_char_storage =
+                            ecs_world.write_storage::<AuthorizedCharStateComponent>();
+                        let auth_state = auth_char_storage.get_mut(target_char_id.into()).unwrap();
                         char_state.statuses.remove_all();
-                        char_state.set_state(CharState::Idle, char_state.dir());
+                        auth_state.set_state(CharState::Idle, auth_state.dir());
 
                         // give him max hp/sp
                         char_state.hp = char_state.calculated_attribs().max_hp;
-                        char_state.pos()
+                        auth_state.pos()
                     };
 
                     // give him back it's physic component
@@ -1310,12 +1337,12 @@ pub(super) fn cmd_follow_char() -> CommandDefinition {
 
                     ecs_world
                         .write_storage::<LocalPlayerControllerComponent>()
-                        .remove(self_controller_id.0);
+                        .remove(self_controller_id.into());
 
                     // set camera to follow target
                     ecs_world
                         .write_storage::<CameraComponent>()
-                        .get_mut(self_controller_id.0)
+                        .get_mut(self_controller_id.into())
                         .unwrap()
                         .followed_controller = Some(target_controller_id);
                     Ok(())
@@ -1349,14 +1376,17 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
                     let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
 
                     let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
+                    let auth_char_storage =
+                        ecs_world.read_storage::<AuthorizedCharStateComponent>();
 
                     let cloning_char = char_storage.get(target_char_id.into()).unwrap();
+                    let auth_cloning_char = auth_char_storage.get(target_char_id.into()).unwrap();
                     let updater = &ecs_world.read_resource::<LazyUpdate>();
                     CharacterEntityBuilder::new(char_entity_id, "Clone")
                         .insert_npc_component(updater)
                         .insert_sprite_render_descr_component(updater)
                         .physics(
-                            cloning_char.pos(),
+                            auth_cloning_char.pos(),
                             &mut ecs_world.write_resource::<PhysicEngine>(),
                             |builder| {
                                 builder
@@ -1364,11 +1394,16 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
                                     .circle(1.0)
                             },
                         )
-                        .char_state(updater, &ecs_world.read_resource::<DevConfig>(), |ch| {
-                            ch.outlook(cloning_char.outlook.clone())
-                                .job_id(cloning_char.job_id)
-                                .team(cloning_char.team)
-                        });
+                        .char_state(
+                            updater,
+                            &ecs_world.read_resource::<DevConfig>(),
+                            auth_cloning_char.pos(),
+                            |ch| {
+                                ch.outlook(cloning_char.outlook.clone())
+                                    .job_id(cloning_char.job_id)
+                                    .team(cloning_char.team)
+                            },
+                        );
 
                     Ok(())
                 } else {
@@ -1395,22 +1430,23 @@ pub(super) fn cmd_control_char() -> CommandDefinition {
                     // remove current controller and add a new one
                     // TODO: skills should be reassigned as well
                     ecs_world
-                        .write_storage::<LocalPlayerControllerComponent>()
-                        .remove(self_controller_id.0)
+                        .write_storage::<ControllerComponent>()
+                        .remove(self_controller_id.into())
                         .expect("");
 
                     ecs_world
-                        .write_storage::<LocalPlayerControllerComponent>()
+                        .write_storage::<ControllerComponent>()
                         .insert(
-                            self_controller_id.0,
-                            LocalPlayerControllerComponent::new(target_char_id),
+                            self_controller_id.into(),
+                            ControllerComponent::new(target_char_id),
                         )
                         .expect("");
+                    // TODO: nem kell a LocalControllerDesktop shitet is eltávolitani és ujat cisnálni?
 
                     // set camera to follow target
                     ecs_world
                         .write_storage::<CameraComponent>()
-                        .get_mut(self_controller_id.0)
+                        .get_mut(self_controller_id.into())
                         .unwrap()
                         .followed_controller = Some(self_controller_id);
                     Ok(())
@@ -1530,7 +1566,7 @@ pub(super) fn cmd_goto() -> CommandDefinition {
                 let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
                 if let Some(target_char_id) = target_char_id {
                     let target_pos = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let storage = ecs_world.read_storage::<AuthorizedCharStateComponent>();
                         let char_state = storage.get(target_char_id.into()).unwrap();
                         char_state.pos()
                     };
@@ -1573,7 +1609,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
 
                 if let Some(entity_id) = entity_id {
                     let hero_pos = {
-                        let storage = ecs_world.read_storage::<CharacterStateComponent>();
+                        let storage = ecs_world.read_storage::<AuthorizedCharStateComponent>();
                         let char_state = storage.get(entity_id.into()).unwrap();
                         char_state.pos()
                     };
@@ -1670,7 +1706,7 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
 
                 if let Some(char_id) = char_id {
                     let pos = ecs_world
-                        .read_storage::<CharacterStateComponent>()
+                        .read_storage::<AuthorizedCharStateComponent>()
                         .get(char_id.into())
                         .map(|it| it.pos())
                         .unwrap();
