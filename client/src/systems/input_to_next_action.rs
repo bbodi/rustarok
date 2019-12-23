@@ -6,7 +6,6 @@ use crate::components::skills::skills::{SkillTargetType, Skills};
 use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSOR_TARGET};
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
-use crate::systems::input_sys_scancodes::ScancodeNames::A;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::EngineTime;

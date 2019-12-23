@@ -3,7 +3,6 @@ use specs::prelude::*;
 use crate::components::char::{
     CharacterStateComponent, TurretComponent, TurretControllerComponent,
 };
-use crate::components::controller::LocalPlayerControllerComponent;
 use crate::configs::DevConfig;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::SystemFrameDurations;

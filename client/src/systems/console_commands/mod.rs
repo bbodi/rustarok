@@ -1,6 +1,7 @@
 use crate::components::char::{
     attach_human_player_components, percentage, CharActionIndex, CharacterEntityBuilder,
-    CharacterStateComponent, ClientCharState, SpriteRenderDescriptorComponent,
+    CharacterStateComponent, ClientCharState, DebugServerAckComponent, HasServerIdComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, HumanInputComponent, LocalPlayerControllerComponent,
@@ -172,6 +173,11 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                                     .read_resource::<SystemVariables>()
                                     .matrices
                                     .resolution_h,
+                                ecs_world
+                                    .read_storage::<HasServerIdComponent>()
+                                    .get(target_char_id.into())
+                                    .unwrap()
+                                    .server_id,
                             );
                             Ok(())
                         } else {
@@ -1774,6 +1780,48 @@ pub(super) fn cmd_remove_falcon() -> CommandDefinition {
                     } else {
                         Err("The user does not have a falcon".to_owned())
                     }
+                } else {
+                    Err("The user was not found".to_owned())
+                }
+            },
+        ),
+    }
+}
+
+pub(super) fn cmd_add_ack_debug_comp() -> CommandDefinition {
+    CommandDefinition {
+        name: "add_ack_debug_comp".to_string(),
+        arguments: vec![("[charname]", CommandParamType::String, false)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |index, username_completor, input_storage| {
+                if index == 0 {
+                    Some(username_completor(input_storage))
+                } else {
+                    None
+                }
+            },
+        ),
+        action: Box::new(
+            |_self_controller_id, self_char_id, args, ecs_world, _video| {
+                let username = args.as_str(0);
+
+                let char_id = if let Some(username) = username {
+                    ConsoleSystem::get_char_id_by_name(ecs_world, username)
+                } else {
+                    Some(self_char_id)
+                };
+
+                if let Some(char_id) = char_id {
+                    let updater = &ecs_world.read_resource::<LazyUpdate>();
+                    updater.insert(
+                        char_id.into(),
+                        DebugServerAckComponent {
+                            acked_snapshot: Default::default(),
+                            had_rollback: false,
+                        },
+                    );
+
+                    Ok(())
                 } else {
                     Err("The user was not found".to_owned())
                 }

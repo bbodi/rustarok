@@ -1,17 +1,10 @@
 use crate::components::char::{
-    get_sprite_and_action_index, CastingSkillData, CharacterStateComponent, ClientCharState,
-    SpriteRenderDescriptorComponent,
+    get_sprite_and_action_index, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{EntitiesBelowCursor, LocalPlayerControllerComponent};
-use crate::components::skills::skills::{SkillTargetType, Skills};
-use crate::configs::DevConfig;
-use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
+use crate::systems::{SystemEvent, SystemVariables};
 use crate::ElapsedTime;
-use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, CharState, EntityTarget,
-};
-use rustarok_common::components::controller::PlayerIntention;
+use rustarok_common::common::EngineTime;
+use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId, CharState};
 use specs::prelude::*;
 
 // TODO2

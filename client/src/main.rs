@@ -32,8 +32,8 @@ use specs::Join;
 
 use crate::audio::sound_sys::SoundSystem;
 use crate::components::char::{
-    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent,
-    SpriteRenderDescriptorComponent,
+    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, DebugServerAckComponent,
+    HasServerIdComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::HumanInputComponent;
 use crate::components::skills::skills::SkillManifestationComponent;
@@ -70,7 +70,9 @@ use crate::systems::next_action_applier_sys::{
 };
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
-use crate::systems::snapshot_sys::{GameSnapshots, ServerAckResult, SnapshotSystem};
+use crate::systems::snapshot_sys::{
+    DebugServerAckComponentFillerSystem, GameSnapshots, ServerAckResult, SnapshotSystem,
+};
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sprites, SystemFrameDurations, SystemVariables,
@@ -85,7 +87,7 @@ use rustarok_common::components::char::{
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
-use rustarok_common::packets::from_server::{AckEntry, FromServerPacket};
+use rustarok_common::packets::from_server::FromServerPacket;
 use rustarok_common::packets::to_server::ToServerPacket;
 use rustarok_common::packets::{PacketHandlerThread, SocketBuffer};
 use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -328,51 +330,6 @@ fn main() {
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
     log::info!("<<< add resources");
 
-    log::info!(">>> create player");
-    let desktop_client_char = CharEntityId::from(ecs_world.create_entity().build());
-    let desktop_client_controller = ControllerEntityId::new(ecs_world.create_entity().build());
-    components::char::attach_human_player_components(
-        "sharp",
-        desktop_client_char,
-        desktop_client_controller,
-        &ecs_world.read_resource::<LazyUpdate>(),
-        &mut ecs_world.write_resource::<PhysicEngine>(),
-        ecs_world
-            .read_resource::<SystemVariables>()
-            .matrices
-            .projection,
-        v2(start_x, start_y),
-        Sex::Male,
-        JobId::CRUSADER,
-        1,
-        Team::Right,
-        &ecs_world.read_resource::<DevConfig>(),
-        config.resolution_w,
-        config.resolution_h,
-    );
-    ecs_world
-        .read_resource::<LazyUpdate>()
-        .insert(desktop_client_controller.into(), ConsoleComponent::new());
-
-    // add falcon to it
-    let start_x = start_x;
-    let start_y = start_y;
-    let _falcon_id = ecs_world
-        .create_entity()
-        .with(FalconComponent::new(desktop_client_char, start_x, start_y))
-        .with(SpriteRenderDescriptorComponent {
-            action_index: CharActionIndex::Idle as usize,
-            fps_multiplier: 1.0,
-            animation_started: ElapsedTime(0.0),
-            forced_duration: None,
-            direction: CharDir::South,
-            animation_ends_at: ElapsedTime(0.0),
-        })
-        .build();
-
-    ecs_world.maintain();
-    log::info!("<<< create player");
-
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
         .unwrap();
@@ -382,6 +339,11 @@ fn main() {
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
+    let desktop_client_controller = ControllerEntityId::new(ecs_world.create_entity().build());
+    ecs_world
+        .read_resource::<LazyUpdate>()
+        .insert(desktop_client_controller.into(), ConsoleComponent::new());
+    ecs_world.maintain();
     console_print(&mut ecs_world, "Sync", desktop_client_controller);
     {
         let mut avg_ping = 0;
@@ -418,7 +380,6 @@ fn main() {
 
         packet_handler_thread.send(server_socket, ToServerPacket::ReadyForGame);
         // first ACK packet is for initializing out world state
-        let mut snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
         'outer3: loop {
             packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
             for (_socket_id, packet) in tmp_vec.drain(..) {
@@ -428,7 +389,53 @@ fn main() {
                         ack_tick,
                         entries,
                     } => {
-                        snapshots.init(&entries);
+                        let entry = &entries[0];
+                        log::info!(">>> create player");
+                        {
+                            let desktop_client_char =
+                                CharEntityId::from(ecs_world.create_entity().build());
+                            components::char::attach_human_player_components(
+                                "sharp",
+                                desktop_client_char,
+                                desktop_client_controller,
+                                &ecs_world.read_resource::<LazyUpdate>(),
+                                &mut ecs_world.write_resource::<PhysicEngine>(),
+                                ecs_world
+                                    .read_resource::<SystemVariables>()
+                                    .matrices
+                                    .projection,
+                                v2(start_x, start_y),
+                                Sex::Male,
+                                JobId::CRUSADER,
+                                1,
+                                Team::Right,
+                                &ecs_world.read_resource::<DevConfig>(),
+                                config.resolution_w,
+                                config.resolution_h,
+                                entry.id,
+                            );
+
+                            // add falcon to it
+                            let start_x = start_x;
+                            let start_y = start_y;
+                            let _falcon_id = ecs_world
+                                .create_entity()
+                                .with(FalconComponent::new(desktop_client_char, start_x, start_y))
+                                .with(SpriteRenderDescriptorComponent {
+                                    action_index: CharActionIndex::Idle as usize,
+                                    fps_multiplier: 1.0,
+                                    animation_started: ElapsedTime(0.0),
+                                    forced_duration: None,
+                                    direction: CharDir::South,
+                                    animation_ends_at: ElapsedTime(0.0),
+                                })
+                                .build();
+
+                            ecs_world.maintain();
+                        }
+                        log::info!("<<< create player");
+                        let mut snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
+                        snapshots.init(entry);
                         ecs_world.write_resource::<EngineTime>().tick = ack_tick + 1;
                         break 'outer3;
                     }
@@ -444,7 +451,8 @@ fn main() {
 
     let mut packet_receiver = DelayedPacketReceiver::new(Duration::from_millis(0));
     let mut client_speed_increaser = Duration::from_millis(0);
-    let mut entities: HashMap<ServerEntityId, CharEntityId> = HashMap::with_capacity(1024);
+    let mut server_to_local_ids: HashMap<ServerEntityId, CharEntityId> =
+        HashMap::with_capacity(1024);
     'running: loop {
         let start = Instant::now();
         let tick = ecs_world.read_resource::<EngineTime>().tick;
@@ -457,6 +465,7 @@ fn main() {
         }
 
         {
+            let mut server_is_ahead_of_client = false;
             let (ack_result, acked_tick) = {
                 let mut ack_result = ServerAckResult::Ok;
                 let mut tmp_ack_tick = 0;
@@ -470,21 +479,29 @@ fn main() {
                             ack_tick,
                             mut entries,
                         } => {
-                            let mut snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
+                            if server_is_ahead_of_client {
+                                continue;
+                            }
+                            if ack_tick >= tick {
+                                server_is_ahead_of_client = true;
+                                continue;
+                            }
+                            let snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
+                            let debug_ack_storage =
+                                &mut ecs_world.write_storage::<DebugServerAckComponent>();
                             tmp_ack_tick = ack_tick;
+
                             ack_result = snapshots.ack_arrived(tick, cid, ack_tick, &entries);
 
+                            // SHIT asd
                             let auth_state_storage =
                                 &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
-                            for entry in entries.drain(1..) {
-                                match entry {
-                                    AckEntry::EntityState { id, char_snapshot } => {
-                                        let local_id = entities.get(&id).unwrap();
-                                        let char_state =
-                                            auth_state_storage.get_mut((*local_id).into()).unwrap();
-                                        char_state.target = char_snapshot.state.target;
-                                    }
-                                }
+                            for server_entity_state in entries.drain(1..) {
+                                let local_id =
+                                    server_to_local_ids.get(&server_entity_state.id).unwrap();
+                                let char_state =
+                                    auth_state_storage.get_mut((*local_id).into()).unwrap();
+                                char_state.target = server_entity_state.char_snapshot.state.target;
                             }
                         }
                         FromServerPacket::NewEntity {
@@ -505,6 +522,7 @@ fn main() {
                                 let dev_configs = &ecs_world.read_resource::<DevConfig>();
                                 CharacterEntityBuilder::new(char_entity_id, &name)
                                     .insert_sprite_render_descr_component(updater)
+                                    .server_authorized(updater, id)
                                     .physics(
                                         state.state.pos(),
                                         &mut ecs_world.write_resource::<PhysicEngine>(),
@@ -517,20 +535,24 @@ fn main() {
                                     .char_state(updater, dev_configs, state.state.pos(), |ch| {
                                         ch.outlook(outlook).job_id(job_id).team(team)
                                     });
-                                entities.insert(id, char_entity_id);
+                                server_to_local_ids.insert(id, char_entity_id);
                             }
                             ecs_world.maintain();
+
+                            ecs_world
+                                .write_resource::<GameSnapshots>()
+                                .add_predicting_entity(id, state.clone().state);
                         }
                     }
                 }
                 (ack_result, tmp_ack_tick)
             };
 
+            if server_is_ahead_of_client {
+                log::debug!("ServerIsAheadOfClient: {} -> {}", tick, acked_tick);
+                client_speed_increaser += Duration::from_millis(1);
+            }
             match ack_result {
-                ServerAckResult::ServerIsAheadOfClient { acked_tick } => {
-                    log::debug!("ServerIsAheadOfClient: {} -> {}", tick, acked_tick);
-                    client_speed_increaser += Duration::from_millis(1);
-                }
                 ServerAckResult::Rollback {
                     repredict_this_many_frames,
                 } => {
@@ -562,7 +584,7 @@ fn main() {
                     }
                     *ecs_world.write_resource::<EngineTime>() = timer;
                     let snapshots = &ecs_world.read_resource::<GameSnapshots>();
-                    snapshots.print_snapshots(-2, repredict_this_many_frames);
+                    snapshots.print_snapshots_for(0, -2, repredict_this_many_frames);
                 }
                 ServerAckResult::Ok => {
                     if acked_tick > 0
@@ -594,7 +616,6 @@ fn main() {
         execute_console_commands(
             &command_defs,
             &mut ecs_world,
-            desktop_client_char,
             desktop_client_controller,
             &mut video,
         );
@@ -667,12 +688,15 @@ fn load_last_acked_state_into_world(
     desktop_client_controller: ControllerEntityId,
 ) {
     let snapshots = &ecs_world.read_resource::<GameSnapshots>();
-    let auth_state_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
-    let controller_storage = &ecs_world.read_storage::<ControllerComponent>();
+    let auth_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
+    let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
+    let ack_debug_storage = &mut ecs_world.write_storage::<DebugServerAckComponent>();
+    let entities = &ecs_world.entities();
     snapshots.load_last_acked_state_into_world(
-        auth_state_storage,
-        controller_storage,
-        desktop_client_controller,
+        entities,
+        auth_storage,
+        server_id_storage,
+        ack_debug_storage,
     );
 }
 
@@ -795,7 +819,12 @@ fn register_systems<'a, 'b>(
             )
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem::new(), "attack_sys", &["collision_collector"])
-            .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"]);
+            .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"])
+            .with(
+                DebugServerAckComponentFillerSystem,
+                "debug_ack",
+                &["snapshot_sys"],
+            );
         if let Some(console_system) = console_system {
             // thread_local to avoid Send fields
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);
@@ -936,7 +965,6 @@ pub struct ConsoleCommandBuffer {
 fn execute_console_commands(
     command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
-    desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
     video: &mut Video,
 ) {
@@ -951,7 +979,6 @@ fn execute_console_commands(
                 cmd,
                 command_defs,
                 ecs_world,
-                desktop_client_char,
                 desktop_client_controller,
                 video,
             );
@@ -970,7 +997,6 @@ fn execute_console_commands(
                 cmd,
                 command_defs,
                 ecs_world,
-                desktop_client_char,
                 desktop_client_controller,
                 video,
             );
@@ -996,7 +1022,6 @@ fn execute_console_commands(
                 cmd,
                 command_defs,
                 ecs_world,
-                desktop_client_char,
                 desktop_client_controller,
                 video,
             );
@@ -1017,15 +1042,19 @@ fn execute_console_command(
     cmd: CommandArguments,
     command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
-    desktop_client_char: CharEntityId,
     desktop_client_controller: ControllerEntityId,
     video: &mut Video,
 ) {
+    let char_entity_id = {
+        let storage = ecs_world.read_storage::<ControllerComponent>();
+        let controller = storage.get(desktop_client_controller.into()).unwrap();
+        controller.controlled_entity
+    };
     log::debug!("Execute command: {:?}", cmd);
     let command_def = &command_defs[cmd.get_command_name().unwrap()];
     if let Err(e) = (command_def.action)(
         desktop_client_controller,
-        desktop_client_char,
+        char_entity_id,
         &cmd,
         ecs_world,
         video,

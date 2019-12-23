@@ -34,7 +34,7 @@ use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::components::snapshot::CharSnapshot;
 use rustarok_common::grf::asset_loader::CommonAssetLoader;
-use rustarok_common::packets::from_server::{AckEntry, FromServerPacket};
+use rustarok_common::packets::from_server::{FromServerPacket, ServerEntityState};
 use rustarok_common::packets::to_server::ToServerPacket;
 use rustarok_common::packets::{PacketHandlerThread, SocketId};
 use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -199,6 +199,14 @@ fn main() {
                     }
                     let remote_client = remote_clients[socket_id.as_usize()].as_ref().unwrap();
                     if let Some(controller_id) = remote_client.controller_id {
+                        // TODO: remove its original char!
+
+                        let mut controlled_entity = ecs_world
+                            .read_storage::<ControllerComponent>()
+                            .get(controller_id.into())
+                            .unwrap()
+                            .controlled_entity;
+                        ecs_world.delete_entity(controlled_entity.into());
                         ecs_world.delete_entity(controller_id.into());
                         remote_clients[socket_id.as_usize()] = None;
                     }
@@ -249,7 +257,7 @@ fn main() {
                             FromServerPacket::Ack {
                                 cid: 0,
                                 ack_tick: 0,
-                                entries: vec![AckEntry::EntityState {
+                                entries: vec![ServerEntityState {
                                     id: to_server_id(char_id),
                                     char_snapshot: char_snapshot.clone(),
                                 }],
@@ -365,7 +373,7 @@ fn main() {
                         char_state.pos().y,
                     );
 
-                    let mut entries = vec![AckEntry::EntityState {
+                    let mut entries = vec![ServerEntityState {
                         id: to_server_id(controller.controlled_entity),
                         char_snapshot: CharSnapshot::from(char_state),
                     }];
@@ -376,7 +384,7 @@ fn main() {
                         if other_char_id == controller.controlled_entity.into() {
                             continue;
                         }
-                        entries.push(AckEntry::EntityState {
+                        entries.push(ServerEntityState {
                             id: to_server_id(other_char_id),
                             char_snapshot: CharSnapshot::from(other_char_state),
                         })

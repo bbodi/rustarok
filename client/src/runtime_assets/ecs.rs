@@ -1,7 +1,7 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::char::{
-    CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent, TurretComponent,
-    TurretControllerComponent,
+    CharacterStateComponent, DebugServerAckComponent, HasServerIdComponent, NpcComponent,
+    SpriteRenderDescriptorComponent, TurretComponent, TurretControllerComponent,
 };
 use crate::components::controller::{
     CameraComponent, HumanInputComponent, LocalPlayerControllerComponent,
@@ -36,8 +36,11 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<LocalPlayerControllerComponent>();
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<ConsoleComponent>();
+    ecs_world.register::<HasServerIdComponent>();
+    ecs_world.register::<DebugServerAckComponent>();
 
     ecs_world.register::<AuthorizedCharStateComponent>();
     ecs_world.register::<ControllerComponent>();
+
     ecs_world
 }

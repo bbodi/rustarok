@@ -1,8 +1,8 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharacterStateComponent, ClientCharState, NpcComponent, SpriteBoundingRect,
-    SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharacterStateComponent, ClientCharState, DebugServerAckComponent,
+    NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, EntitiesBelowCursor, HumanInputComponent, LocalPlayerControllerComponent,
@@ -22,7 +22,7 @@ use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, RenderMatrices, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
 use nalgebra::{Isometry2, Vector2, Vector3};
-use rustarok_common::common::{EngineTime, Vec2};
+use rustarok_common::common::{EngineTime, Vec2, Vec3};
 use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
     ControllerEntityId, EntityTarget, Team, DIRECTION_TABLE,
@@ -71,6 +71,7 @@ impl RenderDesktopClientSystem {
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
         matrices: &RenderMatrices,
+        debug_ack_storage: &ReadStorage<'a, DebugServerAckComponent>,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
         {
@@ -88,7 +89,7 @@ impl RenderDesktopClientSystem {
                 sprite_storage,
                 asset_db,
                 matrices,
-                //                &map_render_data.gat,
+                debug_ack_storage, //                &map_render_data.gat,
             );
         }
 
@@ -280,6 +281,44 @@ impl RenderDesktopClientSystem {
         }
     }
 
+    fn draw_character(
+        time: &EngineTime,
+        animated_sprite: &SpriteRenderDescriptorComponent,
+        body_sprite_resource: &SpriteResource,
+        head_res: &SpriteResource,
+        pos_3d: Vec3,
+        play_mode: ActionPlayMode,
+        color: &[u8; 4],
+        render_commands: &mut RenderCommandCollector,
+        size: f32,
+    ) {
+        let body_pos_offset = render_single_layer_action(
+            time.now(),
+            &animated_sprite,
+            body_sprite_resource,
+            &pos_3d,
+            [0, 0],
+            true,
+            size,
+            play_mode,
+            color,
+            render_commands,
+        );
+
+        let _head_pos_offset = render_single_layer_action(
+            time.now(),
+            &animated_sprite,
+            head_res,
+            &pos_3d,
+            body_pos_offset,
+            false,
+            size,
+            play_mode,
+            color,
+            render_commands,
+        );
+    }
+
     fn need_entity_highlighting(
         followed_char_id: CharEntityId,
         select_skill_target: Option<(SkillKey, Skills)>,
@@ -337,6 +376,7 @@ impl RenderDesktopClientSystem {
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
         matrices: &RenderMatrices,
+        debug_ack_storage: &ReadStorage<DebugServerAckComponent>,
         //        gat: &Gat,
     ) {
         // Draw players
@@ -417,32 +457,41 @@ impl RenderDesktopClientSystem {
                                 } else {
                                     &[255, 0, 0, 179]
                                 };
-                            let body_pos_offset = render_single_layer_action(
-                                time.now(),
-                                &animated_sprite,
+                            RenderDesktopClientSystem::draw_character(
+                                time,
+                                animated_sprite,
                                 body_sprite,
-                                &pos_3d,
-                                [0, 0],
-                                true,
-                                1.2,
-                                play_mode,
-                                color,
-                                render_commands,
-                            );
-
-                            let _head_pos_offset = render_single_layer_action(
-                                time.now(),
-                                &animated_sprite,
                                 head_res,
-                                &pos_3d,
-                                body_pos_offset,
-                                false,
-                                1.2,
+                                pos_3d,
                                 play_mode,
                                 color,
                                 render_commands,
+                                1.2,
                             );
                         }
+                    }
+                    if let Some(debug_ack) = debug_ack_storage.get(rendering_entity_id.into()) {
+                        let pos_3d = Vector3::new(
+                            debug_ack.acked_snapshot.state.pos().x,
+                            char_state.get_y(),
+                            debug_ack.acked_snapshot.state.pos().y,
+                        );
+                        let color = if debug_ack.had_rollback {
+                            &[255, 0, 0, 255]
+                        } else {
+                            &[0, 255, 0, 255]
+                        };
+                        RenderDesktopClientSystem::draw_character(
+                            time,
+                            animated_sprite,
+                            body_sprite,
+                            head_res,
+                            pos_3d,
+                            play_mode,
+                            color,
+                            render_commands,
+                            1.0,
+                        );
                     }
                     // todo: kell a body_pos_offset még mindig? (bounding rect)
                     let body_pos_offset = render_single_layer_action(
@@ -669,6 +718,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, NpcComponent>,
         ReadExpect<'a, MapRenderData>,
         ReadExpect<'a, EngineTime>,
+        ReadStorage<'a, DebugServerAckComponent>,
     );
 
     fn run(
@@ -697,6 +747,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             npc_storage,
             map_render_data,
             time,
+            debug_ack_storage,
         ): Self::SystemData,
     ) {
         let join = {
@@ -749,6 +800,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                     &asset_db,
                     &map_render_data,
                     &sys_vars.matrices,
+                    &debug_ack_storage,
                 );
             }
 

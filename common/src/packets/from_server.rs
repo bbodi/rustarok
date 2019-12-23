@@ -1,7 +1,7 @@
 use crate::components::char::{
     CharDir, CharEntityId, CharOutlook, CharType, JobId, ServerEntityId, Team,
 };
-use crate::components::snapshot::{CharSnapshot, WorldSnapshot};
+use crate::components::snapshot::CharSnapshot;
 use crate::packets::to_server::{Packet, PacketReadErr};
 use crate::packets::SocketBuffer;
 use crate::serde_remote::MyIoErrorKind;
@@ -14,11 +14,9 @@ use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum AckEntry {
-    EntityState {
-        id: ServerEntityId,
-        char_snapshot: CharSnapshot,
-    }, // entity moved out, moved in, atk speed change, status change etc
+pub struct ServerEntityState {
+    pub id: ServerEntityId,
+    pub char_snapshot: CharSnapshot,
 }
 
 #[derive(Debug, EnumDiscriminants, EnumCount, Serialize, Deserialize)]
@@ -35,7 +33,7 @@ pub enum FromServerPacket {
     Ack {
         cid: u32,
         ack_tick: u64,
-        entries: Vec<AckEntry>,
+        entries: Vec<ServerEntityState>,
     },
     NewEntity {
         id: ServerEntityId,

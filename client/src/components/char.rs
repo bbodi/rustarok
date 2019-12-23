@@ -26,10 +26,22 @@ use crate::systems::{Sprites, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
-    CollisionGroup, ControllerEntityId, EntityTarget, JobId, MonsterId, Sex, Team,
+    CollisionGroup, ControllerEntityId, EntityTarget, JobId, MonsterId, ServerEntityId, Sex, Team,
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
+use rustarok_common::components::snapshot::CharSnapshot;
+
+#[derive(Component)]
+pub struct HasServerIdComponent {
+    pub server_id: ServerEntityId,
+}
+
+#[derive(Component)]
+pub struct DebugServerAckComponent {
+    pub acked_snapshot: CharSnapshot,
+    pub had_rollback: bool,
+}
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -73,9 +85,11 @@ pub fn attach_human_player_components(
     dev_configs: &DevConfig,
     resolution_w: u32,
     resolution_h: u32,
+    server_id: ServerEntityId,
 ) {
     CharacterEntityBuilder::new(char_entity_id, username)
         .insert_sprite_render_descr_component(updater)
+        .server_authorized(updater, server_id)
         .physics(pos2d, physics_world, |builder| {
             builder
                 .collision_group(team.get_collision_group())
@@ -323,6 +337,15 @@ impl CharacterEntityBuilder {
         updater: &LazyUpdate,
     ) -> CharacterEntityBuilder {
         updater.insert(self.char_id.into(), SpriteRenderDescriptorComponent::new());
+        self
+    }
+
+    pub fn server_authorized(
+        self,
+        updater: &LazyUpdate,
+        server_id: ServerEntityId,
+    ) -> CharacterEntityBuilder {
+        updater.insert(self.char_id.into(), HasServerIdComponent { server_id });
         self
     }
 

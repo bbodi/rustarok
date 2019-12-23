@@ -1,5 +1,4 @@
 use crate::components::char::CharacterStateComponent;
-use crate::components::controller::LocalPlayerControllerComponent;
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::{v2, v2_to_p2, Vec2};

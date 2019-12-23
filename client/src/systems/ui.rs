@@ -1,5 +1,5 @@
 use crate::components::char::{
-    CharacterStateComponent, ClientCharState, NpcComponent, SpriteRenderDescriptorComponent,
+    CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     HumanInputComponent, LocalPlayerControllerComponent, SkillKey,
@@ -8,11 +8,9 @@ use crate::grf::database::AssetDatabase;
 use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
 use crate::runtime_assets::map::MapRenderData;
-use crate::systems::input_sys::InputConsumerSystem;
-use crate::systems::{AssetResources, RenderMatrices, SystemVariables};
+use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
 use rustarok_common::common::{EngineTime, Vec2i, Vec3};
-use rustarok_common::components::char::CharEntityId;
 use specs::prelude::*;
 use specs::ReadStorage;
 

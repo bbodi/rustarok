@@ -1,3 +1,9 @@
+#### 2019.12.22
+- Debug visualization for net code
+    - Displaying the acknowledged position of characters
+    - Displaying when a rollback happens (the "ghost" character blinking in red)  
+    ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/e075a6a2fcbcaff08f9b57d1906ffde1/moving_lag_rollback3.gif) 
+
 #### 2019.12.20
 - Initial client and server code separation (client, server, common)
 - Basic client side prediction

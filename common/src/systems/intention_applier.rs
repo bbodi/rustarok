@@ -26,17 +26,16 @@ impl<'a> System<'a> for NextActionApplierSystem {
                 //                }
                 match controller.intention {
                     Some(PlayerIntention::MoveTo(pos)) => {
-                        char_state.target = Some(EntityTarget::Pos(v2(pos.x, -65.0)))
+                        char_state.target = Some(EntityTarget::Pos(pos))
                     }
                     Some(PlayerIntention::Attack(target_entity_id)) => {
                         char_state.target = Some(EntityTarget::OtherEntity(target_entity_id));
                     }
                     Some(PlayerIntention::MoveTowardsMouse(pos)) => {
-                        char_state.target = Some(EntityTarget::Pos(v2(pos.x, -65.0)));
+                        char_state.target = Some(EntityTarget::Pos(pos));
                     }
                     Some(PlayerIntention::AttackTowards(pos)) => {
-                        char_state.target =
-                            Some(EntityTarget::PosWhileAttacking(v2(pos.x, -65.0), None));
+                        char_state.target = Some(EntityTarget::PosWhileAttacking(pos, None));
                     }
                     None => {} // TODO2
                                //                    Some(PlayerIntention::Casting(skill, is_self_cast, mouse_world_pos)) => {

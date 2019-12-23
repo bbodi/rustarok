@@ -1,7 +1,6 @@
 use crate::components::char::CharacterStateComponent;
 use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations};
 use crate::PhysicEngine;
-use nalgebra::Vector2;
 use ncollide2d::narrow_phase::ContactEvent;
 use ncollide2d::query::Proximity;
 use rustarok_common::common::EngineTime;
