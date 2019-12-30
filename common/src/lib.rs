@@ -20,5 +20,4 @@ pub mod common;
 pub mod components;
 pub mod grf;
 pub mod packets;
-pub mod serde_remote;
 pub mod systems;

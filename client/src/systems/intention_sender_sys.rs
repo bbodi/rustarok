@@ -1,47 +1,69 @@
-use crate::systems::snapshot_sys::GameSnapshots;
+use crate::components::controller::LocalPlayerController;
+use crate::systems::snapshot_sys::SnapshotStorage;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::packets::to_server::ToServerPacket;
 use specs::prelude::*;
+use std::time::{Duration, Instant};
 
 // Singleton
 pub struct IntentionSenderSystem {
     cid: u32,
+    time_between_inputs: Duration,
+    last_input_at: Instant,
 }
 
 impl IntentionSenderSystem {
-    pub fn new() -> IntentionSenderSystem {
-        IntentionSenderSystem { cid: 0 }
+    pub fn new(input_freq: usize) -> IntentionSenderSystem {
+        IntentionSenderSystem {
+            cid: 0,
+            last_input_at: Instant::now(),
+            time_between_inputs: Duration::from_millis((1000 / input_freq) as u64),
+        }
+    }
+}
+
+pub struct ClientCommandId(u32);
+impl ClientCommandId {
+    pub fn new() -> ClientCommandId {
+        ClientCommandId(0)
+    }
+
+    pub fn inc(&mut self, snapshots: &mut SnapshotStorage) {
+        self.0 += 1;
+        snapshots.set_client_last_command_id(self.0);
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        self.0
     }
 }
 
 impl<'a> System<'a> for IntentionSenderSystem {
     type SystemData = (
-        ReadStorage<'a, ControllerComponent>,
+        ReadExpect<'a, LocalPlayerController>,
         ReadExpect<'a, EngineTime>,
         WriteExpect<'a, Vec<ToServerPacket>>,
-        WriteExpect<'a, GameSnapshots>,
+        WriteExpect<'a, SnapshotStorage>,
+        WriteExpect<'a, ClientCommandId>,
     );
 
     fn run(
         &mut self,
-        (mut controller_storage, time, mut to_server, mut snapshots): Self::SystemData,
+        (local_player, time, mut to_server, mut snapshots, mut cid): Self::SystemData,
     ) {
-        let ok = time.tick % 3 == 0;
-        for controller in (&controller_storage).join() {
-            let controller: &ControllerComponent = controller;
-            if ok {
-                if let Some(ref intention) = controller.intention {
-                    self.cid += 1;
-                    snapshots.set_client_last_command_id(self.cid);
-                    to_server.push(ToServerPacket::Intention {
-                        cid: self.cid,
-                        client_tick: time.tick,
-                        intention: intention.clone(),
-                    });
-                }
-            }
-            snapshots.add_intention((self.cid, controller.intention.clone()));
+        if !time.can_simulation_run() {
+            return;
         }
+
+        if let Some(ref intention) = local_player.controller.intention {
+            cid.inc(&mut snapshots);
+            log::debug!("CID: {}, new command: {:?}", self.cid, &intention);
+            to_server.push(ToServerPacket::Intention {
+                cid: cid.as_u32(),
+                client_tick: time.simulation_frame,
+                intention: intention.clone(),
+            });
+        }
+        snapshots.add_intention((cid.as_u32(), local_player.controller.intention.clone()));
     }
 }

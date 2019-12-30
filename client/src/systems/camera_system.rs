@@ -1,11 +1,10 @@
-use crate::components::char::CharacterStateComponent;
 use crate::components::controller::{
-    CameraComponent, CameraMode, HumanInputComponent, LocalPlayerControllerComponent,
+    CameraComponent, CameraMode, HumanInputComponent, LocalPlayerController,
 };
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::SystemVariables;
+use rustarok_common::common::EngineTime;
 use rustarok_common::components::char::AuthorizedCharStateComponent;
-use rustarok_common::components::controller::ControllerComponent;
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 
@@ -15,109 +14,98 @@ pub struct CameraSystem;
 impl<'a> System<'a> for CameraSystem {
     type SystemData = (
         ReadStorage<'a, AuthorizedCharStateComponent>,
-        ReadStorage<'a, HumanInputComponent>,
-        ReadStorage<'a, ControllerComponent>,
-        WriteStorage<'a, CameraComponent>,
+        ReadExpect<'a, LocalPlayerController>,
+        ReadExpect<'a, HumanInputComponent>,
+        WriteExpect<'a, CameraComponent>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, MapRenderData>,
+        ReadExpect<'a, EngineTime>,
     );
 
     fn run(
         &mut self,
-        (
-            auth_char_state_storage,
-            input_storage,
-            controller_storage,
-            mut camera_storage,
-            sys_vars,
-            map_render_data,
-        ): Self::SystemData,
+        (auth_char_state_storage, local_player, input, mut camera, sys_vars, map_render_data, time): Self::SystemData,
     ) {
-        for (input, camera) in (&input_storage, &mut camera_storage).join() {
-            match input.camera_movement_mode {
-                CameraMode::Free => {
-                    if !input.is_console_open {
-                        CameraSystem::free_movement(camera, input);
-                    }
-                    if input.left_mouse_down {
-                        camera.yaw += input.delta_mouse_x as f32;
-                        camera.pitch += input.delta_mouse_y as f32;
-                        if camera.pitch > 89.0 {
-                            camera.pitch = 89.0;
-                        }
-                        if camera.pitch < -89.0 {
-                            camera.pitch = -89.0;
-                        }
-                        if camera.yaw > 360.0 {
-                            camera.yaw -= 360.0;
-                        } else if camera.yaw < 0.0 {
-                            camera.yaw += 360.0;
-                        }
-                        camera.camera.rotate(camera.pitch, camera.yaw);
-                    }
+        match input.camera_movement_mode {
+            CameraMode::Free => {
+                if !input.is_console_open {
+                    CameraSystem::free_movement(&mut camera, &input);
                 }
-                CameraMode::FollowChar => {
-                    if let Some(followed_controller) = camera.followed_controller {
-                        if let Some(followed_char) = controller_storage
-                            .get(followed_controller.into())
-                            .map(|it| it.controlled_entity)
-                        {
-                            if input.mouse_wheel != 0 {
-                                camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
-                                camera.camera.update_visible_z_range(
-                                    &sys_vars.matrices.projection,
-                                    sys_vars.matrices.resolution_w,
-                                    sys_vars.matrices.resolution_h,
-                                );
-                            };
-                            if let Some(char_state) =
-                                auth_char_state_storage.get(followed_char.into())
-                            {
-                                let pos = char_state.pos();
-                                camera.camera.set_x(pos.x);
-                                let z_range = camera.camera.visible_z_range;
-                                camera.camera.set_z(pos.y + z_range);
-                            }
-                        }
+                if input.left_mouse_down {
+                    camera.yaw += input.delta_mouse_x as f32;
+                    camera.pitch += input.delta_mouse_y as f32;
+                    if camera.pitch > 89.0 {
+                        camera.pitch = 89.0;
                     }
+                    if camera.pitch < -89.0 {
+                        camera.pitch = -89.0;
+                    }
+                    if camera.yaw > 360.0 {
+                        camera.yaw -= 360.0;
+                    } else if camera.yaw < 0.0 {
+                        camera.yaw += 360.0;
+                    }
+                    let pitch = camera.pitch;
+                    let yaw = camera.yaw;
+                    camera.camera.rotate(pitch, yaw);
                 }
-                CameraMode::FreeMoveButFixedAngle => {
-                    if input.mouse_wheel != 0 {
-                        camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
-                        camera.camera.update_visible_z_range(
-                            &sys_vars.matrices.projection,
-                            sys_vars.matrices.resolution_w,
-                            sys_vars.matrices.resolution_h,
-                        );
-                    }
-                    if !input.is_console_open {
-                        CameraSystem::axis_aligned_movement(camera, input);
+            }
+            CameraMode::FollowChar => {
+                if let Some(followed_char_id) = local_player.controller.controlled_entity {
+                    if let Some(followed_char) =
+                        auth_char_state_storage.get(followed_char_id.into())
+                    {
+                        if input.mouse_wheel != 0 {
+                            camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
+                            camera.camera.update_visible_z_range(
+                                &sys_vars.matrices.projection,
+                                sys_vars.matrices.resolution_w,
+                                sys_vars.matrices.resolution_h,
+                            );
+                        };
+                        let pos = followed_char.pos();
+                        camera.camera.set_x(pos.x);
+                        let z_range = camera.camera.visible_z_range;
+                        camera.camera.set_z(pos.y + z_range);
                     }
                 }
             }
-
-            if camera.camera.pos().x < 0.0 {
-                camera.camera.set_x(0.0);
-            } else if camera.camera.pos().x > map_render_data.ground_width as f32 * 2.0 {
-                camera
-                    .camera
-                    .set_x(map_render_data.ground_width as f32 * 2.0);
+            CameraMode::FreeMoveButFixedAngle => {
+                if input.mouse_wheel != 0 {
+                    camera.camera.move_forward(input.mouse_wheel as f32 * 2.0);
+                    camera.camera.update_visible_z_range(
+                        &sys_vars.matrices.projection,
+                        sys_vars.matrices.resolution_w,
+                        sys_vars.matrices.resolution_h,
+                    );
+                }
+                if !input.is_console_open {
+                    CameraSystem::axis_aligned_movement(&mut camera, &input);
+                }
             }
-            if camera.camera.pos().z > 0.0 {
-                camera.camera.set_z(0.0);
-            } else if camera.camera.pos().z < -(map_render_data.ground_height as f32 * 2.0) {
-                camera
-                    .camera
-                    .set_z(-(map_render_data.ground_height as f32 * 2.0));
-            }
-
-            camera.view_matrix = camera.camera.create_view_matrix();
-            camera.normal_matrix = {
-                let inverted = camera.view_matrix.try_inverse().unwrap();
-                let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
-                m3x3.transpose()
-            };
         }
+
+        if camera.camera.pos().x < 0.0 {
+            camera.camera.set_x(0.0);
+        } else if camera.camera.pos().x > map_render_data.ground_width as f32 * 2.0 {
+            camera
+                .camera
+                .set_x(map_render_data.ground_width as f32 * 2.0);
+        }
+        if camera.camera.pos().z > 0.0 {
+            camera.camera.set_z(0.0);
+        } else if camera.camera.pos().z < -(map_render_data.ground_height as f32 * 2.0) {
+            camera
+                .camera
+                .set_z(-(map_render_data.ground_height as f32 * 2.0));
+        }
+
+        camera.view_matrix = camera.camera.create_view_matrix();
+        camera.normal_matrix = {
+            let inverted = camera.view_matrix.try_inverse().unwrap();
+            let m3x3 = inverted.fixed_slice::<nalgebra::base::U3, nalgebra::base::U3>(0, 0);
+            m3x3.transpose()
+        };
     }
 }
 

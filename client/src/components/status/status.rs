@@ -1,6 +1,6 @@
 use crate::components::char::{
     percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
-    CharAttributes, CharacterStateComponent, ClientCharState, Percentage,
+    CharAttributes, CharacterStateComponent, Percentage,
 };
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
@@ -28,7 +28,7 @@ use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId, JobId, Sex, StatusNature, Team};
+use rustarok_common::components::char::{CharEntityId, JobId, Sex, StatusNature, Team};
 use specs::{Entities, LazyUpdate};
 use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;

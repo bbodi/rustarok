@@ -1,7 +1,7 @@
 use specs::prelude::*;
 
-use rustarok_common::common::float_cmp;
-use rustarok_common::components::char::{AuthorizedCharStateComponent, ServerEntityId};
+use rustarok_common::common::{float_cmp, EngineTime};
+use rustarok_common::components::char::{AuthorizedCharStateComponent, CharState, ServerEntityId};
 use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::components::snapshot::CharSnapshot;
 use rustarok_common::packets::from_server::ServerEntityState;
@@ -10,7 +10,7 @@ use crate::components::char::{DebugServerAckComponent, HasServerIdComponent};
 
 struct CharSnapshots {
     server_id: ServerEntityId,
-    snapshots: [CharSnapshot; GameSnapshots::SNAPSHOT_COUNT],
+    snapshots: [CharSnapshot; SnapshotStorage::SNAPSHOT_COUNT],
 }
 
 impl CharSnapshots {
@@ -29,7 +29,7 @@ impl CharSnapshots {
     pub fn print_snapshots(
         &self,
         last_acknowledged_index: u64,
-        intentions: &[(u32, Option<PlayerIntention>); GameSnapshots::SNAPSHOT_COUNT],
+        intentions: &[(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT],
         from: i32,
         to: u64,
     ) {
@@ -43,48 +43,68 @@ impl CharSnapshots {
         )
         .map(|it| {
             let snapshot = self.get_snapshot(it);
-            let x = snapshot.state.pos().x;
-            let (cid, intention) = &intentions[index(it)];
+            let (cid, _intention) = &intentions[index(it)];
+            let mut line = format!(
+                "{}, cid: {}, pos: ({}, {}), state: - {}",
+                it,
+                cid,
+                snapshot.state.pos().x,
+                snapshot.state.pos().y,
+                snapshot.state.state().name(),
+            );
             if last_acknowledged_index == it {
-                format!("X ({}, {}) - {}", cid, x, intention.is_some())
-            } else {
-                format!("({}, {}) - {}", cid, x, intention.is_some())
+                line.insert_str(0, "X - ");
             }
+            line
         })
         .collect::<Vec<String>>()
         .join("\n");
-        log::debug!("{}", text);
+        log::debug!("\n{}", text);
     }
 }
 
-pub struct GameSnapshots {
+pub struct SnapshotStorage {
     client_last_command_id: u32,
     // TODO: do we need u64?
     last_acknowledged_index: u64,
+    last_acknowledged_index_for_server_entities: u64,
     tail: u64,
-    had_rollback: bool,
-    last_acknowledged_tick: u64,
+    last_rollback_at: u64,
     // last_predicted_index + 1
     snapshots_for_each_char: Vec<CharSnapshots>,
-    intentions: [(u32, Option<PlayerIntention>); GameSnapshots::SNAPSHOT_COUNT],
+    intentions: [(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT],
 }
 
 pub enum ServerAckResult {
-    Rollback { repredict_this_many_frames: u64 },
+    Rollback {
+        repredict_this_many_frames: u64,
+    },
+    ServerIsAheadOfClient {
+        server_state_updates: Vec<ServerEntityState>,
+    },
     Ok,
 }
 
-impl GameSnapshots {
+impl ServerAckResult {
+    pub fn is_rollback(&self) -> bool {
+        match self {
+            ServerAckResult::Rollback { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+impl SnapshotStorage {
     const SNAPSHOT_COUNT: usize = 64;
-    pub fn new() -> GameSnapshots {
-        GameSnapshots {
-            had_rollback: false,
+    pub fn new() -> SnapshotStorage {
+        SnapshotStorage {
             client_last_command_id: 0,
+            last_rollback_at: 0,
             last_acknowledged_index: 0,
-            last_acknowledged_tick: 0,
+            last_acknowledged_index_for_server_entities: 0,
             tail: 1,
             intentions: unsafe {
-                let mut arr: [(u32, Option<PlayerIntention>); GameSnapshots::SNAPSHOT_COUNT] =
+                let mut arr: [(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT] =
                     std::mem::MaybeUninit::zeroed().assume_init();
                 for item in &mut arr[..] {
                     std::ptr::write(item, (0, None));
@@ -101,7 +121,7 @@ impl GameSnapshots {
         initial_state: AuthorizedCharStateComponent,
     ) {
         let arr = unsafe {
-            let mut arr: [CharSnapshot; GameSnapshots::SNAPSHOT_COUNT] =
+            let mut arr: [CharSnapshot; SnapshotStorage::SNAPSHOT_COUNT] =
                 std::mem::MaybeUninit::zeroed().assume_init();
             for item in &mut arr[..] {
                 std::ptr::write(item, CharSnapshot::from(&initial_state));
@@ -143,8 +163,8 @@ impl GameSnapshots {
             .state;
     }
 
-    pub fn had_been_rollback_in_this_tick(&self) -> bool {
-        self.had_rollback
+    pub fn get_last_rollback_at(&self) -> u64 {
+        self.last_rollback_at
     }
 
     fn set_state(&mut self, index: usize, tick: u64, state: &AuthorizedCharStateComponent) {
@@ -166,6 +186,14 @@ impl GameSnapshots {
         self.tail = self.last_acknowledged_index + 1;
     }
 
+    pub fn get_tail(&self) -> u64 {
+        self.tail
+    }
+
+    pub fn get_last_acknowledged_index(&self) -> u64 {
+        self.last_acknowledged_index
+    }
+
     pub fn init(&mut self, acked: &ServerEntityState) {
         self.last_acknowledged_index = 0;
         self.tail = 1;
@@ -176,158 +204,153 @@ impl GameSnapshots {
         self.set_state(0, 3, &acked.char_snapshot.state);
     }
 
+    pub fn get_unacked_prediction_count(&self) -> usize {
+        // why "-1"? tail: 25, last index: 22, we have 23, 24 as unacked predictions
+        return ((self.tail - self.last_acknowledged_index) - 1) as usize;
+    }
+
     pub fn ack_arrived(
         &mut self,
         client_tick: u64,
         acked_cid: u32,
-        acked_tick: u64,
-        server_state_updates: &[ServerEntityState],
+        snapshots_from_server: Vec<ServerEntityState>,
     ) -> ServerAckResult {
         // it assumes that
         // - the server sends the deltas in increasing order
         // - entities that are created are at the end of the vec
         // - the server does not send msg for an entity which has not been registered first
 
-        // LOCAL CLIENT
-        let char_snapshots = &self.snapshots_for_each_char[0];
-        let snapshot_from_server = &server_state_updates[0].char_snapshot;
-        let (mut no_mismatch, increase_indexed_ack_by) = self.ack_arrived_for_local_player(
-            client_tick,
-            acked_cid,
-            acked_tick,
-            char_snapshots,
-            snapshot_from_server,
-        );
-        self.last_acknowledged_index += increase_indexed_ack_by;
-        let dst_index = if !no_mismatch {
-            // if the local char already mispredicts, we can increase the index
-            // becase this is where other predictions will be rolled back from
-            self.set_state(0, self.last_acknowledged_index, &snapshot_from_server.state);
-            self.last_acknowledged_index
-        } else {
-            0
-        };
-
-        for entry_index in 1..server_state_updates.len() {
-            if self.snapshots_for_each_char[entry_index].server_id
-                != server_state_updates[entry_index].id
-            {
-                // the current char snapshot did not get an update
-                log::warn!(
-                    "{:?} != {:?} at index {}",
-                    self.snapshots_for_each_char[entry_index].server_id,
-                    server_state_updates[entry_index].id,
-                    entry_index
-                );
-                panic!();
-            }
-            let char_snapshots = &self.snapshots_for_each_char[entry_index];
-            let snapshot_from_server = &server_state_updates[entry_index].char_snapshot;
-            let other_char_no_mismatch = self.ack_arrived_for_other_entity(
-                entry_index,
-                char_snapshots,
-                snapshot_from_server,
-            );
-
-            if !other_char_no_mismatch {
-                self.set_state(
-                    entry_index,
-                    self.last_acknowledged_index + 1,
-                    &snapshot_from_server.state,
-                );
-            }
-            no_mismatch &= other_char_no_mismatch;
-        }
-
-        self.last_acknowledged_tick = acked_tick;
-        self.had_rollback = !no_mismatch;
-        return if no_mismatch {
-            ServerAckResult::Ok
-        } else {
-            let repredict_this_many_frames =
-                (dbg!(self.tail) - dbg!(self.last_acknowledged_index)) - 1;
-            if client_tick > acked_tick {
-                self.print_snapshots_for(0, -2, repredict_this_many_frames);
-            }
-            ServerAckResult::Rollback {
-                repredict_this_many_frames,
-            }
-        };
-    }
-
-    fn ack_arrived_for_other_entity(
-        &self,
-        char_snapshot_index: usize,
-        predicted_snapshots: &CharSnapshots,
-        snapshot_from_server: &CharSnapshot,
-    ) -> bool {
-        let predicted_snapshot = predicted_snapshots.get_snapshot(self.last_acknowledged_index + 1);
         log::debug!(
-            "predicted_snapshot: v2({}, {}), acked: v2({}, {})",
-            predicted_snapshot.state.pos().x,
-            predicted_snapshot.state.pos().y,
-            snapshot_from_server.state.pos().x,
-            snapshot_from_server.state.pos().y
+            "unacked preds: {}, \
+             acked_cid: {}, client_tick: {}\n, \
+             last_acknowledged_index: {}, tail: {}",
+            self.get_unacked_prediction_count(),
+            // not store any prediction yet for the current frame"
+            acked_cid,
+            client_tick,
+            self.last_acknowledged_index,
+            self.tail,
         );
-        let misprediction =
-            !GameSnapshots::compare_snapshots(&snapshot_from_server, &predicted_snapshot);
 
-        misprediction == false
+        if self.get_unacked_prediction_count() == 0 {
+            log::debug!("server_is_ahead_of_client",);
+            return ServerAckResult::ServerIsAheadOfClient {
+                server_state_updates: snapshots_from_server,
+            };
+        } else {
+            // LOCAL CLIENT
+            let (mut need_rollback, increase_index_ack_by) = {
+                let char_snapshots = &self.snapshots_for_each_char[0];
+                let snapshot_from_server = &snapshots_from_server[0].char_snapshot;
+                self.ack_arrived_for_local_player(
+                    client_tick,
+                    acked_cid,
+                    char_snapshots,
+                    snapshot_from_server,
+                )
+            };
+
+            let rollback_only_local_client = need_rollback;
+            {
+                if !need_rollback {
+                    need_rollback = self.ack_arrived_for_server_entities(
+                        &self.snapshots_for_each_char[1..],
+                        &snapshots_from_server[1..],
+                    );
+                }
+            }
+
+            // TODO: ugly
+            if increase_index_ack_by > 1 {
+                self.last_acknowledged_index += increase_index_ack_by - 1;
+            }
+
+            if need_rollback {
+                log::debug!("before");
+                let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
+                self.print_snapshots_for(0, -2, to);
+            }
+
+            if increase_index_ack_by > 0 {
+                self.last_acknowledged_index += 1;
+            }
+
+            self.last_acknowledged_index_for_server_entities += 1;
+
+            return if need_rollback {
+                // overwrite local player's state
+                if rollback_only_local_client {
+                    self.set_state(
+                        0,
+                        self.last_acknowledged_index,
+                        &snapshots_from_server[0].char_snapshot.state,
+                    );
+                }
+                self.last_acknowledged_index_for_server_entities = self.tail - 1;
+                SnapshotStorage::overwrite_all(
+                    self.last_acknowledged_index_for_server_entities,
+                    &snapshots_from_server[1..],
+                    &mut self.snapshots_for_each_char[1..],
+                );
+
+                self.last_rollback_at = client_tick;
+                let repredict_this_many_frames = if rollback_only_local_client {
+                    if self.tail > self.last_acknowledged_index {
+                        self.tail - self.last_acknowledged_index - 1
+                    } else {
+                        // it can happen when the client cannot process the packets for a while
+                        // and then it process all of them at once
+                        log::warn!(
+                            "tail was fixed {} -> {}",
+                            self.tail,
+                            self.last_acknowledged_index + 1
+                        );
+                        self.tail = self.last_acknowledged_index + 1;
+                        0
+                    }
+                } else {
+                    0
+                };
+                ServerAckResult::Rollback {
+                    repredict_this_many_frames,
+                }
+            } else {
+                ServerAckResult::Ok
+            };
+        }
     }
 
     fn ack_arrived_for_local_player(
         &self,
         client_tick: u64,
         acked_cid: u32,
-        acked_tick: u64,
         predicted_snapshots: &CharSnapshots,
         snapshot_from_server: &CharSnapshot,
     ) -> (bool, u64) {
-        let mut increase_indexed_ack_by = 0;
         let predicted_snapshot = predicted_snapshots.get_snapshot(self.last_acknowledged_index + 1);
         let cid_at_prediction = self.intentions[index(self.last_acknowledged_index + 1)].0;
-        log::debug!(
-            "server diff: {}, ack diff: {}, last_acked_tick: {}, \
-             acked_tick: {}, acked_cid: {}, client_tick: {}\n, cid: {}",
-            client_tick as i64 - acked_tick as i64,
-            client_tick as i64 - self.last_acknowledged_tick as i64,
-            self.last_acknowledged_tick,
-            acked_tick,
-            acked_cid,
-            client_tick,
-            cid_at_prediction,
-        );
-        let misprediction = if acked_cid < cid_at_prediction {
-            log::debug!(
-                "acked_cid < predicted_snapshot.cid: v2({}, {}), acked: v2({}, {})",
-                predicted_snapshot.state.pos().x,
-                predicted_snapshot.state.pos().y,
-                snapshot_from_server.state.pos().x,
-                snapshot_from_server.state.pos().y
-            );
+
+        log::debug!("cid_at_prediction: {}", cid_at_prediction,);
+
+        if acked_cid < cid_at_prediction {
+            log::debug!("acked_cid < predicted_snapshot");
             // The server did not get my command yet.
             // Check if my prediction was correct
-            let mut misprediction =
-                !GameSnapshots::compare_snapshots(&snapshot_from_server, &predicted_snapshot);
-            if !misprediction {
-                increase_indexed_ack_by = 1;
+            let mut need_rollback =
+                !SnapshotStorage::snapshots_match(&snapshot_from_server, &predicted_snapshot);
+            if need_rollback {
+                // don't rollback, wait for the ack with the current cid
+                return (false, 0);
+            } else {
+                return (false, 1);
             }
-
-            false
         } else if acked_cid > cid_at_prediction {
             // Client might have been too fast and assigned a smaller cid to a prediction than the server
-            log::debug!(
-                "cur_predicted2: v2({}, {}), acked: v2({}, {})",
-                predicted_snapshot.state.pos().x,
-                predicted_snapshot.state.pos().y,
-                snapshot_from_server.state.pos().x,
-                snapshot_from_server.state.pos().y
-            );
-            let mut misprediction =
-                !GameSnapshots::compare_snapshots(&snapshot_from_server, &predicted_snapshot);
-            if misprediction {
+            let mut need_rollback =
+                !SnapshotStorage::snapshots_match(&snapshot_from_server, &predicted_snapshot);
+            if need_rollback {
                 // Client might have been too fast and generated unnecessary predictions
-                for i in 1..=GameSnapshots::SNAPSHOT_COUNT as u64 {
+                for i in 1..=SnapshotStorage::SNAPSHOT_COUNT as u64 {
                     let pred = predicted_snapshots.get_snapshot(self.last_acknowledged_index + i);
                     let cid = self.intentions[index(self.last_acknowledged_index + i)].0;
                     if acked_cid == cid {
@@ -339,70 +362,162 @@ impl GameSnapshots {
                             snapshot_from_server.state.pos().x,
                             snapshot_from_server.state.pos().y
                         );
-                        misprediction =
-                            !GameSnapshots::compare_snapshots(&snapshot_from_server, &pred);
-                        if misprediction {
-                            increase_indexed_ack_by = 1;
+                        if SnapshotStorage::snapshots_match(&snapshot_from_server, &pred) {
+                            return (false, i);
                         } else {
-                            increase_indexed_ack_by = i;
+                            return (true, 1);
                         }
                         break;
                     }
                 }
-            } else {
-                increase_indexed_ack_by = 1;
-                log::debug!("match");
+                log::debug!("Not found :(");
             }
-            misprediction
+            return (need_rollback, 1);
+        } else {
+            let need_rollback =
+                !SnapshotStorage::snapshots_match(&snapshot_from_server, &predicted_snapshot);
+            return (need_rollback, 1);
+        };
+    }
+
+    fn ack_arrived_for_server_entities(
+        &self,
+        predictions: &[CharSnapshots],
+        snapshots_from_server: &[ServerEntityState],
+    ) -> bool {
+        for server_state_index in 0..snapshots_from_server.len() {
+            let snapshot_from_server = &snapshots_from_server[server_state_index];
+            let server_entity_prediction_storage = &predictions[server_state_index];
+            if server_entity_prediction_storage.server_id != snapshot_from_server.id {
+                // the current char snapshot did not get an update
+                // TODO: in the future the server won't send updates if there were no changes for an entity
+                log::warn!(
+                    "{:?} != {:?} at index {}",
+                    predictions[server_state_index].server_id,
+                    snapshots_from_server[server_state_index].id,
+                    server_state_index
+                );
+                panic!();
+            }
+            let predicted_snapshot = server_entity_prediction_storage
+                .get_snapshot(self.last_acknowledged_index_for_server_entities + 1);
+            let need_rollback = !SnapshotStorage::snapshots_match(
+                &snapshot_from_server.char_snapshot,
+                predicted_snapshot,
+            );
+            if need_rollback {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn overwrite_states(&mut self, states: &[ServerEntityState]) {
+        SnapshotStorage::overwrite_all(
+            self.last_acknowledged_index_for_server_entities,
+            &states,
+            &mut self.snapshots_for_each_char,
+        );
+    }
+
+    fn overwrite_all(
+        tick: u64,
+        server_state_updates: &[ServerEntityState],
+        predictions: &mut [CharSnapshots],
+    ) {
+        for server_state_index in 0..server_state_updates.len() {
+            let server_state = &server_state_updates[server_state_index];
+            let mut prediction = &mut predictions[server_state_index];
+            if prediction.server_id != server_state.id {
+                // the current char snapshot did not get an update
+                // TODO: in the future the server won't send updates if there were no changes for an entity
+                log::warn!(
+                    "{:?} != {:?} at index {}",
+                    predictions[server_state_index].server_id,
+                    server_state_updates[server_state_index].id,
+                    server_state_index
+                );
+                panic!();
+            }
+            *prediction.get_mut_snapshot(tick) = server_state.char_snapshot.clone();
+        }
+    }
+
+    fn snapshots_match(acked: &CharSnapshot, predicted: &CharSnapshot) -> bool {
+        let mut matches = float_cmp(acked.state.pos().x, predicted.state.pos().x)
+            && float_cmp(acked.state.pos().y, predicted.state.pos().y);
+
+        let predicted_state = predicted.state.state();
+        let acked_state = acked.state.state();
+
+        matches &= match predicted_state {
+            CharState::Walking(..) => {
+                match acked_state {
+                    CharState::Idle => false,
+                    CharState::Walking(..) => {
+                        // if the pos are the same but the target pos differs, don't repredict
+                        // TODO but set the new target pos for remote entities
+                        true
+                    }
+                }
+            }
+            CharState::Idle => match acked_state {
+                CharState::Idle => true,
+                CharState::Walking(..) => false,
+            },
+        };
+        if !matches {
+            log::debug!(
+                "predicted: ({}, {}, {:?}) !!!=== acked: v({}, {}, {:?})",
+                predicted.state.pos().x,
+                predicted.state.pos().y,
+                predicted.state.state(),
+                acked.state.pos().x,
+                acked.state.pos().y,
+                acked.state.state(),
+            );
         } else {
             log::debug!(
-                "predicted_snapshot: v2({}, {}), acked: v2({}, {})",
-                predicted_snapshot.state.pos().x,
-                predicted_snapshot.state.pos().y,
-                snapshot_from_server.state.pos().x,
-                snapshot_from_server.state.pos().y
+                "predicted: ({}, {}, {}) == acked: ({}, {}, {})",
+                predicted.state.pos().x,
+                predicted.state.pos().y,
+                predicted.state.state().name(),
+                acked.state.pos().x,
+                acked.state.pos().y,
+                acked.state.state().name(),
             );
-            let misprediction =
-                !GameSnapshots::compare_snapshots(&snapshot_from_server, &predicted_snapshot);
-            increase_indexed_ack_by = 1;
-            misprediction
-        };
-
-        (!misprediction, increase_indexed_ack_by)
+        }
+        matches
     }
 
-    fn compare_snapshots(acked: &CharSnapshot, predicted: &CharSnapshot) -> bool {
-        let result = float_cmp(acked.state.pos().x, predicted.state.pos().x);
-        &&float_cmp(acked.state.pos().y, predicted.state.pos().y);
-        //        if !result {
-        //            log::debug!(
-        //                "predicted: v2({}, {}), acked: v2({}, {})",
-        //                predicted.state.pos().x,
-        //                predicted.state.pos().y,
-        //                acked.state.pos().x,
-        //                acked.state.pos().y
-        //            );
-        //        }
-        result
-    }
-
-    pub fn load_last_acked_state_into_world(
+    pub fn load_last_acked_remote_entities_state_into_world(
         &self,
         entities: &specs::Entities,
         auth_storage: &mut WriteStorage<AuthorizedCharStateComponent>,
         server_id_storage: &ReadStorage<HasServerIdComponent>,
         debug_ack_storage: &mut WriteStorage<DebugServerAckComponent>,
+        skip_index: Option<usize>,
     ) {
-        for (i, (entity_id, _server_id, auth_state)) in (entities, server_id_storage, auth_storage)
+        for (i, (entity_id, server_id, auth_state)) in (entities, server_id_storage, auth_storage)
             .join()
             .enumerate()
         {
-            let snapshot =
-                &self.snapshots_for_each_char[i].get_snapshot(self.last_acknowledged_index);
+            if let Some(skip_index) = skip_index {
+                if skip_index == i {
+                    // don't override local player's prediction
+                    continue;
+                }
+            }
+            let char_snapshots = &self.snapshots_for_each_char[i];
+            if server_id.server_id != char_snapshots.server_id {
+                panic!(
+                    "server_id {:?} != char server id {:?}",
+                    server_id, char_snapshots.server_id
+                );
+            }
+            let snapshot = char_snapshots.get_snapshot(self.last_acknowledged_index);
 
-            auth_state.set_pos(snapshot.state.pos());
-            auth_state.set_state(snapshot.state.state().clone(), snapshot.state.dir());
-            auth_state.target = snapshot.state.target.clone();
+            auth_state.overwrite(&snapshot.state);
         }
     }
 }
@@ -420,13 +535,17 @@ impl<'a> System<'a> for SnapshotSystem {
     type SystemData = (
         ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, HasServerIdComponent>,
-        WriteExpect<'a, GameSnapshots>,
+        WriteExpect<'a, SnapshotStorage>,
+        ReadExpect<'a, EngineTime>,
     );
 
     fn run(
         &mut self,
-        (auth_char_state_storage, server_id_storage, mut snapshots): Self::SystemData,
+        (auth_char_state_storage, server_id_storage, mut snapshots, time): Self::SystemData,
     ) {
+        if !time.can_simulation_run() {
+            return;
+        }
         let mut i = 0;
         // TODO check prediction overflow
         //        if index(self.tail + 1) == index(self.last_acknowledged_index) {
@@ -445,32 +564,69 @@ pub struct DebugServerAckComponentFillerSystem;
 
 impl<'a> System<'a> for DebugServerAckComponentFillerSystem {
     type SystemData = (
+        Entities<'a>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, HasServerIdComponent>,
         WriteStorage<'a, DebugServerAckComponent>,
-        ReadExpect<'a, GameSnapshots>,
+        ReadExpect<'a, SnapshotStorage>,
+        ReadExpect<'a, EngineTime>,
     );
 
     fn run(
         &mut self,
-        (auth_char_state_storage, server_id_storage, mut debug_ack_storage, snapshots): Self::SystemData,
+        (
+            entities,
+            auth_char_state_storage,
+            server_id_storage,
+            mut debug_ack_storage,
+            snapshots,
+            time,
+        ): Self::SystemData,
     ) {
+        if !time.can_simulation_run() {
+            return;
+        }
         let mut i = 0;
 
-        for (_server_id, auth_char_state, debug_ack) in (
-            &server_id_storage,
-            &auth_char_state_storage,
-            &mut debug_ack_storage,
-        )
-            .join()
+        for (entity_id, _server_id, _auth_char_state) in
+            (&entities, &server_id_storage, &auth_char_state_storage).join()
         {
-            debug_ack.acked_snapshot = CharSnapshot::from(snapshots.get_acked_state_for(i));
-            debug_ack.had_rollback = snapshots.had_been_rollback_in_this_tick();
+            if let Some(debug_ack) = debug_ack_storage.get_mut(entity_id) {
+                debug_ack.acked_snapshot = CharSnapshot::from(snapshots.get_acked_state_for(i));
+            }
+
+            i += 1;
+        }
+    }
+}
+
+pub struct OtherEntityIntentionSetterSystem;
+
+impl<'a> System<'a> for OtherEntityIntentionSetterSystem {
+    type SystemData = (
+        WriteStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, HasServerIdComponent>,
+        ReadExpect<'a, SnapshotStorage>,
+    );
+
+    fn run(
+        &mut self,
+        (mut auth_char_state_storage, server_id_storage, snapshots): Self::SystemData,
+    ) {
+        let mut i = 0;
+        for (_server_id, auth_char_state) in
+            (&server_id_storage, &mut auth_char_state_storage).join()
+        {
+            if i == 0 {
+                // 0 is the local player
+                continue;
+            }
+            auth_char_state.target = snapshots.get_acked_state_for(i).target.clone();
             i += 1;
         }
     }
 }
 
 fn index(tick: u64) -> usize {
-    (tick % GameSnapshots::SNAPSHOT_COUNT as u64) as usize
+    (tick % SnapshotStorage::SNAPSHOT_COUNT as u64) as usize
 }

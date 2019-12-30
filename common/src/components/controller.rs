@@ -21,14 +21,14 @@ pub enum PlayerIntention {
 #[derive(Component)]
 pub struct ControllerComponent {
     pub intention: Option<PlayerIntention>,
-    pub controlled_entity: CharEntityId,
+    pub controlled_entity: Option<CharEntityId>,
 }
 
 impl ControllerComponent {
     pub fn new(controlled_entity: CharEntityId) -> ControllerComponent {
         ControllerComponent {
             intention: None,
-            controlled_entity,
+            controlled_entity: Some(controlled_entity),
         }
     }
 }

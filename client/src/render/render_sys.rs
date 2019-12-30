@@ -1,23 +1,24 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharacterStateComponent, ClientCharState, DebugServerAckComponent,
-    NpcComponent, SpriteBoundingRect, SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharacterStateComponent, DebugServerAckComponent, NpcComponent,
+    SpriteBoundingRect, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
-    CameraComponent, EntitiesBelowCursor, HumanInputComponent, LocalPlayerControllerComponent,
-    SkillKey,
+    CameraComponent, EntitiesBelowCursor, HumanInputComponent, LocalPlayerController, SkillKey,
 };
 use crate::components::skills::skills::{SkillManifestationComponent, SkillTargetType, Skills};
 use crate::components::{
     FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
-use crate::configs::DevConfig;
+use crate::configs::{AppConfig, DevConfig};
 use crate::cursor::CURSOR_TARGET;
 use crate::effect::StrEffectId;
+use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::grf::database::AssetDatabase;
 use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
+use crate::systems::snapshot_sys::SnapshotStorage;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, RenderMatrices, SystemFrameDurations, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
@@ -25,15 +26,15 @@ use nalgebra::{Isometry2, Vector2, Vector3};
 use rustarok_common::common::{EngineTime, Vec2, Vec3};
 use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
-    ControllerEntityId, EntityTarget, Team, DIRECTION_TABLE,
+    EntityTarget, Team, DIRECTION_TABLE,
 };
-use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
+use rustarok_common::components::controller::PlayerIntention;
 use specs::prelude::*;
 
 pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
 
 // todo: Move it into GPU?
-pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0;
+pub const ONE_SPRITE_PIXEL_SIZE_IN_3D: f32 = 1.0 / 35.0 / (SPRITE_UPSCALE_FACTOR as f32);
 
 pub struct RenderDesktopClientSystem {
     damage_render_sys: DamageRenderSystem,
@@ -51,7 +52,8 @@ impl RenderDesktopClientSystem {
     // TODO: wtf is this argument list
     fn render_for_controller<'a>(
         &self,
-        controller: &mut Option<ControllerAndControlled>, // mut: we have to store bounding rects of drawed entities :(
+        local_player: &mut LocalPlayerController,
+        controlled_char: Option<(&CharacterStateComponent, &AuthorizedCharStateComponent)>,
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollector,
@@ -60,6 +62,7 @@ impl RenderDesktopClientSystem {
         assets: &AssetResources,
         time: &EngineTime,
         dev_configs: &DevConfig,
+        configs: &AppConfig,
         char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<'a, AuthorizedCharStateComponent>,
         entities: &Entities<'a>,
@@ -72,17 +75,20 @@ impl RenderDesktopClientSystem {
         map_render_data: &MapRenderData,
         matrices: &RenderMatrices,
         debug_ack_storage: &ReadStorage<'a, DebugServerAckComponent>,
+        snapshot_storage: &ReadExpect<'a, SnapshotStorage>,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
         {
             let _stopwatch = system_benchmark.start_measurement("render.draw_characters");
             self.draw_characters(
                 &camera,
-                controller,
+                local_player,
+                controlled_char,
                 render_commands,
                 assets,
                 time,
                 dev_configs,
+                configs,
                 char_state_storage,
                 auth_char_state_storage,
                 entities,
@@ -90,6 +96,7 @@ impl RenderDesktopClientSystem {
                 asset_db,
                 matrices,
                 debug_ack_storage, //                &map_render_data.gat,
+                snapshot_storage,
             );
         }
 
@@ -144,10 +151,7 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.models");
             render_models(
-                controller
-                    .as_ref()
-                    .map(|it| it.controlled_auth_char.pos())
-                    .as_ref(),
+                controlled_char.as_ref().map(|it| it.1.pos()),
                 &camera.camera,
                 &map_render_data,
                 asset_db,
@@ -156,15 +160,15 @@ impl RenderDesktopClientSystem {
         }
 
         {
-            if let Some(controller) = &controller {
+            if let Some((controlled_char, controlled_auth_char)) = &controlled_char {
                 {
                     let _stopwatch =
                         system_benchmark.start_measurement("render.select_skill_target");
-                    let char_pos = controller.controlled_auth_char.pos();
-                    if let Some((_skill_key, skill)) = controller.desktop.select_skill_target {
+                    let char_pos = controlled_auth_char.pos();
+                    if let Some((_skill_key, skill)) = local_player.select_skill_target {
                         let skill_def = skill.get_definition();
                         let skill_cast_attr =
-                            skill.get_cast_attributes(&dev_configs, controller.controlled_char);
+                            skill.get_cast_attributes(&dev_configs, controlled_char);
                         let (skill_3d_pos, dir_vector) = Skills::limit_vector_into_range(
                             &char_pos,
                             &input.mouse_world_pos,
@@ -179,8 +183,7 @@ impl RenderDesktopClientSystem {
                                 .color(&[0, 255, 0, 255])
                                 .add();
                             if skill_def.get_skill_target_type() == SkillTargetType::Area {
-                                let is_castable = controller
-                                    .controlled_char
+                                let is_castable = controlled_char
                                     .skill_cast_allowed_at
                                     .get(&skill)
                                     .unwrap_or(&ElapsedTime(0.0))
@@ -214,8 +217,8 @@ impl RenderDesktopClientSystem {
                 {
                     // render target position
                     // if there is a valid controller, there is char_state as well
-                    if let Some(PlayerIntention::MoveTo(pos)) = controller.desktop.last_intention {
-                        if CharState::Idle != *controller.controlled_auth_char.state() {
+                    if let Some(PlayerIntention::MoveTo(pos)) = local_player.last_intention {
+                        if CharState::Idle != *controlled_auth_char.state() {
                             let cursor_anim_descr = SpriteRenderDescriptorComponent {
                                 action_index: CURSOR_TARGET.1,
                                 animation_started: ElapsedTime(0.0),
@@ -246,7 +249,7 @@ impl RenderDesktopClientSystem {
             skill.render(
                 char_state_storage,
                 time.now(),
-                time.tick,
+                time.simulation_frame, // TODO2 biztos simulaton nem render?
                 assets,
                 render_commands,
                 audio_commands,
@@ -320,11 +323,11 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        followed_char_id: CharEntityId,
+        followed_char_id: Option<CharEntityId>,
         select_skill_target: Option<(SkillKey, Skills)>,
         rendering_entity_id: CharEntityId,
         entities_below_cursor: &EntitiesBelowCursor,
-        desktop_target: &Option<EntityTarget>,
+        desktop_target: &Option<&EntityTarget>,
     ) -> bool {
         return if let Some((_skill_key, skill)) = select_skill_target {
             match skill.get_definition().get_skill_target_type() {
@@ -335,10 +338,16 @@ impl RenderDesktopClientSystem {
                 SkillTargetType::NoTarget => false,
                 SkillTargetType::Area => false,
                 SkillTargetType::Directional => false,
-                SkillTargetType::OnlyAllyButNoSelf => entities_below_cursor
-                    .get_friend_except(followed_char_id)
-                    .map(|it| it == rendering_entity_id)
-                    .unwrap_or(false),
+                SkillTargetType::OnlyAllyButNoSelf => {
+                    if let Some(followed_char_id) = followed_char_id {
+                        entities_below_cursor
+                            .get_friend_except(followed_char_id)
+                            .map(|it| it == rendering_entity_id)
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                }
                 SkillTargetType::OnlyAllyAndSelf => entities_below_cursor
                     .get_friend()
                     .map(|it| it == rendering_entity_id)
@@ -365,11 +374,13 @@ impl RenderDesktopClientSystem {
     fn draw_characters(
         &self,
         camera: &CameraComponent,
-        controller: &mut Option<ControllerAndControlled>,
+        local_player: &mut LocalPlayerController,
+        controlled_char: Option<(&CharacterStateComponent, &AuthorizedCharStateComponent)>,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
         dev_configs: &DevConfig,
+        configs: &AppConfig,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         entities: &Entities,
@@ -377,9 +388,11 @@ impl RenderDesktopClientSystem {
         asset_db: &AssetDatabase,
         matrices: &RenderMatrices,
         debug_ack_storage: &ReadStorage<DebugServerAckComponent>,
+        snapshot_storage: &ReadExpect<SnapshotStorage>,
         //        gat: &Gat,
     ) {
         // Draw players
+        let mut predictable_entity_index = 0;
         for (rendering_entity_id, animated_sprite, char_state, auth_state) in (
             entities,
             sprite_storage,
@@ -410,7 +423,42 @@ impl RenderDesktopClientSystem {
             //            dbg!(h);
             //            let pos_3d = Vector3::new(pos_2d.x, h + char_state.get_y(), pos_2d.y);
 
-            let pos_3d = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
+            let predicted_pos = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
+
+            let acked_pos = {
+                let last_acked_state =
+                    snapshot_storage.get_acked_state_for(predictable_entity_index);
+                Vector3::new(
+                    last_acked_state.pos().x,
+                    char_state.get_y(),
+                    last_acked_state.pos().y,
+                )
+            };
+
+            let pos3d = if configs.lerping_enabled
+                && local_player
+                    .controller
+                    .controlled_entity
+                    .map(|it| it != rendering_entity_id)
+                    .unwrap_or(true)
+            {
+                // it takes x ticks for acked_pos to reach the predicted pos
+                let lerping_ticks = dbg!(configs.lerping_ticks);
+                let ticks_since_last_rollback =
+                    time.simulation_frame - snapshot_storage.get_last_rollback_at();
+                dbg!(ticks_since_last_rollback);
+                let percentage =
+                    (ticks_since_last_rollback as f32 / lerping_ticks as f32).min(1f32);
+
+                let path = (predicted_pos - acked_pos);
+                dbg!(predicted_pos);
+                dbg!(acked_pos);
+                dbg!(path);
+                dbg!(percentage);
+                acked_pos + (path * percentage)
+            } else {
+                predicted_pos
+            };
 
             let color = char_state.statuses.calc_render_color(time.now());
             match char_state.outlook {
@@ -420,9 +468,9 @@ impl RenderDesktopClientSystem {
                     sex,
                 } => {
                     // for spectators, left team is red, right is blue
-                    let viewer_team = controller
+                    let viewer_team = controlled_char
                         .as_ref()
-                        .map(|it| it.controlled_char.team)
+                        .map(|it| it.0.team)
                         .unwrap_or(Team::Right);
                     let body_sprite = char_state
                         .statuses
@@ -443,40 +491,39 @@ impl RenderDesktopClientSystem {
                         &sprites[sex as usize][head_index]
                     };
 
-                    if let Some(controller) = &controller {
-                        if RenderDesktopClientSystem::need_entity_highlighting(
-                            controller.controller.controlled_entity,
-                            controller.desktop.select_skill_target,
-                            rendering_entity_id,
-                            &controller.desktop.entities_below_cursor,
-                            &controller.controlled_char.target,
-                        ) {
-                            let color =
-                                if controller.controlled_char.team.is_ally_to(char_state.team) {
-                                    &[0, 0, 255, 179]
-                                } else {
-                                    &[255, 0, 0, 179]
-                                };
-                            RenderDesktopClientSystem::draw_character(
-                                time,
-                                animated_sprite,
-                                body_sprite,
-                                head_res,
-                                pos_3d,
-                                play_mode,
-                                color,
-                                render_commands,
-                                1.2,
-                            );
-                        }
-                    }
-                    if let Some(debug_ack) = debug_ack_storage.get(rendering_entity_id.into()) {
-                        let pos_3d = Vector3::new(
-                            debug_ack.acked_snapshot.state.pos().x,
-                            char_state.get_y(),
-                            debug_ack.acked_snapshot.state.pos().y,
+                    if RenderDesktopClientSystem::need_entity_highlighting(
+                        local_player.controller.controlled_entity,
+                        local_player.select_skill_target,
+                        rendering_entity_id,
+                        &local_player.entities_below_cursor,
+                        &controlled_char.as_ref().and_then(|it| it.1.target.as_ref()),
+                    ) {
+                        let color = if let Some((controlled_char, _controlled_auth_char)) =
+                            &controlled_char
+                        {
+                            if controlled_char.team.is_ally_to(char_state.team) {
+                                &[0, 0, 255, 179]
+                            } else {
+                                &[255, 0, 0, 179]
+                            }
+                        } else {
+                            &[150, 150, 150, 179]
+                        };
+                        RenderDesktopClientSystem::draw_character(
+                            time,
+                            animated_sprite,
+                            body_sprite,
+                            head_res,
+                            pos3d,
+                            play_mode,
+                            color,
+                            render_commands,
+                            1.2,
                         );
-                        let color = if debug_ack.had_rollback {
+                    }
+
+                    if configs.show_last_acknowledged_pos {
+                        let color = if local_player.had_been_rollbacked_in_this_frame {
                             &[255, 0, 0, 255]
                         } else {
                             &[0, 255, 0, 255]
@@ -486,7 +533,7 @@ impl RenderDesktopClientSystem {
                             animated_sprite,
                             body_sprite,
                             head_res,
-                            pos_3d,
+                            acked_pos,
                             play_mode,
                             color,
                             render_commands,
@@ -498,7 +545,7 @@ impl RenderDesktopClientSystem {
                         time.now(),
                         &animated_sprite,
                         body_sprite,
-                        &pos_3d,
+                        &pos3d,
                         [0, 0],
                         true,
                         1.0,
@@ -525,7 +572,7 @@ impl RenderDesktopClientSystem {
                         time.now(),
                         &animated_sprite,
                         head_res,
-                        &pos_3d,
+                        &pos3d,
                         body_pos_offset,
                         false,
                         1.0,
@@ -551,13 +598,14 @@ impl RenderDesktopClientSystem {
                     // TODO: create a has_hp component and draw this on them only?
                     if !auth_state.state().is_dead() {
                         self.draw_health_bar(
-                            controller
-                                .as_ref()
-                                .map(|it| it.controller.controlled_entity == rendering_entity_id)
+                            local_player
+                                .controller
+                                .controlled_entity
+                                .map(|it| it == rendering_entity_id)
                                 .unwrap_or(false),
-                            controller
+                            controlled_char
                                 .as_ref()
-                                .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
+                                .map(|it| it.0.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
                             time.now(),
@@ -567,12 +615,9 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    if let Some(controller) = controller {
-                        controller
-                            .desktop
-                            .bounding_rect_2d
-                            .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
-                    }
+                    local_player
+                        .bounding_rect_2d
+                        .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -584,39 +629,43 @@ impl RenderDesktopClientSystem {
                     } else {
                         ActionPlayMode::Repeat
                     };
-                    if let Some(controller) = controller {
-                        if RenderDesktopClientSystem::need_entity_highlighting(
-                            controller.controller.controlled_entity,
-                            controller.desktop.select_skill_target,
-                            rendering_entity_id,
-                            &controller.desktop.entities_below_cursor,
-                            &controller.controlled_char.target,
-                        ) {
-                            let color =
-                                if controller.controlled_char.team.is_ally_to(char_state.team) {
-                                    &[0, 0, 255, 179]
-                                } else {
-                                    &[255, 0, 0, 179]
-                                };
-                            let _pos_offset = render_single_layer_action(
-                                time.now(),
-                                &animated_sprite,
-                                body_res,
-                                &pos_3d,
-                                [0, 0],
-                                true,
-                                1.2,
-                                play_mode,
-                                color,
-                                render_commands,
-                            );
-                        }
+                    if RenderDesktopClientSystem::need_entity_highlighting(
+                        local_player.controller.controlled_entity,
+                        local_player.select_skill_target,
+                        rendering_entity_id,
+                        &local_player.entities_below_cursor,
+                        &controlled_char.as_ref().and_then(|it| it.1.target.as_ref()),
+                    ) {
+                        let color = if let Some((controlled_char, _controlled_auth_char)) =
+                            &controlled_char
+                        {
+                            if controlled_char.team.is_ally_to(char_state.team) {
+                                &[0, 0, 255, 179]
+                            } else {
+                                &[255, 0, 0, 179]
+                            }
+                        } else {
+                            &[150, 150, 150, 179]
+                        };
+                        let _pos_offset = render_single_layer_action(
+                            time.now(),
+                            &animated_sprite,
+                            body_res,
+                            &pos3d,
+                            [0, 0],
+                            true,
+                            1.2,
+                            play_mode,
+                            color,
+                            render_commands,
+                        );
                     }
+
                     let _pos_offset = render_single_layer_action(
                         time.now(),
                         &animated_sprite,
                         body_res,
-                        &pos_3d,
+                        &pos3d,
                         [0, 0],
                         true,
                         1.0,
@@ -640,13 +689,14 @@ impl RenderDesktopClientSystem {
                     };
                     if !auth_state.state().is_dead() {
                         self.draw_health_bar(
-                            controller
-                                .as_ref()
-                                .map(|it| it.controller.controlled_entity == rendering_entity_id)
+                            local_player
+                                .controller
+                                .controlled_entity
+                                .map(|it| it == rendering_entity_id)
                                 .unwrap_or(false),
-                            controller
+                            controlled_char
                                 .as_ref()
-                                .map(|it| it.controlled_char.team.is_ally_to(char_state.team))
+                                .map(|it| it.0.team.is_ally_to(char_state.team))
                                 .unwrap_or(false),
                             &char_state,
                             time.now(),
@@ -656,12 +706,9 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    if let Some(controller) = controller {
-                        controller
-                            .desktop
-                            .bounding_rect_2d
-                            .insert(rendering_entity_id, (bounding_rect, char_state.team));
-                    }
+                    local_player
+                        .bounding_rect_2d
+                        .insert(rendering_entity_id, (bounding_rect, char_state.team));
                 }
             }
 
@@ -682,13 +729,13 @@ impl RenderDesktopClientSystem {
             char_state
                 .statuses
                 .render(&char_state, assets, time, render_commands);
+            predictable_entity_index += 1;
         }
     }
 }
 
 struct ControllerAndControlled<'a> {
-    controller: &'a ControllerComponent,
-    desktop: &'a mut LocalPlayerControllerComponent,
+    desktop: &'a mut LocalPlayerController,
     controlled_char: &'a CharacterStateComponent,
     controlled_auth_char: &'a AuthorizedCharStateComponent,
 }
@@ -696,159 +743,136 @@ struct ControllerAndControlled<'a> {
 impl<'a> System<'a> for RenderDesktopClientSystem {
     type SystemData = (
         Entities<'a>,
-        ReadStorage<'a, HumanInputComponent>,
+        ReadExpect<'a, HumanInputComponent>,
         ReadStorage<'a, SpriteRenderDescriptorComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
-        ReadStorage<'a, ControllerComponent>,
-        WriteStorage<'a, LocalPlayerControllerComponent>, // mut: we have to store bounding rects of drawed entities :(
+        WriteExpect<'a, LocalPlayerController>, // mut: we have to store bounding rects of drawed entities :(
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, DevConfig>,
+        ReadExpect<'a, AppConfig>,
         WriteExpect<'a, SystemFrameDurations>,
         ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
         ReadStorage<'a, StrEffectComponent>,
-        ReadStorage<'a, CameraComponent>,
+        ReadExpect<'a, CameraComponent>,
         ReadExpect<'a, PhysicEngine>,
         Write<'a, LazyUpdate>,
         ReadStorage<'a, FlyingNumberComponent>,
         ReadStorage<'a, SoundEffectComponent>,
-        WriteStorage<'a, RenderCommandCollector>,
-        WriteStorage<'a, AudioCommandCollectorComponent>,
+        WriteExpect<'a, RenderCommandCollector>,
+        WriteExpect<'a, AudioCommandCollectorComponent>,
         ReadExpect<'a, AssetDatabase>,
         ReadStorage<'a, NpcComponent>,
         ReadExpect<'a, MapRenderData>,
         ReadExpect<'a, EngineTime>,
         ReadStorage<'a, DebugServerAckComponent>,
+        ReadExpect<'a, SnapshotStorage>,
     );
 
     fn run(
         &mut self,
         (
             entities,
-            input_storage,
+            input,
             sprite_storage,
             char_state_storage,
             auth_char_state_storage,
-            controller_storage,
-            mut local_desktop_storage,
+            mut local_player,
             sys_vars,
             dev_configs,
+            configs,
             mut system_benchmark,
             skill_storage,
             str_effect_storage,
-            camera_storage,
+            camera,
             physics_world,
             updater,
             numbers,
             sound_effects,
-            mut render_commands_storage,
-            mut audio_commands_storage,
+            mut render_commands,
+            mut audio_commands,
             asset_db,
             npc_storage,
             map_render_data,
             time,
             debug_ack_storage,
+            snapshot_storage,
         ): Self::SystemData,
     ) {
-        let join = {
-            let _stopwatch = system_benchmark.start_measurement("RenderDesktopClientSystem.join");
+        let local_player: &mut LocalPlayerController = &mut local_player;
+        let controlled_char = local_player.controller.controlled_entity.map(|it| {
             (
-                &entities,
-                &input_storage,
-                &mut render_commands_storage,
-                &mut audio_commands_storage,
-                &camera_storage,
+                char_state_storage.get(it.into()).unwrap(),
+                auth_char_state_storage.get(it.into()).unwrap(),
             )
-                .join()
-        };
-        for (entity_id, mut input, mut render_commands, mut audio_commands, camera) in join {
-            let controller_id = ControllerEntityId::new(entity_id);
+        });
 
-            let mut controller_and_controlled: Option<ControllerAndControlled> = camera
-                .followed_controller
-                .map(|controller_id| controller_storage.get(controller_id.into()).unwrap())
-                .map(|controller| {
-                    let entity = controller.controlled_entity;
-                    ControllerAndControlled {
-                        controller,
-                        desktop: local_desktop_storage.get_mut(controller_id.into()).unwrap(),
-                        controlled_char: char_state_storage.get(entity.into()).unwrap(),
-                        controlled_auth_char: auth_char_state_storage.get(entity.into()).unwrap(),
-                    }
-                });
-
-            {
-                // TODO: omg this argument list...
-                self.render_for_controller(
-                    &mut controller_and_controlled,
-                    camera,
-                    &mut input,
-                    &mut render_commands,
-                    &mut audio_commands,
-                    &physics_world,
-                    &sys_vars.assets,
-                    &time,
-                    &dev_configs,
-                    &char_state_storage,
-                    &auth_char_state_storage,
-                    &entities,
-                    &sprite_storage,
-                    &skill_storage,
-                    &str_effect_storage,
-                    &updater,
-                    &mut system_benchmark,
-                    &asset_db,
-                    &map_render_data,
-                    &sys_vars.matrices,
-                    &debug_ack_storage,
-                );
-            }
-
-            for (entity_id, sound) in (&entities, &sound_effects).join() {
-                updater.remove::<SoundEffectComponent>(entity_id);
-                if !camera.camera.is_visible(sound.pos) {
-                    continue;
-                }
-                audio_commands.add_sound_command(sound.sound_id);
-            }
-
-            self.damage_render_sys.run(
-                &entities,
-                &numbers,
+        {
+            // TODO: omg this argument list...
+            self.render_for_controller(
+                local_player,
+                controlled_char,
+                &camera,
+                &input,
+                &mut render_commands,
+                &mut audio_commands,
+                &physics_world,
+                &sys_vars.assets,
+                &time,
+                &dev_configs,
+                &configs,
                 &char_state_storage,
                 &auth_char_state_storage,
-                controller_and_controlled
-                    .as_ref()
-                    .map(|it| it.controller.controlled_entity)
-                    .unwrap_or({
-                        let entity1: Entity = controller_id.into();
-                        CharEntityId::from(entity1) // controller_id is the controller id, so no character will match with it, ~dummy value
-                    }),
-                controller_and_controlled
-                    .as_ref()
-                    .map(|it| it.controlled_char.team),
-                time.now(),
-                &sys_vars.assets,
+                &entities,
+                &sprite_storage,
+                &skill_storage,
+                &str_effect_storage,
                 &updater,
-                render_commands,
+                &mut system_benchmark,
+                &asset_db,
+                &map_render_data,
+                &sys_vars.matrices,
+                &debug_ack_storage,
+                &snapshot_storage,
             );
+        }
 
-            if let Some(controller_and_controlled) = controller_and_controlled.as_ref() {
-                self.render_ui_sys.run(
-                    &controller_and_controlled.controlled_char,
-                    &input,
-                    &controller_and_controlled.desktop,
-                    &mut render_commands,
-                    &sys_vars,
-                    &time,
-                    &char_state_storage,
-                    &npc_storage,
-                    &entities,
-                    &camera.camera.pos(),
-                    &asset_db,
-                    &map_render_data,
-                );
+        for (entity_id, sound) in (&entities, &sound_effects).join() {
+            updater.remove::<SoundEffectComponent>(entity_id);
+            if !camera.camera.is_visible(sound.pos) {
+                continue;
             }
+            audio_commands.add_sound_command(sound.sound_id);
+        }
+
+        self.damage_render_sys.run(
+            &entities,
+            &numbers,
+            &char_state_storage,
+            &auth_char_state_storage,
+            local_player.controller.controlled_entity,
+            controlled_char.as_ref().map(|it| it.0.team),
+            time.now(),
+            &sys_vars.assets,
+            &updater,
+            &mut render_commands,
+        );
+
+        if let Some((controlled_char, controlled_auth_char)) = controlled_char.as_ref() {
+            self.render_ui_sys.run(
+                &controlled_char,
+                &input,
+                &local_player,
+                &mut render_commands,
+                &sys_vars,
+                &time,
+                &char_state_storage,
+                &npc_storage,
+                &entities,
+                &camera.camera.pos(),
+                &asset_db,
+                &map_render_data,
+            );
         }
     }
 }
@@ -1052,7 +1076,7 @@ pub fn render_action(
 }
 
 fn render_models(
-    char_pos: Option<&Vec2>,
+    char_pos: Option<Vec2>,
     camera: &Camera,
     map_render_data: &MapRenderData,
     asset_db: &AssetDatabase,
@@ -1122,7 +1146,7 @@ impl DamageRenderSystem {
         numbers: &ReadStorage<FlyingNumberComponent>,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
-        followed_char_id: CharEntityId,
+        followed_char_id: Option<CharEntityId>,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
@@ -1151,7 +1175,7 @@ impl DamageRenderSystem {
         number: &FlyingNumberComponent,
         char_state_storage: &ReadStorage<CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
-        desktop_entity_id: CharEntityId,
+        desktop_entity_id: Option<CharEntityId>,
         desktop_entity_team: Option<Team>,
         now: ElapsedTime,
         assets: &AssetResources,
@@ -1284,17 +1308,22 @@ impl DamageRenderSystem {
                 desktop_entity_team.map(|controller_team| controller_team.is_ally_to(target.team))
             })
             .unwrap_or(true);
-        let size_mult = if desktop_entity_id == number.target_entity_id
-            || desktop_entity_id == number.src_entity_id
+        let size_mult = if desktop_entity_id
+            .map(|it| it == number.target_entity_id || it == number.src_entity_id)
+            .unwrap_or(false)
         {
             0.5
         } else {
             0.3
         };
         let color = number.typ.color(
-            desktop_entity_id == number.target_entity_id,
+            desktop_entity_id
+                .map(|it| it == number.target_entity_id)
+                .unwrap_or(false),
             is_friend,
-            desktop_entity_id == number.src_entity_id,
+            desktop_entity_id
+                .map(|it| it == number.src_entity_id)
+                .unwrap_or(false),
         );
         match number.typ {
             FlyingNumberType::Poison

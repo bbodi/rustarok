@@ -81,11 +81,12 @@ impl<'a> System<'a> for MinionAiSystem {
             (&entities, &mut controller_storage, &minion_storage).join()
         {
             let controller_id = ControllerEntityId::new(controller_id);
-            let char_state = char_state_storage.get(controller.controlled_entity.into());
+            let controlled_entity_id = controller.controlled_entity.unwrap();
+            let char_state = char_state_storage.get(controlled_entity_id.into());
 
             if let Some(char_state) = char_state {
                 let auth_char_state = auth_char_state_storage
-                    .get(controller.controlled_entity.into())
+                    .get(controlled_entity_id.into())
                     .unwrap();
                 // Hack
                 let mut current_target_id = None;
@@ -116,7 +117,7 @@ impl<'a> System<'a> for MinionAiSystem {
                         &auth_char_state.pos(),
                         10.0,
                         char_state.team,
-                        controller.controlled_entity,
+                        controlled_entity_id,
                     );
                     match maybe_enemy {
                         Some(target_id) => Some(PlayerIntention::Attack(target_id)),

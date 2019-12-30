@@ -47,7 +47,6 @@ pub struct EffectFrameCacheKey {
     pub key_index: i32,
 }
 
-#[derive(Component)]
 pub struct RenderCommandCollector {
     pub(super) partial_circle_2d_commands: Vec<PartialCircle2dRenderCommand>,
     pub(super) texture_2d_commands: Vec<Texture2dRenderCommand>,

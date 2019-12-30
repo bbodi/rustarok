@@ -59,7 +59,7 @@ impl SpriteFile {
         frames.extend(
             indexed_frames
                 .into_iter()
-                .map(|frame| SpriteFile::to_rgba(frame, &palette)),
+                .map(|frame| SpriteFile::indexed_to_rgba(frame, &palette)),
         );
         frames.extend(rgba_frames);
 
@@ -81,7 +81,7 @@ impl SpriteFile {
             .collect()
     }
 
-    fn to_rgba(frame: SprFrame, pal: &[u8]) -> SprFrame {
+    fn indexed_to_rgba(frame: SprFrame, pal: &[u8]) -> SprFrame {
         let mut buf = Vec::<u8>::with_capacity(frame.width * frame.height * 4);
         for y in 0..frame.height {
             for x in 0..frame.width {

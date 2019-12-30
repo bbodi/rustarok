@@ -1,6 +1,7 @@
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::systems::SystemFrameDurations;
 use specs::prelude::*;
+use std::ops::Deref;
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
 pub struct SoundId(usize);
@@ -33,7 +34,6 @@ impl SoundChunkStore {
     }
 }
 
-#[derive(Component)]
 pub struct AudioCommandCollectorComponent {
     sound_commands: Vec<SoundAudioCommand>,
 }
@@ -74,20 +74,16 @@ impl SoundSystem {
 
 impl<'a> System<'a> for SoundSystem {
     type SystemData = (
-        ReadStorage<'a, AudioCommandCollectorComponent>,
+        ReadExpect<'a, AudioCommandCollectorComponent>,
         WriteExpect<'a, SystemFrameDurations>,
     );
 
     fn run(&mut self, (audio_commands, mut system_benchmark): Self::SystemData) {
         let _stopwatch = system_benchmark.start_measurement("SoundSystem");
 
-        for audio_commands in audio_commands.join() {
-            let audio_commands: &AudioCommandCollectorComponent = audio_commands;
-
-            for sound_command in &audio_commands.sound_commands {
-                let chunk = self.sounds.get(sound_command.sound_id);
-                let _ = sdl2::mixer::Channel::all().play(chunk, 0);
-            }
+        for sound_command in &audio_commands.sound_commands {
+            let chunk = self.sounds.get(sound_command.sound_id);
+            let _ = sdl2::mixer::Channel::all().play(chunk, 0);
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::components::char::{
     CharacterEntityBuilder, CharacterStateComponent, NpcComponent, TurretComponent,
     TurretControllerComponent,
 };
-use crate::components::controller::LocalPlayerControllerComponent;
+use crate::components::controller::LocalPlayerController;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };

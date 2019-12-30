@@ -1,5 +1,5 @@
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
-use crate::components::controller::LocalPlayerControllerComponent;
+use crate::components::controller::LocalPlayerController;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };

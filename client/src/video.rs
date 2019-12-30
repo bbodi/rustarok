@@ -13,9 +13,9 @@ use std::sync::Arc;
 
 pub struct Video {
     pub window: Window,
-    //    pub imgui: ImGui,
-    //    pub imgui_sdl2: ImguiSdl2,
-    //    pub renderer: Renderer,
+    pub imgui_context: imgui::Context,
+    pub imgui_sdl2: imgui_sdl2::ImguiSdl2,
+    pub imgui_renderer: imgui_opengl_renderer::Renderer,
     pub event_pump: EventPump,
     // !!! gl_context: sdl2::video::GLContext THIS MUST BE KEPT IN SCOPE, DON'T REMOVE IT!
     _gl_context: sdl2::video::GLContext,
@@ -40,12 +40,14 @@ impl Video {
             .resizable()
             .build()
             .unwrap();
-        let (gl, gl_context) = Gl::new(&video, &window, resolution_w as i32, resolution_h as i32);
-        //        let mut imgui = imgui::ImGui::init();
-        //        imgui.set_ini_filename(None);
-        //        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
-        //        let renderer =
-        //            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+        let (w, h) = dbg!(window.size());
+        let (gl, gl_context) = Gl::new(&video, &window, w as i32, h as i32);
+        let mut imgui = imgui::Context::create();
+        imgui.set_ini_filename(None);
+        let mut imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui, &window);
+
+        let imgui_renderer =
+            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
 
         let display_modes = (0..video.num_display_modes(0).unwrap())
             .map(|i| {
@@ -61,9 +63,9 @@ impl Video {
         (
             Video {
                 window,
-                //                imgui,
-                //                imgui_sdl2,
-                //                renderer,
+                imgui_context: imgui,
+                imgui_sdl2,
+                imgui_renderer,
                 event_pump,
                 original_displaymode,
                 _gl_context: gl_context,

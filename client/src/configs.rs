@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
+    pub max_fps: usize,
     pub log_level: String,
     pub resolution_w: u32,
     pub resolution_h: u32,
@@ -13,6 +14,10 @@ pub struct AppConfig {
     pub server_addr: String,
     pub load_models: bool,
     pub load_sprites: bool,
+    pub cast_mode: CastMode,
+    pub lerping_ticks: usize,
+    pub lerping_enabled: bool,
+    pub show_last_acknowledged_pos: bool,
 }
 
 impl AppConfig {
@@ -62,13 +67,11 @@ pub struct DevConfigNetwork {
 #[derive(Debug, Deserialize)]
 pub struct DevConfig {
     pub execute_script: String,
-    pub sleep_ms: u64,
     pub minions_enabled: bool,
     pub stats: DevConfigStats,
     pub console: DevConfigConsole,
     pub network: DevConfigNetwork,
     pub skills: SkillsConfig,
-    pub cast_mode: CastMode,
 }
 
 #[derive(Debug, Deserialize)]

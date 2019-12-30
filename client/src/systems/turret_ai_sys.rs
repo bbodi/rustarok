@@ -51,12 +51,13 @@ impl<'a> System<'a> for TurretAiSystem {
         {
             let controller_id = ControllerEntityId::new(controller_id);
             let radius = dev_configs.skills.gaz_turret.turret.attack_range.as_f32() * 100.0;
-            let char_state = auth_char_state_storage.get(controller.controlled_entity.into());
+            let controlled_entity_id = controller.controlled_entity.unwrap();
+            let char_state = auth_char_state_storage.get(controlled_entity_id.into());
 
             if let Some(char_state) = char_state {
                 // at this point, preferred target is an enemy for sure
                 let preferred_target_id = turret_storage
-                    .get(controller.controlled_entity.into())
+                    .get(controlled_entity_id.into())
                     .unwrap()
                     .preferred_target;
                 if let Some(preferred_target_id) = preferred_target_id {
@@ -109,9 +110,7 @@ impl<'a> System<'a> for TurretAiSystem {
                     None => true,
                 };
 
-                let char_state2 = char_state_storage
-                    .get(controller.controlled_entity.into())
-                    .unwrap();
+                let char_state2 = char_state_storage.get(controlled_entity_id.into()).unwrap();
                 controller.intention = if no_target_or_dead_or_out_of_range {
                     let maybe_enemy = MinionAiSystem::get_closest_enemy_in_area(
                         &entities,
@@ -120,7 +119,7 @@ impl<'a> System<'a> for TurretAiSystem {
                         &char_state.pos(),
                         radius,
                         char_state2.team,
-                        controller.controlled_entity,
+                        controlled_entity_id,
                     );
                     match maybe_enemy {
                         Some(target_id) => Some(PlayerIntention::Attack(target_id)),

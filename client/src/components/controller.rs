@@ -5,7 +5,7 @@ use crate::components::skills::skills::Skills;
 use crate::ElapsedTime;
 use rustarok_common::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
 use rustarok_common::components::char::{CharDir, CharEntityId, ControllerEntityId, Team};
-use rustarok_common::components::controller::PlayerIntention;
+use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
 use specs::prelude::*;
@@ -84,8 +84,7 @@ pub enum CastMode {
 }
 
 // Camera follows a controller, a Controller controls a Character
-#[derive(Component)]
-pub struct LocalPlayerControllerComponent {
+pub struct LocalPlayerController {
     pub select_skill_target: Option<(SkillKey, Skills)>,
     // only client
     pub last_intention: Option<PlayerIntention>,
@@ -95,11 +94,14 @@ pub struct LocalPlayerControllerComponent {
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
     pub cursor_color: [u8; 3],
+    pub controller: ControllerComponent,
+    pub had_been_rollbacked_in_this_frame: bool,
 }
 
-impl LocalPlayerControllerComponent {
-    pub fn new() -> LocalPlayerControllerComponent {
-        LocalPlayerControllerComponent {
+impl LocalPlayerController {
+    pub fn new() -> LocalPlayerController {
+        LocalPlayerController {
+            had_been_rollbacked_in_this_frame: false,
             select_skill_target: None,
             repeat_next_action: false,
             last_intention: None,
@@ -107,6 +109,10 @@ impl LocalPlayerControllerComponent {
             bounding_rect_2d: HashMap::new(),
             cell_below_cursor_walkable: false,
             cursor_color: [255, 255, 255],
+            controller: ControllerComponent {
+                intention: None,
+                controlled_entity: None,
+            },
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
                 animation_started: ElapsedTime(0.0),
@@ -139,10 +145,9 @@ impl LocalPlayerControllerComponent {
     }
 }
 
-// Camera follows a controller, a Controller controls a Character
-#[derive(Component, Clone)]
+// Camera follows the LocalController, the LocalController can control a Character
+#[derive(Clone)]
 pub struct CameraComponent {
-    pub followed_controller: Option<ControllerEntityId>,
     pub view_matrix: Mat4,
     pub normal_matrix: Mat3,
     pub camera: Camera,
@@ -153,11 +158,10 @@ pub struct CameraComponent {
 impl CameraComponent {
     const YAW: f32 = 270.0;
     const PITCH: f32 = -60.0;
-    pub fn new(followed_controller: Option<ControllerEntityId>) -> CameraComponent {
+    pub fn new() -> CameraComponent {
         let camera = Camera::new(v3(0.0, 40.0, 0.0));
         return CameraComponent {
-            followed_controller,
-            view_matrix: Mat4::identity(), // it is filled before every frame
+            view_matrix: Mat4::identity(),   // it is filled before every frame
             normal_matrix: Mat3::identity(), // it is filled before every frame
             camera,
             yaw: 0.0,
@@ -230,7 +234,6 @@ impl EntitiesBelowCursor {
 }
 
 // Singleton Component
-#[derive(Component)]
 pub struct HumanInputComponent {
     pub is_console_open: bool,
     pub username: String,
@@ -258,12 +261,6 @@ pub struct HumanInputComponent {
     pub delta_mouse_x: i32,
     pub delta_mouse_y: i32,
     pub mouse_world_pos: Vec2,
-}
-
-impl Drop for HumanInputComponent {
-    fn drop(&mut self) {
-        log::info!("HumanInputComponent DROPPED");
-    }
 }
 
 impl HumanInputComponent {

@@ -1,6 +1,6 @@
 use crate::grf::asset_async_loader::{
     AsyncGroundLoadResult, BackgroundAssetLoader, FromBackgroundAssetLoaderMsg, ModelLoadingData,
-    ReservedTexturedata, ToBackgroundAssetLoaderMsg,
+    ReservedTexturedata, ToBackgroundAssetLoaderMsg, SPRITE_UPSCALE_FACTOR,
 };
 use crate::grf::database::AssetDatabase;
 use crate::grf::rsw::{Rsw, RswModelInstance, WaterData};
@@ -22,6 +22,7 @@ use sdl2::pixels::PixelFormatEnum;
 use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub struct GrfEntryLoader<'a> {
@@ -80,13 +81,19 @@ impl<'a> GrfEntryLoader<'a> {
             .expect("");
     }
 
+    pub fn no_more_requests(&self) {
+        self.to_2nd_thread
+            .send(ToBackgroundAssetLoaderMsg::NoMoreRequests)
+            .expect("");
+    }
+
     pub fn process_async_loading(
         &self,
         gl: &Gl,
         sys_vars: &mut SystemVariables,
         asset_db: &mut AssetDatabase,
         map_render_data: &mut MapRenderData,
-    ) {
+    ) -> bool {
         loop {
             let msg = self.from_2nd_thread.try_recv();
             if let Ok(msg) = msg {
@@ -98,8 +105,7 @@ impl<'a> GrfEntryLoader<'a> {
                         filename,
                     } => {
                         let surface =
-                            GrfEntryLoader::load_sdl_surface2(content, filename.ends_with(".tga"))
-                                .unwrap();
+                            GrfEntryLoader::load_sdl_surface2(content, &filename).unwrap();
 
                         let gl_texture =
                             GrfEntryLoader::create_texture_from_surface_inner(gl, surface, minmag);
@@ -143,9 +149,12 @@ impl<'a> GrfEntryLoader<'a> {
                         reserved_textures,
                         texture_id_pool,
                     ),
+                    FromBackgroundAssetLoaderMsg::NoMoreTasks => {
+                        return true;
+                    }
                 }
             } else {
-                break;
+                return false;
             }
         }
     }
@@ -442,10 +451,39 @@ impl<'a> GrfEntryLoader<'a> {
 
     pub fn load_sdl_surface(&self, path: &str) -> Result<sdl2::surface::Surface, String> {
         let buffer = self.asset_loader.get_content(path)?;
-        return GrfEntryLoader::load_sdl_surface2(buffer, path.ends_with(".tga"));
+        return GrfEntryLoader::load_sdl_surface2(buffer, &path);
     }
 
     pub fn load_sdl_surface2(
+        buffer: Vec<u8>,
+        filename: &str,
+    ) -> Result<sdl2::surface::Surface<'static>, String> {
+        let is_tga = filename.ends_with(".tga");
+
+        let sdl_surface = if cfg!(feature = "sprite_upscaling") {
+            std::fs::create_dir_all(&format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR));
+            let dir = format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR);
+            let output_name = format!("{}/{}_out.png", dir, &filename);
+            if !std::path::Path::new(&output_name).exists() {
+                let input_name = format!("{}/{}_orig.bmp", dir, &filename);
+                let unscaled_surface = GrfEntryLoader::load_sdl_surface3(buffer, is_tga)?;
+                unscaled_surface.save_bmp(&input_name);
+                Command::new("./xbrzscale")
+                    .arg(SPRITE_UPSCALE_FACTOR.to_string())
+                    .arg(&input_name)
+                    .arg(&output_name)
+                    .output()
+                    .expect("failed to execute process");
+            }
+            let upscaled_surface = BackgroundAssetLoader::sdl_surface_from_file(&output_name);
+            upscaled_surface
+        } else {
+            GrfEntryLoader::load_sdl_surface3(buffer, is_tga)?
+        };
+        return Ok(sdl_surface);
+    }
+
+    pub fn load_sdl_surface3(
         buffer: Vec<u8>,
         is_tga: bool,
     ) -> Result<sdl2::surface::Surface<'static>, String> {
@@ -469,7 +507,7 @@ impl<'a> GrfEntryLoader<'a> {
             .set_color_key(true, sdl2::pixels::Color::RGB(255, 0, 255))
             .unwrap();
         surface.blit(None, &mut optimized_surf, None)?;
-        return Ok(optimized_surf);
+        Ok(optimized_surf)
     }
 
     pub fn create_texture_from_surface(
@@ -556,7 +594,7 @@ impl<'a> GrfEntryLoader<'a> {
                 MyGlEnum::TEXTURE_WRAP_T,
                 MyGlEnum::CLAMP_TO_EDGE as i32,
             );
-            gl.generate_mipmap(MyGlEnum::TEXTURE_2D);
+            //            gl.generate_mipmap(MyGlEnum::TEXTURE_2D);
         }
         return GlTexture::new(gl, texture_native_id, w, h);
     }

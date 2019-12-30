@@ -43,6 +43,7 @@ pub fn load_status_icons(
     return status_icons;
 }
 
+// TODO: replace Hashmap with Vec
 pub fn load_skill_icons(
     gl: &Gl,
     asset_loader: &GrfEntryLoader,

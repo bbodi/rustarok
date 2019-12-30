@@ -5,17 +5,18 @@ use crate::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
 use crate::systems::console_commands::{
     cmd_add_ack_debug_comp, cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear,
-    cmd_clone_char, cmd_control_char, cmd_disable_collision, cmd_enable_collision, cmd_follow_char,
-    cmd_get_pos, cmd_goto, cmd_heal, cmd_kill_all, cmd_list_entities, cmd_list_players,
-    cmd_list_statuses, cmd_remove_falcon, cmd_resurrect, cmd_set_damping, cmd_set_fullscreen,
-    cmd_set_job, cmd_set_mass, cmd_set_outlook, cmd_set_pos, cmd_set_resolution, cmd_set_team,
-    cmd_spawn_area, cmd_spawn_entity, cmd_toggle_console,
+    cmd_clone_char, cmd_control_char, cmd_del_ack_debug_comp, cmd_disable_collision,
+    cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal, cmd_kill_all,
+    cmd_list_entities, cmd_list_players, cmd_list_statuses, cmd_remove_falcon, cmd_resurrect,
+    cmd_set_config, cmd_set_damping, cmd_set_fullscreen, cmd_set_job, cmd_set_mass,
+    cmd_set_outlook, cmd_set_pos, cmd_set_resolution, cmd_set_team, cmd_spawn_area,
+    cmd_spawn_entity, cmd_toggle_console,
 };
 use crate::systems::SystemVariables;
 use crate::video::Video;
 use crate::ElapsedTime;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{CharEntityId, ControllerEntityId};
+use rustarok_common::components::char::CharEntityId;
 use sdl2::keyboard::Scancode;
 use serde::export::fmt::{Debug, Error};
 use serde::export::Formatter;
@@ -402,7 +403,7 @@ impl<'a> ConsoleSystem<'a> {
         &mut self,
         text: &str,
         console: &mut ConsoleComponent,
-        input_storage: &ReadStorage<HumanInputComponent>,
+        input: &ReadExpect<HumanInputComponent>,
     ) {
         let idx = ConsoleSystem::get_byte_pos(&console.input, console.cursor_x);
         console.input.insert_str(idx, text);
@@ -413,7 +414,7 @@ impl<'a> ConsoleSystem<'a> {
             } else {
                 AutocompletionType::Param
             };
-            self.open_autocompletion(console, autocompletion_type, &input_storage);
+            self.open_autocompletion(console, autocompletion_type, &input);
         }
     }
 
@@ -580,7 +581,7 @@ impl<'a> ConsoleSystem<'a> {
         &self,
         console: &mut ConsoleComponent,
         autocompletion: AutocompletionType,
-        input_storage: &ReadStorage<HumanInputComponent>,
+        input: &ReadExpect<HumanInputComponent>,
     ) {
         match autocompletion {
             AutocompletionType::CommandName => {
@@ -603,10 +604,8 @@ impl<'a> ConsoleSystem<'a> {
                     if it.arguments.len() < console.cursor_parameter_index {
                         None
                     } else {
-                        it.autocompletion.get_autocompletion_list(
-                            console.cursor_parameter_index - 1,
-                            input_storage,
-                        )
+                        it.autocompletion
+                            .get_autocompletion_list(console.cursor_parameter_index - 1, input)
                     }
                 }) {
                     console.full_autocompletion_list = list;
@@ -631,20 +630,6 @@ impl<'a> ConsoleSystem<'a> {
             .nth(index)
             .unwrap_or((text.len(), '0'))
             .0
-    }
-
-    pub fn get_user_id_by_name(ecs_world: &World, username: &str) -> Option<ControllerEntityId> {
-        for (entity_id, human) in (
-            &ecs_world.entities(),
-            &ecs_world.read_storage::<HumanInputComponent>(),
-        )
-            .join()
-        {
-            if human.username == username {
-                return Some(ControllerEntityId::new(entity_id));
-            }
-        }
-        return None;
     }
 
     pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<CharEntityId> {
@@ -698,6 +683,8 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_bind_key());
         ConsoleSystem::add_command(&mut command_defs, cmd_toggle_console());
         ConsoleSystem::add_command(&mut command_defs, cmd_add_ack_debug_comp());
+        ConsoleSystem::add_command(&mut command_defs, cmd_del_ack_debug_comp());
+        ConsoleSystem::add_command(&mut command_defs, cmd_set_config());
 
         return command_defs;
     }
@@ -896,7 +883,7 @@ pub trait AutocompletionProvider {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        input_storage: &ReadStorage<HumanInputComponent>,
+        input: &ReadExpect<HumanInputComponent>,
     ) -> Option<Vec<String>>;
 }
 
@@ -905,7 +892,7 @@ impl AutocompletionProvider for OwnedAutocompletionProvider {
     fn get_autocompletion_list(
         &self,
         _param_index: usize,
-        _input_storage: &ReadStorage<HumanInputComponent>,
+        _input_storage: &ReadExpect<HumanInputComponent>,
     ) -> Option<Vec<String>> {
         Some(self.0.clone())
     }
@@ -926,7 +913,7 @@ impl AutocompletionProvider for BasicAutocompletionProvider {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        _input_storage: &ReadStorage<HumanInputComponent>,
+        _input_storage: &ReadExpect<HumanInputComponent>,
     ) -> Option<Vec<String>> {
         (self.0)(param_index)
     }
@@ -936,8 +923,8 @@ pub struct AutocompletionProviderWithUsernameCompletion(
     Box<
         dyn Fn(
             usize,
-            Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>>,
-            &ReadStorage<HumanInputComponent>,
+            Box<dyn Fn(&ReadExpect<HumanInputComponent>) -> Vec<String>>,
+            &ReadExpect<HumanInputComponent>,
         ) -> Option<Vec<String>>,
     >,
 );
@@ -947,8 +934,8 @@ impl AutocompletionProviderWithUsernameCompletion {
     where
         F: Fn(
                 usize,
-                Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>>,
-                &ReadStorage<HumanInputComponent>,
+                Box<dyn Fn(&ReadExpect<HumanInputComponent>) -> Vec<String>>,
+                &ReadExpect<HumanInputComponent>,
             ) -> Option<Vec<String>>
             + 'static,
     {
@@ -962,17 +949,18 @@ impl AutocompletionProvider for AutocompletionProviderWithUsernameCompletion {
     fn get_autocompletion_list(
         &self,
         param_index: usize,
-        input_storage: &ReadStorage<HumanInputComponent>,
+        input: &ReadExpect<HumanInputComponent>,
     ) -> Option<Vec<String>> {
-        let username_completor: Box<dyn Fn(&ReadStorage<HumanInputComponent>) -> Vec<String>> =
-            Box::new(|input_storage| {
-                let mut usernames = Vec::with_capacity(12);
-                for input in input_storage.join() {
-                    usernames.push(input.username.clone());
-                }
+        // TODO4 add a flag to remote player entities
+        let username_completor: Box<dyn Fn(&ReadExpect<HumanInputComponent>) -> Vec<String>> =
+            Box::new(|input| {
+                let mut usernames = vec!["todo".to_owned(), "todo".to_owned()];
+                //                for input in input.join() {
+                //                    usernames.push(input.username.clone());
+                //                }
                 usernames
             });
-        (self.0)(param_index, username_completor, input_storage)
+        (self.0)(param_index, username_completor, input)
     }
 }
 
@@ -984,13 +972,7 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback = Box<
-    dyn Fn(
-        ControllerEntityId,
-        CharEntityId,
-        &CommandArguments,
-        &mut World,
-        &mut Video,
-    ) -> Result<(), String>,
+    dyn Fn(Option<CharEntityId>, &CommandArguments, &mut World, &mut Video) -> Result<(), String>,
 >;
 
 pub enum ConsoleWordType {
@@ -1033,9 +1015,9 @@ pub struct ConsoleEntry {
 
 impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
     type SystemData = (
-        ReadStorage<'a, HumanInputComponent>,
-        WriteStorage<'a, ConsoleComponent>,
-        WriteStorage<'a, RenderCommandCollector>,
+        ReadExpect<'a, HumanInputComponent>,
+        WriteExpect<'a, ConsoleComponent>,
+        WriteExpect<'a, RenderCommandCollector>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
         ReadExpect<'a, DevConfig>,
@@ -1043,332 +1025,306 @@ impl<'a, 'b> System<'a> for ConsoleSystem<'b> {
 
     fn run(
         &mut self,
-        (
-            input_storage,
-            mut console_storage,
-            mut render_collector_storage,
-            sys_vars,
-            time,
-            dev_configs,
-        ): Self::SystemData,
+        (input, mut console, mut render_commands, sys_vars, time, dev_configs): Self::SystemData,
     ) {
-        for (input, render_commands, console) in (
-            &input_storage,
-            &mut render_collector_storage,
-            &mut console_storage,
-        )
-            .join()
-        {
-            let now = time.now();
-            let console_color = dev_configs.console.color;
-            let console_height = (sys_vars.matrices.resolution_h / 3) as i32;
-            let repeat_time = 0.1;
-            if !input.is_console_open {
-                if console.y_pos > 0 {
-                    console.y_pos -= 4;
-                }
-            } else {
-                if console.y_pos < console_height {
-                    console.y_pos += 4;
-                }
-                if console.cursor_change.has_already_passed(time.now()) {
-                    console.cursor_shown = !console.cursor_shown;
-                    console.cursor_change = time.now().add_seconds(0.5);
-                }
-
-                if input.is_key_just_pressed(Scancode::Up) {
-                    if console.autocompletion_open.is_some() {
-                        if console.autocompletion_index > 0 {
-                            console.autocompletion_index -= 1;
-                        } else {
-                            console.autocompletion_index =
-                                console.filtered_autocompletion_list.len() - 1;
-                        }
-                        self.autocompletion_selected(console, false, false);
-                    } else {
-                        if console.history_pos < console.command_history.len() {
-                            console.history_pos += 1;
-                        }
-                        let idx = console.command_history.len() - console.history_pos;
-                        let new_input = console
-                            .command_history
-                            .get(idx)
-                            .unwrap_or(&"".to_owned())
-                            .clone();
-                        console.set_input_and_cursor_x(new_input.chars().count(), new_input);
-                    }
-                } else if input.is_key_just_pressed(Scancode::Down) {
-                    if console.autocompletion_open.is_some() {
-                        if console.autocompletion_index
-                            < console.filtered_autocompletion_list.len() - 1
-                        {
-                            console.autocompletion_index += 1;
-                        } else {
-                            console.autocompletion_index = 0;
-                        }
-                        self.autocompletion_selected(console, false, false);
-                    } else {
-                        if console.history_pos > 1 {
-                            console.history_pos -= 1;
-                            let idx = console.command_history.len() - console.history_pos;
-                            let new_input = console.command_history[idx].clone();
-                            console.set_input_and_cursor_x(new_input.chars().count(), new_input);
-                        } else {
-                            console.history_pos = 0;
-                            console.set_input_and_cursor_x(0, String::with_capacity(32));
-                        }
-                    }
-                } else if input.is_key_down(Scancode::Left)
-                    && console.cursor_x > 0
-                    && console.key_repeat_allowed_at.has_already_passed(now)
-                {
-                    ConsoleSystem::handle_left_cursor(input, console);
-                    console.key_repeat_allowed_at = now.add_seconds(repeat_time);
-                } else if input.is_key_down(Scancode::Right)
-                    && console.cursor_x < console.input.chars().count()
-                    && console.key_repeat_allowed_at.has_already_passed(now)
-                {
-                    ConsoleSystem::handle_right_cursor(input, console);
-                    console.key_repeat_allowed_at = now.add_seconds(repeat_time);
-                } else if input.is_key_down(Scancode::Home) {
-                    console.set_cursor_x(0);
-                } else if input.is_key_down(Scancode::End) {
-                    console.set_cursor_x(console.input.chars().count());
-                } else if input.is_key_down(Scancode::Backspace)
-                    && console.cursor_x > 0
-                    && console.key_repeat_allowed_at.has_already_passed(now)
-                {
-                    ConsoleSystem::handle_backspace(input, console, now, repeat_time);
-                } else if input.is_key_down(Scancode::Delete)
-                    && console.cursor_x < console.input.chars().count()
-                    && console.key_repeat_allowed_at.has_already_passed(now)
-                {
-                    ConsoleSystem::handle_delete_key(input, console, now, repeat_time);
-                } else if input.ctrl_down && input.is_key_just_released(Scancode::Space) {
-                    let autocompletion_type = if console.cursor_parameter_index == 0 {
-                        AutocompletionType::CommandName
-                    } else {
-                        AutocompletionType::Param
-                    };
-                    self.open_autocompletion(console, autocompletion_type, &input_storage);
-                } else if (input.is_key_just_released(Scancode::Space)
-                    || input.is_key_just_released(Scancode::Tab)
-                    || (input.is_key_just_released(Scancode::Return)) && !input.ctrl_down)
-                    && console.autocompletion_open.is_some()
-                {
-                    self.autocompletion_selected(
-                        console,
-                        !input.ctrl_down,
-                        input.is_key_just_released(Scancode::Return),
-                    );
-                    if let Some(command_def) = self
-                        .command_defs
-                        .get(console.args.get_command_name().unwrap_or(&"".to_owned()))
-                    {
-                        if command_def
-                            .arguments
-                            .get((console.cursor_parameter_index as i32 - 1).max(0) as usize)
-                            .map(|it| it.2)
-                            .unwrap_or(false)
-                        {
-                            // if there is next command and it is mandatory
-                            self.open_autocompletion(
-                                console,
-                                AutocompletionType::Param,
-                                &input_storage,
-                            );
-                        }
-                    }
-                } else if input.ctrl_down && input.is_key_just_released(Scancode::R) {
-                    console.set_input_and_cursor_x(0, "".to_owned());
-                    self.open_autocompletion(
-                        console,
-                        AutocompletionType::CommandHistory,
-                        &input_storage,
-                    );
-                } else if input.is_key_just_released(Scancode::Space) {
-                    if console.cursor_inside_quotes
-                        || (console.cursor_x > 0
-                            && !console
-                                .input
-                                .chars()
-                                .nth(console.cursor_x - 1)
-                                .unwrap_or('x')
-                                .is_whitespace())
-                    {
-                        self.insert_str_to_prompt(" ", console, &input_storage)
-                    }
-                } else if !input.text.is_empty() && !input.is_key_down(Scancode::Space) {
-                    // spaces are handled above, because typing space can open the autocompletion, then
-                    // releasing it can choose the first option immediately
-                    // two spaces are not allowed
-                    self.insert_str_to_prompt(&input.text, console, &input_storage)
-                } else if input.is_key_just_released(Scancode::Escape)
-                    && console.autocompletion_open.is_some()
-                {
-                    console.close_autocompletion();
-                } else if input.is_key_just_released(Scancode::Return) {
-                    self.input_added(console, input.ctrl_down)
-                }
+        let mut console: &mut ConsoleComponent = &mut console;
+        let now = time.now();
+        let console_color = dev_configs.console.color;
+        let console_height = (sys_vars.matrices.resolution_h / 3) as i32;
+        let repeat_time = 0.1;
+        if !input.is_console_open {
+            if console.y_pos > 0 {
+                console.y_pos -= 4;
+            }
+        } else {
+            if console.y_pos < console_height {
+                console.y_pos += 4;
+            }
+            if console.cursor_change.has_already_passed(time.now()) {
+                console.cursor_shown = !console.cursor_shown;
+                console.cursor_change = time.now().add_seconds(0.5);
             }
 
-            // Draw
-            if console.y_pos > 0 {
-                // background
-                render_commands
-                    .rectangle_2d()
-                    .screen_pos(0, 0)
-                    .size(sys_vars.matrices.resolution_w as u16, console.y_pos as u16)
-                    .color(&console_color)
-                    .layer(UiLayer2d::Console)
-                    .add();
-                // cursor
-                if console.cursor_shown {
-                    render_commands
-                        .text_2d()
-                        .screen_pos(
-                            3 + 2 * NORMAL_FONT_W + console.cursor_x as i32 * NORMAL_FONT_W
-                                - NORMAL_FONT_W / 2,
-                            console.y_pos - NORMAL_FONT_H - 3,
-                        )
-                        .color(&[255, 255, 255, console_color[3]])
-                        .font(Font::Normal)
-                        .layer(UiLayer2d::ConsoleTexts)
-                        .add("|")
+            if input.is_key_just_pressed(Scancode::Up) {
+                if console.autocompletion_open.is_some() {
+                    if console.autocompletion_index > 0 {
+                        console.autocompletion_index -= 1;
+                    } else {
+                        console.autocompletion_index =
+                            console.filtered_autocompletion_list.len() - 1;
+                    }
+                    self.autocompletion_selected(&mut console, false, false);
+                } else {
+                    if console.history_pos < console.command_history.len() {
+                        console.history_pos += 1;
+                    }
+                    let idx = console.command_history.len() - console.history_pos;
+                    let new_input = console
+                        .command_history
+                        .get(idx)
+                        .unwrap_or(&"".to_owned())
+                        .clone();
+                    console.set_input_and_cursor_x(new_input.chars().count(), new_input);
                 }
-
-                // draw history
-                let row_count = console_height / NORMAL_FONT_H;
-                let input_row_y = console.y_pos - NORMAL_FONT_H - 3;
-                for (i, row) in console
-                    .rows
-                    .iter()
-                    .rev()
-                    .take(row_count as usize)
-                    .enumerate()
-                {
-                    let row_index = 1 + i as i32;
-                    ConsoleSystem::render_console_entry(
-                        render_commands,
-                        &console_color,
-                        input_row_y,
-                        row_index,
-                        &row,
-                    )
-                }
-
-                // input prompt
-                let command_def = self
-                    .command_defs
-                    .get(console.args.get_command_name().unwrap_or(&"".to_owned()));
-                let entry = ConsoleSystem::create_console_entry(&console.args, command_def);
-
-                ConsoleSystem::render_console_entry(
-                    render_commands,
-                    &console_color,
-                    input_row_y,
-                    0,
-                    &entry,
-                );
-                if let Some(command_def) = command_def {
-                    if !command_def.arguments.is_empty() {
-                        let border_size = 3;
-                        // draw help prompt above the cursor
-                        let help_text_len: usize = command_def
-                            .arguments
-                            .iter()
-                            .map(|it| it.0.chars().count())
-                            .sum::<usize>()
-                            + command_def.arguments.len() // spaces
-                            - 1;
-                        let start_x = ((console.cursor_x as i32 - help_text_len as i32 / 2)
-                            * NORMAL_FONT_W)
-                            .max(0);
-                        // background
-                        render_commands
-                            .rectangle_2d()
-                            .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
-                            .size(
-                                help_text_len as u16 * NORMAL_FONT_W as u16
-                                    + border_size as u16 * 2,
-                                NORMAL_FONT_H as u16 + border_size as u16 * 2,
-                            )
-                            .color(&[55, 57, 57, console_color[3]])
-                            .layer(UiLayer2d::ConsoleAutocompletion)
-                            .add();
-                        // text
-                        let mut x: usize = border_size as usize;
-                        command_def
-                            .arguments
-                            .iter()
-                            .map(|it| it.0.to_owned())
-                            .enumerate()
-                            .for_each(|(i, param_name)| {
-                                let color = if console.cursor_parameter_index as i32 - 1 == i as i32
-                                {
-                                    [255, 255, 255, console_color[3]] // active argument
-                                } else {
-                                    [0, 0, 0, console_color[3]]
-                                };
-                                render_commands
-                                    .text_2d()
-                                    .screen_pos(
-                                        start_x + x as i32,
-                                        console.y_pos - NORMAL_FONT_H * 2 - 3 + border_size,
-                                    )
-                                    .color(&color)
-                                    .font(Font::Normal)
-                                    .layer(UiLayer2d::ConsoleAutocompletion)
-                                    .add(&param_name);
-                                x += (param_name.chars().count() + 1) * NORMAL_FONT_W as usize;
-                            });
+            } else if input.is_key_just_pressed(Scancode::Down) {
+                if console.autocompletion_open.is_some() {
+                    if console.autocompletion_index < console.filtered_autocompletion_list.len() - 1
+                    {
+                        console.autocompletion_index += 1;
+                    } else {
+                        console.autocompletion_index = 0;
+                    }
+                    self.autocompletion_selected(&mut console, false, false);
+                } else {
+                    if console.history_pos > 1 {
+                        console.history_pos -= 1;
+                        let idx = console.command_history.len() - console.history_pos;
+                        let new_input = console.command_history[idx].clone();
+                        console.set_input_and_cursor_x(new_input.chars().count(), new_input);
+                    } else {
+                        console.history_pos = 0;
+                        console.set_input_and_cursor_x(0, String::with_capacity(32));
                     }
                 }
-                // autocompletion
-                if console.autocompletion_open.is_some() {
-                    let longest_text_len: usize = console
-                        .filtered_autocompletion_list
+            } else if input.is_key_down(Scancode::Left)
+                && console.cursor_x > 0
+                && console.key_repeat_allowed_at.has_already_passed(now)
+            {
+                ConsoleSystem::handle_left_cursor(&input, &mut console);
+                console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+            } else if input.is_key_down(Scancode::Right)
+                && console.cursor_x < console.input.chars().count()
+                && console.key_repeat_allowed_at.has_already_passed(now)
+            {
+                ConsoleSystem::handle_right_cursor(&input, &mut console);
+                console.key_repeat_allowed_at = now.add_seconds(repeat_time);
+            } else if input.is_key_down(Scancode::Home) {
+                console.set_cursor_x(0);
+            } else if input.is_key_down(Scancode::End) {
+                console.set_cursor_x(console.input.chars().count());
+            } else if input.is_key_down(Scancode::Backspace)
+                && console.cursor_x > 0
+                && console.key_repeat_allowed_at.has_already_passed(now)
+            {
+                ConsoleSystem::handle_backspace(&input, &mut console, now, repeat_time);
+            } else if input.is_key_down(Scancode::Delete)
+                && console.cursor_x < console.input.chars().count()
+                && console.key_repeat_allowed_at.has_already_passed(now)
+            {
+                ConsoleSystem::handle_delete_key(&input, &mut console, now, repeat_time);
+            } else if input.ctrl_down && input.is_key_just_released(Scancode::Space) {
+                let autocompletion_type = if console.cursor_parameter_index == 0 {
+                    AutocompletionType::CommandName
+                } else {
+                    AutocompletionType::Param
+                };
+                self.open_autocompletion(&mut console, autocompletion_type, &input);
+            } else if (input.is_key_just_released(Scancode::Space)
+                || input.is_key_just_released(Scancode::Tab)
+                || (input.is_key_just_released(Scancode::Return)) && !input.ctrl_down)
+                && console.autocompletion_open.is_some()
+            {
+                self.autocompletion_selected(
+                    &mut console,
+                    !input.ctrl_down,
+                    input.is_key_just_released(Scancode::Return),
+                );
+                if let Some(command_def) = self
+                    .command_defs
+                    .get(console.args.get_command_name().unwrap_or(&"".to_owned()))
+                {
+                    if command_def
+                        .arguments
+                        .get((console.cursor_parameter_index as i32 - 1).max(0) as usize)
+                        .map(|it| it.2)
+                        .unwrap_or(false)
+                    {
+                        // if there is next command and it is mandatory
+                        self.open_autocompletion(&mut console, AutocompletionType::Param, &input);
+                    }
+                }
+            } else if input.ctrl_down && input.is_key_just_released(Scancode::R) {
+                console.set_input_and_cursor_x(0, "".to_owned());
+                self.open_autocompletion(&mut console, AutocompletionType::CommandHistory, &input);
+            } else if input.is_key_just_released(Scancode::Space) {
+                if console.cursor_inside_quotes
+                    || (console.cursor_x > 0
+                        && !console
+                            .input
+                            .chars()
+                            .nth(console.cursor_x - 1)
+                            .unwrap_or('x')
+                            .is_whitespace())
+                {
+                    self.insert_str_to_prompt(" ", &mut console, &input)
+                }
+            } else if !input.text.is_empty() && !input.is_key_down(Scancode::Space) {
+                // spaces are handled above, because typing space can open the autocompletion, then
+                // releasing it can choose the first option immediately
+                // two spaces are not allowed
+                self.insert_str_to_prompt(&input.text, &mut console, &input)
+            } else if input.is_key_just_released(Scancode::Escape)
+                && console.autocompletion_open.is_some()
+            {
+                console.close_autocompletion();
+            } else if input.is_key_just_released(Scancode::Return) {
+                self.input_added(&mut console, input.ctrl_down)
+            }
+        }
+
+        // Draw
+        if console.y_pos > 0 {
+            // background
+            render_commands
+                .rectangle_2d()
+                .screen_pos(0, 0)
+                .size(sys_vars.matrices.resolution_w as u16, console.y_pos as u16)
+                .color(&console_color)
+                .layer(UiLayer2d::Console)
+                .add();
+            // cursor
+            if console.cursor_shown {
+                render_commands
+                    .text_2d()
+                    .screen_pos(
+                        3 + 2 * NORMAL_FONT_W + console.cursor_x as i32 * NORMAL_FONT_W
+                            - NORMAL_FONT_W / 2,
+                        console.y_pos - NORMAL_FONT_H - 3,
+                    )
+                    .color(&[255, 255, 255, console_color[3]])
+                    .font(Font::Normal)
+                    .layer(UiLayer2d::ConsoleTexts)
+                    .add("|")
+            }
+
+            // draw history
+            let row_count = console_height / NORMAL_FONT_H;
+            let input_row_y = console.y_pos - NORMAL_FONT_H - 3;
+            for (i, row) in console
+                .rows
+                .iter()
+                .rev()
+                .take(row_count as usize)
+                .enumerate()
+            {
+                let row_index = 1 + i as i32;
+                ConsoleSystem::render_console_entry(
+                    &mut render_commands,
+                    &console_color,
+                    input_row_y,
+                    row_index,
+                    &row,
+                )
+            }
+
+            // input prompt
+            let command_def = self
+                .command_defs
+                .get(console.args.get_command_name().unwrap_or(&"".to_owned()));
+            let entry = ConsoleSystem::create_console_entry(&console.args, command_def);
+
+            ConsoleSystem::render_console_entry(
+                &mut render_commands,
+                &console_color,
+                input_row_y,
+                0,
+                &entry,
+            );
+            if let Some(command_def) = command_def {
+                if !command_def.arguments.is_empty() {
+                    let border_size = 3;
+                    // draw help prompt above the cursor
+                    let help_text_len: usize = command_def
+                        .arguments
                         .iter()
-                        .take(20)
-                        .map(|it| it.chars().count())
-                        .max()
-                        .unwrap_or(1);
-                    let start_x = ((console.cursor_x as i32 - longest_text_len as i32 / 3)
+                        .map(|it| it.0.chars().count())
+                        .sum::<usize>()
+                        + command_def.arguments.len() // spaces
+                        - 1;
+                    let start_x = ((console.cursor_x as i32 - help_text_len as i32 / 2)
                         * NORMAL_FONT_W)
                         .max(0);
                     // background
                     render_commands
                         .rectangle_2d()
-                        .screen_pos(start_x, console.y_pos)
+                        .screen_pos(start_x, console.y_pos - NORMAL_FONT_H * 2 - 3)
                         .size(
-                            longest_text_len as u16 * NORMAL_FONT_W as u16,
-                            NORMAL_FONT_H as u16
-                                * console.filtered_autocompletion_list.iter().take(20).count()
-                                    as u16,
+                            help_text_len as u16 * NORMAL_FONT_W as u16 + border_size as u16 * 2,
+                            NORMAL_FONT_H as u16 + border_size as u16 * 2,
                         )
                         .color(&[55, 57, 57, console_color[3]])
                         .layer(UiLayer2d::ConsoleAutocompletion)
                         .add();
-                    // texts
-                    for (i, line) in console
-                        .filtered_autocompletion_list
+                    // text
+                    let mut x: usize = border_size as usize;
+                    command_def
+                        .arguments
                         .iter()
-                        .take(20)
+                        .map(|it| it.0.to_owned())
                         .enumerate()
-                    {
-                        let color = if i == console.autocompletion_index {
-                            [255, 255, 255, console_color[3]] // active argument
-                        } else {
-                            [0, 0, 0, console_color[3]]
-                        };
-                        render_commands
-                            .text_2d()
-                            .screen_pos(start_x, console.y_pos + NORMAL_FONT_H * i as i32)
-                            .color(&color)
-                            .font(Font::Normal)
-                            .layer(UiLayer2d::ConsoleAutocompletion)
-                            .add(line);
-                    }
+                        .for_each(|(i, param_name)| {
+                            let color = if console.cursor_parameter_index as i32 - 1 == i as i32 {
+                                [255, 255, 255, console_color[3]] // active argument
+                            } else {
+                                [0, 0, 0, console_color[3]]
+                            };
+                            render_commands
+                                .text_2d()
+                                .screen_pos(
+                                    start_x + x as i32,
+                                    console.y_pos - NORMAL_FONT_H * 2 - 3 + border_size,
+                                )
+                                .color(&color)
+                                .font(Font::Normal)
+                                .layer(UiLayer2d::ConsoleAutocompletion)
+                                .add(&param_name);
+                            x += (param_name.chars().count() + 1) * NORMAL_FONT_W as usize;
+                        });
+                }
+            }
+            // autocompletion
+            if console.autocompletion_open.is_some() {
+                let longest_text_len: usize = console
+                    .filtered_autocompletion_list
+                    .iter()
+                    .take(20)
+                    .map(|it| it.chars().count())
+                    .max()
+                    .unwrap_or(1);
+                let start_x = ((console.cursor_x as i32 - longest_text_len as i32 / 3)
+                    * NORMAL_FONT_W)
+                    .max(0);
+                // background
+                render_commands
+                    .rectangle_2d()
+                    .screen_pos(start_x, console.y_pos)
+                    .size(
+                        longest_text_len as u16 * NORMAL_FONT_W as u16,
+                        NORMAL_FONT_H as u16
+                            * console.filtered_autocompletion_list.iter().take(20).count() as u16,
+                    )
+                    .color(&[55, 57, 57, console_color[3]])
+                    .layer(UiLayer2d::ConsoleAutocompletion)
+                    .add();
+                // texts
+                for (i, line) in console
+                    .filtered_autocompletion_list
+                    .iter()
+                    .take(20)
+                    .enumerate()
+                {
+                    let color = if i == console.autocompletion_index {
+                        [255, 255, 255, console_color[3]] // active argument
+                    } else {
+                        [0, 0, 0, console_color[3]]
+                    };
+                    render_commands
+                        .text_2d()
+                        .screen_pos(start_x, console.y_pos + NORMAL_FONT_H * i as i32)
+                        .color(&color)
+                        .font(Font::Normal)
+                        .layer(UiLayer2d::ConsoleAutocompletion)
+                        .add(line);
                 }
             }
         }

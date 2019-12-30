@@ -1,8 +1,6 @@
 
-sleep_ms = 5
 minions_enabled = false
-# aka quick cast, Normal, OnKeyRelease, OnKeyPress
-cast_mode = "Normal"
+
 
 execute_script = ""
 [network]

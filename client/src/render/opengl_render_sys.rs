@@ -6,6 +6,7 @@ use specs::prelude::*;
 
 use crate::components::controller::CameraComponent;
 use crate::effect::StrEffectId;
+use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::database::AssetDatabase;
 use crate::grf::str::{KeyFrameType, StrFile, StrLayer};
@@ -753,9 +754,8 @@ impl<'a, 'b> OpenGlRenderSystem<'a, 'b> {
 
 impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
     type SystemData = (
-        ReadStorage<'a, RenderCommandCollector>,
-        //        ReadStorage<'a, BrowserClient>,
-        ReadStorage<'a, CameraComponent>,
+        ReadExpect<'a, RenderCommandCollector>,
+        ReadExpect<'a, CameraComponent>,
         WriteExpect<'a, SystemFrameDurations>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, AssetDatabase>,
@@ -766,9 +766,8 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
     fn run(
         &mut self,
         (
-            render_commands_storage,
-            //            browser_client_storage,
-            camera_storage,
+            render_commands,
+            camera,
             mut system_benchmark,
             sys_vars,
             asset_db,
@@ -781,152 +780,68 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
         }
 
         let gl = &gl;
-        for (render_commands, camera /*_not_browser*/) in (
-            &render_commands_storage,
-            &camera_storage,
-            //            !&browser_client_storage,
-        )
-            .join()
+
         {
-            let render_commands: &RenderCommandCollector = render_commands;
-
-            {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.ground");
-                if map_render_data.draw_ground {
-                    OpenGlRenderSystem::render_ground(
-                        gl,
-                        &self.shaders.ground_shader,
-                        &sys_vars.matrices.projection,
-                        &map_render_data,
-                        &camera.view_matrix,
-                        &camera.normal_matrix,
-                        &asset_db,
-                    );
-                }
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.ground");
+            if map_render_data.draw_ground {
+                OpenGlRenderSystem::render_ground(
+                    gl,
+                    &self.shaders.ground_shader,
+                    &sys_vars.matrices.projection,
+                    &map_render_data,
+                    &camera.view_matrix,
+                    &camera.normal_matrix,
+                    &asset_db,
+                );
             }
+        }
 
-            {
-                let shader = self.shaders.sprite_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader.params.texture.set(gl, 0);
+        {
+            let shader = self.shaders.sprite_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.projection);
+            shader.params.view_mat.set(gl, &render_commands.view_matrix);
+            shader.params.texture.set(gl, 0);
 
-                unsafe {
-                    gl.active_texture(MyGlEnum::TEXTURE0);
-                }
-                /////////////////////////////////
-                // 3D Sprites
-                /////////////////////////////////
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.sprite3d");
-                    let vao_bind = map_render_data.centered_sprite_vertex_array.bind(&gl);
-                    for command in &render_commands.sprite_3d_commands {
-                        let texture = asset_db.get_texture(command.texture_id);
-                        let flipped_width =
-                            (1 - command.is_vertically_flipped as i16 * 2) * texture.width as i16;
-
-                        shader.params.size.set(
-                            gl,
-                            &[
-                                flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
-                                texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
-                            ],
-                        );
-                        shader
-                            .params
-                            .model_mat
-                            .set(gl, &Mat4::new_translation(&command.pos));
-                        shader.params.rot_mat.set(
-                            gl,
-                            &create_3d_rot_matrix(&(Vector3::z(), command.rot_radian)),
-                        );
-                        shader.params.color.set(gl, &command.color);
-                        shader.params.offset.set(
-                            gl,
-                            &[
-                                command.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                                command.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                            ],
-                        );
-
-                        unsafe {
-                            gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
-                        }
-                        vao_bind.draw(&gl);
-                    }
-                }
-
-                /////////////////////////////////
-                // 3D NUMBERS
-                /////////////////////////////////
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.number3d");
-                    unsafe {
-                        gl.disable(MyGlEnum::DEPTH_TEST);
-                    }
-                    asset_db
-                        .get_texture(sys_vars.assets.sprites.numbers)
-                        .bind(&gl, MyGlEnum::TEXTURE0);
-                    shader.params.offset.set(gl, &[0.0, 0.0]);
-                    for command in &render_commands.number_3d_commands {
-                        shader.params.size.set(gl, &[command.scale, command.scale]);
-                        shader
-                            .params
-                            .model_mat
-                            .set(gl, &Mat4::new_translation(&command.pos));
-                        shader.params.rot_mat.set(gl, &Mat4::identity());
-                        shader.params.color.set(gl, &command.color);
-
-                        self.create_number_vertex_array(&gl, command.value)
-                            .bind(&gl)
-                            .draw(&gl);
-                    }
-                    unsafe {
-                        gl.enable(MyGlEnum::DEPTH_TEST);
-                    }
-                }
+            unsafe {
+                gl.active_texture(MyGlEnum::TEXTURE0);
             }
             /////////////////////////////////
-            // 3D Horizontal textures
+            // 3D Sprites
             /////////////////////////////////
             {
-                let _stopwatch =
-                    system_benchmark.start_measurement("OpenGlRenderSystem.horiz_texture");
-                let shader = self.shaders.horiz_texture_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader.params.texture.set(gl, 0);
-
-                unsafe {
-                    gl.active_texture(MyGlEnum::TEXTURE0);
-                }
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.sprite3d");
                 let vao_bind = map_render_data.centered_sprite_vertex_array.bind(&gl);
-                for command in &render_commands.horizontal_texture_3d_commands {
+                for command in &render_commands.sprite_3d_commands {
                     let texture = asset_db.get_texture(command.texture_id);
-                    let (w, h) = match command.size {
-                        TextureSizeSetting::Scale(scale) => (
-                            (texture.width as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                            (texture.height as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
-                        ),
-                        TextureSizeSetting::FixSize(size) => (size, size),
-                    };
-                    shader.params.size.set(gl, &[w, h]);
+                    let flipped_width =
+                        (1 - command.is_vertically_flipped as i16 * 2) * texture.width as i16;
 
-                    let model_matrix = create_3d_pos_rot_matrix(
-                        &Vector3::new(command.pos.x, 0.2, command.pos.y),
-                        &(Vector3::y(), command.rotation_rad),
+                    shader.params.size.set(
+                        gl,
+                        &[
+                            flipped_width as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
+                            texture.height as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D * command.scale,
+                        ],
                     );
-
-                    shader.params.model_mat.set(gl, &model_matrix);
+                    shader
+                        .params
+                        .model_mat
+                        .set(gl, &Mat4::new_translation(&command.pos));
+                    shader.params.rot_mat.set(
+                        gl,
+                        &create_3d_rot_matrix(&(Vector3::z(), command.rot_radian)),
+                    );
                     shader.params.color.set(gl, &command.color);
+                    shader.params.offset.set(
+                        gl,
+                        &[
+                            command.offset[0] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                            command.offset[1] as f32 * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                        ],
+                    );
 
                     unsafe {
                         gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
@@ -935,405 +850,472 @@ impl<'a> System<'a> for OpenGlRenderSystem<'_, '_> {
                 }
             }
 
-            // TODO: measure the validity of effect caching
             /////////////////////////////////
-            // 3D EFFECTS
+            // 3D NUMBERS
             /////////////////////////////////
             {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.effect3d");
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.number3d");
                 unsafe {
                     gl.disable(MyGlEnum::DEPTH_TEST);
                 }
-                let shader = self.shaders.str_effect_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader.params.texture.set(gl, 0);
-                unsafe {
-                    gl.active_texture(MyGlEnum::TEXTURE0);
+                asset_db
+                    .get_texture(sys_vars.assets.sprites.numbers)
+                    .bind(&gl, MyGlEnum::TEXTURE0);
+                shader.params.offset.set(gl, &[0.0, 0.0]);
+                for command in &render_commands.number_3d_commands {
+                    shader.params.size.set(gl, &[command.scale, command.scale]);
+                    shader
+                        .params
+                        .model_mat
+                        .set(gl, &Mat4::new_translation(&command.pos));
+                    shader.params.rot_mat.set(gl, &Mat4::identity());
+                    shader.params.color.set(gl, &command.color);
+
+                    self.create_number_vertex_array(&gl, command.value)
+                        .bind(&gl)
+                        .draw(&gl);
                 }
-
-                let str_effect_cache = &mut self.str_effect_cache;
-                &render_commands
-                    .effect_commands
-                    .iter()
-                    .filter(|(_frame_cache_key, commands)| !commands.is_empty())
-                    .for_each(|(frame_cache_key, commands)| {
-                        let cached_frame = str_effect_cache.cache.get(&frame_cache_key);
-                        let str_file = &sys_vars.assets.str_effects[frame_cache_key.effect_id.0];
-                        match cached_frame {
-                            None => {
-                                let layer = &str_file.layers[frame_cache_key.layer_index];
-                                let cached_effect_frame = OpenGlRenderSystem::prepare_effect(
-                                    &gl,
-                                    layer,
-                                    frame_cache_key.key_index,
-                                );
-                                str_effect_cache
-                                    .cache
-                                    .insert(frame_cache_key.clone(), cached_effect_frame);
-                            }
-                            Some(None) => {
-                                // nothing
-                            }
-                            Some(Some(cached_frame)) => {
-                                shader.params.offset.set(gl, &cached_frame.offset);
-                                //                                shader.params.color.set(gl, &[255, 255, 255, 255]);
-                                shader.params.color.set(gl, &cached_frame.color);
-                                unsafe {
-                                    gl.blend_func(cached_frame.src_alpha, cached_frame.dst_alpha);
-                                }
-                                // TODO: save the native_id into the command, so str_file should not be looked up
-                                asset_db
-                                    .get_texture(str_file.textures[cached_frame.texture_index])
-                                    .bind(&gl, MyGlEnum::TEXTURE0);
-                                let bind = cached_frame.pos_vao.bind(&gl);
-                                for pos in commands {
-                                    let mut matrix = cached_frame.rotation_matrix.clone();
-                                    matrix.append_translation_mut(&v2_to_v3(&pos));
-                                    shader.params.model_mat.set(gl, &matrix);
-                                    bind.draw(&gl);
-                                }
-                            }
-                        }
-                    });
-
                 unsafe {
-                    gl.blend_func(MyGlBlendEnum::SRC_ALPHA, MyGlBlendEnum::ONE_MINUS_SRC_ALPHA);
                     gl.enable(MyGlEnum::DEPTH_TEST);
                 }
             }
+        }
+        /////////////////////////////////
+        // 3D Horizontal textures
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.horiz_texture");
+            let shader = self.shaders.horiz_texture_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.projection);
+            shader.params.view_mat.set(gl, &render_commands.view_matrix);
+            shader.params.texture.set(gl, 0);
 
-            /////////////////////////////////
-            // 3D MODELS
-            /////////////////////////////////
-            {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.models3d");
-                let map_render_data = &map_render_data;
-                let shader = self.shaders.model_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader
-                    .params
-                    .normal_mat
-                    .set(gl, &render_commands.normal_matrix);
-                shader.params.texture.set(gl, 0);
-                shader
-                    .params
-                    .light_dir
-                    .set(gl, &map_render_data.light.direction);
-                shader
-                    .params
-                    .light_ambient
-                    .set(gl, &map_render_data.light.ambient);
-                shader
-                    .params
-                    .light_diffuse
-                    .set(gl, &map_render_data.light.diffuse);
-                shader
-                    .params
-                    .light_opacity
-                    .set(gl, map_render_data.light.opacity);
-                shader
-                    .params
-                    .use_lighting
-                    .set(gl, map_render_data.use_lighting as i32);
+            unsafe {
+                gl.active_texture(MyGlEnum::TEXTURE0);
+            }
+            let vao_bind = map_render_data.centered_sprite_vertex_array.bind(&gl);
+            for command in &render_commands.horizontal_texture_3d_commands {
+                let texture = asset_db.get_texture(command.texture_id);
+                let (w, h) = match command.size {
+                    TextureSizeSetting::Scale(scale) => (
+                        (texture.width as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                        (texture.height as f32) * scale * ONE_SPRITE_PIXEL_SIZE_IN_3D,
+                    ),
+                    TextureSizeSetting::FixSize(size) => (size, size),
+                };
+                shader.params.size.set(gl, &[w, h]);
 
-                for render_command in &render_commands.model_commands {
-                    let matrix = &map_render_data.model_instances
-                        [render_command.model_instance_index]
-                        .matrix;
-                    shader.params.model_mat.set(gl, &matrix);
-                    shader.params.alpha.set(
-                        gl,
-                        if render_command.is_transparent {
-                            0.3
-                        } else {
-                            1.0
-                        },
-                    );
-                    let asset_db_model_index = map_render_data.model_instances
-                        [render_command.model_instance_index]
-                        .asset_db_model_index;
-                    let model_render_data = asset_db.get_model(asset_db_model_index);
-                    for node_render_data in &model_render_data.model {
-                        // TODO: optimize this
-                        for face_render_data in node_render_data {
-                            asset_db
-                                .get_texture(face_render_data.texture)
-                                .bind(&gl, MyGlEnum::TEXTURE0);
-                            face_render_data.vao.bind(&gl).draw(&gl);
+                let model_matrix = create_3d_pos_rot_matrix(
+                    &Vector3::new(command.pos.x, 0.2, command.pos.y),
+                    &(Vector3::y(), command.rotation_rad),
+                );
+
+                shader.params.model_mat.set(gl, &model_matrix);
+                shader.params.color.set(gl, &command.color);
+
+                unsafe {
+                    gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
+                }
+                vao_bind.draw(&gl);
+            }
+        }
+
+        // TODO: measure the validity of effect caching
+        /////////////////////////////////
+        // 3D EFFECTS
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.effect3d");
+            unsafe {
+                gl.disable(MyGlEnum::DEPTH_TEST);
+            }
+            let shader = self.shaders.str_effect_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.projection);
+            shader.params.view_mat.set(gl, &render_commands.view_matrix);
+            shader.params.texture.set(gl, 0);
+            unsafe {
+                gl.active_texture(MyGlEnum::TEXTURE0);
+            }
+
+            let str_effect_cache = &mut self.str_effect_cache;
+            &render_commands
+                .effect_commands
+                .iter()
+                .filter(|(_frame_cache_key, commands)| !commands.is_empty())
+                .for_each(|(frame_cache_key, commands)| {
+                    let cached_frame = str_effect_cache.cache.get(&frame_cache_key);
+                    let str_file = &sys_vars.assets.str_effects[frame_cache_key.effect_id.0];
+                    match cached_frame {
+                        None => {
+                            let layer = &str_file.layers[frame_cache_key.layer_index];
+                            let cached_effect_frame = OpenGlRenderSystem::prepare_effect(
+                                &gl,
+                                layer,
+                                frame_cache_key.key_index,
+                            );
+                            str_effect_cache
+                                .cache
+                                .insert(frame_cache_key.clone(), cached_effect_frame);
                         }
+                        Some(None) => {
+                            // nothing
+                        }
+                        Some(Some(cached_frame)) => {
+                            shader.params.offset.set(gl, &cached_frame.offset);
+                            //                                shader.params.color.set(gl, &[255, 255, 255, 255]);
+                            shader.params.color.set(gl, &cached_frame.color);
+                            unsafe {
+                                gl.blend_func(cached_frame.src_alpha, cached_frame.dst_alpha);
+                            }
+                            // TODO: save the native_id into the command, so str_file should not be looked up
+                            asset_db
+                                .get_texture(str_file.textures[cached_frame.texture_index])
+                                .bind(&gl, MyGlEnum::TEXTURE0);
+                            let bind = cached_frame.pos_vao.bind(&gl);
+                            for pos in commands {
+                                let mut matrix = cached_frame.rotation_matrix.clone();
+                                matrix.append_translation_mut(&v2_to_v3(&pos));
+                                shader.params.model_mat.set(gl, &matrix);
+                                bind.draw(&gl);
+                            }
+                        }
+                    }
+                });
+
+            unsafe {
+                gl.blend_func(MyGlBlendEnum::SRC_ALPHA, MyGlBlendEnum::ONE_MINUS_SRC_ALPHA);
+                gl.enable(MyGlEnum::DEPTH_TEST);
+            }
+        }
+
+        /////////////////////////////////
+        // 3D MODELS
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.models3d");
+            let map_render_data = &map_render_data;
+            let shader = self.shaders.model_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.projection);
+            shader.params.view_mat.set(gl, &render_commands.view_matrix);
+            shader
+                .params
+                .normal_mat
+                .set(gl, &render_commands.normal_matrix);
+            shader.params.texture.set(gl, 0);
+            shader
+                .params
+                .light_dir
+                .set(gl, &map_render_data.light.direction);
+            shader
+                .params
+                .light_ambient
+                .set(gl, &map_render_data.light.ambient);
+            shader
+                .params
+                .light_diffuse
+                .set(gl, &map_render_data.light.diffuse);
+            shader
+                .params
+                .light_opacity
+                .set(gl, map_render_data.light.opacity);
+            shader
+                .params
+                .use_lighting
+                .set(gl, map_render_data.use_lighting as i32);
+
+            for render_command in &render_commands.model_commands {
+                let matrix =
+                    &map_render_data.model_instances[render_command.model_instance_index].matrix;
+                shader.params.model_mat.set(gl, &matrix);
+                shader.params.alpha.set(
+                    gl,
+                    if render_command.is_transparent {
+                        0.3
+                    } else {
+                        1.0
+                    },
+                );
+                let asset_db_model_index = map_render_data.model_instances
+                    [render_command.model_instance_index]
+                    .asset_db_model_index;
+                let model_render_data = asset_db.get_model(asset_db_model_index);
+                for node_render_data in &model_render_data.model {
+                    // TODO: optimize this
+                    for face_render_data in node_render_data {
+                        asset_db
+                            .get_texture(face_render_data.texture)
+                            .bind(&gl, MyGlEnum::TEXTURE0);
+                        face_render_data.vao.bind(&gl).draw(&gl);
                     }
                 }
             }
+        }
+
+        {
+            let shader = self.shaders.trimesh3d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.projection);
+            shader.params.view_mat.set(gl, &render_commands.view_matrix);
+            shader.params.texture.set(gl, 0);
 
             {
-                let shader = self.shaders.trimesh3d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.projection);
-                shader.params.view_mat.set(gl, &render_commands.view_matrix);
-                shader.params.texture.set(gl, 0);
+                /////////////////////////////////
+                // 3D Trimesh
+                /////////////////////////////////
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
 
-                {
-                    /////////////////////////////////
-                    // 3D Trimesh
-                    /////////////////////////////////
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.trimesh3d");
-
-                    for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
-                        let vao_bind = self.vaos[i].bind(&gl);
-                        for command in commands {
-                            let matrix = create_3d_pos_rot_matrix(
-                                &command.pos,
-                                &(Vector3::y(), command.rotation_rad),
-                            );
-                            shader.params.model_mat.set(gl, &matrix);
-                            shader
-                                .params
-                                .scale
-                                .set(gl, &[command.scale, command.scale, command.scale]);
-                            shader.params.color.set(gl, &command.color);
-                            command
-                                .texture
-                                .map(|texture_id| asset_db.get_texture(texture_id))
-                                .unwrap_or(&self.white_dummy_texture)
-                                .bind(gl, MyGlEnum::TEXTURE0);
-                            // TODO
-                            if let Some(_texture_id) = command.texture {}
-                            vao_bind.draw(&gl);
-                        }
-                    }
-                }
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
-                    let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind(&gl);
-                    // TODO: it calls activate texture, is it necessary to call it always?
-                    self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
-                    for command in &render_commands.rectangle_3d_commands {
-                        shader.params.color.set(gl, &command.color);
-                        let mat = create_3d_pos_rot_matrix(
+                for (i, commands) in render_commands.trimesh_3d_commands.iter().enumerate() {
+                    let vao_bind = self.vaos[i].bind(&gl);
+                    for command in commands {
+                        let matrix = create_3d_pos_rot_matrix(
                             &command.pos,
                             &(Vector3::y(), command.rotation_rad),
                         );
-                        shader.params.model_mat.set(gl, &mat);
+                        shader.params.model_mat.set(gl, &matrix);
                         shader
                             .params
                             .scale
-                            .set(gl, &[command.width, 1.0, command.height]);
-                        centered_rectangle_vao_bind.draw(&gl);
-                    }
-                }
-
-                /////////////////////////////////
-                // 3D Circles
-                /////////////////////////////////
-                {
-                    let _stopwatch =
-                        system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
-                    let vao_bind = self.circle_vao.bind(&gl);
-                    self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
-                    for command in &render_commands.circle_3d_commands {
+                            .set(gl, &[command.scale, command.scale, command.scale]);
                         shader.params.color.set(gl, &command.color);
-                        shader
-                            .params
-                            .model_mat
-                            .set(gl, &Mat4::new_translation(&command.pos));
-                        shader
-                            .params
-                            .scale
-                            .set(gl, &[command.radius * 2.0, 1.0, command.radius * 2.0]);
+                        command
+                            .texture
+                            .map(|texture_id| asset_db.get_texture(texture_id))
+                            .unwrap_or(&self.white_dummy_texture)
+                            .bind(gl, MyGlEnum::TEXTURE0);
+                        // TODO
+                        if let Some(_texture_id) = command.texture {}
                         vao_bind.draw(&gl);
                     }
                 }
             }
-
-            /////////////////////////////////
-            // 2D Trimesh
-            /////////////////////////////////
             {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh2d");
-                let shader = self.shaders.trimesh2d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.ortho);
-
-                for command in &render_commands.partial_circle_2d_commands {
-                    let matrix = OpenGlRenderSystem::create_translation_matrix_for_2d(
-                        &command.screen_pos,
-                        command.layer,
-                    );
-                    shader.params.model_mat.set(gl, &matrix);
+                let _stopwatch =
+                    system_benchmark.start_measurement("OpenGlRenderSystem.rectangle3d");
+                let centered_rectangle_vao_bind = self.centered_rectangle_vao.bind(&gl);
+                // TODO: it calls activate texture, is it necessary to call it always?
+                self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
+                for command in &render_commands.rectangle_3d_commands {
                     shader.params.color.set(gl, &command.color);
-                    shader.params.size.set(gl, &[1.0, 1.0]);
-
-                    self.circle_vertex_arrays[command.circumference_index]
-                        .bind(&gl)
-                        .draw(&gl);
+                    let mat = create_3d_pos_rot_matrix(
+                        &command.pos,
+                        &(Vector3::y(), command.rotation_rad),
+                    );
+                    shader.params.model_mat.set(gl, &mat);
+                    shader
+                        .params
+                        .scale
+                        .set(gl, &[command.width, 1.0, command.height]);
+                    centered_rectangle_vao_bind.draw(&gl);
                 }
             }
 
             /////////////////////////////////
-            // 2D Points
+            // 3D Circles
             /////////////////////////////////
             {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.points2d");
-                let shader = self.shaders.point2d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.ortho);
-
-                self.points_buffer.clear();
-                for command in &render_commands.point_2d_commands {
-                    self.points_buffer.push([
-                        command.screen_pos[0] as f32,
-                        command.screen_pos[1] as f32,
-                        (command.layer as usize as f32) * 0.01,
-                        command.color[0] as f32 / 255.0,
-                        command.color[1] as f32 / 255.0,
-                        command.color[2] as f32 / 255.0,
-                        command.color[3] as f32 / 255.0,
-                    ]);
+                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.circle3d");
+                let vao_bind = self.circle_vao.bind(&gl);
+                self.white_dummy_texture.bind(gl, MyGlEnum::TEXTURE0);
+                for command in &render_commands.circle_3d_commands {
+                    shader.params.color.set(gl, &command.color);
+                    shader
+                        .params
+                        .model_mat
+                        .set(gl, &Mat4::new_translation(&command.pos));
+                    shader
+                        .params
+                        .scale
+                        .set(gl, &[command.radius * 2.0, 1.0, command.radius * 2.0]);
+                    vao_bind.draw(&gl);
                 }
-                self.points_vao
-                    .bind_dynamic(&gl, self.points_buffer.as_slice())
-                    .draw(&gl)
             }
+        }
 
-            /////////////////////////////////
-            // 2D Texture
-            /////////////////////////////////
-            {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.texture2d");
-                let shader = self.shaders.sprite2d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.ortho);
-                shader.params.texture.set(gl, 0);
+        /////////////////////////////////
+        // 2D Trimesh
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.trimesh2d");
+            let shader = self.shaders.trimesh2d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.ortho);
 
-                let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
+            for command in &render_commands.partial_circle_2d_commands {
+                let matrix = OpenGlRenderSystem::create_translation_matrix_for_2d(
+                    &command.screen_pos,
+                    command.layer,
+                );
+                shader.params.model_mat.set(gl, &matrix);
+                shader.params.color.set(gl, &command.color);
+                shader.params.size.set(gl, &[1.0, 1.0]);
+
+                self.circle_vertex_arrays[command.circumference_index]
+                    .bind(&gl)
+                    .draw(&gl);
+            }
+        }
+
+        /////////////////////////////////
+        // 2D Points
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.points2d");
+            let shader = self.shaders.point2d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.ortho);
+
+            self.points_buffer.clear();
+            for command in &render_commands.point_2d_commands {
+                self.points_buffer.push([
+                    command.screen_pos[0] as f32,
+                    command.screen_pos[1] as f32,
+                    (command.layer as usize as f32) * 0.01,
+                    command.color[0] as f32 / 255.0,
+                    command.color[1] as f32 / 255.0,
+                    command.color[2] as f32 / 255.0,
+                    command.color[3] as f32 / 255.0,
+                ]);
+            }
+            self.points_vao
+                .bind_dynamic(&gl, self.points_buffer.as_slice())
+                .draw(&gl)
+        }
+
+        /////////////////////////////////
+        // 2D Texture
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.texture2d");
+            let shader = self.shaders.sprite2d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.ortho);
+            shader.params.texture.set(gl, 0);
+
+            let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
+            unsafe {
+                gl.active_texture(MyGlEnum::TEXTURE0);
+            }
+            for command in &render_commands.texture_2d_commands {
+                let texture = asset_db.get_texture(command.texture);
+                let width = texture.width as f32;
+                let height = texture.height as f32;
                 unsafe {
-                    gl.active_texture(MyGlEnum::TEXTURE0);
+                    gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                 }
-                for command in &render_commands.texture_2d_commands {
-                    let texture = asset_db.get_texture(command.texture);
+                let matrix = create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
+                shader.params.model_mat.set(gl, &matrix);
+                shader
+                    .params
+                    .z
+                    .set(gl, &0.01 * command.layer as usize as f32);
+                shader.params.offset.set(
+                    gl,
+                    command.offset[0] as i32 * SPRITE_UPSCALE_FACTOR as i32,
+                    command.offset[1] as i32 * SPRITE_UPSCALE_FACTOR as i32,
+                );
+                let f = SPRITE_UPSCALE_FACTOR as f32;
+                shader
+                    .params
+                    .size
+                    .set(gl, &[width * command.scale / f, height * command.scale / f]);
+                shader.params.color.set(gl, &command.color);
+                vertex_array_bind.draw(&gl);
+            }
+        }
+
+        /////////////////////////////////
+        // 2D Rectangle
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.rectangle2d");
+            let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
+            let shader = self.shaders.trimesh2d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.ortho);
+
+            for command in &render_commands.rectangle_2d_commands {
+                shader.params.color.set(gl, &command.color);
+                // TODO: is rotation necessary for 2d rect?
+                let matrix = create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
+                shader.params.model_mat.set(gl, &matrix);
+                shader
+                    .params
+                    .z
+                    .set(gl, 0.01 * command.layer as usize as f32);
+                shader
+                    .params
+                    .size
+                    .set(gl, &[command.width as f32, command.height as f32]);
+
+                vertex_array_bind.draw(&gl);
+            }
+        }
+
+        /////////////////////////////////
+        // 2D Text
+        /////////////////////////////////
+        {
+            let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.text2d");
+            let shader = self.shaders.sprite2d_shader.gl_use(gl);
+            shader
+                .params
+                .projection_mat
+                .set(gl, &sys_vars.matrices.ortho);
+            shader.params.texture.set(gl, 0);
+
+            let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
+            unsafe {
+                gl.active_texture(MyGlEnum::TEXTURE0);
+            }
+            for command in &render_commands.text_2d_commands {
+                // TODO: draw text char by char without caching
+                if let Some(texture) = self.text_cache.get(&command.text) {
                     let width = texture.width as f32;
                     let height = texture.height as f32;
                     unsafe {
                         gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
                     }
-                    let matrix =
-                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
-                    shader.params.model_mat.set(gl, &matrix);
                     shader
                         .params
-                        .z
-                        .set(gl, &0.01 * command.layer as usize as f32);
-                    shader.params.offset.set(
-                        gl,
-                        command.offset[0] as i32,
-                        command.offset[1] as i32,
-                    );
-                    shader
-                        .params
-                        .size
-                        .set(gl, &[width * command.scale, height * command.scale]);
-                    shader.params.color.set(gl, &command.color);
-                    vertex_array_bind.draw(&gl);
-                }
-            }
-
-            /////////////////////////////////
-            // 2D Rectangle
-            /////////////////////////////////
-            {
-                let _stopwatch =
-                    system_benchmark.start_measurement("OpenGlRenderSystem.rectangle2d");
-                let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
-                let shader = self.shaders.trimesh2d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.ortho);
-
-                for command in &render_commands.rectangle_2d_commands {
-                    shader.params.color.set(gl, &command.color);
-                    // TODO: is rotation necessary for 2d rect?
-                    let matrix =
-                        create_2d_pos_rot_matrix(&command.screen_pos, command.rotation_rad);
-                    shader.params.model_mat.set(gl, &matrix);
+                        .model_mat
+                        .set(gl, &create_2d_pos_rot_matrix(&command.screen_pos, 0.0));
                     shader
                         .params
                         .z
                         .set(gl, 0.01 * command.layer as usize as f32);
-                    shader
-                        .params
-                        .size
-                        .set(gl, &[command.width as f32, command.height as f32]);
-
+                    shader.params.offset.set(gl, 0, 0);
+                    shader.params.size.set(gl, &[width, height]);
+                    shader.params.color.set(gl, &command.color);
                     vertex_array_bind.draw(&gl);
-                }
-            }
-
-            /////////////////////////////////
-            // 2D Text
-            /////////////////////////////////
-            {
-                let _stopwatch = system_benchmark.start_measurement("OpenGlRenderSystem.text2d");
-                let shader = self.shaders.sprite2d_shader.gl_use(gl);
-                shader
-                    .params
-                    .projection_mat
-                    .set(gl, &sys_vars.matrices.ortho);
-                shader.params.texture.set(gl, 0);
-
-                let vertex_array_bind = map_render_data.bottom_left_sprite_vertex_array.bind(&gl);
-                unsafe {
-                    gl.active_texture(MyGlEnum::TEXTURE0);
-                }
-                for command in &render_commands.text_2d_commands {
-                    // TODO: draw text char by char without caching
-                    if let Some(texture) = self.text_cache.get(&command.text) {
-                        let width = texture.width as f32;
-                        let height = texture.height as f32;
-                        unsafe {
-                            gl.bind_texture(MyGlEnum::TEXTURE_2D, texture.id());
-                        }
-                        shader
-                            .params
-                            .model_mat
-                            .set(gl, &create_2d_pos_rot_matrix(&command.screen_pos, 0.0));
-                        shader
-                            .params
-                            .z
-                            .set(gl, 0.01 * command.layer as usize as f32);
-                        shader.params.offset.set(gl, 0, 0);
-                        shader.params.size.set(gl, &[width, height]);
-                        shader.params.color.set(gl, &command.color);
-                        vertex_array_bind.draw(&gl);
-                    } else {
-                        let font = match command.font {
-                            Font::Normal => &self.fonts.normal_font,
-                            _ => &self.fonts.normal_font,
-                        };
-                        // just to avoid warning about unused field outline
-                        let font = if command.outline { font } else { font };
-                        let texture = Video::create_text_texture_inner(&gl, font, &command.text);
-                        self.text_cache.insert(command.text.clone(), texture);
+                } else {
+                    let font = match command.font {
+                        Font::Normal => &self.fonts.normal_font,
+                        _ => &self.fonts.normal_font,
                     };
-                }
+                    // just to avoid warning about unused field outline
+                    let font = if command.outline { font } else { font };
+                    let texture = Video::create_text_texture_inner(&gl, font, &command.text);
+                    self.text_cache.insert(command.text.clone(), texture);
+                };
             }
         }
     }

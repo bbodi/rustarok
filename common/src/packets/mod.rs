@@ -94,7 +94,7 @@ impl SocketBuffer {
     pub fn send_outgoing_data(
         &mut self,
         socket_stream: &mut TcpStream,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<usize, std::io::Error> {
         let mut all_sent_data = 0;
         while !self.eof() {
             let sending_buf = &self.buf[self.os_pointer..self.user_pointer];
@@ -102,7 +102,7 @@ impl SocketBuffer {
             self.os_pointer += sent_data;
             all_sent_data += sent_data;
         }
-        Ok(())
+        Ok(all_sent_data)
     }
 
     pub fn read_u8(&mut self) -> u8 {
@@ -264,7 +264,7 @@ where
     I: Send + Packet + Debug + 'static,
     O: Send + Packet + Debug + 'static,
 {
-    incoming_channel: std::sync::mpsc::Receiver<(SocketId, I)>,
+    incoming_channel: std::sync::mpsc::Receiver<(SocketId, Shit<I>)>,
     outgoing_channel: std::sync::mpsc::Sender<NetworkTrafficHandlerMsg<O>>,
     sockets: Vec<Option<()>>,
 }
@@ -276,7 +276,7 @@ where
 {
     pub fn start_thread(socket_capacity: usize) -> PacketHandlerThread<I, O> {
         let (send_to_incoming_ch, read_from_incoming_ch) =
-            std::sync::mpsc::channel::<(SocketId, I)>();
+            std::sync::mpsc::channel::<(SocketId, Shit<I>)>();
         let (send_to_outgoing_ch, read_from_outgoing_ch) =
             std::sync::mpsc::channel::<NetworkTrafficHandlerMsg<O>>();
         std::thread::spawn(move || {
@@ -292,6 +292,7 @@ where
     pub fn handle_socket(&mut self, socket_stream: TcpStream) -> SocketId {
         socket_stream.set_nonblocking(true);
         socket_stream.set_nodelay(true);
+        // TODO: what is it? is it increasing infinitely??
         let id = SocketId(self.sockets.len());
         self.sockets.push(Some(()));
         self.outgoing_channel
@@ -306,7 +307,7 @@ where
             .unwrap();
     }
 
-    pub fn receive_into(&self, out: &mut Vec<(SocketId, I)>) {
+    pub fn receive_into(&self, out: &mut Vec<(SocketId, Shit<I>)>) {
         loop {
             if let Ok(id_and_packet) = self.incoming_channel.try_recv() {
                 out.push(id_and_packet)
@@ -316,7 +317,7 @@ where
         }
     }
 
-    pub fn receive_exact_into(&self, out: &mut Vec<(SocketId, I)>, count: usize) {
+    pub fn receive_exact_into(&self, out: &mut Vec<(SocketId, Shit<I>)>, count: usize) {
         for i in 0..count {
             if let Ok(id_and_packet) = self.incoming_channel.try_recv() {
                 out.push(id_and_packet)
@@ -337,8 +338,18 @@ where
     SendPacket(SocketId, O),
 }
 
+pub enum Shit<P: Send + Packet + Debug + 'static> {
+    LocalError(std::io::Error),
+    Disconnected,
+    OutgoingTraffic(usize),
+    IncomingTraffic(usize),
+    Packet(P),
+}
+
 fn network_traffic_handler<I, O>(
-    send_to_incoming_ch: std::sync::mpsc::Sender<(SocketId, I)>,
+    // this is the channel the client app reads for incoming packets
+    send_to_incoming_ch: std::sync::mpsc::Sender<(SocketId, Shit<I>)>,
+    // the channel which is filled by the client app with outgoing packets
     read_from_outgoing_ch: std::sync::mpsc::Receiver<NetworkTrafficHandlerMsg<O>>,
 ) where
     I: Send + Packet + Debug + 'static,
@@ -375,15 +386,22 @@ fn network_traffic_handler<I, O>(
                         "OUTGOING\n{}",
                         socket.out_buff.get_debug_string_for_outgoing_data()
                     );
-                    if let Err(e) = socket
+                    let send_result = socket
                         .out_buff
-                        .send_outgoing_data(&mut socket.socket_stream)
-                    {
-                        sockets[i] = None;
-                        send_to_incoming_ch.send((SocketId(i), I::new_error_packet(Some(e))));
-                    } else if socket.out_buff.eof() {
-                        // all the data has been sent, the buffer is empty
-                        socket.out_buff.reset();
+                        .send_outgoing_data(&mut socket.socket_stream);
+                    match send_result {
+                        Err(e) => {
+                            sockets[i] = None;
+                            send_to_incoming_ch.send((SocketId(i), Shit::LocalError(e)));
+                        }
+                        Ok(sent_bytes) => {
+                            if socket.out_buff.eof() {
+                                // all the data has been sent, the buffer is empty
+                                socket.out_buff.reset();
+                            }
+                            send_to_incoming_ch
+                                .send((SocketId(i), Shit::OutgoingTraffic(sent_bytes)));
+                        }
                     }
                 }
             }
@@ -396,13 +414,13 @@ fn network_traffic_handler<I, O>(
                     }
                     Err(e) => {
                         log::error!("Error during socket reading: {}", e);
-                        send_to_incoming_ch.send((SocketId(i), I::new_error_packet(Some(e))));
+                        send_to_incoming_ch.send((SocketId(i), Shit::LocalError(e)));
                         sockets[i] = None;
                         continue;
                     }
                     Ok(0) => {
                         let socket_id = SocketId(i);
-                        send_to_incoming_ch.send((socket_id, I::new_error_packet(None)));
+                        send_to_incoming_ch.send((socket_id, Shit::Disconnected));
                         sockets[i] = None;
                         continue;
                     }
@@ -412,13 +430,14 @@ fn network_traffic_handler<I, O>(
                     "INCOMING\n{}",
                     socket.in_buff.get_debug_string_for_incoming_data()
                 );
+                send_to_incoming_ch.send((SocketId(i), Shit::IncomingTraffic(len)));
 
                 let socket_id = SocketId(i);
                 while !socket.in_buff.eof() {
                     match I::read_from(&mut socket.in_buff) {
                         Ok(packet) => {
                             log::trace!("Incoming Packet: {:?}", packet);
-                            send_to_incoming_ch.send((socket_id, packet));
+                            send_to_incoming_ch.send((socket_id, Shit::Packet(packet)));
                         }
                         Err(err) => {
                             match err {

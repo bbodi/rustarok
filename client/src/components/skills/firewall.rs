@@ -61,7 +61,7 @@ impl SkillDef for FireWallSkill {
                 &params.skill_pos.unwrap(),
                 angle_in_rad,
                 time.now(),
-                time.tick,
+                time.simulation_frame,
                 entities,
                 &mut updater,
                 configs.skills.firewall.duration_seconds,

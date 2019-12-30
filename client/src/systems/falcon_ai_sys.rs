@@ -1,7 +1,7 @@
 use crate::components::char::{
     CharActionIndex, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::LocalPlayerControllerComponent;
+use crate::components::controller::LocalPlayerController;
 use crate::components::skills::falcon_carry::FalconCarryStatus;
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::runtime_assets::map::PhysicEngine;
@@ -150,7 +150,7 @@ impl<'a> System<'a> for FalconAiSystem {
         WriteStorage<'a, CharacterStateComponent>,
         WriteStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, ControllerComponent>,
-        ReadStorage<'a, LocalPlayerControllerComponent>,
+        ReadExpect<'a, LocalPlayerController>,
         WriteExpect<'a, SystemFrameDurations>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemVariables>,
@@ -166,7 +166,7 @@ impl<'a> System<'a> for FalconAiSystem {
             mut char_storage,
             auth_char_storage,
             controller_storage,
-            desktop_storage,
+            local_player,
             mut system_benchmark,
             mut physics_world,
             mut sys_vars,
@@ -269,9 +269,7 @@ impl<'a> System<'a> for FalconAiSystem {
                                 Some(PlayerIntention::MoveTo(pos)) => v3(pos.x, y, pos.y),
                                 Some(PlayerIntention::MoveTowardsMouse(pos)) => v3(pos.x, y, pos.y),
                                 _ => {
-                                    let desktop =
-                                        desktop_storage.get(owner_controller_id.into()).unwrap();
-                                    let last_intention = &desktop.last_intention;
+                                    let last_intention = &local_player.last_intention;
                                     match last_intention {
                                         Some(PlayerIntention::MoveTo(pos)) => v3(pos.x, y, pos.y),
                                         Some(PlayerIntention::MoveTowardsMouse(pos)) => {

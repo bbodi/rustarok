@@ -1,6 +1,5 @@
 use crate::components::controller::PlayerIntention;
 use crate::packets::SocketBuffer;
-use crate::serde_remote::MyIoErrorKind;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::Error;
@@ -10,12 +9,10 @@ use strum_macros::EnumDiscriminants;
 pub trait Packet: Sized {
     fn write_into(&self, buf: &mut SocketBuffer);
     fn read_from(buf: &mut SocketBuffer) -> Result<Self, PacketReadErr>;
-    fn new_error_packet(e: Option<std::io::Error>) -> Self;
 }
 
 #[derive(Debug, EnumDiscriminants, EnumCount, Serialize, Deserialize)]
 pub enum ToServerPacket {
-    LocalError(Option<MyIoErrorKind>),
     Welcome {
         name: String,
         //        job: JobId
@@ -110,9 +107,5 @@ impl Packet for ToServerPacket {
         //            }
         //        };
         //        Ok(packet)
-    }
-
-    fn new_error_packet(e: Option<Error>) -> ToServerPacket {
-        ToServerPacket::LocalError(e.map(|it| unsafe { std::mem::transmute(it.kind()) }))
     }
 }

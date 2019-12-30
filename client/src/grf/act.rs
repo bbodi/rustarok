@@ -1,3 +1,4 @@
+use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::render::render_sys::COLOR_WHITE;
 use rustarok_common::grf::binary_reader::BinaryReader;
 use std::ops::RangeBounds;
@@ -90,7 +91,10 @@ impl ActionFile {
                         (0..buf.next_i32())
                             .map(|_i| {
                                 buf.skip(4);
-                                let pos = [buf.next_i32(), buf.next_i32()];
+                                let pos = [
+                                    buf.next_i32() * SPRITE_UPSCALE_FACTOR as i32,
+                                    buf.next_i32() * SPRITE_UPSCALE_FACTOR as i32,
+                                ];
                                 buf.skip(4);
                                 pos
                             })
@@ -107,7 +111,10 @@ impl ActionFile {
         let layer_count = buf.next_u32() as usize;
         (0..layer_count)
             .map(|_i| {
-                let pos = [buf.next_i32(), buf.next_i32()];
+                let pos = [
+                    buf.next_i32() * SPRITE_UPSCALE_FACTOR as i32,
+                    buf.next_i32() * SPRITE_UPSCALE_FACTOR as i32,
+                ];
                 let sprite_frame_index = buf.next_i32();
                 let is_mirror = buf.next_i32() != 0;
                 let color = if version >= 2.0 {

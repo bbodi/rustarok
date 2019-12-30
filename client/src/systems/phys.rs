@@ -72,6 +72,9 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
             mut collisions_resource,
         ): Self::SystemData,
     ) {
+        if !time.can_simulation_run() {
+            return;
+        }
         let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
         physics_world.step(time.dt());

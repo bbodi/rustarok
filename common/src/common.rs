@@ -3,11 +3,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
-pub const SIMULATION_FREQ: u64 = 30;
-pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME: f32 = (1000 / SIMULATION_FREQ) as f32 / 1000.0;
-pub const MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME: Duration =
-    Duration::from_millis(1000 / SIMULATION_FREQ);
-
 pub type Mat3 = Matrix3<f32>;
 pub type Mat4 = Matrix4<f32>;
 
@@ -23,23 +18,34 @@ pub fn float_cmp(a: f32, b: f32) -> bool {
 
 #[derive(Clone)]
 pub struct EngineTime {
-    pub tick: u64,
+    pub render_frame: u64,
+    pub simulation_frame: u64,
+    skip_next_simulation: bool,
+    run_simulation_in_this_frame: bool,
     pub end_of_last_frame: Instant,
     pub time: ElapsedTime,
     /// seconds the previous frame required
     pub dt: Duration,
     // TODO: #[cfg(test)]
     pub fix_dt_for_test: Duration,
+    last_simulation_at: Instant,
+    time_between_simulations: Duration,
 }
 
 impl EngineTime {
-    pub fn new() -> EngineTime {
+    pub fn new(simulation_freq: usize) -> EngineTime {
         EngineTime {
             fix_dt_for_test: Duration::from_millis(1),
-            tick: 1,
+            simulation_frame: 1,
+            render_frame: 1,
+            skip_next_simulation: false,
+            run_simulation_in_this_frame: true,
             end_of_last_frame: Instant::now(),
+            last_simulation_at: Instant::now(),
+
             time: ElapsedTime(0.0),
             dt: Duration::from_millis(1),
+            time_between_simulations: Duration::from_millis((1000 / simulation_freq) as u64),
         }
     }
 
@@ -47,30 +53,80 @@ impl EngineTime {
     pub fn new_for_tests(fix_dt_for_test: Duration) -> EngineTime {
         EngineTime {
             fix_dt_for_test,
-            tick: 1,
+            last_simulation_at: Instant::now(),
+            simulation_frame: 1,
+            render_frame: 1,
+            run_simulation_in_this_frame: true,
             end_of_last_frame: Instant::now(),
             time: ElapsedTime(0.0),
+            skip_next_simulation: false,
             dt: Duration::from_millis(1),
+            time_between_simulations: Duration::from_millis(30 as u64),
         }
     }
 
-    pub fn update_timers(&mut self, dt: Duration, now: Instant) {
+    pub fn can_simulation_run(&self) -> bool {
+        self.run_simulation_in_this_frame
+    }
+
+    pub fn get_time_between_simulations(&self) -> Duration {
+        self.time_between_simulations
+    }
+
+    pub fn adjust_simulation_freq(&mut self, simulation_duration_adjuster: i64) {
+        if simulation_duration_adjuster > 0 {
+            self.time_between_simulations +=
+                Duration::from_millis(simulation_duration_adjuster as u64);
+        } else if simulation_duration_adjuster < 0 {
+            let tmp = simulation_duration_adjuster.abs();
+            if self.time_between_simulations.as_millis() as i64 > tmp {
+                self.time_between_simulations -= Duration::from_millis(tmp as u64);
+            }
+        }
+    }
+
+    pub fn render_frame_end(&mut self, dt: Duration, now: Instant) {
         let dt = if cfg!(test) {
             self.fix_dt_for_test
         } else {
             self.end_of_last_frame = now;
-            dt.min(MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME)
+            dt
         };
-        self.tick += 1;
+        self.render_frame += 1;
         self.dt = dt;
         self.time.0 += dt.as_millis() as f32 / 1000.0;
+
+        if self.run_simulation_in_this_frame {
+            log::debug!(
+                "simulation {} -> {}",
+                self.simulation_frame,
+                self.simulation_frame + 1
+            );
+            self.simulation_frame += 1;
+        }
+
+        self.run_simulation_in_this_frame =
+            self.last_simulation_at.elapsed() >= self.time_between_simulations;
+        if self.run_simulation_in_this_frame {
+            if self.skip_next_simulation {
+                self.run_simulation_in_this_frame = false;
+                self.skip_next_simulation = false;
+            } else {
+                self.last_simulation_at = now;
+            }
+        }
     }
 
     pub fn update_timers_for_prediction(&mut self) {
-        let dt = MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME;
-        self.tick += 1;
-        self.dt = dt;
-        self.time.0 += dt.as_millis() as f32 / 1000.0;
+        self.simulation_frame += 1;
+    }
+
+    pub fn force_simulation(&mut self) {
+        self.run_simulation_in_this_frame = true;
+    }
+
+    pub fn skip_next_simulation(&mut self) {
+        self.skip_next_simulation = true;
     }
 
     #[inline]
@@ -82,10 +138,10 @@ impl EngineTime {
         self.dt.as_millis() as f32 / 1000.0
     }
 
-    pub fn reverted_to(&self, tick: u64) -> EngineTime {
+    pub fn reverted(&self, by_tick: u64) -> EngineTime {
         EngineTime {
-            tick,
-            time: ElapsedTime((self.tick - tick) as f32 * MAX_SECONDS_ALLOWED_FOR_SINGLE_FRAME),
+            simulation_frame: self.simulation_frame - by_tick,
+            run_simulation_in_this_frame: true,
             ..*self
         }
     }

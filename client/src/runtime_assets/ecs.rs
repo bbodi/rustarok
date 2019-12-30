@@ -3,9 +3,7 @@ use crate::components::char::{
     CharacterStateComponent, DebugServerAckComponent, HasServerIdComponent, NpcComponent,
     SpriteRenderDescriptorComponent, TurretComponent, TurretControllerComponent,
 };
-use crate::components::controller::{
-    CameraComponent, HumanInputComponent, LocalPlayerControllerComponent,
-};
+use crate::components::controller::{CameraComponent, HumanInputComponent, LocalPlayerController};
 use crate::components::skills::skills::SkillManifestationComponent;
 use crate::components::{
     FlyingNumberComponent, MinionComponent, SoundEffectComponent, StrEffectComponent,
@@ -23,23 +21,18 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<TurretComponent>();
     ecs_world.register::<TurretControllerComponent>();
     ecs_world.register::<FalconComponent>();
-    ecs_world.register::<HumanInputComponent>();
-    ecs_world.register::<RenderCommandCollector>();
-    ecs_world.register::<AudioCommandCollectorComponent>();
     ecs_world.register::<SpriteRenderDescriptorComponent>();
     ecs_world.register::<CharacterStateComponent>();
     ecs_world.register::<FlyingNumberComponent>();
     ecs_world.register::<SoundEffectComponent>();
     ecs_world.register::<StrEffectComponent>();
     ecs_world.register::<SkillManifestationComponent>();
-    ecs_world.register::<CameraComponent>();
-    ecs_world.register::<LocalPlayerControllerComponent>();
     ecs_world.register::<MinionComponent>();
-    ecs_world.register::<ConsoleComponent>();
     ecs_world.register::<HasServerIdComponent>();
     ecs_world.register::<DebugServerAckComponent>();
 
     ecs_world.register::<AuthorizedCharStateComponent>();
+    // TODO2 remove it as soon as Falcon logic goes to the server code
     ecs_world.register::<ControllerComponent>();
 
     ecs_world

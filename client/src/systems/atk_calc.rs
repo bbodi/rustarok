@@ -61,6 +61,9 @@ impl<'a> System<'a> for AttackSystem {
             mut events,
         ): Self::SystemData,
     ) {
+        if !time.can_simulation_run() {
+            return;
+        }
         let _stopwatch = system_benchmark.start_measurement("AttackSystem");
 
         self.hp_mod_requests.clear();
@@ -238,7 +241,7 @@ impl<'a> System<'a> for AttackSystem {
 
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::HpModification {
-                        timestamp: time.tick,
+                        timestamp: time.simulation_frame,
                         src: attacker_id,
                         dst: attacked_id,
                         result: hp_mod_req_result,

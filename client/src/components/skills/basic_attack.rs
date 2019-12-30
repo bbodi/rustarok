@@ -83,7 +83,7 @@ impl BasicAttackType {
                 target_pos,
                 time.now(),
                 *bullet_type,
-                time.tick,
+                time.simulation_frame,
             ))),
         }
     }
@@ -135,7 +135,7 @@ impl BasicRangeAttackBullet {
 impl SkillManifestation for BasicRangeAttackBullet {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         let now = params.time().now();
-        if params.time().tick == self.started_tick + 1 {
+        if params.time().simulation_frame == self.started_tick + 1 {
             match self.weapon_type {
                 WeaponType::Arrow => {
                     params.create_entity_with_comp(SoundEffectComponent {

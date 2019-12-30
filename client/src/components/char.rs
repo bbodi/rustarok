@@ -13,7 +13,7 @@ use specs::prelude::*;
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::controller::{
-    CameraComponent, HumanInputComponent, LocalPlayerControllerComponent, SkillKey,
+    CameraComponent, HumanInputComponent, LocalPlayerController, SkillKey,
 };
 use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
 use crate::components::skills::skills::Skills;
@@ -28,11 +28,10 @@ use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
     CollisionGroup, ControllerEntityId, EntityTarget, JobId, MonsterId, ServerEntityId, Sex, Team,
 };
-use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::components::snapshot::CharSnapshot;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct HasServerIdComponent {
     pub server_id: ServerEntityId,
 }
@@ -40,7 +39,6 @@ pub struct HasServerIdComponent {
 #[derive(Component)]
 pub struct DebugServerAckComponent {
     pub acked_snapshot: CharSnapshot,
-    pub had_rollback: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -68,63 +66,6 @@ pub enum MonsterActionIndex {
     Attack = 16,
     ReceivingDamage = 24,
     Die = 32,
-}
-
-pub fn attach_human_player_components(
-    username: &str,
-    char_entity_id: CharEntityId,
-    controller_id: ControllerEntityId,
-    updater: &LazyUpdate,
-    physics_world: &mut PhysicEngine,
-    projection_mat: Mat4,
-    pos2d: Vec2,
-    sex: Sex,
-    job_id: JobId,
-    head_index: usize,
-    team: Team,
-    dev_configs: &DevConfig,
-    resolution_w: u32,
-    resolution_h: u32,
-    server_id: ServerEntityId,
-) {
-    CharacterEntityBuilder::new(char_entity_id, username)
-        .insert_sprite_render_descr_component(updater)
-        .server_authorized(updater, server_id)
-        .physics(pos2d, physics_world, |builder| {
-            builder
-                .collision_group(team.get_collision_group())
-                .circle(1.0)
-        })
-        .char_state(updater, dev_configs, pos2d, |ch| {
-            ch.outlook_player(sex, JobSpriteId::from_job_id(job_id), head_index)
-                .job_id(job_id)
-                .team(team)
-        });
-
-    let mut human_player = HumanInputComponent::new(username);
-    human_player.cast_mode = dev_configs.cast_mode;
-    human_player.assign_skill(SkillKey::A, Skills::AttackMove);
-
-    human_player.assign_skill(SkillKey::Q, Skills::FireWall);
-    human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
-    human_player.assign_skill(SkillKey::E, Skills::Heal);
-    human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
-    human_player.assign_skill(SkillKey::Y, Skills::Mounting);
-
-    updater.insert(controller_id.into(), RenderCommandCollector::new());
-    updater.insert(controller_id.into(), AudioCommandCollectorComponent::new());
-    updater.insert(controller_id.into(), human_player);
-    updater.insert(controller_id.into(), LocalPlayerControllerComponent::new());
-    updater.insert(
-        controller_id.into(),
-        ControllerComponent::new(char_entity_id),
-    );
-    // camera
-    {
-        let mut camera_component = CameraComponent::new(Some(controller_id));
-        camera_component.reset_y_and_angle(&projection_mat, resolution_w, resolution_h);
-        updater.insert(controller_id.into(), camera_component);
-    }
 }
 
 pub struct CharPhysicsEntityBuilder<'a> {
@@ -1019,12 +960,6 @@ pub struct CharacterStateComponent {
     pub statuses: Statuses,
     pub body_handle: DefaultBodyHandle,
     pub collider_handle: DefaultColliderHandle,
-}
-
-impl Drop for CharacterStateComponent {
-    fn drop(&mut self) {
-        log::info!("CharacterStateComponent DROPPED");
-    }
 }
 
 impl CharacterStateComponent {

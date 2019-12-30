@@ -1,5 +1,6 @@
 use crate::common::{float_cmp, v2, Vec2};
 use crate::components::job_ids::JobSpriteId;
+use crate::components::snapshot::CharSnapshot;
 use crate::packets::SocketBuffer;
 use serde::{Deserialize, Serialize};
 use specs::prelude::*;
@@ -101,6 +102,13 @@ impl CharState {
             // TODO2
             //            CharState::Dead => true,
             _ => false,
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            CharState::Idle => "Idle",
+            CharState::Walking(..) => "Walking",
         }
     }
 }
@@ -229,59 +237,8 @@ impl AuthorizedCharStateComponent {
         }
     }
 
-    pub fn from_buffer(buf: &mut SocketBuffer) -> AuthorizedCharStateComponent {
-        let pos = buf.read_v2();
-        let dir = CharDir::from(buf.read_u8() as usize);
-        let state = match buf.read_u8() {
-            0 => CharState::Idle,
-            1 => CharState::Walking(buf.read_v2()),
-            _ => panic!(),
-        };
-        let target = match buf.read_u8() {
-            0 => None,
-            1 => {
-                // TODO3
-                panic!();
-                //                Some(EntityTarget::OtherEntity())
-            }
-            2 => Some(EntityTarget::Pos(buf.read_v2())),
-            3 => {
-                // TODO3
-                panic!();
-            }
-            _ => panic!(),
-        };
-        AuthorizedCharStateComponent {
-            pos,
-            dir,
-            state,
-            target,
-        }
-    }
-
-    pub fn write_into_buffer(&self, buf: &mut SocketBuffer) {
-        buf.write_v2(&self.pos);
-        buf.write_u8(self.dir as u8);
-        match self.state {
-            CharState::Idle => {
-                buf.write_u8(0);
-            }
-            CharState::Walking(to_pos) => {
-                buf.write_u8(1);
-                buf.write_v2(&to_pos);
-            }
-            _ => panic!(),
-        }
-        match self.target {
-            None => {
-                buf.write_u8(0);
-            }
-            Some(EntityTarget::Pos(to_pos)) => {
-                buf.write_u8(2);
-                buf.write_v2(&to_pos)
-            }
-            _ => panic!(),
-        }
+    pub fn overwrite(&mut self, other: &AuthorizedCharStateComponent) {
+        *self = other.clone();
     }
 
     pub fn pos(&self) -> Vec2 {
@@ -305,6 +262,13 @@ impl AuthorizedCharStateComponent {
     }
 
     pub fn set_state(&mut self, state: CharState, dir: CharDir) {
+        //        match self.state {
+        //            CharState::Walking(..) => match state {
+        //                CharState::Idle => panic!("kurva anyád"),
+        //                _ => {}
+        //            },
+        //            _ => {}
+        //        }
         self.state = state;
         self.dir = dir;
     }

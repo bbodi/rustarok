@@ -1,9 +1,8 @@
 use crate::components::char::{
     CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::{
-    HumanInputComponent, LocalPlayerControllerComponent, SkillKey,
-};
+use crate::components::controller::{HumanInputComponent, LocalPlayerController, SkillKey};
+use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::grf::database::AssetDatabase;
 use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
@@ -25,7 +24,7 @@ impl RenderUI {
         &mut self,
         self_char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &LocalPlayerControllerComponent,
+        local_player: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
         time: &EngineTime,
@@ -73,7 +72,7 @@ impl RenderUI {
         let main_skill_bar_top = RenderUI::draw_main_skill_bar(
             self_char_state,
             input,
-            controller,
+            local_player,
             render_commands,
             &sys_vars,
             time,
@@ -82,7 +81,7 @@ impl RenderUI {
         RenderUI::draw_secondary_skill_bar(
             self_char_state,
             input,
-            controller,
+            local_player,
             render_commands,
             &sys_vars,
             time,
@@ -93,7 +92,7 @@ impl RenderUI {
         RenderUI::draw_targeting_skill_name(
             self_char_state,
             input,
-            controller,
+            local_player,
             render_commands,
             &sys_vars.assets,
             &time,
@@ -114,10 +113,10 @@ impl RenderUI {
 
         render_action_2d(
             time,
-            &controller.cursor_anim_descr,
+            &local_player.cursor_anim_descr,
             &sys_vars.assets.sprites.cursors,
             &Vec2i::new(input.last_mouse_x as i16, input.last_mouse_y as i16),
-            &controller.cursor_color,
+            &local_player.cursor_color,
             render_commands,
             UiLayer2d::Cursor,
             1.0,
@@ -278,7 +277,7 @@ impl RenderUI {
     fn draw_targeting_skill_name(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &LocalPlayerControllerComponent,
+        controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
@@ -315,7 +314,7 @@ impl RenderUI {
     fn draw_secondary_skill_bar(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &LocalPlayerControllerComponent,
+        controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
         time: &EngineTime,
@@ -427,7 +426,7 @@ impl RenderUI {
     fn draw_main_skill_bar(
         char_state: &CharacterStateComponent,
         input: &HumanInputComponent,
-        controller: &LocalPlayerControllerComponent,
+        controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
         time: &EngineTime,

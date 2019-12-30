@@ -1,8 +1,8 @@
-
-load_models = false
+load_models = true
 load_sprites = true
 
 map_name = "prontera"
+
 resolution_w = 1024
 resolution_h = 768
 
@@ -21,3 +21,13 @@ grf_paths = [
 
 server_port = 6969
 server_addr = "127.0.0.1:6969"
+
+# aka quick cast, Normal, OnKeyRelease, OnKeyPress
+cast_mode = "Normal"
+
+show_last_acknowledged_pos = true
+# it takes x ticks for acked_pos to reach the predicted pos
+lerping_ticks = 3
+lerping_enabled = false
+
+max_fps = 60

@@ -40,6 +40,9 @@ impl<'a> System<'a> for SkillSystem {
             mut updater,
         ): Self::SystemData,
     ) {
+        if !time.can_simulation_run() {
+            return;
+        }
         let _stopwatch = system_benchmark.start_measurement("SkillSystem");
         for (entity_id, skill) in (&entities, &mut skill_storage).join() {
             skill.update(SkillManifestationUpdateParam::new(

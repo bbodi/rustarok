@@ -179,6 +179,9 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
         for (char_id, char_comp, auth_state) in
             (&entities, &mut char_state_storage, &auth_char_state_storage).join()
         {
+            if !time.can_simulation_run() {
+                return;
+            }
             // TODO: if debug
             let state_has_changed = char_comp.state_type_has_changed(auth_state.state());
             if state_has_changed {
@@ -186,7 +189,7 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
                 let prev_state: CharState = char_comp.prev_state().clone();
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::CharStatusChange(
-                        time.tick - 1, // we detected the change here, but it happened in the prev state
+                        time.simulation_frame - 1, // we detected the change here, but it happened in the prev state
                         CharEntityId::new(char_id),
                         prev_state.clone(),
                         state.clone(),
@@ -194,7 +197,7 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
                 }
                 log::debug!(
                     "[{}] {:?} state has changed {:?} ==> {:?}",
-                    time.tick,
+                    time.simulation_frame - 1,
                     char_id,
                     prev_state,
                     state

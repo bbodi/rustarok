@@ -18,6 +18,10 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
     );
 
     fn run(&mut self, (entities, mut char_state_storage, time, mut updater): Self::SystemData) {
+        if !time.can_simulation_run() {
+            return;
+        }
+
         let now = time.now();
 
         // TODO: HACK
@@ -202,6 +206,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 //                    }
                 } else {
                     // no target and no receieving damage, casting or attacking
+                    log::debug!("No torget, stop");
                     char_comp.set_state(CharState::Idle, char_comp.dir());
                 }
             }
@@ -210,6 +215,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         // TODO: into a system
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
         for char_comp in (&mut char_state_storage).join() {
+            dbg!(&char_comp.state());
             if let CharState::Walking(target_pos) = char_comp.state() {
                 if true
                 /*TODO2 char_comp.can_move(now)*/
@@ -220,12 +226,20 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                     // TODO2
                     //                    let force =
                     //                        dir * char_comp.calculated_attribs().movement_speed.as_f32() * (5.0);
+
+                    log::debug!(
+                        "tick: {}, dir = target_pos({}) - pos({}))",
+                        time.simulation_frame,
+                        target_pos,
+                        char_comp.pos(),
+                    );
                     char_comp.add_pos(dir * 0.1);
                     log::debug!(
-                        "tick: {}, x: {}, y: {}",
-                        time.tick,
+                        "tick: {}, x: {}, y: {}, {}",
+                        time.simulation_frame,
                         char_comp.pos().x,
                         char_comp.pos().y,
+                        char_comp.state().name()
                     );
                 }
             }
@@ -314,10 +328,20 @@ impl CharacterStateUpdateSystem {
                 let distance =
                     nalgebra::distance(&nalgebra::Point::from(char_pos), &v2_to_p2(target_pos));
                 if distance <= 0.2 {
+                    log::debug!(
+                        "Too close to target, stop, pos: {:?}, target: {:?}",
+                        char_pos,
+                        target
+                    );
                     // stop
                     char_comp.set_state(CharState::Idle, char_comp.dir());
                     char_comp.target = None;
                 } else {
+                    log::debug!(
+                        "Still not there, keep moving, {:?}, target: {:?}",
+                        char_pos,
+                        target
+                    );
                     // move closer
                     char_comp.set_state(
                         CharState::Walking(*target_pos),

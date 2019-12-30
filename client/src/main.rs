@@ -21,7 +21,7 @@ use strum;
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 //use imgui::ImVec2;
 use log::LevelFilter;
@@ -30,19 +30,21 @@ use specs::prelude::*;
 use specs::Builder;
 use specs::Join;
 
-use crate::audio::sound_sys::SoundSystem;
+use crate::audio::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::components::char::{
     CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, DebugServerAckComponent,
     HasServerIdComponent, SpriteRenderDescriptorComponent,
 };
-use crate::components::controller::HumanInputComponent;
-use crate::components::skills::skills::SkillManifestationComponent;
+use crate::components::controller::{
+    CameraComponent, HumanInputComponent, LocalPlayerController, SkillKey,
+};
+use crate::components::skills::skills::{SkillManifestationComponent, Skills};
 use crate::components::MinionComponent;
 use crate::configs::{AppConfig, DevConfig};
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::database::AssetDatabase;
 use crate::grf::SpriteResource;
-use crate::my_gl::MyGlEnum;
+use crate::my_gl::{Gl, MyGlEnum};
 use crate::notify::Watcher;
 use crate::render::falcon_render_sys::FalconRenderSys;
 use crate::render::opengl_render_sys::OpenGlRenderSystem;
@@ -60,10 +62,12 @@ use crate::systems::console_system::{
 };
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
 use crate::systems::frame_cleanup_system::FrameCleanupSystem;
-use crate::systems::frame_client_end_system::FrameClientEndSystem;
+use crate::systems::imgui_sys::{draw_imgui, ImguiData, ImguiSys};
 use crate::systems::input_sys::InputConsumerSystem;
-use crate::systems::input_to_next_action::InputToNextActionSystem;
-use crate::systems::intention_sender_sys::IntentionSenderSystem;
+use crate::systems::input_to_next_action::{
+    ClientIntentionToCharTargetSystem, InputToNextActionSystem,
+};
+use crate::systems::intention_sender_sys::{ClientCommandId, IntentionSenderSystem};
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::next_action_applier_sys::{
     SavePreviousCharStateSystem, UpdateCharSpriteBasedOnStateSystem,
@@ -71,27 +75,23 @@ use crate::systems::next_action_applier_sys::{
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
 use crate::systems::snapshot_sys::{
-    DebugServerAckComponentFillerSystem, GameSnapshots, ServerAckResult, SnapshotSystem,
+    DebugServerAckComponentFillerSystem, ServerAckResult, SnapshotStorage, SnapshotSystem,
 };
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sprites, SystemFrameDurations, SystemVariables,
 };
 use crate::video::Video;
-use rustarok_common::common::{
-    measure_time, v2, ElapsedTime, EngineTime, Vec2, MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME,
-};
+use rustarok_common::common::{measure_time, v2, ElapsedTime, EngineTime, Vec2};
 use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CollisionGroup,
     ControllerEntityId, JobId, ServerEntityId, Sex, Team,
 };
-use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::packets::from_server::FromServerPacket;
 use rustarok_common::packets::to_server::ToServerPacket;
-use rustarok_common::packets::{PacketHandlerThread, SocketBuffer};
+use rustarok_common::packets::{PacketHandlerThread, Shit, SocketBuffer, SocketId};
 use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
-use rustarok_common::systems::intention_applier::NextActionApplierSystem;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::{BufRead, Read};
@@ -118,6 +118,13 @@ mod video;
 mod components;
 mod render;
 mod systems;
+
+pub const SIMULATION_FREQ: usize = 31;
+pub const SIMULATION_DURATION_MS: usize = 1000 / SIMULATION_FREQ;
+pub const MAX_SECONDS_ALLOWED_FOR_SINGLE_SIMULATION_FRAME: f32 =
+    SIMULATION_DURATION_MS as f32 / 1000.0;
+pub const MAX_DURATION_ALLOWED_FOR_SINGLE_SIMULATION_FRAME: Duration =
+    Duration::from_millis(SIMULATION_DURATION_MS as u64);
 
 struct DelayedPacketReceiver {
     packets: Vec<(Instant, FromServerPacket)>,
@@ -178,8 +185,8 @@ fn main() {
         PacketHandlerThread::<FromServerPacket, ToServerPacket>::start_thread(1);
 
     log::info!("Connecting to server");
-    let server_socket =
-        packet_handler_thread.handle_socket(TcpStream::connect(config.server_addr).unwrap());
+    let server_socket = packet_handler_thread
+        .handle_socket(TcpStream::connect(config.server_addr.clone()).unwrap());
 
     log::info!("sending welcome msg");
     packet_handler_thread.send(
@@ -196,11 +203,11 @@ fn main() {
             packet_handler_thread.receive_into(&mut tmp_vec);
             for (socket_id, packet) in tmp_vec {
                 match packet {
-                    FromServerPacket::Init {
+                    Shit::Packet(FromServerPacket::Init {
                         map_name,
                         start_x,
                         start_y,
-                    } => {
+                    }) => {
                         log::info!("answer received!!!");
                         break 'outer1 (map_name, start_x, start_y);
                     }
@@ -307,6 +314,8 @@ fn main() {
     log::info!("<<< register systems");
     log::info!(">>> add resources");
     ecs_world.add_resource(sys_vars);
+    ecs_world.add_resource(ClientCommandId::new());
+    ecs_world.add_resource(ImguiData::new());
     if config.load_sprites {
         asset_loader.load_sprites(&gl, &mut asset_db);
     }
@@ -315,8 +324,8 @@ fn main() {
     ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
     ecs_world.add_resource(command_buffer);
-    ecs_world.add_resource(EngineTime::new());
-    ecs_world.add_resource(GameSnapshots::new());
+    ecs_world.add_resource(EngineTime::new(SIMULATION_FREQ as usize));
+    ecs_world.add_resource(SnapshotStorage::new());
     ecs_world.add_resource(Vec::<ToServerPacket>::new());
 
     ecs_world.add_resource(asset_db);
@@ -328,23 +337,78 @@ fn main() {
 
     ecs_world.add_resource(physics_world);
     ecs_world.add_resource(SystemFrameDurations(HashMap::new()));
+    ecs_world.add_resource(LocalPlayerController::new());
+    ecs_world.add_resource(ConsoleComponent::new());
+
+    ////////////////// SINGLETON Components
+    {
+        let mut human_player = HumanInputComponent::new("sharp");
+        human_player.cast_mode = config.cast_mode;
+        human_player.assign_skill(SkillKey::A, Skills::AttackMove);
+
+        human_player.assign_skill(SkillKey::Q, Skills::FireWall);
+        human_player.assign_skill(SkillKey::W, Skills::AbsorbShield);
+        human_player.assign_skill(SkillKey::E, Skills::Heal);
+        human_player.assign_skill(SkillKey::R, Skills::BrutalTestSkill);
+        human_player.assign_skill(SkillKey::Y, Skills::Mounting);
+
+        ecs_world.add_resource(RenderCommandCollector::new());
+        ecs_world.add_resource(AudioCommandCollectorComponent::new());
+        ecs_world.add_resource(human_player);
+        // camera
+        {
+            let mut camera_component = CameraComponent::new();
+            {
+                let matrices = &ecs_world.read_resource::<SystemVariables>().matrices;
+                camera_component.reset_y_and_angle(
+                    &matrices.projection,
+                    matrices.resolution_w,
+                    matrices.resolution_h,
+                );
+            }
+            ecs_world.add_resource(camera_component);
+        }
+    }
+
+    let max_allowed_render_frame_duration = Duration::from_millis((1000 / config.max_fps) as u64);
+    ecs_world.add_resource(config);
+
+    ecs_world.maintain();
     log::info!("<<< add resources");
 
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
         .unwrap();
     let mut next_minion_spawn = ElapsedTime(2.0);
-    let mut fps_counter: u64 = 0;
-    let mut fps: u64;
+    let mut fps_counter: usize = 0;
+    let mut fps: usize;
+    let mut incoming_packets_per_second: usize = 0;
+    let mut incoming_bytes_per_second: usize = 0;
+    let mut outgoing_bytes_per_second: usize = 0;
+    let mut outgoing_packets_per_second: usize = 0;
     let mut fps_history: Vec<f32> = Vec::with_capacity(30);
     let mut system_frame_durations = SystemFrameDurations(HashMap::new());
 
-    let desktop_client_controller = ControllerEntityId::new(ecs_world.create_entity().build());
-    ecs_world
-        .read_resource::<LazyUpdate>()
-        .insert(desktop_client_controller.into(), ConsoleComponent::new());
-    ecs_world.maintain();
-    console_print(&mut ecs_world, "Sync", desktop_client_controller);
+    //////////////////////////////////////////////////
+    // LOAD resources
+    //////////////////////////////////////////////////
+    asset_loader.no_more_requests();
+    loop {
+        if asset_loader.process_async_loading(
+            &gl,
+            &mut ecs_world.write_resource::<SystemVariables>(),
+            &mut ecs_world.write_resource::<AssetDatabase>(),
+            &mut ecs_world.write_resource::<MapRenderData>(),
+        ) {
+            // all requests have been processed
+            break;
+        } else {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    //////////////////////////////////////////////////
+
+    console_print(&mut ecs_world, "Sync");
     {
         let mut avg_ping = 0;
         let mut tmp_vec = Vec::with_capacity(64);
@@ -356,7 +420,7 @@ fn main() {
                 packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
                 for (_socket_id, packet) in tmp_vec.drain(..) {
                     match packet {
-                        FromServerPacket::Pong { server_tick: tick } => {
+                        Shit::Packet(FromServerPacket::Pong { server_tick: tick }) => {
                             let ping = sent_at.elapsed();
                             log::debug!("Pong arrived: ping: {:?}", ping);
                             if i == 0 {
@@ -372,11 +436,7 @@ fn main() {
                 }
             }
         }
-        console_print(
-            &mut ecs_world,
-            &format!("avg ping: {}", avg_ping),
-            desktop_client_controller,
-        );
+        console_print(&mut ecs_world, &format!("avg ping: {}", avg_ping));
 
         packet_handler_thread.send(server_socket, ToServerPacket::ReadyForGame);
         // first ACK packet is for initializing out world state
@@ -384,36 +444,47 @@ fn main() {
             packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
             for (_socket_id, packet) in tmp_vec.drain(..) {
                 match packet {
-                    FromServerPacket::Ack {
+                    Shit::Packet(FromServerPacket::Ack {
                         cid: _cid,
-                        ack_tick,
                         entries,
-                    } => {
+                        sent_at: _sent_at,
+                    }) => {
                         let entry = &entries[0];
                         log::info!(">>> create player");
                         {
                             let desktop_client_char =
                                 CharEntityId::from(ecs_world.create_entity().build());
-                            components::char::attach_human_player_components(
-                                "sharp",
-                                desktop_client_char,
-                                desktop_client_controller,
-                                &ecs_world.read_resource::<LazyUpdate>(),
-                                &mut ecs_world.write_resource::<PhysicEngine>(),
-                                ecs_world
-                                    .read_resource::<SystemVariables>()
-                                    .matrices
-                                    .projection,
-                                v2(start_x, start_y),
-                                Sex::Male,
-                                JobId::CRUSADER,
-                                1,
-                                Team::Right,
-                                &ecs_world.read_resource::<DevConfig>(),
-                                config.resolution_w,
-                                config.resolution_h,
-                                entry.id,
-                            );
+                            {
+                                let updater = &ecs_world.read_resource::<LazyUpdate>();
+                                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
+                                CharacterEntityBuilder::new(desktop_client_char, "sharp")
+                                    .insert_sprite_render_descr_component(updater)
+                                    .server_authorized(updater, entry.id)
+                                    .physics(v2(start_x, start_y), physics_world, |builder| {
+                                        builder
+                                            .collision_group(Team::Left.get_collision_group())
+                                            .circle(1.0)
+                                    })
+                                    .char_state(
+                                        updater,
+                                        &ecs_world.read_resource::<DevConfig>(),
+                                        v2(start_x, start_y),
+                                        |ch| {
+                                            ch.outlook_player(
+                                                Sex::Male,
+                                                JobSpriteId::from_job_id(JobId::CRUSADER),
+                                                0,
+                                            )
+                                            .job_id(JobId::CRUSADER)
+                                            .team(Team::Left)
+                                        },
+                                    );
+                            }
+
+                            ecs_world
+                                .write_resource::<LocalPlayerController>()
+                                .controller
+                                .controlled_entity = Some(desktop_client_char);
 
                             // add falcon to it
                             let start_x = start_x;
@@ -434,9 +505,8 @@ fn main() {
                             ecs_world.maintain();
                         }
                         log::info!("<<< create player");
-                        let mut snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
+                        let mut snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
                         snapshots.init(entry);
-                        ecs_world.write_resource::<EngineTime>().tick = ack_tick + 1;
                         break 'outer3;
                     }
                     _ => {}
@@ -446,194 +516,274 @@ fn main() {
         }
     }
 
-    console_print(&mut ecs_world, "Start", desktop_client_controller);
+    console_print(&mut ecs_world, "Start");
     let mut tmp_vec = Vec::with_capacity(64);
 
-    let mut packet_receiver = DelayedPacketReceiver::new(Duration::from_millis(0));
-    let mut client_speed_increaser = Duration::from_millis(0);
+    //    let mut packet_receiver = DelayedPacketReceiver::new(Duration::from_millis(0));
+    let mut packet_receiver = Vec::with_capacity(128);
+    // the more its value the slower the simulation should be, and vica versa
     let mut server_to_local_ids: HashMap<ServerEntityId, CharEntityId> =
         HashMap::with_capacity(1024);
+
+    packet_handler_thread.send(server_socket, ToServerPacket::Ping);
+    let mut ping_sent = Instant::now();
+    let mut avg_ping: usize = 0;
+
     'running: loop {
+        log::debug!(
+            "START FRAME: simulation: ({}, {}), tail: {}",
+            &ecs_world.read_resource::<EngineTime>().can_simulation_run(),
+            &ecs_world.read_resource::<EngineTime>().simulation_frame,
+            &ecs_world.read_resource::<SnapshotStorage>().get_tail()
+        );
         let start = Instant::now();
-        let tick = ecs_world.read_resource::<EngineTime>().tick;
+        let simulation_frame = ecs_world.read_resource::<EngineTime>().simulation_frame;
 
         {
             packet_handler_thread.receive_into(&mut tmp_vec);
             for (_socket_id, packet) in tmp_vec.drain(..) {
                 packet_receiver.push(packet);
             }
+            incoming_packets_per_second += packet_receiver.len();
         }
 
         {
-            let mut server_is_ahead_of_client = false;
-            let (ack_result, acked_tick) = {
+            let ack_result = {
                 let mut ack_result = ServerAckResult::Ok;
-                let mut tmp_ack_tick = 0;
-                for packet in packet_receiver.get_packets().drain(..) {
+                for packet in packet_receiver.drain(..) {
                     match packet {
-                        FromServerPacket::LocalError(_) => {}
-                        FromServerPacket::Init { .. } => panic!(),
-                        FromServerPacket::Pong { .. } => panic!(),
-                        FromServerPacket::Ack {
-                            cid,
-                            ack_tick,
-                            mut entries,
-                        } => {
-                            if server_is_ahead_of_client {
-                                continue;
-                            }
-                            if ack_tick >= tick {
-                                server_is_ahead_of_client = true;
-                                continue;
-                            }
-                            let snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
-                            let debug_ack_storage =
-                                &mut ecs_world.write_storage::<DebugServerAckComponent>();
-                            tmp_ack_tick = ack_tick;
-
-                            ack_result = snapshots.ack_arrived(tick, cid, ack_tick, &entries);
-
-                            // SHIT asd
-                            let auth_state_storage =
-                                &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
-                            for server_entity_state in entries.drain(1..) {
-                                let local_id =
-                                    server_to_local_ids.get(&server_entity_state.id).unwrap();
-                                let char_state =
-                                    auth_state_storage.get_mut((*local_id).into()).unwrap();
-                                char_state.target = server_entity_state.char_snapshot.state.target;
-                            }
+                        Shit::IncomingTraffic(received_bytes) => {
+                            incoming_bytes_per_second += received_bytes;
                         }
-                        FromServerPacket::NewEntity {
-                            id,
-                            name,
-                            team,
-                            typ,
-                            outlook,
-                            job_id,
-                            max_hp,
-                            state,
-                        } => {
-                            log::info!(">>> create player");
-                            {
-                                let char_entity_id =
-                                    CharEntityId::from(ecs_world.create_entity().build());
-                                let updater = &ecs_world.read_resource::<LazyUpdate>();
-                                let dev_configs = &ecs_world.read_resource::<DevConfig>();
-                                CharacterEntityBuilder::new(char_entity_id, &name)
-                                    .insert_sprite_render_descr_component(updater)
-                                    .server_authorized(updater, id)
-                                    .physics(
-                                        state.state.pos(),
-                                        &mut ecs_world.write_resource::<PhysicEngine>(),
-                                        |builder| {
-                                            builder
-                                                .collision_group(team.get_collision_group())
-                                                .circle(1.0)
+                        Shit::OutgoingTraffic(sent_bytes) => {
+                            outgoing_bytes_per_second += sent_bytes;
+                        }
+                        Shit::LocalError(e) => { // TODO
+                        }
+                        Shit::Disconnected => { // TODO
+                        }
+                        Shit::Packet(p) => match p {
+                            FromServerPacket::Init { .. } => panic!(),
+                            FromServerPacket::Pong { .. } => {
+                                let ping = ping_sent.elapsed().as_millis() as usize;
+                                avg_ping = (avg_ping + ping) / 2;
+                                packet_handler_thread.send(server_socket, ToServerPacket::Ping);
+                                ping_sent = Instant::now();
+                            }
+                            FromServerPacket::Ack {
+                                cid,
+                                mut entries,
+                                sent_at,
+                            } => {
+                                let now = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis();
+
+                                let snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
+                                let debug_ack_storage =
+                                    &mut ecs_world.write_storage::<DebugServerAckComponent>();
+
+                                ack_result = snapshots.ack_arrived(simulation_frame, cid, entries);
+                                #[cfg(debug_assertions)]
+                                {
+                                    ecs_world
+                                        .write_resource::<ImguiData>()
+                                        .unacked_prediction_count(
+                                            snapshots.get_unacked_prediction_count(),
+                                        );
+                                }
+                            }
+                            FromServerPacket::NewEntity {
+                                id,
+                                name,
+                                team,
+                                typ,
+                                outlook,
+                                job_id,
+                                max_hp,
+                                state,
+                            } => {
+                                log::info!(">>> create player");
+                                {
+                                    let char_entity_id =
+                                        CharEntityId::from(ecs_world.create_entity().build());
+                                    let updater = &ecs_world.read_resource::<LazyUpdate>();
+                                    let dev_configs = &ecs_world.read_resource::<DevConfig>();
+                                    CharacterEntityBuilder::new(char_entity_id, &name)
+                                        .insert_sprite_render_descr_component(updater)
+                                        .server_authorized(updater, id)
+                                        .physics(
+                                            state.state.pos(),
+                                            &mut ecs_world.write_resource::<PhysicEngine>(),
+                                            |builder| {
+                                                builder
+                                                    .collision_group(team.get_collision_group())
+                                                    .circle(1.0)
+                                            },
+                                        )
+                                        .char_state(
+                                            updater,
+                                            dev_configs,
+                                            state.state.pos(),
+                                            |ch| ch.outlook(outlook).job_id(job_id).team(team),
+                                        );
+                                    updater.insert(
+                                        char_entity_id.into(),
+                                        DebugServerAckComponent {
+                                            acked_snapshot: Default::default(),
                                         },
-                                    )
-                                    .char_state(updater, dev_configs, state.state.pos(), |ch| {
-                                        ch.outlook(outlook).job_id(job_id).team(team)
-                                    });
-                                server_to_local_ids.insert(id, char_entity_id);
-                            }
-                            ecs_world.maintain();
+                                    );
+                                    server_to_local_ids.insert(id, char_entity_id);
+                                }
+                                ecs_world.maintain();
 
-                            ecs_world
-                                .write_resource::<GameSnapshots>()
-                                .add_predicting_entity(id, state.clone().state);
-                        }
+                                ecs_world
+                                    .write_resource::<SnapshotStorage>()
+                                    .add_predicting_entity(id, state.clone().state);
+                            }
+                        },
                     }
                 }
-                (ack_result, tmp_ack_tick)
+                ack_result
             };
 
-            if server_is_ahead_of_client {
-                log::debug!("ServerIsAheadOfClient: {} -> {}", tick, acked_tick);
-                client_speed_increaser += Duration::from_millis(1);
-            }
+            ecs_world
+                .write_resource::<LocalPlayerController>()
+                .had_been_rollbacked_in_this_frame = ack_result.is_rollback();
+
             match ack_result {
+                ServerAckResult::ServerIsAheadOfClient {
+                    server_state_updates,
+                } => {
+                    {
+                        let snapshot_storage = &mut ecs_world.write_resource::<SnapshotStorage>();
+                        snapshot_storage.reset_tail_index();
+                        snapshot_storage.overwrite_states(&server_state_updates);
+                    }
+                    // the current tick's status is written into the snapshot storage in the above line,
+                    // so this tick will in reality calculate the next tick's state, so increase
+                    // the timer
+                    load_all_last_acked_states_into_world(&mut ecs_world);
+
+                    let timer = &mut ecs_world.write_resource::<EngineTime>();
+                    timer.update_timers_for_prediction();
+                    timer.force_simulation();
+                }
                 ServerAckResult::Rollback {
                     repredict_this_many_frames,
                 } => {
-                    log::debug!("Rollback: {} <-- {}", acked_tick, tick);
-                    load_last_acked_state_into_world(&mut ecs_world, desktop_client_controller);
-                    let timer: EngineTime =
+                    log::debug!(
+                        "Rollback {} frames from {}",
+                        repredict_this_many_frames,
+                        simulation_frame - repredict_this_many_frames - 1,
+                    );
+
+                    load_all_last_acked_states_into_world(&mut ecs_world);
+                    let original_timer: EngineTime =
                         (*ecs_world.read_resource::<EngineTime>().deref()).clone();
-                    let reverted_timer = timer.reverted_to(acked_tick + 1);
+                    let reverted_timer = original_timer.reverted(repredict_this_many_frames);
                     *ecs_world.write_resource::<EngineTime>() = reverted_timer;
 
                     ecs_world
-                        .write_resource::<GameSnapshots>()
+                        .write_resource::<SnapshotStorage>()
                         .reset_tail_index();
                     for i in 0..repredict_this_many_frames {
                         {
-                            let snapshots = &mut ecs_world.write_resource::<GameSnapshots>();
+                            let snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
                             let (cid, intention) = snapshots.pop_intention();
-                            snapshots.set_client_last_command_id(dbg!(cid));
+                            snapshots.set_client_last_command_id(cid);
                             ecs_world
-                                .write_storage::<ControllerComponent>()
-                                .get_mut(desktop_client_controller.into())
-                                .unwrap()
+                                .write_resource::<LocalPlayerController>()
+                                .controller
                                 .intention = intention;
                         }
+                        log::debug!("Rollback frame start");
+                        //////////// DISPATCH ////////////////////////
                         prediction_dispatcher.dispatch(&mut ecs_world.res);
+                        log::debug!("Rollback frame end");
+                        //////////////////////////////////////////////
+                        ecs_world.write_resource::<SnapshotStorage>().tick();
                         ecs_world
                             .write_resource::<EngineTime>()
                             .update_timers_for_prediction();
                     }
-                    *ecs_world.write_resource::<EngineTime>() = timer;
-                    let snapshots = &ecs_world.read_resource::<GameSnapshots>();
+                    {
+                        log::debug!("after");
+                        let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
+                        snapshots.print_snapshots_for(
+                            0,
+                            -2,
+                            snapshots.get_unacked_prediction_count() as u64,
+                        );
+                    }
+
+                    *ecs_world.write_resource::<EngineTime>() = original_timer;
+
+                    let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
                     snapshots.print_snapshots_for(0, -2, repredict_this_many_frames);
                 }
                 ServerAckResult::Ok => {
-                    if acked_tick > 0
-                        && tick > acked_tick + 10
-                        && client_speed_increaser > Duration::from_millis(0)
-                    {
-                        log::info!("Slow down (acked_tick: {}, client: {})", acked_tick, tick);
-                        client_speed_increaser -= Duration::from_millis(1);
-                    } else if tick < acked_tick + 5 {
-                        log::info!("Speed up (acked_tick: {}, client: {})", acked_tick, tick);
-                        client_speed_increaser += Duration::from_millis(1);
-                    }
+                    //                    load_only_remote_last_acked_states_into_world(&mut ecs_world);
                 }
             }
         }
 
-        asset_loader.process_async_loading(
-            &gl,
-            &mut ecs_world.write_resource::<SystemVariables>(),
-            &mut ecs_world.write_resource::<AssetDatabase>(),
-            &mut ecs_world.write_resource::<MapRenderData>(),
-        );
+        #[cfg(debug_assertions)]
+        {
+            ecs_world.write_resource::<ImguiData>().rollback(
+                ecs_world
+                    .read_resource::<LocalPlayerController>()
+                    .had_been_rollbacked_in_this_frame,
+            );
+        }
 
-        let quit = !update_desktop_inputs(&mut video, &mut ecs_world, desktop_client_controller);
+        let quit = !update_desktop_inputs(&mut video, &mut ecs_world);
         if quit {
             break 'running;
         }
 
-        execute_console_commands(
-            &command_defs,
-            &mut ecs_world,
-            desktop_client_controller,
-            &mut video,
-        );
-        //        ecs_server_dispatcher.dispatch(&mut ecs_world.res);
+        execute_console_commands(&command_defs, &mut ecs_world, &mut video);
+
+        /////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////
+
         run_main_frame(&mut ecs_world, &mut ecs_client_dispatcher);
+
+        /////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////
+
+        #[cfg(debug_assertions)]
+        {
+            video.imgui_sdl2.prepare_frame(
+                video.imgui_context.io_mut(),
+                &video.window,
+                &video.event_pump.mouse_state(),
+            );
+
+            let delta = ecs_world.read_resource::<EngineTime>().dt;
+            let delta_s = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1_000_000_000.0;
+            video.imgui_context.io_mut().delta_time = delta_s;
+
+            let mut ui = video.imgui_context.frame();
+            draw_imgui(&mut ecs_world.write_resource::<ImguiData>(), &mut ui);
+
+            video.imgui_sdl2.prepare_render(&ui, &video.window);
+            video.imgui_renderer.render(ui);
+        }
 
         video.gl_swap_window();
 
         {
             let mut to_server = ecs_world.write_resource::<Vec<ToServerPacket>>();
+            outgoing_packets_per_second += to_server.len();
             for packet in to_server.drain(..) {
                 packet_handler_thread.send(server_socket, packet);
             }
         }
 
-        std::thread::sleep(Duration::from_millis(
-            ecs_world.read_resource::<DevConfig>().sleep_ms,
-        ));
         let now = std::time::SystemTime::now();
         if now >= next_second {
             fps = fps_counter;
@@ -654,7 +804,25 @@ fn main() {
                 .unwrap();
 
             video.set_title(&format!("Rustarok {} FPS", fps));
-            log::debug!("FPS: {}", fps);
+            log::debug!("FPS: {}, Ping: {}", fps, avg_ping);
+
+            #[cfg(debug_assertions)]
+            {
+                let imgui_data = &mut ecs_world.write_resource::<ImguiData>();
+                imgui_data.ping(avg_ping);
+                imgui_data.fps(fps as usize);
+                imgui_data.set_rollback();
+
+                imgui_data.incoming_packets_per_second(incoming_packets_per_second);
+                imgui_data.outgoing_packets_per_second(outgoing_packets_per_second);
+                imgui_data.incoming_bytes_per_second(incoming_bytes_per_second);
+                imgui_data.outgoing_bytes_per_second(outgoing_bytes_per_second);
+                incoming_packets_per_second = 0;
+                outgoing_packets_per_second = 0;
+                incoming_bytes_per_second = 0;
+                outgoing_bytes_per_second = 0;
+            }
+            let mut timer = ecs_world.write_resource::<EngineTime>();
         }
         fps_counter += 1;
 
@@ -671,32 +839,60 @@ fn main() {
         runtime_conf_watcher_rx = ret.0;
         watcher = ret.1;
 
-        let frame_duration = start.elapsed();
-        if frame_duration + client_speed_increaser < MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME {
-            let to_sleep =
-                MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME - (frame_duration + client_speed_increaser);
-            std::thread::sleep(to_sleep);
-        }
-        //        std::thread::sleep(Duration::from_millis(1000));
         let mut timer = ecs_world.write_resource::<EngineTime>();
-        timer.update_timers(MAX_DURATION_ALLOWED_FOR_SINGLE_FRAME, Instant::now());
+        if timer.can_simulation_run() {
+            // if it was a simulation frame
+            ecs_world.write_resource::<SnapshotStorage>().tick();
+        }
+
+        let frame_duration = start.elapsed();
+        if max_allowed_render_frame_duration > frame_duration {
+            std::thread::sleep(max_allowed_render_frame_duration - frame_duration);
+        } else {
+            log::warn!("Frame took too much time: {:?}", frame_duration);
+        }
+        ecs_world
+            .write_resource::<ImguiData>()
+            .simulation_duration(timer.get_time_between_simulations().as_millis() as usize);
+
+        {
+            let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
+            if snapshots.get_unacked_prediction_count() > 5 {
+                //                timer.skip_next_simulation();
+            }
+        }
+
+        timer.render_frame_end(start.elapsed(), Instant::now());
     }
 }
 
-fn load_last_acked_state_into_world(
-    ecs_world: &mut World,
-    desktop_client_controller: ControllerEntityId,
-) {
-    let snapshots = &ecs_world.read_resource::<GameSnapshots>();
+fn load_only_remote_last_acked_states_into_world(ecs_world: &mut World) {
+    let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
     let auth_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
     let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
     let ack_debug_storage = &mut ecs_world.write_storage::<DebugServerAckComponent>();
     let entities = &ecs_world.entities();
-    snapshots.load_last_acked_state_into_world(
+    snapshots.load_last_acked_remote_entities_state_into_world(
         entities,
         auth_storage,
         server_id_storage,
         ack_debug_storage,
+        Some(0),
+    );
+}
+
+fn load_all_last_acked_states_into_world(ecs_world: &mut World) {
+    let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
+    let auth_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
+    let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
+    let ack_debug_storage = &mut ecs_world.write_storage::<DebugServerAckComponent>();
+    let entities = &ecs_world.entities();
+    snapshots.load_last_acked_remote_entities_state_into_world(
+        entities,
+        auth_storage,
+        server_id_storage,
+        ack_debug_storage,
+        None,
     );
 }
 
@@ -740,17 +936,9 @@ pub fn run_main_frame(mut ecs_world: &mut World, ecs_dispatcher: &mut Dispatcher
 //    ecs_dispatcher
 //}
 
-pub fn console_print(
-    ecs_world: &mut specs::World,
-    text: &str,
-    desktop_client_controller: ControllerEntityId,
-) {
+pub fn console_print(ecs_world: &mut specs::World, text: &str) {
     log::debug!("{}", text);
-    ecs_world
-        .write_storage::<ConsoleComponent>()
-        .get_mut(desktop_client_controller.into())
-        .unwrap()
-        .print(text);
+    ecs_world.write_resource::<ConsoleComponent>().print(text);
 }
 
 fn register_systems<'a, 'b>(
@@ -771,11 +959,10 @@ fn register_systems<'a, 'b>(
                     &["input_handler"],
                 )
                 .with(
-                    IntentionSenderSystem::new(),
+                    IntentionSenderSystem::new(SIMULATION_FREQ),
                     "intention_sender",
                     &["input_to_next_action_sys"],
-                )
-                .with(CameraSystem, "camera_system", &["input_handler"]);
+                );
             char_control_deps.push("input_to_next_action_sys");
         }
         ecs_dispatcher_builder = ecs_dispatcher_builder.with(FrictionSystem, "friction_sys", &[]);
@@ -784,15 +971,15 @@ fn register_systems<'a, 'b>(
             .with(TurretAiSystem, "turret_ai_sys", &[])
             .with(FalconAiSystem, "falcon_ai_sys", &[])
             .with(
-                NextActionApplierSystem,
-                "char_control",
+                ClientIntentionToCharTargetSystem,
+                "client_intention_to_char_target_system",
                 char_control_deps.as_slice(),
             );
         if !for_test {
             ecs_dispatcher_builder.add(
                 UpdateCharSpriteBasedOnStateSystem,
                 "UpdateCharSpriteBasedOnStateSystem",
-                &["char_control"],
+                &["client_intention_to_char_target_system"],
             );
             ecs_dispatcher_builder.add(
                 SavePreviousCharStateSystem,
@@ -803,20 +990,21 @@ fn register_systems<'a, 'b>(
             ecs_dispatcher_builder.add(
                 SavePreviousCharStateSystem,
                 "SavePreviousCharStateSystem",
-                &["char_control"],
+                &["client_intention_to_char_target_system"],
             );
         }
         ecs_dispatcher_builder = ecs_dispatcher_builder
             .with(
                 CharacterStateUpdateSystem,
                 "char_state_update",
-                &["char_control"],
+                &["client_intention_to_char_target_system"],
             )
             .with(
                 PhysCollisionCollectorSystem,
                 "collision_collector",
                 &["char_state_update"],
             )
+            .with(CameraSystem, "camera_system", &["char_state_update"])
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem::new(), "attack_sys", &["collision_collector"])
             .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"])
@@ -833,7 +1021,7 @@ fn register_systems<'a, 'b>(
             ecs_dispatcher_builder = ecs_dispatcher_builder
                 .with_thread_local(RenderDesktopClientSystem::new())
                 .with_thread_local(FalconRenderSys)
-                .with_thread_local(opengl_render_sys.unwrap());
+                .with_thread_local(opengl_render_sys.unwrap())
         }
         if let Some(sound_system) = maybe_sound_system {
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(sound_system);
@@ -841,7 +1029,6 @@ fn register_systems<'a, 'b>(
 
         ecs_dispatcher_builder
             .with_thread_local(FrameCleanupSystem)
-            .with_thread_local(FrameClientEndSystem)
             .build()
     };
     ecs_dispatcher
@@ -849,27 +1036,39 @@ fn register_systems<'a, 'b>(
 
 fn create_dispatcher_for_predictions<'a, 'b>() -> Dispatcher<'a, 'b> {
     return specs::DispatcherBuilder::new()
-        .with_thread_local(NextActionApplierSystem)
+        .with_thread_local(ClientIntentionToCharTargetSystem)
         .with_thread_local(CharacterStateUpdateSystem)
         .with_thread_local(SnapshotSystem::new())
-        .with_thread_local(FrameClientEndSystem)
         .build();
 }
 
-fn update_desktop_inputs(
-    video: &mut Video,
-    ecs_world: &mut World,
-    desktop_client_controller: ControllerEntityId,
-) -> bool {
-    let mut storage = ecs_world.write_storage::<HumanInputComponent>();
-    let inputs = storage.get_mut(desktop_client_controller.into()).unwrap();
+fn update_desktop_inputs(video: &mut Video, ecs_world: &mut World) -> bool {
+    let inputs = &mut ecs_world.write_resource::<HumanInputComponent>();
 
     for event in video.event_pump.poll_iter() {
-        //        video.imgui_sdl2.handle_event(&mut video.imgui, &event);
+        video
+            .imgui_sdl2
+            .handle_event(&mut video.imgui_context, &event);
+        if video.imgui_sdl2.ignore_event(&event) {
+            continue;
+        }
         match event {
             sdl2::event::Event::Quit { .. } => {
                 return false;
             }
+            sdl2::event::Event::Window {
+                timestamp,
+                window_id,
+                win_event,
+            } => match win_event {
+                sdl2::event::WindowEvent::Resized(w, h) => {
+                    let gl = &ecs_world.read_resource::<Gl>();
+                    gl.viewport(0, 0, w, h);
+                    ecs_world.write_resource::<SystemVariables>().matrices =
+                        RenderMatrices::new(0.638, w as u32, h as u32);
+                }
+                _ => {}
+            },
             _ => {
                 inputs.inputs.push(event);
             }
@@ -920,10 +1119,6 @@ fn reload_configs_if_changed(
     return match runtime_conf_watcher_rx.try_recv() {
         Ok(event) => {
             if let Ok(new_config) = DevConfig::new() {
-                for input in (&mut ecs_world.write_storage::<HumanInputComponent>()).join() {
-                    input.cast_mode = new_config.cast_mode
-                }
-
                 *ecs_world.write_resource::<DevConfig>() = new_config;
                 for char_state in (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
                 {
@@ -965,23 +1160,15 @@ pub struct ConsoleCommandBuffer {
 fn execute_console_commands(
     command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
-    desktop_client_controller: ControllerEntityId,
     video: &mut Video,
 ) {
     {
         let console_args = {
-            let mut storage = ecs_world.write_storage::<ConsoleComponent>();
-            let console = storage.get_mut(desktop_client_controller.into()).unwrap();
+            let console = &mut ecs_world.write_resource::<ConsoleComponent>();
             std::mem::replace(&mut console.command_to_execute, None)
         };
         if let Some(cmd) = console_args {
-            execute_console_command(
-                cmd,
-                command_defs,
-                ecs_world,
-                desktop_client_controller,
-                video,
-            );
+            execute_console_command(cmd, command_defs, ecs_world, video);
         }
     }
 
@@ -993,13 +1180,7 @@ fn execute_console_commands(
         };
         for command in commands.into_iter() {
             let cmd = CommandArguments::new(&command);
-            execute_console_command(
-                cmd,
-                command_defs,
-                ecs_world,
-                desktop_client_controller,
-                video,
-            );
+            execute_console_command(cmd, command_defs, ecs_world, video);
         }
     }
     // run commands from config file, only 1 command per frame
@@ -1018,13 +1199,7 @@ fn execute_console_commands(
         };
         if let Some(command) = line {
             let cmd = CommandArguments::new(&command);
-            execute_console_command(
-                cmd,
-                command_defs,
-                ecs_world,
-                desktop_client_controller,
-                video,
-            );
+            execute_console_command(cmd, command_defs, ecs_world, video);
             let mut dev_config = ecs_world.write_resource::<DevConfig>();
             dev_config.execute_script = dev_config
                 .execute_script
@@ -1042,29 +1217,18 @@ fn execute_console_command(
     cmd: CommandArguments,
     command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
-    desktop_client_controller: ControllerEntityId,
     video: &mut Video,
 ) {
-    let char_entity_id = {
-        let storage = ecs_world.read_storage::<ControllerComponent>();
-        let controller = storage.get(desktop_client_controller.into()).unwrap();
-        controller.controlled_entity
-    };
+    let char_entity_id = ecs_world
+        .read_resource::<LocalPlayerController>()
+        .controller
+        .controlled_entity;
+
     log::debug!("Execute command: {:?}", cmd);
     let command_def = &command_defs[cmd.get_command_name().unwrap()];
-    if let Err(e) = (command_def.action)(
-        desktop_client_controller,
-        char_entity_id,
-        &cmd,
-        ecs_world,
-        video,
-    ) {
+    if let Err(e) = (command_def.action)(char_entity_id, &cmd, ecs_world, video) {
         log::error!("Console error: {}", e);
-        ecs_world
-            .write_storage::<ConsoleComponent>()
-            .get_mut(desktop_client_controller.into())
-            .unwrap()
-            .error(&e);
+        ecs_world.write_resource::<ConsoleComponent>().error(&e);
     }
 }
 

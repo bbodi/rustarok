@@ -1,11 +1,20 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc::{Receiver, Sender};
 
-use crate::strum::IntoEnumIterator;
 use encoding::types::Encoding;
 use encoding::DecoderTrap;
-use std::fmt::Write;
+use nalgebra::{Point3, Rotation3};
+use sdl2::pixels::PixelFormatEnum;
+
+use rustarok_common::common::{measure_time, v3, Mat4, Vec2, Vec3};
+use rustarok_common::components::char::{JobId, MonsterId};
+use rustarok_common::components::job_ids::JobSpriteId;
+use rustarok_common::grf::asset_loader::CommonAssetLoader;
+use rustarok_common::grf::binary_reader::BinaryReader;
+use rustarok_common::grf::gat::{BlockingRectangle, CellType, Gat};
 
 use crate::components::char::CharActionIndex;
 use crate::consts::{job_name_table, PLAYABLE_CHAR_SPRITES};
@@ -14,20 +23,21 @@ use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::gnd::{Gnd, MeshVertex};
 use crate::grf::rsm::{BoundingBox, Rsm};
 use crate::grf::rsw::RswModelInstance;
-use crate::grf::spr::SpriteFile;
+use crate::grf::spr::{SprFrame, SpriteFile};
 use crate::grf::texture::TextureId;
 use crate::grf::SpriteResource;
 use crate::my_gl::MyGlEnum;
 use crate::runtime_assets::map::{ModelInstance, SameTextureNodeFacesRaw};
+use crate::strum::IntoEnumIterator;
 use crate::systems::{EffectSprites, Sprites};
-use nalgebra::{Point3, Rotation3};
-use rustarok_common::common::{measure_time, v3, Mat4, Vec2, Vec3};
-use rustarok_common::components::char::{JobId, MonsterId};
-use rustarok_common::components::job_ids::JobSpriteId;
-use rustarok_common::grf::asset_loader::CommonAssetLoader;
-use rustarok_common::grf::binary_reader::BinaryReader;
-use rustarok_common::grf::gat::{BlockingRectangle, CellType, Gat};
-use sdl2::pixels::PixelFormatEnum;
+use std::future::Future;
+use std::pin::Pin;
+
+#[cfg(feature = "sprite_upscaling")]
+pub const SPRITE_UPSCALE_FACTOR: usize = 2;
+
+#[cfg(not(feature = "sprite_upscaling"))]
+pub const SPRITE_UPSCALE_FACTOR: usize = 1;
 
 pub(super) struct BackgroundAssetLoader<'a> {
     to_main_thread: Sender<FromBackgroundAssetLoaderMsg<'a>>,
@@ -49,6 +59,7 @@ impl<'a> SendableRawSdlSurface<'a> {
 }
 
 pub(super) enum ToBackgroundAssetLoaderMsg {
+    NoMoreRequests,
     StartLoadingSprites(Vec<TextureId>),
     LoadTexture {
         texture_id: TextureId,
@@ -97,6 +108,7 @@ pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
         texture_id_pool: Vec<TextureId>,
         model_id_pool: Vec<usize>,
     },
+    NoMoreTasks,
 }
 
 pub(super) struct ReservedTexturedata<'a> {
@@ -279,6 +291,11 @@ impl<'a> BackgroundAssetLoader<'a> {
                             reserved_textures,
                             texture_id_pool,
                         })
+                        .expect("");
+                }
+                ToBackgroundAssetLoaderMsg::NoMoreRequests => {
+                    self.to_main_thread
+                        .send(FromBackgroundAssetLoaderMsg::NoMoreTasks)
                         .expect("");
                 }
             }
@@ -578,7 +595,7 @@ impl<'a> BackgroundAssetLoader<'a> {
                 let path = format!("data\\texture\\{}", texture_name);
                 let surface = GrfEntryLoader::load_sdl_surface2(
                     self.asset_loader.get_content(&path).unwrap(),
-                    path.ends_with(".tga"),
+                    &path,
                 );
                 surface.unwrap()
             })
@@ -786,8 +803,7 @@ impl<'a> BackgroundAssetLoader<'a> {
         reserved_textures: &mut Vec<ReservedTexturedata>,
     ) -> Result<TextureId, String> {
         if let Ok(content) = self.asset_loader.get_content(texture_path) {
-            let surface =
-                GrfEntryLoader::load_sdl_surface2(content, texture_path.ends_with(".tga")).unwrap();
+            let surface = GrfEntryLoader::load_sdl_surface2(content, &texture_path).unwrap();
             let texture_id = texture_id_pool.pop().unwrap();
             reserved_textures.push(ReservedTexturedata {
                 texture_id,
@@ -833,23 +849,57 @@ impl<'a> BackgroundAssetLoader<'a> {
             rgba_frame_count,
         )
         .frames;
-        frames
+        use rayon::iter::IntoParallelIterator;
+        use rayon::iter::IntoParallelRefMutIterator;
+        use rayon::iter::ParallelIterator;
+
+        if cfg!(feature = "sprite_upscaling") {
+            std::fs::create_dir_all(&format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR));
+        }
+        let mut r_textures: Vec<ReservedTexturedata> = frames
             .into_iter()
-            .map(|frame| BackgroundAssetLoader::sdl_surface_from_frame(frame))
             .enumerate()
-            .for_each(|(index, sdl_surface)| {
-                reserved_textures.push(ReservedTexturedata {
+            .collect::<Vec<(usize, SprFrame)>>()
+            .into_par_iter()
+            .map(|(index, frame)| {
+                let name = format!(
+                    "{}_{}_{}",
+                    &path.to_string(),
+                    palette_index.unwrap_or(0),
+                    index
+                );
+                let sdl_surface = if cfg!(feature = "sprite_upscaling") {
+                    let dir = format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR);
+                    let output_name = format!("{}/{}_out.png", dir, &name);
+
+                    if !std::path::Path::new(&output_name).exists() {
+                        let input_name = format!("{}/{}_orig.bmp", dir, &name);
+                        let unscaled_surface = BackgroundAssetLoader::sdl_surface_from_frame(frame);
+                        unscaled_surface.save_bmp(&input_name);
+                        Command::new("./xbrzscale")
+                            .arg(SPRITE_UPSCALE_FACTOR.to_string())
+                            .arg(&input_name)
+                            .arg(&output_name)
+                            .output()
+                            .expect("failed to execute process");
+                    }
+                    let upscaled_surface =
+                        BackgroundAssetLoader::sdl_surface_from_file(&output_name);
+                    upscaled_surface
+                } else {
+                    BackgroundAssetLoader::sdl_surface_from_frame(frame)
+                };
+
+                ReservedTexturedata {
                     texture_id: texture_ids[index],
-                    name: format!(
-                        "{}_{}_{}",
-                        &path.to_string(),
-                        palette_index.unwrap_or(0),
-                        index
-                    ),
+                    name,
                     raw_sdl_surface: SendableRawSdlSurface::new(sdl_surface),
                     minmag: MyGlEnum::NEAREST,
-                })
-            });
+                }
+            })
+            .collect();
+
+        reserved_textures.extend(r_textures.into_iter());
 
         let content = self.asset_loader.get_content(&format!("{}.act", path))?;
         let action = ActionFile::load(BinaryReader::from_vec(content));

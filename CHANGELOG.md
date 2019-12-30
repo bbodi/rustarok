@@ -1,3 +1,10 @@
+#### 2019.12.27
+- Experimental: Upscaling sprites for better quality
+
+#### 2019.12.23
+- Handling window size
+- Many systems and component on the Client were refactored to be Singleton (Input Handler, Renderer, Audio etc)
+
 #### 2019.12.22
 - Debug visualization for net code
     - Displaying the acknowledged position of characters
