@@ -32,8 +32,8 @@ use specs::Join;
 
 use crate::audio::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::components::char::{
-    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, DebugServerAckComponent,
-    HasServerIdComponent, SpriteRenderDescriptorComponent,
+    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, HasServerIdComponent,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, HumanInputComponent, LocalPlayerController, SkillKey,
@@ -74,9 +74,7 @@ use crate::systems::next_action_applier_sys::{
 };
 use crate::systems::phys::{FrictionSystem, PhysCollisionCollectorSystem};
 use crate::systems::skill_sys::SkillSystem;
-use crate::systems::snapshot_sys::{
-    DebugServerAckComponentFillerSystem, ServerAckResult, SnapshotStorage, SnapshotSystem,
-};
+use crate::systems::snapshot_sys::{ServerAckResult, SnapshotStorage, SnapshotSystem};
 use crate::systems::turret_ai_sys::TurretAiSystem;
 use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sprites, SystemFrameDurations, SystemVariables,
@@ -581,8 +579,6 @@ fn main() {
                                     .as_millis();
 
                                 let snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
-                                let debug_ack_storage =
-                                    &mut ecs_world.write_storage::<DebugServerAckComponent>();
 
                                 ack_result = snapshots.ack_arrived(simulation_frame, cid, entries);
                                 #[cfg(debug_assertions)]
@@ -628,12 +624,6 @@ fn main() {
                                             state.state.pos(),
                                             |ch| ch.outlook(outlook).job_id(job_id).team(team),
                                         );
-                                    updater.insert(
-                                        char_entity_id.into(),
-                                        DebugServerAckComponent {
-                                            acked_snapshot: Default::default(),
-                                        },
-                                    );
                                     server_to_local_ids.insert(id, char_entity_id);
                                 }
                                 ecs_world.maintain();
@@ -669,6 +659,9 @@ fn main() {
                     let timer = &mut ecs_world.write_resource::<EngineTime>();
                     timer.update_timers_for_prediction();
                     timer.force_simulation();
+                }
+                ServerAckResult::RemoteEntityCorrection => {
+                    load_only_remote_last_acked_states_into_world(&mut ecs_world);
                 }
                 ServerAckResult::Rollback {
                     repredict_this_many_frames,
@@ -723,9 +716,7 @@ fn main() {
                     let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
                     snapshots.print_snapshots_for(0, -2, repredict_this_many_frames);
                 }
-                ServerAckResult::Ok => {
-                    //                    load_only_remote_last_acked_states_into_world(&mut ecs_world);
-                }
+                ServerAckResult::Ok => {}
             }
         }
 
@@ -870,13 +861,12 @@ fn load_only_remote_last_acked_states_into_world(ecs_world: &mut World) {
     let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
     let auth_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
     let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
-    let ack_debug_storage = &mut ecs_world.write_storage::<DebugServerAckComponent>();
     let entities = &ecs_world.entities();
     snapshots.load_last_acked_remote_entities_state_into_world(
         entities,
         auth_storage,
         server_id_storage,
-        ack_debug_storage,
+        snapshots.get_last_acknowledged_index_for_server_entities(),
         Some(0),
     );
 }
@@ -885,13 +875,12 @@ fn load_all_last_acked_states_into_world(ecs_world: &mut World) {
     let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
     let auth_storage = &mut ecs_world.write_storage::<AuthorizedCharStateComponent>();
     let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
-    let ack_debug_storage = &mut ecs_world.write_storage::<DebugServerAckComponent>();
     let entities = &ecs_world.entities();
     snapshots.load_last_acked_remote_entities_state_into_world(
         entities,
         auth_storage,
         server_id_storage,
-        ack_debug_storage,
+        snapshots.get_last_acknowledged_index(),
         None,
     );
 }
@@ -1007,12 +996,7 @@ fn register_systems<'a, 'b>(
             .with(CameraSystem, "camera_system", &["char_state_update"])
             .with(SkillSystem, "skill_sys", &["collision_collector"])
             .with(AttackSystem::new(), "attack_sys", &["collision_collector"])
-            .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"])
-            .with(
-                DebugServerAckComponentFillerSystem,
-                "debug_ack",
-                &["snapshot_sys"],
-            );
+            .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"]);
         if let Some(console_system) = console_system {
             // thread_local to avoid Send fields
             ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);

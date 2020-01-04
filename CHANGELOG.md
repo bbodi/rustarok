@@ -1,3 +1,7 @@
+#### 2020.01.04
+- Improving netcode
+  ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/99cc03628e1f556539c380e4e7e3dba3/netcode_works.gif) 
+
 #### 2019.12.27
 - Experimental: Upscaling sprites for better quality
 

@@ -1,6 +1,6 @@
 use crate::components::char::{
     percentage, CharActionIndex, CharacterEntityBuilder, CharacterStateComponent,
-    DebugServerAckComponent, HasServerIdComponent, NpcComponent, SpriteRenderDescriptorComponent,
+    HasServerIdComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CameraComponent, HumanInputComponent};
 use crate::components::skills::absorb_shield::AbsorbStatus;
@@ -1659,65 +1659,6 @@ pub(super) fn cmd_remove_falcon() -> CommandDefinition {
             } else {
                 Err("The user was not found".to_owned())
             }
-        }),
-    }
-}
-
-pub(super) fn cmd_add_ack_debug_comp() -> CommandDefinition {
-    CommandDefinition {
-        name: "show_ack_debug".to_string(),
-        arguments: vec![],
-        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |_index, _username_completor, _input| None,
-        ),
-        action: Box::new(|self_char_id, args, ecs_world, _video| {
-            let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let entities = &ecs_world.entities();
-            for (entity_id, _server_entity_id, _char_auth_state) in (
-                entities,
-                &ecs_world.read_storage::<HasServerIdComponent>(),
-                &ecs_world.read_storage::<AuthorizedCharStateComponent>(),
-            )
-                .join()
-            {
-                updater.insert(
-                    entity_id,
-                    DebugServerAckComponent {
-                        acked_snapshot: Default::default(),
-                    },
-                );
-            }
-
-            Ok(())
-        }),
-    }
-}
-
-pub(super) fn cmd_del_ack_debug_comp() -> CommandDefinition {
-    CommandDefinition {
-        name: "hide_ack_debug".to_string(),
-        arguments: vec![],
-        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
-            |_index, _username_completor, _input| None,
-        ),
-        action: Box::new(|self_char_id, args, ecs_world, _video| {
-            let entities = &ecs_world.entities();
-            let mut ids = Vec::with_capacity(128);
-            for (entity_id, _debug_ack) in (
-                entities,
-                &ecs_world.write_storage::<DebugServerAckComponent>(),
-            )
-                .join()
-            {
-                ids.push(entity_id);
-            }
-            for id in ids {
-                ecs_world
-                    .write_storage::<DebugServerAckComponent>()
-                    .remove(id);
-            }
-
-            Ok(())
         }),
     }
 }

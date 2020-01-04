@@ -36,11 +36,6 @@ pub struct HasServerIdComponent {
     pub server_id: ServerEntityId,
 }
 
-#[derive(Component)]
-pub struct DebugServerAckComponent {
-    pub acked_snapshot: CharSnapshot,
-}
-
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub enum CharActionIndex {

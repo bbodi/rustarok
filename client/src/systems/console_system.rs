@@ -4,11 +4,10 @@ use crate::configs::DevConfig;
 use crate::render::opengl_render_sys::{NORMAL_FONT_H, NORMAL_FONT_W};
 use crate::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
 use crate::systems::console_commands::{
-    cmd_add_ack_debug_comp, cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear,
-    cmd_clone_char, cmd_control_char, cmd_del_ack_debug_comp, cmd_disable_collision,
-    cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal, cmd_kill_all,
-    cmd_list_entities, cmd_list_players, cmd_list_statuses, cmd_remove_falcon, cmd_resurrect,
-    cmd_set_config, cmd_set_damping, cmd_set_fullscreen, cmd_set_job, cmd_set_mass,
+    cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear, cmd_clone_char, cmd_control_char,
+    cmd_disable_collision, cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal,
+    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_list_statuses, cmd_remove_falcon,
+    cmd_resurrect, cmd_set_config, cmd_set_damping, cmd_set_fullscreen, cmd_set_job, cmd_set_mass,
     cmd_set_outlook, cmd_set_pos, cmd_set_resolution, cmd_set_team, cmd_spawn_area,
     cmd_spawn_entity, cmd_toggle_console,
 };
@@ -682,8 +681,6 @@ impl<'a> ConsoleSystem<'a> {
         ConsoleSystem::add_command(&mut command_defs, cmd_clone_char());
         ConsoleSystem::add_command(&mut command_defs, cmd_bind_key());
         ConsoleSystem::add_command(&mut command_defs, cmd_toggle_console());
-        ConsoleSystem::add_command(&mut command_defs, cmd_add_ack_debug_comp());
-        ConsoleSystem::add_command(&mut command_defs, cmd_del_ack_debug_comp());
         ConsoleSystem::add_command(&mut command_defs, cmd_set_config());
 
         return command_defs;

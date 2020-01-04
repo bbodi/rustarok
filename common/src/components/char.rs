@@ -237,7 +237,7 @@ impl AuthorizedCharStateComponent {
         }
     }
 
-    pub fn overwrite(&mut self, other: &AuthorizedCharStateComponent) {
+    pub fn overwrite_by(&mut self, other: &AuthorizedCharStateComponent) {
         *self = other.clone();
     }
 

@@ -1,8 +1,8 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharacterStateComponent, DebugServerAckComponent, NpcComponent,
-    SpriteBoundingRect, SpriteRenderDescriptorComponent,
+    ActionPlayMode, CharacterStateComponent, NpcComponent, SpriteBoundingRect,
+    SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, EntitiesBelowCursor, HumanInputComponent, LocalPlayerController, SkillKey,
@@ -74,7 +74,6 @@ impl RenderDesktopClientSystem {
         asset_db: &AssetDatabase,
         map_render_data: &MapRenderData,
         matrices: &RenderMatrices,
-        debug_ack_storage: &ReadStorage<'a, DebugServerAckComponent>,
         snapshot_storage: &ReadExpect<'a, SnapshotStorage>,
     ) {
         render_commands.set_view_matrix(&camera.view_matrix, &camera.normal_matrix, camera.yaw);
@@ -95,7 +94,6 @@ impl RenderDesktopClientSystem {
                 sprite_storage,
                 asset_db,
                 matrices,
-                debug_ack_storage, //                &map_render_data.gat,
                 snapshot_storage,
             );
         }
@@ -387,7 +385,6 @@ impl RenderDesktopClientSystem {
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
         matrices: &RenderMatrices,
-        debug_ack_storage: &ReadStorage<DebugServerAckComponent>,
         snapshot_storage: &ReadExpect<SnapshotStorage>,
         //        gat: &Gat,
     ) {
@@ -446,15 +443,10 @@ impl RenderDesktopClientSystem {
                 let lerping_ticks = dbg!(configs.lerping_ticks);
                 let ticks_since_last_rollback =
                     time.simulation_frame - snapshot_storage.get_last_rollback_at();
-                dbg!(ticks_since_last_rollback);
                 let percentage =
                     (ticks_since_last_rollback as f32 / lerping_ticks as f32).min(1f32);
 
                 let path = (predicted_pos - acked_pos);
-                dbg!(predicted_pos);
-                dbg!(acked_pos);
-                dbg!(path);
-                dbg!(percentage);
                 acked_pos + (path * percentage)
             } else {
                 predicted_pos
@@ -765,7 +757,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, NpcComponent>,
         ReadExpect<'a, MapRenderData>,
         ReadExpect<'a, EngineTime>,
-        ReadStorage<'a, DebugServerAckComponent>,
         ReadExpect<'a, SnapshotStorage>,
     );
 
@@ -795,7 +786,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             npc_storage,
             map_render_data,
             time,
-            debug_ack_storage,
             snapshot_storage,
         ): Self::SystemData,
     ) {
@@ -832,7 +822,6 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 &asset_db,
                 &map_render_data,
                 &sys_vars.matrices,
-                &debug_ack_storage,
                 &snapshot_storage,
             );
         }

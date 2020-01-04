@@ -6,7 +6,7 @@ use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::components::snapshot::CharSnapshot;
 use rustarok_common::packets::from_server::ServerEntityState;
 
-use crate::components::char::{DebugServerAckComponent, HasServerIdComponent};
+use crate::components::char::HasServerIdComponent;
 
 struct CharSnapshots {
     server_id: ServerEntityId,
@@ -79,6 +79,7 @@ pub enum ServerAckResult {
     Rollback {
         repredict_this_many_frames: u64,
     },
+    RemoteEntityCorrection,
     ServerIsAheadOfClient {
         server_state_updates: Vec<ServerEntityState>,
     },
@@ -194,6 +195,10 @@ impl SnapshotStorage {
         self.last_acknowledged_index
     }
 
+    pub fn get_last_acknowledged_index_for_server_entities(&self) -> u64 {
+        self.last_acknowledged_index_for_server_entities
+    }
+
     pub fn init(&mut self, acked: &ServerEntityState) {
         self.last_acknowledged_index = 0;
         self.tail = 1;
@@ -257,18 +262,21 @@ impl SnapshotStorage {
                         &self.snapshots_for_each_char[1..],
                         &snapshots_from_server[1..],
                     );
+                    if need_rollback {
+                        log::debug!("before for REMOTE");
+                        let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
+                        self.print_snapshots_for(1, -2, to);
+                    }
+                } else {
+                    log::debug!("before for LOCAL");
+                    let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
+                    self.print_snapshots_for(0, -2, to);
                 }
             }
 
             // TODO: ugly
             if increase_index_ack_by > 1 {
                 self.last_acknowledged_index += increase_index_ack_by - 1;
-            }
-
-            if need_rollback {
-                log::debug!("before");
-                let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
-                self.print_snapshots_for(0, -2, to);
             }
 
             if increase_index_ack_by > 0 {
@@ -294,9 +302,13 @@ impl SnapshotStorage {
                 );
 
                 self.last_rollback_at = client_tick;
-                let repredict_this_many_frames = if rollback_only_local_client {
+                return if rollback_only_local_client {
                     if self.tail > self.last_acknowledged_index {
-                        self.tail - self.last_acknowledged_index - 1
+                        ServerAckResult::Rollback {
+                            repredict_this_many_frames: self.tail
+                                - self.last_acknowledged_index
+                                - 1,
+                        }
                     } else {
                         // it can happen when the client cannot process the packets for a while
                         // and then it process all of them at once
@@ -306,14 +318,11 @@ impl SnapshotStorage {
                             self.last_acknowledged_index + 1
                         );
                         self.tail = self.last_acknowledged_index + 1;
-                        0
+                        panic!();
                     }
                 } else {
-                    0
+                    ServerAckResult::RemoteEntityCorrection
                 };
-                ServerAckResult::Rollback {
-                    repredict_this_many_frames,
-                }
             } else {
                 ServerAckResult::Ok
             };
@@ -495,7 +504,7 @@ impl SnapshotStorage {
         entities: &specs::Entities,
         auth_storage: &mut WriteStorage<AuthorizedCharStateComponent>,
         server_id_storage: &ReadStorage<HasServerIdComponent>,
-        debug_ack_storage: &mut WriteStorage<DebugServerAckComponent>,
+        tick_index: u64,
         skip_index: Option<usize>,
     ) {
         for (i, (entity_id, server_id, auth_state)) in (entities, server_id_storage, auth_storage)
@@ -515,9 +524,9 @@ impl SnapshotStorage {
                     server_id, char_snapshots.server_id
                 );
             }
-            let snapshot = char_snapshots.get_snapshot(self.last_acknowledged_index);
+            let snapshot = char_snapshots.get_snapshot(tick_index);
 
-            auth_state.overwrite(&snapshot.state);
+            auth_state.overwrite_by(&snapshot.state);
         }
     }
 }
@@ -555,73 +564,6 @@ impl<'a> System<'a> for SnapshotSystem {
         //        }
         for (_server_id, auth_char_state) in (&server_id_storage, &auth_char_state_storage).join() {
             snapshots.set_predicted_state(i, auth_char_state);
-            i += 1;
-        }
-    }
-}
-
-pub struct DebugServerAckComponentFillerSystem;
-
-impl<'a> System<'a> for DebugServerAckComponentFillerSystem {
-    type SystemData = (
-        Entities<'a>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
-        ReadStorage<'a, HasServerIdComponent>,
-        WriteStorage<'a, DebugServerAckComponent>,
-        ReadExpect<'a, SnapshotStorage>,
-        ReadExpect<'a, EngineTime>,
-    );
-
-    fn run(
-        &mut self,
-        (
-            entities,
-            auth_char_state_storage,
-            server_id_storage,
-            mut debug_ack_storage,
-            snapshots,
-            time,
-        ): Self::SystemData,
-    ) {
-        if !time.can_simulation_run() {
-            return;
-        }
-        let mut i = 0;
-
-        for (entity_id, _server_id, _auth_char_state) in
-            (&entities, &server_id_storage, &auth_char_state_storage).join()
-        {
-            if let Some(debug_ack) = debug_ack_storage.get_mut(entity_id) {
-                debug_ack.acked_snapshot = CharSnapshot::from(snapshots.get_acked_state_for(i));
-            }
-
-            i += 1;
-        }
-    }
-}
-
-pub struct OtherEntityIntentionSetterSystem;
-
-impl<'a> System<'a> for OtherEntityIntentionSetterSystem {
-    type SystemData = (
-        WriteStorage<'a, AuthorizedCharStateComponent>,
-        ReadStorage<'a, HasServerIdComponent>,
-        ReadExpect<'a, SnapshotStorage>,
-    );
-
-    fn run(
-        &mut self,
-        (mut auth_char_state_storage, server_id_storage, snapshots): Self::SystemData,
-    ) {
-        let mut i = 0;
-        for (_server_id, auth_char_state) in
-            (&server_id_storage, &mut auth_char_state_storage).join()
-        {
-            if i == 0 {
-                // 0 is the local player
-                continue;
-            }
-            auth_char_state.target = snapshots.get_acked_state_for(i).target.clone();
             i += 1;
         }
     }

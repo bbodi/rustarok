@@ -1,7 +1,7 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::char::{
-    CharacterStateComponent, DebugServerAckComponent, HasServerIdComponent, NpcComponent,
-    SpriteRenderDescriptorComponent, TurretComponent, TurretControllerComponent,
+    CharacterStateComponent, HasServerIdComponent, NpcComponent, SpriteRenderDescriptorComponent,
+    TurretComponent, TurretControllerComponent,
 };
 use crate::components::controller::{CameraComponent, HumanInputComponent, LocalPlayerController};
 use crate::components::skills::skills::SkillManifestationComponent;
@@ -29,7 +29,6 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<SkillManifestationComponent>();
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<HasServerIdComponent>();
-    ecs_world.register::<DebugServerAckComponent>();
 
     ecs_world.register::<AuthorizedCharStateComponent>();
     // TODO2 remove it as soon as Falcon logic goes to the server code
