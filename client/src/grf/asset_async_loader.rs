@@ -19,6 +19,7 @@ use rustarok_common::grf::gat::{BlockingRectangle, CellType, Gat};
 use crate::components::char::CharActionIndex;
 use crate::consts::{job_name_table, PLAYABLE_CHAR_SPRITES};
 use crate::grf::act::ActionFile;
+use crate::grf::asset_async_loader::SendableImageData::SendableRawSdlSurface;
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::gnd::{Gnd, MeshVertex};
 use crate::grf::rsm::{BoundingBox, Rsm};
@@ -30,8 +31,11 @@ use crate::my_gl::MyGlEnum;
 use crate::runtime_assets::map::{ModelInstance, SameTextureNodeFacesRaw};
 use crate::strum::IntoEnumIterator;
 use crate::systems::{EffectSprites, Sprites};
+use std::cell::UnsafeCell;
 use std::future::Future;
 use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
 
 #[cfg(feature = "sprite_upscaling")]
 pub const SPRITE_UPSCALE_FACTOR: usize = 2;
@@ -45,18 +49,28 @@ pub(super) struct BackgroundAssetLoader<'a> {
     asset_loader: CommonAssetLoader,
 }
 
-pub(super) struct SendableRawSdlSurface<'a>(pub &'a mut sdl2::sys::SDL_Surface);
+pub(super) enum SendableImageData<'a> {
+    SendableRawSdlSurface(&'a mut sdl2::sys::SDL_Surface),
+    SharedBufferImage {
+        offset: usize,
+        width: usize,
+        height: usize,
+        buffer: Arc<Vec<u8>>,
+    },
+}
 
-unsafe impl<'a> Send for SendableRawSdlSurface<'a> {}
-
-impl<'a> SendableRawSdlSurface<'a> {
-    fn new(sdl_surface: sdl2::surface::Surface<'a>) -> SendableRawSdlSurface<'a> {
+impl<'a> SendableImageData<'a> {
+    fn from_sdl_surface(sdl_surface: sdl2::surface::Surface<'a>) -> SendableImageData<'static> {
         let ptr = sdl_surface.raw();
         // prevent drop
         std::mem::forget(sdl_surface);
-        SendableRawSdlSurface(unsafe { &mut *ptr })
+        SendableImageData::SendableRawSdlSurface(unsafe { &mut *ptr })
     }
 }
+
+//pub(super) struct SendableRawSdlSurface<'a>(pub &'a mut sdl2::sys::SDL_Surface);
+
+unsafe impl<'a> Send for SendableImageData<'a> {}
 
 pub(super) enum ToBackgroundAssetLoaderMsg {
     NoMoreRequests,
@@ -114,8 +128,9 @@ pub(super) enum FromBackgroundAssetLoaderMsg<'a> {
 pub(super) struct ReservedTexturedata<'a> {
     pub texture_id: TextureId,
     pub name: String,
-    pub raw_sdl_surface: SendableRawSdlSurface<'a>,
+    pub raw_sdl_surface: SendableImageData<'a>,
     pub minmag: MyGlEnum,
+    pub sdl_surface_data: Option<Arc<Vec<u8>>>,
 }
 
 pub(super) struct AsyncGroundLoadResult {
@@ -541,8 +556,9 @@ impl<'a> BackgroundAssetLoader<'a> {
         reserved_textures.push(ReservedTexturedata {
             texture_id,
             name: "ground_tile_color_texture".to_string(),
-            raw_sdl_surface: SendableRawSdlSurface::new(scaled_tiles_color_surface),
+            raw_sdl_surface: SendableImageData::from_sdl_surface(scaled_tiles_color_surface),
             minmag: MyGlEnum::LINEAR,
+            sdl_surface_data: None,
         });
         return texture_id;
     }
@@ -577,8 +593,9 @@ impl<'a> BackgroundAssetLoader<'a> {
         reserved_textures.push(ReservedTexturedata {
             texture_id,
             name: "ground_lightmap_texture".to_string(),
-            raw_sdl_surface: SendableRawSdlSurface::new(cloned_surface),
+            raw_sdl_surface: SendableImageData::from_sdl_surface(cloned_surface),
             minmag: MyGlEnum::LINEAR,
+            sdl_surface_data: None,
         });
         return texture_id;
     }
@@ -605,8 +622,9 @@ impl<'a> BackgroundAssetLoader<'a> {
         reserved_textures.push(ReservedTexturedata {
             texture_id,
             name: "ground_texture_atlas".to_string(),
-            raw_sdl_surface: SendableRawSdlSurface::new(surface_atlas),
+            raw_sdl_surface: SendableImageData::from_sdl_surface(surface_atlas),
             minmag: MyGlEnum::NEAREST,
+            sdl_surface_data: None,
         });
         return texture_id;
     }
@@ -692,8 +710,9 @@ impl<'a> BackgroundAssetLoader<'a> {
                 reserved_textures.push(ReservedTexturedata {
                     texture_id,
                     name: "assets/damage.bmp".to_string(),
-                    raw_sdl_surface: SendableRawSdlSurface::new(sdl_surface),
+                    raw_sdl_surface: SendableImageData::from_sdl_surface(sdl_surface),
                     minmag: MyGlEnum::NEAREST,
+                    sdl_surface_data: None,
                 });
                 texture_id
             },
@@ -808,8 +827,9 @@ impl<'a> BackgroundAssetLoader<'a> {
             reserved_textures.push(ReservedTexturedata {
                 texture_id,
                 name: texture_path.to_string(),
-                raw_sdl_surface: SendableRawSdlSurface::new(surface),
+                raw_sdl_surface: SendableImageData::from_sdl_surface(surface),
                 minmag: min_mag,
+                sdl_surface_data: None,
             });
             return Ok(texture_id);
         } else {
@@ -840,15 +860,14 @@ impl<'a> BackgroundAssetLoader<'a> {
         let texture_ids = (0..(indexed_frame_count + rgba_frame_count as usize))
             .map(|_it| texture_id_pool.pop().unwrap())
             .collect::<Vec<_>>();
-
-        let frames = SpriteFile::load(
+        let mut sprite_file = SpriteFile::load(
             reader,
             palette,
             version,
             indexed_frame_count,
             rgba_frame_count,
-        )
-        .frames;
+        );
+
         use rayon::iter::IntoParallelIterator;
         use rayon::iter::IntoParallelRefMutIterator;
         use rayon::iter::ParallelIterator;
@@ -856,11 +875,13 @@ impl<'a> BackgroundAssetLoader<'a> {
         if cfg!(feature = "sprite_upscaling") {
             std::fs::create_dir_all(&format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR));
         }
-        let mut r_textures: Vec<ReservedTexturedata> = frames
+        let frames = std::mem::replace(&mut sprite_file.frames, Vec::new());
+        let arc_buffer = Arc::new(sprite_file.buffer);
+        let r_textures = frames
             .into_iter()
             .enumerate()
-            .collect::<Vec<(usize, SprFrame)>>()
-            .into_par_iter()
+            //            .collect::<Vec<(usize, SprFrame)>>()
+            //            .into_par_iter()
             .map(|(index, frame)| {
                 let name = format!(
                     "{}_{}_{}",
@@ -868,13 +889,27 @@ impl<'a> BackgroundAssetLoader<'a> {
                     palette_index.unwrap_or(0),
                     index
                 );
-                let sdl_surface = if cfg!(feature = "sprite_upscaling") {
+                let sendable_image_data = if cfg!(feature = "sprite_upscaling") {
                     let dir = format!("sprite_upscaling/{}", SPRITE_UPSCALE_FACTOR);
                     let output_name = format!("{}/{}_out.png", dir, &name);
 
                     if !std::path::Path::new(&output_name).exists() {
                         let input_name = format!("{}/{}_orig.bmp", dir, &name);
-                        let unscaled_surface = BackgroundAssetLoader::sdl_surface_from_frame(frame);
+                        let unscaled_surface = sdl2::surface::Surface::from_data(
+                            // TODO: why does it require mut?
+                            #[allow(mutable_transmutes)]
+                            unsafe {
+                                std::mem::transmute(
+                                    &arc_buffer[frame.data_index
+                                        ..frame.data_index + (frame.width * frame.height * 4)],
+                                )
+                            },
+                            frame.width as u32,
+                            frame.height as u32,
+                            (4 * frame.width) as u32,
+                            PixelFormatEnum::RGBA32,
+                        )
+                        .unwrap();
                         unscaled_surface.save_bmp(&input_name);
                         Command::new("./xbrzscale")
                             .arg(SPRITE_UPSCALE_FACTOR.to_string())
@@ -885,19 +920,24 @@ impl<'a> BackgroundAssetLoader<'a> {
                     }
                     let upscaled_surface =
                         BackgroundAssetLoader::sdl_surface_from_file(&output_name);
-                    upscaled_surface
+                    SendableImageData::from_sdl_surface(upscaled_surface)
                 } else {
-                    BackgroundAssetLoader::sdl_surface_from_frame(frame)
+                    SendableImageData::SharedBufferImage {
+                        offset: frame.data_index,
+                        width: frame.width,
+                        height: frame.height,
+                        buffer: Arc::clone(&arc_buffer),
+                    }
                 };
-
                 ReservedTexturedata {
                     texture_id: texture_ids[index],
                     name,
-                    raw_sdl_surface: SendableRawSdlSurface::new(sdl_surface),
+                    raw_sdl_surface: sendable_image_data,
                     minmag: MyGlEnum::NEAREST,
+                    sdl_surface_data: Some(Arc::clone(&arc_buffer)),
                 }
             })
-            .collect();
+            .collect::<Vec<ReservedTexturedata>>();
 
         reserved_textures.extend(r_textures.into_iter());
 
@@ -911,9 +951,11 @@ impl<'a> BackgroundAssetLoader<'a> {
 
     fn sdl_surface_from_frame(
         mut frame: crate::grf::spr::SprFrame,
-    ) -> sdl2::surface::Surface<'static> {
+        img_buffer: &mut [u8],
+    ) -> sdl2::surface::Surface {
         let frame_surface = sdl2::surface::Surface::from_data(
-            &mut frame.data,
+            // TODO: why does it require mut?
+            img_buffer,
             frame.width as u32,
             frame.height as u32,
             (4 * frame.width) as u32,
@@ -921,18 +963,7 @@ impl<'a> BackgroundAssetLoader<'a> {
         )
         .unwrap();
 
-        let mut opengl_surface = sdl2::surface::Surface::new(
-            frame.width as u32,
-            frame.height as u32,
-            PixelFormatEnum::RGBA32,
-        )
-        .unwrap();
-
-        let dst_rect = sdl2::rect::Rect::new(0, 0, frame.width as u32, frame.height as u32);
-        frame_surface
-            .blit(None, &mut opengl_surface, dst_rect)
-            .unwrap();
-        return opengl_surface;
+        return frame_surface;
     }
 
     pub fn sdl_surface_from_file<P: AsRef<Path>>(path: P) -> sdl2::surface::Surface<'static> {

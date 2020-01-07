@@ -1,6 +1,6 @@
 use crate::grf::asset_async_loader::{
     AsyncGroundLoadResult, BackgroundAssetLoader, FromBackgroundAssetLoaderMsg, ModelLoadingData,
-    ReservedTexturedata, ToBackgroundAssetLoaderMsg, SPRITE_UPSCALE_FACTOR,
+    ReservedTexturedata, SendableImageData, ToBackgroundAssetLoaderMsg, SPRITE_UPSCALE_FACTOR,
 };
 use crate::grf::database::AssetDatabase;
 use crate::grf::rsw::{Rsw, RswModelInstance, WaterData};
@@ -369,8 +369,29 @@ impl<'a> GrfEntryLoader<'a> {
         reserved_textures: Vec<ReservedTexturedata>,
     ) -> () {
         for reserved_texture in reserved_textures.into_iter() {
-            let sdl_surface = unsafe {
-                sdl2::surface::Surface::from_ll(&mut *reserved_texture.raw_sdl_surface.0)
+            let sdl_surface = match reserved_texture.raw_sdl_surface {
+                SendableImageData::SendableRawSdlSurface(sdl_surface_ptr) => unsafe {
+                    sdl2::surface::Surface::from_ll(sdl_surface_ptr)
+                },
+                SendableImageData::SharedBufferImage {
+                    offset,
+                    width,
+                    height,
+                    buffer,
+                } => {
+                    sdl2::surface::Surface::from_data(
+                        // TODO: why does it require mut?
+                        #[allow(mutable_transmutes)]
+                        unsafe {
+                            std::mem::transmute(&buffer[offset..offset + (width * height * 4)])
+                        },
+                        width as u32,
+                        height as u32,
+                        (4 * width) as u32,
+                        PixelFormatEnum::RGBA32,
+                    )
+                    .unwrap()
+                }
             };
             let gl_texture = GrfEntryLoader::create_texture_from_surface_inner(
                 gl,

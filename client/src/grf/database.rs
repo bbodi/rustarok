@@ -144,15 +144,12 @@ impl AssetDatabase {
     }
 
     pub fn replace_non_ascii_chars(name: &str) -> String {
-        let mut ret = String::with_capacity(name.len() * 2);
+        let mut ret = String::with_capacity(name.chars().count());
         name.chars().for_each(|it| {
             if it.is_ascii() {
                 ret.push(it);
             } else {
-                it.to_string()
-                    .as_bytes()
-                    .iter()
-                    .for_each(|it| ret.push_str(&it.to_string()));
+                ret.push((it as u32 - 0x7F) as u8 as char);
             }
         });
         return ret;
