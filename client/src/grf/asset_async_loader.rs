@@ -14,7 +14,7 @@ use rustarok_common::components::char::{JobId, MonsterId};
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::grf::asset_loader::CommonAssetLoader;
 use rustarok_common::grf::binary_reader::BinaryReader;
-use rustarok_common::grf::gat::{BlockingRectangle, CellType, Gat};
+use rustarok_common::grf::gat::{BlockingRectangle, Gat};
 
 use crate::components::char::CharActionIndex;
 use crate::consts::{job_name_table, PLAYABLE_CHAR_SPRITES};
@@ -31,6 +31,7 @@ use crate::my_gl::MyGlEnum;
 use crate::runtime_assets::map::{ModelInstance, SameTextureNodeFacesRaw};
 use crate::strum::IntoEnumIterator;
 use crate::systems::{EffectSprites, Sprites};
+use rustarok_common::map::CellType;
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::pin::Pin;

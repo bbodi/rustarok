@@ -2,6 +2,7 @@ use crate::components::char::{
     CharDir, CharEntityId, CharOutlook, CharType, JobId, ServerEntityId, Team,
 };
 use crate::components::snapshot::CharSnapshot;
+use crate::config::CommonConfigs;
 use crate::packets::to_server::{Packet, PacketReadErr};
 use crate::packets::SocketBuffer;
 use serde::export::TryFrom;
@@ -26,6 +27,7 @@ pub enum FromServerPacket {
         start_x: f32,
         start_y: f32,
     },
+    Configs(CommonConfigs),
     Pong {
         server_tick: u64,
     },
@@ -41,14 +43,13 @@ pub enum FromServerPacket {
         typ: CharType,
         outlook: CharOutlook,
         job_id: JobId,
-        max_hp: i32,
         state: CharSnapshot,
     },
 }
 
 impl Packet for FromServerPacket {
-    fn write_into(&self, buf: &mut SocketBuffer) {
-        bincode::serialize_into(buf, self);
+    fn write_into(&self, buf: &mut SocketBuffer) -> bincode::Result<()> {
+        bincode::serialize_into(buf, self)
     }
 
     fn read_from(buf: &mut SocketBuffer) -> Result<Self, PacketReadErr> {

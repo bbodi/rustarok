@@ -7,13 +7,14 @@ use crate::components::skills::skills::{
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::char::CharacterStateComponent;
-use crate::components::{HpModificationRequest, HpModificationType, SoundEffectComponent};
-use crate::configs::DevConfig;
+use crate::components::SoundEffectComponent;
 use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::attack::{HpModificationRequest, HpModificationType};
 use rustarok_common::common::{ElapsedTime, EngineTime};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::config::CommonConfigs;
 
 pub struct HealSkill;
 
@@ -44,11 +45,16 @@ impl SkillDef for HealSkill {
                 start_time: now,
             },
         );
-        sys_vars.hp_mod_requests.push(HpModificationRequest {
-            src_entity: params.caster_entity_id,
-            dst_entity: target_entity_id,
-            typ: HpModificationType::Heal(ecs_world.read_resource::<DevConfig>().skills.heal.heal),
-        });
+        // TODO: helper(&mut ecs_world).add_hp_mod()...
+        ecs_world
+            .write_resource::<Vec<HpModificationRequest>>()
+            .push(HpModificationRequest {
+                src_entity: params.caster_entity_id,
+                dst_entity: target_entity_id,
+                typ: HpModificationType::Heal(
+                    ecs_world.read_resource::<CommonConfigs>().skills.heal.heal,
+                ),
+            });
         return Some(Box::new(HealSkillManifest::new(target_entity_id, now)));
     }
 
@@ -84,7 +90,7 @@ impl SkillManifestation for HealSkillManifest {
 
     fn render(
         &self,
-        char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

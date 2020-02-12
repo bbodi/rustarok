@@ -459,7 +459,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         {
             let updater = &self.ecs_world.read_resource::<LazyUpdate>();
             let physics_world = &mut self.ecs_world.write_resource::<PhysicEngine>();
-            let dev_configs = &self.ecs_world.read_resource::<DevConfig>();
+            let dev_configs = &self.ecs_world.read_resource::<CommonConfigs>();
             CharacterEntityBuilder::new(char_id, "test_char")
                 .insert_sprite_render_descr_component(updater)
                 .physics(pos, physics_world, |builder| {
@@ -504,7 +504,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         NextActionApplierSystem::try_cast_skill(
             skill,
             self.ecs_world.read_resource::<SystemVariables>().time,
-            &self.ecs_world.read_resource::<DevConfig>(),
+            &self.ecs_world.read_resource::<CommonConfigs>(),
             char_state,
             &pos,
             &EntitiesBelowCursor::new(),
@@ -519,7 +519,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         NextActionApplierSystem::try_cast_skill(
             skill,
             self.ecs_world.read_resource::<SystemVariables>().time,
-            &self.ecs_world.read_resource::<DevConfig>(),
+            &self.ecs_world.read_resource::<CommonConfigs>(),
             char_state,
             &Vector2::zeros(),
             &EntitiesBelowCursor::new(),

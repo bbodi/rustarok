@@ -9,11 +9,12 @@ use crate::components::status::status::{
     StatusEnumDiscriminants,
 };
 use crate::components::StrEffectComponent;
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::SystemVariables;
 use rustarok_common::common::EngineTime;
+use rustarok_common::components::char::StaticCharDataComponent;
+use rustarok_common::config::CommonConfigs;
 
 pub struct MountingSkill;
 
@@ -58,9 +59,14 @@ impl SkillDef for MountingSkill {
                     ),
                 })
             } else {
+                let static_char_data_storage = ecs_world.read_storage::<StaticCharDataComponent>();
+                let target_char_static = static_char_data_storage
+                    .get(params.caster_entity_id.into())
+                    .unwrap();
+
                 let mounted_speedup = AttackSystem::calc_mounted_speedup(
-                    target_char,
-                    &ecs_world.read_resource::<DevConfig>(),
+                    target_char_static,
+                    &ecs_world.read_resource::<CommonConfigs>(),
                 );
                 sys_vars
                     .apply_statuses

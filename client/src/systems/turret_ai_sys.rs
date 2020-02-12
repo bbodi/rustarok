@@ -3,14 +3,14 @@ use specs::prelude::*;
 use crate::components::char::{
     CharacterStateComponent, TurretComponent, TurretControllerComponent,
 };
-use crate::configs::DevConfig;
 use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::v2_to_p2;
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, ControllerEntityId, EntityTarget,
+    AuthorizedCharStateComponent, ControllerEntityId, EntityTarget, StaticCharDataComponent,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
+use rustarok_common::config::CommonConfigs;
 
 pub struct TurretAiSystem;
 
@@ -21,11 +21,12 @@ impl<'a> System<'a> for TurretAiSystem {
         Entities<'a>,
         WriteStorage<'a, ControllerComponent>,
         ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, TurretControllerComponent>,
         ReadStorage<'a, TurretComponent>,
         WriteExpect<'a, SystemFrameDurations>,
-        ReadExpect<'a, DevConfig>,
+        ReadExpect<'a, CommonConfigs>,
     );
 
     fn run(
@@ -34,6 +35,7 @@ impl<'a> System<'a> for TurretAiSystem {
             entities,
             mut controller_storage,
             char_state_storage,
+            static_char_data_storage,
             auth_char_state_storage,
             turret_controller_storage,
             turret_storage,
@@ -110,15 +112,18 @@ impl<'a> System<'a> for TurretAiSystem {
                     None => true,
                 };
 
-                let char_state2 = char_state_storage.get(controlled_entity_id.into()).unwrap();
+                let team = static_char_data_storage
+                    .get(controlled_entity_id.into())
+                    .unwrap()
+                    .team;
                 controller.intention = if no_target_or_dead_or_out_of_range {
                     let maybe_enemy = MinionAiSystem::get_closest_enemy_in_area(
                         &entities,
-                        &char_state_storage,
+                        &static_char_data_storage,
                         &auth_char_state_storage,
                         &char_state.pos(),
                         radius,
-                        char_state2.team,
+                        team,
                         controlled_entity_id,
                     );
                     match maybe_enemy {

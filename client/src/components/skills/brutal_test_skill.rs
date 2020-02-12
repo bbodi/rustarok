@@ -7,17 +7,16 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
 };
-use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
-};
-use crate::configs::DevConfig;
+use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
+use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use rustarok_common::common::{rotate_vec2, v2};
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::config::CommonConfigs;
 
 pub struct BrutalTestSkill;
 
@@ -46,7 +45,7 @@ impl SkillDef for BrutalTestSkill {
             &params.skill_pos.unwrap(),
             angle_in_rad,
             ecs_world
-                .read_resource::<DevConfig>()
+                .read_resource::<CommonConfigs>()
                 .skills
                 .brutal_test_skill
                 .damage,
@@ -66,7 +65,7 @@ impl SkillDef for BrutalTestSkill {
         skill_pos: &Vec2,
         char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        configs: &DevConfig,
+        configs: &CommonConfigs,
     ) {
         Skills::render_casting_box(
             is_castable,
@@ -151,8 +150,9 @@ impl SkillManifestation for BrutalSkillManifest {
             }
             self.next_damage_at = params.time().now().add_seconds(0.5);
             params.add_area_hp_mod_request(AreaAttackComponent {
-                area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
-                area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
+                // TODO2
+                //                area_shape: Box::new(ncollide2d::shape::Cuboid::new(self.half_extents)),
+                //                area_isom: Isometry2::new(self.pos, self.rot_angle_in_rad),
                 source_entity_id: self.caster_entity_id,
                 typ: HpModificationType::SpellDamage(600, DamageDisplayType::Combo(10)),
                 except: None,
@@ -162,7 +162,7 @@ impl SkillManifestation for BrutalSkillManifest {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

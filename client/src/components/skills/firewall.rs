@@ -10,18 +10,15 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
 };
-use crate::components::{
-    ApplyForceComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
-    StrEffectComponent,
-};
-use crate::configs::DevConfig;
+use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{rotate_vec2, v2, EngineTime, Vec2, Vec2i};
-use rustarok_common::components::char::{CharEntityId, Team};
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent, Team};
+use rustarok_common::config::CommonConfigs;
 
 pub struct FireWallSkill;
 
@@ -38,7 +35,7 @@ impl SkillDef for FireWallSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
-            .read_storage::<CharacterStateComponent>()
+            .read_storage::<StaticCharDataComponent>()
             .get(params.caster_entity_id.into())
         {
             let angle_in_rad = params.char_to_skill_dir.angle(&Vector2::y());
@@ -50,13 +47,13 @@ impl SkillDef for FireWallSkill {
             let time = ecs_world.read_resource::<EngineTime>();
             let entities = &ecs_world.entities();
             let mut updater = ecs_world.write_resource::<LazyUpdate>();
-            let configs = ecs_world.read_resource::<DevConfig>();
+            let configs = &ecs_world.read_resource::<CommonConfigs>().skills.firewall;
             Some(Box::new(PushBackWallSkill::new(
                 params.caster_entity_id,
                 caster.team,
-                configs.skills.firewall.damage,
-                configs.skills.firewall.pushback_force,
-                configs.skills.firewall.force_duration_seconds,
+                configs.damage,
+                configs.pushback_force,
+                configs.force_duration_seconds,
                 &mut ecs_world.write_resource::<PhysicEngine>(),
                 &params.skill_pos.unwrap(),
                 angle_in_rad,
@@ -64,8 +61,8 @@ impl SkillDef for FireWallSkill {
                 time.simulation_frame,
                 entities,
                 &mut updater,
-                configs.skills.firewall.duration_seconds,
-                configs.skills.firewall.width,
+                configs.duration_seconds,
+                configs.width,
             )))
         } else {
             None
@@ -82,7 +79,7 @@ impl SkillDef for FireWallSkill {
         skill_pos: &Vec2,
         char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        configs: &DevConfig,
+        configs: &CommonConfigs,
     ) {
         Skills::render_casting_box(
             is_castable,
@@ -248,7 +245,7 @@ impl SkillManifestation for PushBackWallSkill {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         _now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,

@@ -1,25 +1,22 @@
+
+username = "Sharp"
+
 load_models = true
 load_sprites = true
-
-map_name = "prontera"
 
 resolution_w = 1024
 resolution_h = 768
 
-# right gate: 250.0, -200.0
-start_pos_x = 238
-start_pos_y = -65
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
 log_level = "DEBUG"
 
 
 grf_paths = [
-  "/media/sharp/9C16370C1636E744/Games/TalonRO/rdata.grf",
-  "/media/sharp/9C16370C1636E744/Games/TalonRO/sdata.grf",
-  "/media/sharp/9C16370C1636E744/Games/TalonRO/tdata.grf",
+  "/media/sharp/ext4_hdd/Games/TalonRO/rdata.grf",
+  "/media/sharp/ext4_hdd/Games/TalonRO/sdata.grf",
+  "/media/sharp/ext4_hdd/Games/TalonRO/tdata.grf",
 ]
 
-server_port = 6969
 server_addr = "127.0.0.1:6969"
 
 # aka quick cast, Normal, OnKeyRelease, OnKeyPress
@@ -30,4 +27,4 @@ show_last_acknowledged_pos = true
 lerping_ticks = 3
 lerping_enabled = false
 
-max_fps = 60
+max_fps = 30

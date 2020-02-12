@@ -1,6 +1,8 @@
+use crate::char_attr::CharAttributeModifier;
 use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use serde::Deserialize;
 use serde::Serialize;
+
 use std::time::{Duration, Instant};
 
 pub type Mat3 = Matrix3<f32>;
@@ -97,7 +99,7 @@ impl EngineTime {
         self.time.0 += dt.as_millis() as f32 / 1000.0;
 
         if self.run_simulation_in_this_frame {
-            log::debug!(
+            log::trace!(
                 "simulation {} -> {}",
                 self.simulation_frame,
                 self.simulation_frame + 1
@@ -272,5 +274,130 @@ impl ElapsedTime {
 
     pub fn as_f32(&self) -> f32 {
         self.0
+    }
+}
+
+// able to represent numbers in 0.1% discrete steps
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(from = "i32")]
+pub struct Percentage {
+    value: i32,
+}
+
+impl From<i32> for Percentage {
+    fn from(value: i32) -> Self {
+        percentage(value)
+    }
+}
+
+pub const fn percentage(value: i32) -> Percentage {
+    Percentage {
+        value: value * Percentage::PERCENTAGE_FACTOR,
+    }
+}
+
+impl Percentage {
+    const PERCENTAGE_FACTOR: i32 = 1000;
+
+    pub fn is_not_zero(&self) -> bool {
+        self.value != 0
+    }
+
+    pub fn as_i16(&self) -> i16 {
+        (self.value / Percentage::PERCENTAGE_FACTOR) as i16
+    }
+
+    pub fn limit(&mut self, min: Percentage, max: Percentage) {
+        self.value = self.value.min(max.value).max(min.value);
+    }
+
+    pub fn apply(&mut self, modifier: &CharAttributeModifier) {
+        match modifier {
+            CharAttributeModifier::AddPercentage(p) => {
+                self.value += p.value;
+            }
+            CharAttributeModifier::AddValue(_v) => panic!(
+                "{:?} += {:?}, you cannot add value to a percentage",
+                self, modifier
+            ),
+            CharAttributeModifier::IncreaseByPercentage(p) => {
+                self.value = self.increase_by(*p).value;
+            }
+        }
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        (self.value as f32 / Percentage::PERCENTAGE_FACTOR as f32) / 100.0
+    }
+
+    pub fn increase_by(&self, p: Percentage) -> Percentage {
+        let change = self.value / 100 * p.value;
+        Percentage {
+            value: self.value + change / Percentage::PERCENTAGE_FACTOR,
+        }
+    }
+
+    pub fn add_me_to(&self, num: i32) -> i32 {
+        let f = Percentage::PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return num + (change as i32);
+    }
+
+    pub fn of(&self, num: i32) -> i32 {
+        let f = Percentage::PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return change as i32;
+    }
+
+    pub fn subtract_me_from(&self, num: i32) -> i32 {
+        let f = Percentage::PERCENTAGE_FACTOR as i64;
+        let change = (num as i64) * f / 100 * (self.value as i64) / f / f;
+        return num - (change as i32);
+    }
+
+    #[allow(dead_code)]
+    pub fn div(&self, other: i32) -> Percentage {
+        Percentage {
+            value: self.value / other,
+        }
+    }
+
+    pub fn subtract(&self, other: Percentage) -> Percentage {
+        Percentage {
+            value: self.value - other.value,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_percentages() {
+        assert_eq!(percentage(70).increase_by(percentage(10)).as_i16(), 77);
+        assert_eq!(percentage(70).increase_by(percentage(0)).as_i16(), 70);
+        assert_eq!(percentage(70).increase_by(percentage(-10)).as_i16(), 63);
+        assert_eq!(percentage(100).increase_by(percentage(200)).as_i16(), 300);
+        assert_eq!(percentage(10).add_me_to(200), 220);
+        assert_eq!(percentage(70).add_me_to(600), 1020);
+        assert_eq!(percentage(70).div(10).add_me_to(600), 642);
+        assert_eq!(percentage(-10).add_me_to(200), 180);
+        assert_eq!(percentage(50).add_me_to(76), 114);
+        assert_eq!(percentage(50).add_me_to(10_000), 15_000);
+        assert_eq!(percentage(10).of(200), 20);
+        assert_eq!(percentage(70).of(600), 420);
+        assert_eq!(percentage(70).div(10).of(600), 42);
+        assert_eq!(percentage(50).of(76), 38);
+        assert_eq!(percentage(50).of(10_000), 5_000);
+        assert_eq!(percentage(10).subtract_me_from(200), 180);
+        assert_eq!(percentage(40).subtract_me_from(10_000), 6_000);
+        assert_eq!(percentage(70).subtract_me_from(600), 180);
+        assert_eq!(percentage(50).subtract_me_from(76), 38);
+        assert_eq!(percentage(100).as_f32(), 1.0);
+        assert_eq!(percentage(50).as_f32(), 0.5);
+        assert_eq!(percentage(5).as_f32(), 0.05);
+        assert_eq!(percentage(5).div(10).as_f32(), 0.005);
+        assert_eq!(percentage(-5).div(10).as_f32(), -0.005);
     }
 }

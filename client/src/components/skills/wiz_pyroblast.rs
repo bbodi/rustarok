@@ -10,11 +10,6 @@ use crate::components::skills::skills::{
     SkillManifestationUpdateParam, SkillTargetType,
 };
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
-use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationRequest, HpModificationType,
-    StrEffectComponent,
-};
-use crate::configs::{DevConfig, SkillConfigPyroBlastInner};
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::{render_action, RenderDesktopClientSystem, COLOR_WHITE};
@@ -22,7 +17,10 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{v2, EngineTime, Vec2};
-use rustarok_common::components::char::{AuthorizedCharStateComponent, CharDir, CharEntityId};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharDir, CharEntityId, StaticCharDataComponent,
+};
+use rustarok_common::config::{CommonConfigs, SkillConfigPyroBlastInner};
 
 pub struct WizPyroBlastSkill;
 
@@ -40,7 +38,7 @@ impl SkillDef for WizPyroBlastSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let configs = ecs_world
-            .read_resource::<DevConfig>()
+            .read_resource::<CommonConfigs>()
             .skills
             .wiz_pyroblast
             .inner
@@ -76,7 +74,7 @@ impl SkillDef for WizPyroBlastSkill {
         casting_state: &CastingSkillData,
         assets: &AssetResources,
         time: &EngineTime,
-        dev_configs: &DevConfig,
+        dev_configs: &CommonConfigs,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<AuthorizedCharStateComponent>,
     ) {
@@ -219,7 +217,7 @@ impl SkillManifestation for PyroBlastManifest {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

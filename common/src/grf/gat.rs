@@ -1,15 +1,9 @@
 use std::fs::File;
 
 use crate::grf::binary_reader::BinaryReader;
+use crate::map::CellType;
 use byteorder::WriteBytesExt;
 use byteorder::{LittleEndian, ReadBytesExt};
-
-pub enum CellType {
-    None = 1 << 0,
-    Walkable = 1 << 1,
-    Water = 1 << 2,
-    Snipable = 1 << 3,
-}
 
 #[derive(Debug, Clone)]
 pub struct GatCell {

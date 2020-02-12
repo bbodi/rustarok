@@ -6,14 +6,14 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType, Skills,
 };
-use crate::components::{AreaAttackComponent, HpModificationType};
-use crate::configs::DevConfig;
 use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
+use rustarok_common::attack::{AreaAttackComponent, HpModificationType};
 use rustarok_common::common::{v2, EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::config::CommonConfigs;
 use specs::ReadStorage;
 
 pub struct SanctuarySkill;
@@ -30,7 +30,7 @@ impl SkillDef for SanctuarySkill {
         params: &FinishCast,
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.sanctuary;
+        let configs = &ecs_world.read_resource::<CommonConfigs>().skills.sanctuary;
         Some(Box::new(SanctuarySkillManifest::new(
             params.caster_entity_id,
             &params.skill_pos.unwrap(),
@@ -51,7 +51,7 @@ impl SkillDef for SanctuarySkill {
         skill_pos: &Vec2,
         _char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        _configs: &DevConfig,
+        _configs: &CommonConfigs,
     ) {
         Skills::render_casting_box(
             is_castable,
@@ -104,8 +104,9 @@ impl SkillManifestation for SanctuarySkillManifest {
             }
             self.next_heal_at = params.time().now().add_seconds(self.heal_freq);
             params.add_area_hp_mod_request(AreaAttackComponent {
-                area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2(2.5, 2.5))),
-                area_isom: Isometry2::new(self.pos, 0.0),
+                // TODO2
+                //                area_shape: Box::new(ncollide2d::shape::Cuboid::new(v2(2.5, 2.5))),
+                //                area_isom: Isometry2::new(self.pos, 0.0),
                 source_entity_id: self.caster_entity_id,
                 typ: HpModificationType::Heal(self.heal),
                 except: None,
@@ -115,7 +116,7 @@ impl SkillManifestation for SanctuarySkillManifest {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

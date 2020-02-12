@@ -1,14 +1,14 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
-use crate::components::{HpModificationRequest, HpModificationType};
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::AssetResources;
 use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
+use rustarok_common::attack::{HpModificationRequest, HpModificationType};
 use rustarok_common::common::{v2, Vec2, Vec2u};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
 use specs::ReadStorage;
 
 pub struct HealApplierArea {
@@ -81,7 +81,7 @@ impl SkillManifestation for HealApplierArea {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

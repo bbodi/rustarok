@@ -1,7 +1,6 @@
 use crate::common::{v2, EngineTime};
 use crate::components::char::{AuthorizedCharStateComponent, EntityTarget};
 use crate::components::controller::{ControllerComponent, PlayerIntention};
-use specs::prelude::*;
 
 pub struct ControllerIntentionToCharTarget;
 
@@ -15,11 +14,10 @@ impl ControllerIntentionToCharTarget {
 
             // the controlled character might have been removed due to death etc
             if let Some(auth_char) = auth_char {
-                // TODO2
+                // TODO2 statuses
                 //                if char_state.statuses.can_be_controlled() == false {
                 //                    continue;
                 //                }
-                dbg!(&controller.intention);
                 match controller.intention {
                     Some(PlayerIntention::MoveTo(pos)) => {
                         auth_char.target = Some(EntityTarget::Pos(pos))
@@ -54,7 +52,7 @@ impl ControllerIntentionToCharTarget {
     //    pub fn try_cast_skill(
     //        skill: Skills,
     //        now: ElapsedTime,
-    //        configs: &DevConfig,
+    //        configs: &CommonConfigs,
     //        char_state: &mut CharacterStateComponent,
     //        mouse_world_pos: &Vec2,
     //        entities_below_cursor: &EntitiesBelowCursor,

@@ -1,15 +1,14 @@
 use crate::components::char::ActionPlayMode;
-use crate::components::char::Percentage;
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
-use crate::components::{
-    HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
-};
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::AssetResources;
 use crate::ElapsedTime;
-use rustarok_common::common::Vec2;
+use rustarok_common::attack::{
+    HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
+};
+use rustarok_common::common::{Percentage, Vec2};
 use rustarok_common::components::char::CharEntityId;
 
 #[derive(Clone, Debug)]

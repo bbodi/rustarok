@@ -3,7 +3,8 @@ use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::{v2, v2_to_p2, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, ControllerEntityId, EntityTarget, Team,
+    AuthorizedCharStateComponent, CharEntityId, ControllerEntityId, EntityTarget,
+    StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
@@ -23,7 +24,7 @@ impl MinionAiSystem {
 
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<StaticCharDataComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         center: &Vec2,
         radius: f32,
@@ -59,7 +60,7 @@ impl<'a> System<'a> for MinionAiSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, ControllerComponent>,
-        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, MinionComponent>,
         WriteExpect<'a, SystemFrameDurations>,
@@ -91,7 +92,7 @@ impl<'a> System<'a> for MinionAiSystem {
                 // Hack
                 let mut current_target_id = None;
                 // hack end
-                let current_target_entity = match char_state.target {
+                let current_target_entity = match auth_char_state.target {
                     Some(EntityTarget::OtherEntity(target_id)) => {
                         current_target_id = Some(target_id);
                         auth_char_state_storage.get(target_id.into())

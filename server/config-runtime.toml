@@ -1,0 +1,270 @@
+
+[skills]
+    [skills.firewall]
+        pushback_force = 20.0
+        damage = 600
+        duration_seconds = 3.0
+        force_duration_seconds = 1.0
+        width = 3
+        [skills.firewall.attributes]
+            casting_time = 0.0
+            cast_delay = 3.0
+            casting_range = 10.0
+
+    [skills.wiz_pyroblast]
+        [skills.wiz_pyroblast.attributes]
+            casting_time = 0.5
+            cast_delay = 0.0
+            casting_range = 12
+        [skills.wiz_pyroblast.inner]
+            damage = 10000
+            secondary_damage = 5000
+            moving_speed = 9
+            ball_size = 2
+            splash_radius = 3.0
+
+    [skills.heal]
+        heal = 8000
+        [skills.heal.attributes]
+            casting_time = 0.0
+            cast_delay = 1.0
+            casting_range = 10
+
+    [skills.brutal_test_skill]
+        damage = 600
+        width = 10
+        height = 10
+        [skills.brutal_test_skill.attributes]
+            casting_time = 3.0
+            cast_delay = 3.0
+            casting_range = 20.0
+
+    [skills.lightning]
+        [skills.lightning.attributes]
+            casting_time = 0.0
+            cast_delay = 3.0
+            casting_range = 7.0
+
+    [skills.mounting]
+        casting_time = 1.0
+        cast_delay = 4.0
+        casting_range = 0
+
+    [skills.unmounting]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 0
+
+    [skills.poison]
+        damage = 50
+        duration_seconds = 10.0
+        [skills.poison.attributes]
+            casting_time = 0.0
+            cast_delay = 2.0
+            casting_range = 10.0
+
+    [skills.cure]
+        casting_time = 0.0
+        cast_delay = 2.0
+        casting_range = 10.0
+
+    [skills.firebomb]
+        damage = 200
+        [skills.firebomb.attributes]
+            casting_time = 0.0
+            cast_delay = 2.0
+            casting_range = 10
+
+    [skills.absorb_shield]
+        duration_seconds = 3.0
+        [skills.absorb_shield.attributes]
+            casting_time = 0.0
+            cast_delay = 2.0
+            casting_range = 10.0
+
+    [skills.assa_blade_dash]
+        duration_seconds = 1.0
+        first_damage = 100
+        second_damage = 200
+        [skills.assa_blade_dash.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 8
+            width = 3
+
+    [skills.assa_phase_prism]
+        duration_seconds = 1.0
+        swap_duration_unit_per_second = 0.08
+        damage = 100
+        [skills.assa_phase_prism.attributes]
+            casting_time = 0.0
+            cast_delay = 2.0
+            casting_range = 7.8
+            width = 1
+
+    [skills.falcon_carry]
+        carry_ally_duration = 2.0
+        carry_owner_duration = 4.0
+        [skills.falcon_carry.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 17.8
+            width = 1
+
+    [skills.falcon_attack]
+        damage = 200
+        duration_in_seconds = 0.4
+        slow = -30
+        slow_duration = 2.0
+        [skills.falcon_attack.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 10.5
+            width = 1.25
+
+    [skills.gaz_xplodium_charge]
+        [skills.gaz_xplodium_charge.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 9.5
+        [skills.gaz_xplodium_charge.inner]
+            missile_travel_duration_seconds = 1.0
+            detonation_duration = 2.5
+            stun_duration_seconds = 3.0
+            damage = 233
+            explosion_area = 3.0
+
+    [skills.gaz_turret]
+        [skills.gaz_turret.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 2.0
+        [skills.gaz_turret.turret]
+            # Percentages
+            movement_speed = 0
+            attack_range = 700
+            attack_speed = 100
+            armor = 0
+            healing =  0
+            hp_regen = 0
+            mana_regen = 0
+            # normal values
+            attack_damage = 62
+            max_hp = 593
+
+    [skills.gaz_barricade]
+        [skills.gaz_barricade.attributes]
+            casting_time = 0.0
+            cast_delay = 0.0
+            casting_range = 2.0
+        [skills.gaz_barricade.char_attrs]
+            # Percentages
+            movement_speed = 0
+            attack_range = 0
+            attack_speed = 0
+            armor = 0
+            healing =  0
+            hp_regen = 0
+            mana_regen = 0
+            # normal values
+            attack_damage = 0
+            max_hp = 5000
+
+    [skills.gaz_destroy_turret]
+        casting_time = 0.0
+        cast_delay = 0.0
+        casting_range = 7.0
+
+    [skills.sanctuary]
+        heal = 200
+        heal_freq_seconds = 1
+        duration = 5.0
+        [skills.sanctuary.attributes]
+            casting_time = 0.0
+            cast_delay = 1.0
+            casting_range = 17.8
+
+    [skills.exoskeleton]
+        armor = 40
+        attack_damage = 20
+        attack_range = 600
+        movement_speed = 30
+        attack_speed = 200
+        duration_seconds = 15.0
+        [skills.exoskeleton.attributes]
+            casting_time = 0.0
+            cast_delay = 1.0
+            casting_range = 0.0
+
+[stats]
+    [stats.minion]
+        [stats.minion.melee]
+            # Percentages
+            movement_speed = 100
+            attack_range = 100
+            attack_speed = 67
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            # normal values
+            attack_damage = 5
+            max_hp = 990
+
+        [stats.minion.ranged]
+            # Percentages
+            movement_speed = 100
+            attack_range = 500
+            attack_speed = 67
+            armor = 0
+            healing =  100
+            hp_regen = 100
+            mana_regen = 100
+            # normal values
+            attack_damage = 72
+            max_hp = 660
+
+    [stats.player]
+        [stats.player.crusader]
+            mounted_speedup = 30
+            [stats.player.crusader.attributes]
+                # Percentages
+                movement_speed = 100
+                attack_range = 125
+                attack_speed = 130
+                armor = 0
+                healing =  100
+                hp_regen = 100
+                mana_regen = 100
+                # normal values
+                attack_damage = 120
+                max_hp = 50_000
+
+        [stats.player.gunslinger]
+            mounted_speedup = 30
+            [stats.player.gunslinger.attributes]
+                # Percentages
+                movement_speed = 100
+                attack_range = 650
+                attack_speed = 133
+                armor = 0
+                healing =  100
+                hp_regen = 100
+                mana_regen = 100
+                # normal values
+                attack_damage = 120
+                max_hp = 50_000
+        [stats.player.hunter]
+            mounted_speedup = 30
+            [stats.player.hunter.attributes]
+                # Percentages
+                movement_speed = 100
+                attack_range = 650
+                attack_speed = 133
+                armor = 0
+                healing =  100
+                hp_regen = 100
+                mana_regen = 100
+                # normal values
+                attack_damage = 120
+                max_hp = 50_000

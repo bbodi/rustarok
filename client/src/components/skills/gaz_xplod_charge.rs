@@ -10,18 +10,19 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::status::{ApplyStatusInAreaComponent, StatusEnum};
 use crate::components::status::stun::StunStatus;
-use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
-};
-use crate::configs::{DevConfig, GazXplodiumChargeSkillConfigInner};
+use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use rustarok_common::common::{v2_to_v3, v3_to_v2, ElapsedTime, EngineTime};
 use rustarok_common::common::{v3, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId, StatusNature};
+use rustarok_common::components::char::{
+    CharDir, CharEntityId, StaticCharDataComponent, StatusNature,
+};
+use rustarok_common::config::{CommonConfigs, GazXplodiumChargeSkillConfigInner};
 use specs::ReadStorage;
 use vek::QuadraticBezier3;
 
@@ -46,7 +47,7 @@ impl SkillDef for GazXplodiumChargeSkill {
             &mut ecs_world.write_resource::<PhysicEngine>(),
             ecs_world.read_resource::<EngineTime>().now(),
             ecs_world
-                .read_resource::<DevConfig>()
+                .read_resource::<CommonConfigs>()
                 .skills
                 .gaz_xplodium_charge
                 .inner
@@ -112,7 +113,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                 .add_seconds(self.configs.detonation_duration);
             if end_time.has_already_passed(params.time().now()) {
                 if let Some(caster_team) = params
-                    .char_storage
+                    .static_char_data_storage
                     .get(self.caster_id.into())
                     .map(|caster| caster.team)
                 {
@@ -120,8 +121,9 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
                         Box::new(ncollide2d::shape::Ball::new(self.configs.explosion_area));
                     let area_isom = Isometry2::new(self.end_pos, 0.0);
                     params.add_area_hp_mod_request(AreaAttackComponent {
-                        area_shape: area_shape.clone(),
-                        area_isom: area_isom.clone(),
+                        // TODO2
+                        //                        area_shape: area_shape.clone(),
+                        //                        area_isom: area_isom.clone(),
                         source_entity_id: self.caster_id,
                         typ: HpModificationType::SpellDamage(
                             self.configs.damage,
@@ -157,7 +159,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

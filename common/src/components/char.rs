@@ -1,6 +1,10 @@
-use crate::common::{float_cmp, v2, Vec2};
+use crate::attack::{BasicAttackType, WeaponType};
+use crate::char_attr::CharAttributes;
+use crate::common::{float_cmp, v2, ElapsedTime, Vec2};
+use crate::components::controller::PlayerIntention;
 use crate::components::job_ids::JobSpriteId;
 use crate::components::snapshot::CharSnapshot;
+use crate::config::CommonConfigs;
 use crate::packets::SocketBuffer;
 use serde::{Deserialize, Serialize};
 use specs::prelude::*;
@@ -66,14 +70,14 @@ pub enum Sex {
 pub enum CharState {
     Idle,
     Walking(Vec2),
-    //    StandBy,
-    //    Attacking {
-    //        target: CharEntityId,
-    //        damage_occurs_at: ElapsedTime,
-    //        basic_attack: BasicAttackType,
-    //    },
-    //    ReceivingDamage,
-    //    Dead,
+    StandBy,
+    Attacking {
+        target: CharEntityId,
+        damage_occurs_at: ElapsedTime,
+        basic_attack: BasicAttackType,
+    },
+    ReceivingDamage,
+    Dead,
     //    CastingSkill(CastingSkillData),
 }
 
@@ -91,16 +95,14 @@ impl CharState {
 
     pub fn is_alive(&self) -> bool {
         match self {
-            // TODO2
-            //            CharState::Dead => false,
+            CharState::Dead => false,
             _ => true,
         }
     }
 
     pub fn is_dead(&self) -> bool {
         match self {
-            // TODO2
-            //            CharState::Dead => true,
+            CharState::Dead => true,
             _ => false,
         }
     }
@@ -109,6 +111,10 @@ impl CharState {
         match self {
             CharState::Idle => "Idle",
             CharState::Walking(..) => "Walking",
+            CharState::StandBy => "StandBy",
+            CharState::Attacking { .. } => "Attacking",
+            CharState::ReceivingDamage => "ReceivingDamage",
+            CharState::Dead => "Dead",
         }
     }
 }
@@ -160,7 +166,53 @@ pub enum JobId {
     Guard,
 }
 
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
+impl JobId {
+    pub fn get_basic_attack_type(&self) -> BasicAttackType {
+        match self {
+            JobId::GUNSLINGER => BasicAttackType::Ranged {
+                bullet_type: WeaponType::SilverBullet,
+            },
+            JobId::RangedMinion => BasicAttackType::Ranged {
+                bullet_type: WeaponType::Arrow,
+            },
+            JobId::RANGER => BasicAttackType::Ranged {
+                bullet_type: WeaponType::Arrow,
+            },
+            JobId::Turret => BasicAttackType::Ranged {
+                bullet_type: WeaponType::SilverBullet,
+            },
+            _ => BasicAttackType::MeleeSimple,
+        }
+    }
+
+    pub fn get_char_type(&self) -> CharType {
+        match self {
+            JobId::Guard => CharType::Guard,
+            JobId::TargetDummy => CharType::Player,
+            JobId::HealingDummy => CharType::Player,
+            JobId::MeleeMinion => CharType::Minion,
+            JobId::RangedMinion => CharType::Minion,
+            JobId::Turret => CharType::Minion,
+            JobId::CRUSADER
+            | JobId::SWORDMAN
+            | JobId::ARCHER
+            | JobId::RANGER
+            | JobId::ASSASSIN
+            | JobId::ROGUE
+            | JobId::KNIGHT
+            | JobId::WIZARD
+            | JobId::SAGE
+            | JobId::ALCHEMIST
+            | JobId::BLACKSMITH
+            | JobId::PRIEST
+            | JobId::MONK
+            | JobId::GUNSLINGER => CharType::Player,
+            JobId::Barricade => CharType::Minion,
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 #[allow(dead_code)]
 pub enum CharType {
     Player,
@@ -190,11 +242,38 @@ pub enum EntityTarget {
 }
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
+pub struct StaticCharDataComponent {
+    pub team: Team,
+    pub basic_attack_type: BasicAttackType,
+    pub typ: CharType,
+    pub outlook: CharOutlook,
+    pub job_id: JobId,
+}
+
+impl StaticCharDataComponent {
+    pub fn new(team: Team, outlook: CharOutlook, job_id: JobId) -> StaticCharDataComponent {
+        StaticCharDataComponent {
+            team,
+            basic_attack_type: job_id.get_basic_attack_type(),
+            typ: job_id.get_char_type(),
+            outlook,
+            job_id,
+        }
+    }
+}
+
+#[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct AuthorizedCharStateComponent {
     pos: Vec2,
     dir: CharDir,
     state: CharState,
     pub target: Option<EntityTarget>,
+    calculated_attribs: CharAttributes,
+    pub attack_delay_ends_at: ElapsedTime,
+    // TODO [SkillKey::Count]
+    pub skill_cast_allowed_at: [ElapsedTime; 6],
+    pub cannot_control_until: ElapsedTime,
+    pub hp: i32,
 }
 
 impl PartialEq for AuthorizedCharStateComponent {
@@ -223,18 +302,75 @@ impl Default for AuthorizedCharStateComponent {
             dir: CharDir::South,
             state: CharState::Idle,
             target: None,
+            calculated_attribs: Default::default(),
+            attack_delay_ends_at: ElapsedTime(0.0),
+            skill_cast_allowed_at: [ElapsedTime(0.0); 6],
+            cannot_control_until: ElapsedTime(0.0),
+            hp: 0,
         }
     }
 }
 
 impl AuthorizedCharStateComponent {
-    pub fn new(start_pos: Vec2) -> AuthorizedCharStateComponent {
+    pub fn new(start_pos: Vec2, base_attributes: CharAttributes) -> AuthorizedCharStateComponent {
         AuthorizedCharStateComponent {
             pos: start_pos,
             state: CharState::Idle,
             target: None,
             dir: CharDir::South,
+            hp: base_attributes.max_hp,
+            calculated_attribs: base_attributes,
+            attack_delay_ends_at: ElapsedTime(0.0),
+            skill_cast_allowed_at: [ElapsedTime(0.0); 6],
+            cannot_control_until: ElapsedTime(0.0),
         }
+    }
+
+    pub fn can_cast(&self, sys_time: ElapsedTime) -> bool {
+        let can_cast_by_state = match &self.state {
+            // TODO2
+            //        CharState::CastingSkill(_) => false,
+            CharState::Idle => true,
+            CharState::Walking(_pos) => true,
+            CharState::StandBy => true,
+            CharState::Attacking { .. } => false,
+            CharState::ReceivingDamage => false,
+            CharState::Dead => false,
+        };
+        can_cast_by_state && self.cannot_control_until.has_already_passed(sys_time)
+        // TODO2
+        //        && char_state.statuses.can_cast()
+    }
+
+    pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
+        let can_move_by_state = match &self.state {
+            // TODO2
+            //        CharState::CastingSkill(casting_info) => casting_info.can_move,
+            CharState::Idle => true,
+            CharState::Walking(_pos) => true,
+            CharState::StandBy => true,
+            CharState::Attacking { .. } => false,
+            CharState::ReceivingDamage => true,
+            CharState::Dead => false,
+        };
+        can_move_by_state && self.cannot_control_until.has_already_passed(sys_time)
+        // TODO2
+        //        && char_state.statuses.can_move()
+    }
+
+    pub fn recalc_attribs_based_on_statuses(&mut self, dev_configs: &CommonConfigs) {
+        // TODO2
+        //        let base_attributes = CharAttributes::get_base_attributes(self.job_id, dev_configs);
+        //        let modifier_collector = self.statuses.calc_attributes();
+        //        self.calculated_attribs = base_attributes.apply(modifier_collector);
+        //
+        //        self.attrib_bonuses = self
+        //            .calculated_attribs
+        //            .differences(&base_attributes, modifier_collector);
+    }
+
+    pub fn calculated_attribs(&self) -> &CharAttributes {
+        &self.calculated_attribs
     }
 
     pub fn overwrite_by(&mut self, other: &AuthorizedCharStateComponent) {
@@ -279,15 +415,17 @@ impl AuthorizedCharStateComponent {
 
     pub fn set_receiving_damage(&mut self) {
         match &self.state {
-            CharState::Idle | CharState::Walking(_) => {
-                // TODO2
-                //            | CharState::StandBy
-                //            | CharState::ReceivingDamage
-                //            | CharState::CastingSkill(_) => {
-                //                self.state = CharState::ReceivingDamage;
-            } //            CharState::Attacking { .. } | CharState::Dead => {
-              // denied
-              //            }
+            // TODO2
+            //            | CharState::CastingSkill(_)
+            CharState::Idle
+            | CharState::Walking(_)
+            | CharState::StandBy
+            | CharState::ReceivingDamage => {
+                self.state = CharState::ReceivingDamage;
+            }
+            CharState::Attacking { .. } | CharState::Dead => {
+                // denied
+            }
         };
     }
 }
@@ -428,6 +566,16 @@ impl Team {
         self.is_ally_to(other_team) as usize
     }
 
+    pub fn get_opponent_team(&self) -> Team {
+        match self {
+            Team::Left => Team::Right,
+            Team::Right => Team::Left,
+            Team::Neutral => Team::Right,
+            Team::EnemyForAll => Team::Right,
+            Team::AllyForAll => Team::Right,
+        }
+    }
+
     pub fn is_enemy_to(&self, other_team: Team) -> bool {
         match self {
             Team::Left => match other_team {
@@ -459,4 +607,20 @@ impl Team {
     pub fn can_support(&self, other: Team) -> bool {
         !self.is_enemy_to(other)
     }
+}
+
+pub fn create_common_player_entity(
+    world: &mut specs::World,
+    job_id: JobId,
+    pos: Vec2,
+    team: Team,
+    outlook: CharOutlook,
+) -> EntityBuilder {
+    let base_attributes =
+        CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
+            .clone();
+    return world
+        .create_entity()
+        .with(AuthorizedCharStateComponent::new(pos, base_attributes))
+        .with(StaticCharDataComponent::new(team, outlook, job_id));
 }

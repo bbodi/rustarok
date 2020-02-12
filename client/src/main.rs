@@ -10,29 +10,46 @@
 //    clippy::all
 //)]
 
-use crossbeam_channel;
-use log;
-use notify;
-use sdl2;
-use specs;
 #[macro_use]
 extern crate specs_derive;
-use strum;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use std::io::{BufRead, Read};
+use std::net::TcpStream;
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use log;
 //use imgui::ImVec2;
 use log::LevelFilter;
 use rand::Rng;
+use sdl2;
+use specs;
 use specs::prelude::*;
 use specs::Builder;
-use specs::Join;
+use strum;
+
+use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
+use rustarok_common::common::{measure_time, v2, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::components::char::{
+    create_common_player_entity, AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook,
+    CollisionGroup, ControllerEntityId, JobId, ServerEntityId, Sex, Team,
+};
+use rustarok_common::components::job_ids::JobSpriteId;
+use rustarok_common::config::CommonConfigs;
+use rustarok_common::console::CommandArguments;
+use rustarok_common::packets::from_server::FromServerPacket;
+use rustarok_common::packets::to_server::ToServerPacket;
+use rustarok_common::packets::{NetworkTrafficEvent, PacketHandlerThread, SocketBuffer, SocketId};
+use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
 
 use crate::audio::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::components::char::{
-    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, HasServerIdComponent,
+    create_client_minion_entity, create_client_player_entity, CharActionIndex,
+    CharacterEntityBuilder, CharacterStateComponent, HasServerIdComponent,
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
@@ -40,12 +57,11 @@ use crate::components::controller::{
 };
 use crate::components::skills::skills::{SkillManifestationComponent, Skills};
 use crate::components::MinionComponent;
-use crate::configs::{AppConfig, DevConfig};
+use crate::configs::AppConfig;
 use crate::grf::asset_loader::GrfEntryLoader;
 use crate::grf::database::AssetDatabase;
 use crate::grf::SpriteResource;
 use crate::my_gl::{Gl, MyGlEnum};
-use crate::notify::Watcher;
 use crate::render::falcon_render_sys::FalconRenderSys;
 use crate::render::opengl_render_sys::OpenGlRenderSystem;
 use crate::render::render_command::RenderCommandCollector;
@@ -57,9 +73,7 @@ use crate::runtime_assets::graphic::{load_skill_icons, load_status_icons, load_t
 use crate::runtime_assets::map::{load_map, MapRenderData, PhysicEngine};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
-use crate::systems::console_system::{
-    CommandArguments, CommandDefinition, ConsoleComponent, ConsoleSystem,
-};
+use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
 use crate::systems::frame_cleanup_system::FrameCleanupSystem;
 use crate::systems::imgui_sys::{draw_imgui, ImguiData, ImguiSys};
@@ -80,21 +94,6 @@ use crate::systems::{
     CollisionsFromPrevFrame, RenderMatrices, Sprites, SystemFrameDurations, SystemVariables,
 };
 use crate::video::Video;
-use rustarok_common::common::{measure_time, v2, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CollisionGroup,
-    ControllerEntityId, JobId, ServerEntityId, Sex, Team,
-};
-use rustarok_common::components::job_ids::JobSpriteId;
-use rustarok_common::packets::from_server::FromServerPacket;
-use rustarok_common::packets::to_server::ToServerPacket;
-use rustarok_common::packets::{PacketHandlerThread, Shit, SocketBuffer, SocketId};
-use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
-use std::fs::File;
-use std::io::BufReader;
-use std::io::{BufRead, Read};
-use std::net::TcpStream;
-use std::ops::{Add, Deref, DerefMut};
 
 #[macro_use]
 mod audio;
@@ -158,14 +157,6 @@ impl DelayedPacketReceiver {
 fn main() {
     log::info!("Loading config file config.toml");
     let config = AppConfig::new().expect("Could not load config file ('config.toml')");
-    let (mut runtime_conf_watcher_rx, mut watcher) = {
-        let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
-        let mut watcher = notify::watcher(tx.clone(), Duration::from_secs(2)).unwrap();
-        watcher
-            .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
-            .unwrap();
-        (runtime_conf_watcher_rx, watcher)
-    };
 
     simple_logging::log_to_stderr(
         LevelFilter::from_str(&config.log_level)
@@ -195,19 +186,27 @@ fn main() {
     );
 
     log::info!("waiting for welcome response...");
-    let (map_name, start_x, start_y) = {
+    let (map_name, start_x, start_y, common_configs) = {
+        let mut tmp_vec = Vec::with_capacity(64);
         'outer1: loop {
-            let mut tmp_vec = Vec::with_capacity(64);
             packet_handler_thread.receive_into(&mut tmp_vec);
-            for (socket_id, packet) in tmp_vec {
+            let mut tmp_map_name = String::new();
+            let mut tmp_start_x = 0.0;
+            let mut tmp_start_y = 0.0;
+            for (socket_id, packet) in tmp_vec.drain(..) {
                 match packet {
-                    Shit::Packet(FromServerPacket::Init {
+                    NetworkTrafficEvent::Packet(FromServerPacket::Init {
                         map_name,
                         start_x,
                         start_y,
                     }) => {
+                        tmp_map_name = map_name;
+                        tmp_start_x = start_x;
+                        tmp_start_y = start_y;
                         log::info!("answer received!!!");
-                        break 'outer1 (map_name, start_x, start_y);
+                    }
+                    NetworkTrafficEvent::Packet(FromServerPacket::Configs(configs)) => {
+                        break 'outer1 (tmp_map_name, tmp_start_x, tmp_start_y, configs);
                     }
                     _ => {}
                 }
@@ -311,7 +310,13 @@ fn main() {
     //    let mut ecs_server_dispatcher = register_server_systems();
     log::info!("<<< register systems");
     log::info!(">>> add resources");
+    // TODO: remove these
+    ecs_world.add_resource(Vec::<HpModificationRequest>::with_capacity(128));
+    ecs_world.add_resource(Vec::<AreaAttackComponent>::with_capacity(128));
+    ecs_world.add_resource(Vec::<ApplyForceComponent>::with_capacity(128));
+
     ecs_world.add_resource(sys_vars);
+    ecs_world.add_resource(common_configs);
     ecs_world.add_resource(ClientCommandId::new());
     ecs_world.add_resource(ImguiData::new());
     if config.load_sprites {
@@ -319,7 +324,6 @@ fn main() {
     }
     ecs_world.add_resource(gl.clone());
     ecs_world.add_resource(map_render_data);
-    ecs_world.add_resource(DevConfig::new().unwrap());
     ecs_world.add_resource(RenderCommandCollector::new());
     ecs_world.add_resource(command_buffer);
     ecs_world.add_resource(EngineTime::new(SIMULATION_FREQ as usize));
@@ -418,7 +422,9 @@ fn main() {
                 packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
                 for (_socket_id, packet) in tmp_vec.drain(..) {
                     match packet {
-                        Shit::Packet(FromServerPacket::Pong { server_tick: tick }) => {
+                        NetworkTrafficEvent::Packet(FromServerPacket::Pong {
+                            server_tick: tick,
+                        }) => {
                             let ping = sent_at.elapsed();
                             log::debug!("Pong arrived: ping: {:?}", ping);
                             if i == 0 {
@@ -442,42 +448,27 @@ fn main() {
             packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
             for (_socket_id, packet) in tmp_vec.drain(..) {
                 match packet {
-                    Shit::Packet(FromServerPacket::Ack {
-                        cid: _cid,
-                        entries,
-                        sent_at: _sent_at,
+                    NetworkTrafficEvent::Packet(FromServerPacket::NewEntity {
+                        id,
+                        name,
+                        team,
+                        typ,
+                        outlook,
+                        job_id,
+                        state,
                     }) => {
-                        let entry = &entries[0];
                         log::info!(">>> create player");
                         {
-                            let desktop_client_char =
-                                CharEntityId::from(ecs_world.create_entity().build());
-                            {
-                                let updater = &ecs_world.read_resource::<LazyUpdate>();
-                                let physics_world = &mut ecs_world.write_resource::<PhysicEngine>();
-                                CharacterEntityBuilder::new(desktop_client_char, "sharp")
-                                    .insert_sprite_render_descr_component(updater)
-                                    .server_authorized(updater, entry.id)
-                                    .physics(v2(start_x, start_y), physics_world, |builder| {
-                                        builder
-                                            .collision_group(Team::Left.get_collision_group())
-                                            .circle(1.0)
-                                    })
-                                    .char_state(
-                                        updater,
-                                        &ecs_world.read_resource::<DevConfig>(),
-                                        v2(start_x, start_y),
-                                        |ch| {
-                                            ch.outlook_player(
-                                                Sex::Male,
-                                                JobSpriteId::from_job_id(JobId::CRUSADER),
-                                                0,
-                                            )
-                                            .job_id(JobId::CRUSADER)
-                                            .team(Team::Left)
-                                        },
-                                    );
-                            }
+                            let username = ecs_world.read_resource::<AppConfig>().username.clone();
+                            let desktop_client_char = create_client_player_entity(
+                                &mut ecs_world,
+                                username,
+                                job_id,
+                                state.state.pos(),
+                                team,
+                                outlook,
+                                id,
+                            );
 
                             ecs_world
                                 .write_resource::<LocalPlayerController>()
@@ -485,11 +476,13 @@ fn main() {
                                 .controlled_entity = Some(desktop_client_char);
 
                             // add falcon to it
-                            let start_x = start_x;
-                            let start_y = start_y;
                             let _falcon_id = ecs_world
                                 .create_entity()
-                                .with(FalconComponent::new(desktop_client_char, start_x, start_y))
+                                .with(FalconComponent::new(
+                                    desktop_client_char,
+                                    state.state.pos().x,
+                                    state.state.pos().y,
+                                ))
                                 .with(SpriteRenderDescriptorComponent {
                                     action_index: CharActionIndex::Idle as usize,
                                     fps_multiplier: 1.0,
@@ -504,7 +497,7 @@ fn main() {
                         }
                         log::info!("<<< create player");
                         let mut snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
-                        snapshots.init(entry);
+                        snapshots.init(id, &state);
                         break 'outer3;
                     }
                     _ => {}
@@ -528,7 +521,7 @@ fn main() {
     let mut avg_ping: usize = 0;
 
     'running: loop {
-        log::debug!(
+        log::trace!(
             "START FRAME: simulation: ({}, {}), tail: {}",
             &ecs_world.read_resource::<EngineTime>().can_simulation_run(),
             &ecs_world.read_resource::<EngineTime>().simulation_frame,
@@ -550,23 +543,27 @@ fn main() {
                 let mut ack_result = ServerAckResult::Ok;
                 for packet in packet_receiver.drain(..) {
                     match packet {
-                        Shit::IncomingTraffic(received_bytes) => {
-                            incoming_bytes_per_second += received_bytes;
+                        NetworkTrafficEvent::IncomingTraffic { received_data_len } => {
+                            incoming_bytes_per_second += received_data_len;
                         }
-                        Shit::OutgoingTraffic(sent_bytes) => {
-                            outgoing_bytes_per_second += sent_bytes;
+                        NetworkTrafficEvent::OutgoingTraffic { sent_data_len } => {
+                            outgoing_bytes_per_second += sent_data_len;
                         }
-                        Shit::LocalError(e) => { // TODO
+                        NetworkTrafficEvent::LocalError(e) => { // TODO
                         }
-                        Shit::Disconnected => { // TODO
+                        NetworkTrafficEvent::Disconnected => { // TODO
                         }
-                        Shit::Packet(p) => match p {
+                        NetworkTrafficEvent::Packet(p) => match p {
                             FromServerPacket::Init { .. } => panic!(),
                             FromServerPacket::Pong { .. } => {
                                 let ping = ping_sent.elapsed().as_millis() as usize;
                                 avg_ping = (avg_ping + ping) / 2;
                                 packet_handler_thread.send(server_socket, ToServerPacket::Ping);
                                 ping_sent = Instant::now();
+                            }
+                            FromServerPacket::Configs(configs) => {
+                                log::info!("Configs has been updated by the server");
+                                *ecs_world.write_resource::<CommonConfigs>() = configs;
                             }
                             FromServerPacket::Ack {
                                 cid,
@@ -597,33 +594,20 @@ fn main() {
                                 typ,
                                 outlook,
                                 job_id,
-                                max_hp,
                                 state,
                             } => {
                                 log::info!(">>> create player");
                                 {
-                                    let char_entity_id =
-                                        CharEntityId::from(ecs_world.create_entity().build());
-                                    let updater = &ecs_world.read_resource::<LazyUpdate>();
-                                    let dev_configs = &ecs_world.read_resource::<DevConfig>();
-                                    CharacterEntityBuilder::new(char_entity_id, &name)
-                                        .insert_sprite_render_descr_component(updater)
-                                        .server_authorized(updater, id)
-                                        .physics(
-                                            state.state.pos(),
-                                            &mut ecs_world.write_resource::<PhysicEngine>(),
-                                            |builder| {
-                                                builder
-                                                    .collision_group(team.get_collision_group())
-                                                    .circle(1.0)
-                                            },
-                                        )
-                                        .char_state(
-                                            updater,
-                                            dev_configs,
-                                            state.state.pos(),
-                                            |ch| ch.outlook(outlook).job_id(job_id).team(team),
-                                        );
+                                    let char_entity_id = create_client_player_entity(
+                                        &mut ecs_world,
+                                        name,
+                                        job_id,
+                                        state.state.pos(),
+                                        team,
+                                        outlook,
+                                        id,
+                                    );
+
                                     server_to_local_ids.insert(id, char_entity_id);
                                 }
                                 ecs_world.maintain();
@@ -666,7 +650,7 @@ fn main() {
                 ServerAckResult::Rollback {
                     repredict_this_many_frames,
                 } => {
-                    log::debug!(
+                    log::trace!(
                         "Rollback {} frames from {}",
                         repredict_this_many_frames,
                         simulation_frame - repredict_this_many_frames - 1,
@@ -691,10 +675,10 @@ fn main() {
                                 .controller
                                 .intention = intention;
                         }
-                        log::debug!("Rollback frame start");
+                        log::trace!("Rollback frame start");
                         //////////// DISPATCH ////////////////////////
                         prediction_dispatcher.dispatch(&mut ecs_world.res);
-                        log::debug!("Rollback frame end");
+                        log::trace!("Rollback frame end");
                         //////////////////////////////////////////////
                         ecs_world.write_resource::<SnapshotStorage>().tick();
                         ecs_world
@@ -702,7 +686,7 @@ fn main() {
                             .update_timers_for_prediction();
                     }
                     {
-                        log::debug!("after");
+                        log::trace!("after");
                         let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
                         snapshots.print_snapshots_for(
                             0,
@@ -818,17 +802,13 @@ fn main() {
         fps_counter += 1;
 
         let now = ecs_world.read_resource::<EngineTime>().now();
-        if next_minion_spawn.has_already_passed(now)
-            && ecs_world.read_resource::<DevConfig>().minions_enabled
-        {
-            next_minion_spawn = now.add_seconds(2.0);
-            spawn_minions(&mut ecs_world)
-        }
-
-        // runtime configs
-        let ret = reload_configs_if_changed(runtime_conf_watcher_rx, watcher, &mut ecs_world);
-        runtime_conf_watcher_rx = ret.0;
-        watcher = ret.1;
+        // TODO2 minions
+        //        if next_minion_spawn.has_already_passed(now)
+        //            && ecs_world.read_resource::<CommonConfigs>().minions_enabled
+        //        {
+        //            next_minion_spawn = now.add_seconds(2.0);
+        //            spawn_minions(&mut ecs_world)
+        //        }
 
         let mut timer = ecs_world.write_resource::<EngineTime>();
         if timer.can_simulation_run() {
@@ -840,7 +820,11 @@ fn main() {
         if max_allowed_render_frame_duration > frame_duration {
             std::thread::sleep(max_allowed_render_frame_duration - frame_duration);
         } else {
-            log::warn!("Frame took too much time: {:?}", frame_duration);
+            //            log::warn!(
+            //                "Frame took too much time: {:?} > {:?}",
+            //                frame_duration,
+            //                max_allowed_render_frame_duration
+            //            );
         }
         ecs_world
             .write_resource::<ImguiData>()
@@ -1063,7 +1047,7 @@ fn update_desktop_inputs(video: &mut Video, ecs_world: &mut World) -> bool {
 
 fn spawn_minions(ecs_world: &mut World) -> () {
     {
-        let entity_id = create_random_char_minion(
+        let entity_id = create_client_minion_entity(
             ecs_world,
             v2(
                 MinionAiSystem::CHECKPOINTS[0][0] as f32,
@@ -1071,13 +1055,14 @@ fn spawn_minions(ecs_world: &mut World) -> () {
             ),
             Team::Right,
         );
+
         let mut storage = ecs_world.write_storage();
         storage
             .insert(entity_id.into(), MinionComponent { fountain_up: false })
             .unwrap();
     }
     {
-        let entity_id = create_random_char_minion(
+        let entity_id = create_client_minion_entity(
             ecs_world,
             v2(
                 MinionAiSystem::CHECKPOINTS[5][0] as f32,
@@ -1090,51 +1075,6 @@ fn spawn_minions(ecs_world: &mut World) -> () {
             .insert(entity_id.into(), MinionComponent { fountain_up: false })
             .unwrap();
     }
-}
-
-fn reload_configs_if_changed(
-    runtime_conf_watcher_rx: crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
-    watcher: notify::RecommendedWatcher,
-    ecs_world: &mut World,
-) -> (
-    crossbeam_channel::Receiver<Result<notify::Event, notify::Error>>,
-    notify::RecommendedWatcher,
-) {
-    return match runtime_conf_watcher_rx.try_recv() {
-        Ok(event) => {
-            if let Ok(new_config) = DevConfig::new() {
-                *ecs_world.write_resource::<DevConfig>() = new_config;
-                for char_state in (&mut ecs_world.write_storage::<CharacterStateComponent>()).join()
-                {
-                    char_state.update_base_attributes(&ecs_world.write_resource::<DevConfig>());
-                }
-
-                log::info!("Configs has been reloaded");
-            } else {
-                log::warn!("Config error");
-            }
-            // On Linuxe, a "Remove" event is generated when a file is saved, which removes the active
-            // watcher, so this code creates a new one
-            if let Ok(notify::Event {
-                kind: notify::EventKind::Remove(..),
-                ..
-            }) = event
-            {
-                let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
-                let mut watcher = notify::watcher(tx, Duration::from_secs(2)).unwrap();
-                watcher
-                    .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
-                    .unwrap();
-                (runtime_conf_watcher_rx, watcher)
-            } else {
-                (runtime_conf_watcher_rx, watcher)
-            }
-        }
-        Err(crossbeam_channel::TryRecvError::Empty) => (runtime_conf_watcher_rx, watcher),
-        Err(e) => {
-            panic!("{:?}", e);
-        }
-    };
 }
 
 pub struct ConsoleCommandBuffer {
@@ -1167,32 +1107,6 @@ fn execute_console_commands(
             execute_console_command(cmd, command_defs, ecs_world, video);
         }
     }
-    // run commands from config file, only 1 command per frame
-    {
-        let (line, skipped_line_count) = {
-            let dev_config = ecs_world.write_resource::<DevConfig>();
-            let without_useless_lines = dev_config
-                .execute_script
-                .lines()
-                .skip_while(|line| line.starts_with("//") || line.trim().is_empty())
-                .collect::<Vec<&str>>();
-            let first_line: Option<String> = without_useless_lines.get(0).map(|it| it.to_string());
-            let skipped_line_count =
-                dev_config.execute_script.lines().count() - without_useless_lines.len();
-            (first_line, skipped_line_count)
-        };
-        if let Some(command) = line {
-            let cmd = CommandArguments::new(&command);
-            execute_console_command(cmd, command_defs, ecs_world, video);
-            let mut dev_config = ecs_world.write_resource::<DevConfig>();
-            dev_config.execute_script = dev_config
-                .execute_script
-                .lines()
-                .skip(skipped_line_count + 1)
-                .collect::<Vec<&str>>()
-                .join("\n");
-        }
-    }
 
     ecs_world.maintain();
 }
@@ -1210,7 +1124,7 @@ fn execute_console_command(
 
     log::debug!("Execute command: {:?}", cmd);
     let command_def = &command_defs[cmd.get_command_name().unwrap()];
-    if let Err(e) = (command_def.action)(char_entity_id, &cmd, ecs_world, video) {
+    if let Err(e) = (command_def.action)(char_entity_id, cmd, ecs_world, video) {
         log::error!("Console error: {}", e);
         ecs_world.write_resource::<ConsoleComponent>().error(&e);
     }
@@ -1269,51 +1183,4 @@ fn get_all_map_names(asset_loader: &GrfEntryLoader) -> Vec<String> {
         })
         .collect::<Vec<String>>();
     all_map_names
-}
-
-fn create_random_char_minion(ecs_world: &mut World, pos2d: Vec2, team: Team) -> CharEntityId {
-    let mut rng = rand::thread_rng();
-    let sex = if rng.gen::<usize>() % 2 == 0 {
-        Sex::Male
-    } else {
-        Sex::Female
-    };
-
-    let (job_id, job_sprite_id) = if rng.gen::<usize>() % 2 == 0 {
-        (JobId::SWORDMAN, JobSpriteId::SWORDMAN)
-    } else {
-        (JobId::ARCHER, JobSpriteId::ARCHER)
-    };
-    let head_count = ecs_world
-        .read_resource::<SystemVariables>()
-        .assets
-        .sprites
-        .head_sprites[Sex::Male as usize]
-        .len();
-    let char_entity_id = CharEntityId::from(ecs_world.create_entity().build());
-    let updater = &ecs_world.read_resource::<LazyUpdate>();
-    let head_index = rng.gen::<usize>() % head_count;
-    CharacterEntityBuilder::new(char_entity_id, "minion")
-        .insert_npc_component(updater)
-        .insert_sprite_render_descr_component(updater)
-        .physics(
-            pos2d,
-            &mut ecs_world.write_resource::<PhysicEngine>(),
-            |builder| builder.collision_group(CollisionGroup::Minion).circle(1.0),
-        )
-        .char_state(
-            updater,
-            &ecs_world.read_resource::<DevConfig>(),
-            pos2d,
-            |ch| {
-                ch.outlook(CharOutlook::Player {
-                    sex,
-                    job_sprite_id,
-                    head_index,
-                })
-                .job_id(job_id)
-                .team(team)
-            },
-        );
-    char_entity_id
 }

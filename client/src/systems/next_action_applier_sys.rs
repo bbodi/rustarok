@@ -4,7 +4,9 @@ use crate::components::char::{
 use crate::systems::{SystemEvent, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId, CharState};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharEntityId, CharState, StaticCharDataComponent,
+};
 use specs::prelude::*;
 
 // TODO2
@@ -83,6 +85,7 @@ pub struct UpdateCharSpriteBasedOnStateSystem;
 
 impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
     type SystemData = (
+        ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
@@ -92,13 +95,21 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
 
     fn run(
         &mut self,
-        (char_state_storage, mut sprite_storage, auth_state_storage, sys_vars, time): Self::SystemData,
+        (
+            static_char_data_storage,
+            client_char_state_storage,
+            mut sprite_storage,
+            auth_state_storage,
+            sys_vars,
+            time,
+        ): Self::SystemData,
     ) {
         // update character's sprite based on its state
         let now = time.now();
-        for (char_comp, auth_state, sprite) in (
-            &char_state_storage,
+        for (static_char_data, auth_state, client_char_state, sprite) in (
+            &static_char_data_storage,
             &auth_state_storage,
+            &client_char_state_storage,
             &mut sprite_storage,
         )
             .join()
@@ -106,21 +117,20 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
             let state: CharState = auth_state.state().clone();
-            let prev_state: CharState = char_comp.prev_state().clone();
+            let prev_state: CharState = client_char_state.prev_state().clone();
             let prev_animation_has_ended = sprite.animation_ends_at.has_already_passed(now);
-            let prev_animation_must_stop_at_end = match char_comp.prev_state() {
+            let prev_animation_must_stop_at_end = match client_char_state.prev_state() {
                 CharState::Walking(_) => true,
                 _ => false,
             };
-            let state_has_changed = char_comp.state_type_has_changed(auth_state.state());
+            let state_has_changed = client_char_state.state_type_has_changed(auth_state.state());
             if (state_has_changed && state != CharState::Idle)
                 || (state == CharState::Idle && prev_animation_has_ended)
                 || (state == CharState::Idle && prev_animation_must_stop_at_end)
             {
                 sprite.animation_started = now;
                 let forced_duration = match &state {
-                    // TODO2
-                    //                    CharState::Attacking { .. } => Some(char_comp.attack_delay_ends_at.minus(now)),
+                    CharState::Attacking { .. } => Some(auth_state.attack_delay_ends_at.minus(now)),
                     // HACK: '100.0', so the first frame is rendered during casting :)
                     //                    CharState::CastingSkill(casting_info) => {
                     //                        Some(casting_info.cast_ends.add_seconds(100.0))
@@ -129,12 +139,12 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 };
                 sprite.forced_duration = forced_duration;
                 sprite.fps_multiplier = if state.is_walking() {
-                    char_comp.calculated_attribs().movement_speed.as_f32()
+                    auth_state.calculated_attribs().movement_speed.as_f32()
                 } else {
                     1.0
                 };
                 let (sprite_res, action_index) = get_sprite_and_action_index(
-                    &char_comp.outlook,
+                    &static_char_data.outlook,
                     &sys_vars.assets.sprites,
                     &state,
                 );
@@ -143,13 +153,13 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
                     let duration = sprite_res.action.actions[action_index].duration;
                     ElapsedTime(duration)
                 }));
-            } else if char_comp.went_from_casting_to_idle(auth_state.state()) {
+            } else if client_char_state.went_from_casting_to_idle(auth_state.state()) {
                 // During casting, only the first frame is rendered
                 // when casting is finished, we let the animation runs till the end
                 sprite.animation_started = now.add_seconds(-0.1);
                 sprite.forced_duration = None;
                 let (sprite_res, action_index) = get_sprite_and_action_index(
-                    &char_comp.outlook,
+                    &static_char_data.outlook,
                     &sys_vars.assets.sprites,
                     &prev_state,
                 );

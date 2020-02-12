@@ -10,13 +10,13 @@ use crate::components::status::status::{
     ApplyStatusComponent, StatusEnum, StatusEnumDiscriminants, StatusUpdateParams,
     StatusUpdateResult,
 };
-use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::config::CommonConfigs;
 use specs::ReadStorage;
 
 pub struct AssaPhasePrismSkill;
@@ -35,7 +35,7 @@ impl SkillDef for AssaPhasePrismSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
         let configs = &ecs_world
-            .read_resource::<DevConfig>()
+            .read_resource::<CommonConfigs>()
             .skills
             .assa_phase_prism;
         let now = ecs_world.read_resource::<EngineTime>().now();
@@ -85,7 +85,7 @@ impl AssaPhasePrismSkillManifestation {
             start_pos: pos,
             started_at: now,
             ends_at: now.add_seconds(duration),
-            pos: pos,
+            pos,
             caster_id,
             dir,
             collider_handle,
@@ -183,7 +183,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         _now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,
@@ -209,25 +209,27 @@ pub struct AssaPhasePrismStatus {
 
 impl AssaPhasePrismStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
-        if let Some(body) = params
-            .physics_world
-            .bodies
-            .rigid_body_mut(params.target_char.body_handle)
-        {
-            if self.ends_at.has_already_passed(params.time.now()) {
-                params.target_char.set_collidable(params.physics_world);
-                StatusUpdateResult::RemoveIt
-            } else {
-                let duration_percentage = params
-                    .time
-                    .now()
-                    .percentage_between(self.started_at, self.ends_at);
-                let pos = self.start_pos + self.vector * duration_percentage;
-                body.set_position(Isometry2::translation(pos.x, pos.y));
-                StatusUpdateResult::KeepIt
-            }
-        } else {
-            StatusUpdateResult::RemoveIt
-        }
+        // TODO2 physics
+        //        if let Some(body) = params
+        //            .physics_world
+        //            .bodies
+        //            .rigid_body_mut(params.target_char.body_handle)
+        //        {
+        //            if self.ends_at.has_already_passed(params.time.now()) {
+        //                params.target_char.set_collidable(params.physics_world);
+        //                StatusUpdateResult::RemoveIt
+        //            } else {
+        //                let duration_percentage = params
+        //                    .time
+        //                    .now()
+        //                    .percentage_between(self.started_at, self.ends_at);
+        //                let pos = self.start_pos + self.vector * duration_percentage;
+        //                body.set_position(Isometry2::translation(pos.x, pos.y));
+        //                StatusUpdateResult::KeepIt
+        //            }
+        //        } else {
+        //            StatusUpdateResult::RemoveIt
+        //        }
+        StatusUpdateResult::RemoveIt
     }
 }

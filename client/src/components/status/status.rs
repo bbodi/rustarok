@@ -1,7 +1,4 @@
-use crate::components::char::{
-    percentage, ActionPlayMode, CharAttributeModifier, CharAttributeModifierCollector,
-    CharAttributes, CharacterStateComponent, Percentage,
-};
+use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::skills::absorb_shield::AbsorbStatus;
 use crate::components::skills::assa_blade_dash::AssaBladeDashStatus;
 use crate::components::skills::assa_phase_prism::AssaPhasePrismStatus;
@@ -15,10 +12,6 @@ use crate::components::status::death_status::DeathStatus;
 use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
 use crate::components::status::stun::StunStatus;
-use crate::components::{
-    ApplyForceComponent, HpModificationRequest, HpModificationResult, HpModificationType,
-};
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::grf::SpriteResource;
 use crate::render::render_command::RenderCommandCollector;
@@ -27,8 +20,16 @@ use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use nalgebra::Isometry2;
-use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharEntityId, JobId, Sex, StatusNature, Team};
+use rustarok_common::attack::{
+    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
+    HpModificationType,
+};
+use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
+use rustarok_common::common::{percentage, EngineTime, Percentage, Vec2};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharEntityId, JobId, Sex, StaticCharDataComponent, StatusNature,
+    Team,
+};
 use specs::{Entities, LazyUpdate};
 use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
@@ -42,9 +43,12 @@ pub enum StatusStackingResult {
 
 pub struct StatusUpdateParams<'a> {
     pub self_char_id: CharEntityId,
-    pub target_char: &'a mut CharacterStateComponent,
+    pub target_char: &'a mut StaticCharDataComponent,
     pub physics_world: &'a mut PhysicEngine,
     pub sys_vars: &'a mut SystemVariables,
+    pub hp_mod_requests: &'a mut Vec<HpModificationRequest>,
+    pub area_hp_mod_requests: &'a mut Vec<AreaAttackComponent>,
+    pub pushes: &'a mut Vec<ApplyForceComponent>,
     pub entities: &'a Entities<'a>,
     pub updater: &'a mut LazyUpdate,
     pub time: &'a EngineTime,
@@ -202,7 +206,7 @@ impl StatusEnum {
     pub fn on_apply(
         &mut self,
         self_entity_id: CharEntityId,
-        target_char: &mut CharacterStateComponent,
+        target_char: &mut AuthorizedCharStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
         assets: &AssetResources,
@@ -308,12 +312,12 @@ impl StatusEnum {
         }
     }
 
-    pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
+    pub fn update(&mut self, mut params: StatusUpdateParams) -> StatusUpdateResult {
         match self {
             StatusEnum::AbsorbStatus(status) => status.update(
                 params.time.now(),
                 params.self_char_id,
-                &mut params.sys_vars.hp_mod_requests,
+                &mut params.hp_mod_requests,
             ),
             StatusEnum::AssaBladeDashStatus(status) => status.update(params),
             StatusEnum::AssaPhasePrismStatus(status) => status.update(params),
@@ -669,7 +673,7 @@ impl Statuses {
     pub fn update(
         &mut self,
         self_char_id: CharEntityId,
-        char_state: &mut CharacterStateComponent,
+        char_state: &mut StaticCharDataComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
         time: &EngineTime,
@@ -689,6 +693,10 @@ impl Statuses {
                 target_char: char_state,
                 physics_world,
                 sys_vars,
+                // TODO2 asd
+                hp_mod_requests: &mut vec![],
+                area_hp_mod_requests: &mut vec![],
+                pushes: &mut vec![],
                 entities,
                 updater,
                 time,
@@ -729,64 +737,6 @@ impl Statuses {
                 already_rendered[type_id] = true;
             }
         }
-    }
-
-    pub fn get_base_attributes(job_id: JobId, configs: &DevConfig) -> CharAttributes {
-        return match job_id {
-            JobId::CRUSADER => configs.stats.player.crusader.attributes.clone(),
-            JobId::GUNSLINGER => configs.stats.player.gunslinger.attributes.clone(),
-            JobId::RANGER => configs.stats.player.hunter.attributes.clone(),
-            JobId::RangedMinion => configs.stats.minion.ranged.clone(),
-            JobId::HealingDummy => CharAttributes {
-                movement_speed: percentage(0),
-                attack_range: percentage(0),
-                attack_speed: percentage(0),
-                attack_damage: 0,
-                armor: percentage(0),
-                healing: percentage(100),
-                hp_regen: percentage(0),
-                max_hp: 1_000_000,
-                mana_regen: percentage(0),
-            },
-            JobId::TargetDummy => CharAttributes {
-                movement_speed: percentage(0),
-                attack_range: percentage(0),
-                attack_speed: percentage(0),
-                attack_damage: 0,
-                armor: percentage(0),
-                healing: percentage(100),
-                hp_regen: percentage(0),
-                max_hp: 1_000_000,
-                mana_regen: percentage(0),
-            },
-            JobId::MeleeMinion => configs.stats.minion.melee.clone(),
-            JobId::Turret => configs.skills.gaz_turret.turret.clone(),
-            JobId::Barricade => {
-                let configs = &configs.skills.gaz_barricade;
-                CharAttributes {
-                    movement_speed: percentage(0),
-                    attack_range: percentage(0),
-                    attack_speed: percentage(0),
-                    attack_damage: 0,
-                    armor: configs.armor,
-                    healing: percentage(0),
-                    hp_regen: configs.hp_regen,
-                    max_hp: configs.max_hp,
-                    mana_regen: percentage(10),
-                }
-            }
-            _ => CharAttributes {
-                movement_speed: percentage(100),
-                attack_range: percentage(100),
-                attack_speed: percentage(100),
-                attack_damage: 76,
-                armor: percentage(10),
-                healing: percentage(100),
-                hp_regen: percentage(100),
-                max_hp: 2000,
-                mana_regen: percentage(100),
-            },
-        };
     }
 
     pub fn calc_attributes(&mut self) -> &CharAttributeModifierCollector {
@@ -1095,7 +1045,7 @@ impl PoisonStatus {
             StatusUpdateResult::RemoveIt
         } else {
             if self.next_damage_at.has_already_passed(params.time.now()) {
-                params.sys_vars.hp_mod_requests.push(HpModificationRequest {
+                params.hp_mod_requests.push(HpModificationRequest {
                     src_entity: self.poison_caster_entity_id,
                     dst_entity: params.self_char_id,
                     typ: HpModificationType::Poison(30),

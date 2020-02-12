@@ -7,16 +7,15 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
     SkillManifestationUpdateParam, SkillTargetType,
 };
-use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
-};
-use crate::configs::DevConfig;
+use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
+use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::config::CommonConfigs;
 
 pub struct LightningSkill;
 
@@ -52,7 +51,7 @@ impl SkillDef for LightningSkill {
         skill_pos: &Vec2,
         char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        _configs: &DevConfig,
+        _configs: &CommonConfigs,
     ) {
         for i in 0..3 {
             let pos = skill_pos + char_to_skill_dir * i as f32 * 2.2;
@@ -177,8 +176,9 @@ impl SkillManifestation for LightningManifest {
             }
             if self.next_damage_at.has_already_passed(now) {
                 params.add_area_hp_mod_request(AreaAttackComponent {
-                    area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
-                    area_isom: Isometry2::new(self.last_skill_pos, 0.0),
+                    // TODO2
+                    //                    area_shape: Box::new(ncollide2d::shape::Ball::new(1.0)),
+                    //                    area_isom: Isometry2::new(self.last_skill_pos, 0.0),
                     source_entity_id: self.caster_entity_id,
                     typ: HpModificationType::SpellDamage(120, DamageDisplayType::SingleNumber),
                     except: None,
@@ -190,7 +190,7 @@ impl SkillManifestation for LightningManifest {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         _now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

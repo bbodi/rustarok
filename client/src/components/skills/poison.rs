@@ -6,10 +6,10 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::status::{ApplyStatusComponent, PoisonStatus, StatusEnum};
 use crate::components::StrEffectComponent;
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
 use rustarok_common::common::EngineTime;
+use rustarok_common::config::CommonConfigs;
 
 pub struct PosionSkill;
 
@@ -39,7 +39,7 @@ impl SkillDef for PosionSkill {
                 play_mode: ActionPlayMode::Repeat,
             },
         );
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.poison;
+        let configs = &ecs_world.read_resource::<CommonConfigs>().skills.poison;
         sys_vars
             .apply_statuses
             .push(ApplyStatusComponent::from_status(

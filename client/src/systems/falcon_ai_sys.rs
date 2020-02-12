@@ -147,8 +147,7 @@ impl<'a> System<'a> for FalconAiSystem {
         Entities<'a>,
         WriteStorage<'a, FalconComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        WriteStorage<'a, CharacterStateComponent>,
-        WriteStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, AuthorizedCharStateComponent>,
         ReadStorage<'a, ControllerComponent>,
         ReadExpect<'a, LocalPlayerController>,
         WriteExpect<'a, SystemFrameDurations>,
@@ -163,7 +162,6 @@ impl<'a> System<'a> for FalconAiSystem {
             entities,
             mut falcon_storage,
             mut sprite_storage,
-            mut char_storage,
             auth_char_storage,
             controller_storage,
             local_player,
@@ -179,10 +177,7 @@ impl<'a> System<'a> for FalconAiSystem {
         {
             match falcon.state {
                 FalconState::Follow => {
-                    if let Some(owner) = char_storage.get(falcon.owner_entity_id.into()) {
-                        let auth_owner = auth_char_storage
-                            .get(falcon.owner_entity_id.into())
-                            .unwrap();
+                    if let Some(auth_owner) = auth_char_storage.get(falcon.owner_entity_id.into()) {
                         let falcon_pos_2d = v3_to_v2(&falcon.pos);
                         let diff_v = auth_owner.pos() - falcon_pos_2d;
                         let distance = diff_v.magnitude();
@@ -192,8 +187,9 @@ impl<'a> System<'a> for FalconAiSystem {
                                 FALCON_FLY_HEIGHT,
                                 auth_owner.pos().y,
                             ) - falcon.pos;
-                            falcon.acceleration = (falcon.acceleration + time.dt() * 0.05)
-                                .min(0.03 * owner.calculated_attribs().movement_speed.as_f32());
+                            falcon.acceleration = (falcon.acceleration + time.dt() * 0.05).min(
+                                0.03 * auth_owner.calculated_attribs().movement_speed.as_f32(),
+                            );
                             falcon.pos += dir_3d * falcon.acceleration;
                             sprite.direction =
                                 CharDir::determine_dir(&auth_owner.pos(), &falcon_pos_2d);
@@ -303,17 +299,19 @@ impl<'a> System<'a> for FalconAiSystem {
                             }
                         }
 
-                        if let Some(target) = char_storage.get_mut(falcon.owner_entity_id.into()) {
-                            let body = physics_world
-                                .bodies
-                                .rigid_body_mut(target.body_handle)
-                                .unwrap();
-                            body.set_position(Isometry2::translation(falcon.pos.x, falcon.pos.z));
-                            target.set_y(falcon.pos.y - 2.5);
+                        if let Some(target) = auth_char_storage.get(falcon.owner_entity_id.into()) {
+                            // TODO4 falcon
+                            //                            let body = physics_world
+                            //                                .bodies
+                            //                                .rigid_body_mut(target.body_handle)
+                            //                                .unwrap();
+                            //                            body.set_position(Isometry2::translation(falcon.pos.x, falcon.pos.z));
+                            //                            target.set_y(falcon.pos.y - 2.5);
                         }
                     } else {
-                        if let Some(target) = char_storage.get_mut(falcon.owner_entity_id.into()) {
-                            target.set_y(0.0);
+                        if let Some(target) = auth_char_storage.get(falcon.owner_entity_id.into()) {
+                            // TODO4 falcon
+                            //                            target.set_y(0.0);
                         }
                         falcon.state = FalconState::Follow;
                         sprite.action_index = CharActionIndex::Idle as usize;
@@ -388,18 +386,20 @@ impl<'a> System<'a> for FalconAiSystem {
                         let duration_percentage = (duration_percentage - 0.3) / 0.7;
                         let pos = falcon.bezier.evaluate(duration_percentage);
                         falcon.pos = v3(pos.x, pos.y, pos.z);
-                        if let Some(target) = char_storage.get_mut(target_id.into()) {
-                            let body = physics_world
-                                .bodies
-                                .rigid_body_mut(target.body_handle)
-                                .unwrap();
-                            body.set_position(Isometry2::translation(falcon.pos.x, falcon.pos.z));
-                            target.set_y(falcon.pos.y - 2.5);
+                        if let Some(target) = auth_char_storage.get(target_id.into()) {
+                            // TODO4 falcon
+                            //                            let body = physics_world
+                            //                                .bodies
+                            //                                .rigid_body_mut(target.body_handle)
+                            //                                .unwrap();
+                            //                            body.set_position(Isometry2::translation(falcon.pos.x, falcon.pos.z));
+                            //                            target.set_y(falcon.pos.y - 2.5);
                         }
                         sprite.direction = CharDir::determine_dir(&end_pos, &v3_to_v2(&falcon.pos));
                     } else {
-                        if let Some(target) = char_storage.get_mut(target_id.into()) {
-                            target.set_y(0.0);
+                        // TODO4 falcon
+                        if let Some(target) = auth_char_storage.get(target_id.into()) {
+                            //                            target.set_y(0.0);
                         }
                         falcon.state = FalconState::Follow;
                         sprite.action_index = CharActionIndex::Idle as usize;

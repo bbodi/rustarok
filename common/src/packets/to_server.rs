@@ -1,4 +1,5 @@
 use crate::components::controller::PlayerIntention;
+use crate::console::CommandArguments;
 use crate::packets::SocketBuffer;
 use serde::Deserialize;
 use serde::Serialize;
@@ -7,7 +8,7 @@ use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
 
 pub trait Packet: Sized {
-    fn write_into(&self, buf: &mut SocketBuffer);
+    fn write_into(&self, buf: &mut SocketBuffer) -> bincode::Result<()>;
     fn read_from(buf: &mut SocketBuffer) -> Result<Self, PacketReadErr>;
 }
 
@@ -24,16 +25,18 @@ pub enum ToServerPacket {
         client_tick: u64,
         intention: PlayerIntention,
     },
+    ConsoleCommand(CommandArguments),
 }
 
+#[derive(Debug)]
 pub enum PacketReadErr {
     NotEnoughBytes,
     InvalidValues,
 }
 
 impl Packet for ToServerPacket {
-    fn write_into(&self, buf: &mut SocketBuffer) {
-        bincode::serialize_into(buf, self);
+    fn write_into(&self, buf: &mut SocketBuffer) -> bincode::Result<()> {
+        bincode::serialize_into(buf, self)
         //        let discr: ToServerPacketDiscriminants = self.into();
         //        let packet_id = discr as u8 + 1;
         //        buf.write_u8(packet_id);
@@ -70,7 +73,7 @@ impl Packet for ToServerPacket {
     fn read_from(buf: &mut SocketBuffer) -> Result<ToServerPacket, PacketReadErr> {
         return match bincode::deserialize_from(buf) {
             Ok(packet) => Ok(packet),
-            Err(e) => Err(PacketReadErr::NotEnoughBytes),
+            Err(_e) => Err(PacketReadErr::NotEnoughBytes),
         };
         //        let packet_id = buf.read_u8() - 1;
         //        if packet_id >= ToServerPacket::count() as u8 {

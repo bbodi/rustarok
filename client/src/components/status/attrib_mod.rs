@@ -1,6 +1,7 @@
-use crate::components::char::{CharAttributeModifier, CharAttributeModifierCollector, Percentage};
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::ElapsedTime;
+use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
+use rustarok_common::common::Percentage;
 
 #[derive(Clone, Debug)]
 pub struct ArmorModifierStatus {

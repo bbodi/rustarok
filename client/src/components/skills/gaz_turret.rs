@@ -6,13 +6,14 @@ use crate::components::controller::LocalPlayerController;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
-use crate::configs::DevConfig;
 use crate::runtime_assets::map::PhysicEngine;
 
 use rustarok_common::components::char::{
-    CharEntityId, CharOutlook, CollisionGroup, ControllerEntityId, JobId, MonsterId,
+    create_common_player_entity, AuthorizedCharStateComponent, CharEntityId, CharOutlook,
+    CollisionGroup, ControllerEntityId, JobId, MonsterId, StaticCharDataComponent,
 };
 use rustarok_common::components::controller::ControllerComponent;
+use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -30,39 +31,37 @@ impl SkillDef for GazTurretSkill {
         params: &FinishCast,
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
-        if let Some(caster) = ecs_world
-            .read_storage::<CharacterStateComponent>()
-            .get(params.caster_entity_id.into())
-        {
-            let entities = &ecs_world.entities();
-            let updater = &ecs_world.read_resource::<LazyUpdate>();
-            let char_entity_id = CharEntityId::from(entities.create());
-            updater.insert(char_entity_id.into(), NpcComponent);
-            CharacterEntityBuilder::new(char_entity_id, "turret")
-                .insert_sprite_render_descr_component(updater)
-                .insert_turret_component(params.caster_entity_id, updater)
-                .physics(
-                    params.skill_pos.unwrap(),
-                    &mut ecs_world.write_resource::<PhysicEngine>(),
-                    |builder| builder.collision_group(CollisionGroup::Turret).circle(1.0),
+        let caster_team = {
+            let char_storage = ecs_world.read_storage::<StaticCharDataComponent>();
+            char_storage
+                .get(params.caster_entity_id.into())
+                .map(|it| it.team)
+        };
+        if let Some(caster_team) = caster_team {
+            let turrent_id = {
+                CharEntityId::from(
+                    create_common_player_entity(
+                        ecs_world,
+                        JobId::Turret,
+                        params.skill_pos.unwrap(),
+                        caster_team,
+                        CharOutlook::Monster(MonsterId::Dimik),
+                    )
+                    .with(TurretComponent {
+                        owner_entity_id: params.caster_entity_id,
+                        preferred_target: None,
+                    })
+                    .build(),
                 )
-                .char_state(
-                    updater,
-                    &ecs_world.read_resource::<DevConfig>(),
-                    params.skill_pos.unwrap(),
-                    |ch| {
-                        ch.outlook(CharOutlook::Monster(MonsterId::Dimik))
-                            .job_id(JobId::Turret)
-                            .team(caster.team)
-                    },
-                );
+            };
 
-            let controller_id = ControllerEntityId::new(entities.create());
-            updater.insert(
-                controller_id.into(),
-                ControllerComponent::new(char_entity_id),
+            ControllerEntityId::new(
+                ecs_world
+                    .create_entity()
+                    .with(ControllerComponent::new(turrent_id))
+                    .with(TurretControllerComponent)
+                    .build(),
             );
-            updater.insert(controller_id.into(), TurretControllerComponent);
         }
         None
     }
@@ -97,7 +96,7 @@ impl SkillDef for GazDestroyTurretSkill {
         {
             let target_entity = params.target_entity.unwrap();
             if let Some(turret) = ecs_world
-                .write_storage::<CharacterStateComponent>()
+                .write_storage::<AuthorizedCharStateComponent>()
                 .get_mut(target_entity.into())
             {
                 turret.hp = 0;

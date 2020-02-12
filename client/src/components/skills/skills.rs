@@ -34,14 +34,16 @@ use crate::components::skills::gaz_turret::{
 use crate::components::skills::gaz_xplod_charge::GAZ_XPLODIUM_CHARGE_SKILL;
 use crate::components::skills::sanctuary::SANCTUARY_SKILL;
 use crate::components::status::status::{ApplyStatusComponent, ApplyStatusInAreaComponent};
-use crate::components::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
 use crate::{ElapsedTime, PhysicEngine};
-use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId, Team};
+use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharEntityId, StaticCharDataComponent, Team,
+};
+use rustarok_common::config::{CommonConfigs, SkillCastingAttributes};
 
 pub type WorldCollisions = HashMap<(DefaultColliderHandle, DefaultColliderHandle), Collision>;
 
@@ -49,9 +51,12 @@ pub struct SkillManifestationUpdateParam<'a, 'longer> {
     pub self_entity_id: Entity,
     pub all_collisions_in_world: &'longer WorldCollisions,
     sys_vars: &'longer mut SystemVariables,
+    hp_mod_requests: &'longer mut Vec<HpModificationRequest>,
+    area_hp_mod_requests: &'longer mut Vec<AreaAttackComponent>,
+    pushes: &'longer mut Vec<ApplyForceComponent>,
     engine_time: &'longer EngineTime,
     entities: &'a Entities<'a>,
-    pub char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+    pub static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
     pub auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
     pub physics_world: &'longer mut PhysicEngine,
     updater: &'longer mut LazyUpdate,
@@ -62,20 +67,26 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         self_entity_id: Entity,
         all_collisions_in_world: &'longer WorldCollisions,
         sys_vars: &'longer mut SystemVariables,
+        hp_mod_requests: &'longer mut Vec<HpModificationRequest>,
+        area_hp_mod_requests: &'longer mut Vec<AreaAttackComponent>,
+        pushes: &'longer mut Vec<ApplyForceComponent>,
         engine_time: &'longer EngineTime,
         entities: &'a Entities,
-        char_storage: &'longer mut WriteStorage<'a, CharacterStateComponent>,
+        static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
         auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
         physics_world: &'longer mut PhysicEngine,
         updater: &'longer mut LazyUpdate,
     ) -> SkillManifestationUpdateParam<'a, 'longer> {
         SkillManifestationUpdateParam {
             self_entity_id,
+            hp_mod_requests,
+            area_hp_mod_requests,
+            pushes,
             all_collisions_in_world,
             sys_vars,
             engine_time,
             entities,
-            char_storage,
+            static_char_data_storage: static_char_data_storage,
             physics_world,
             updater,
             auth_state_storage,
@@ -120,15 +131,15 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
     }
 
     pub fn add_hp_mod_request(&mut self, hp_mod_req: HpModificationRequest) {
-        self.sys_vars.hp_mod_requests.push(hp_mod_req);
+        self.hp_mod_requests.push(hp_mod_req);
     }
 
     pub fn add_area_hp_mod_request(&mut self, hp_mod_req: AreaAttackComponent) {
-        self.sys_vars.area_hp_mod_requests.push(hp_mod_req);
+        self.area_hp_mod_requests.push(hp_mod_req);
     }
 
     pub fn apply_force(&mut self, force: ApplyForceComponent) {
-        self.sys_vars.pushes.push(force);
+        self.pushes.push(force);
     }
 }
 
@@ -137,7 +148,7 @@ pub trait SkillManifestation {
 
     fn render(
         &self,
-        char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
@@ -171,7 +182,7 @@ impl SkillManifestationComponent {
 
     pub fn render(
         &self,
-        char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         tick: u64,
         assets: &AssetResources,
@@ -219,7 +230,7 @@ pub trait SkillDef {
         casting_state: &CastingSkillData,
         assets: &AssetResources,
         time: &EngineTime,
-        dev_configs: &DevConfig,
+        dev_configs: &CommonConfigs,
         render_commands: &mut RenderCommandCollector,
         char_storage: &ReadStorage<AuthorizedCharStateComponent>,
     ) {
@@ -256,7 +267,7 @@ pub trait SkillDef {
         _skill_pos: &Vec2,
         _char_to_skill_dir: &Vec2,
         _render_commands: &mut RenderCommandCollector,
-        _configs: &DevConfig,
+        _configs: &CommonConfigs,
     ) {
     }
 }
@@ -285,15 +296,6 @@ pub enum Skills {
     FalconAttack,
     Sanctuary,
     ExoSkeleton,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct SkillCastingAttributes {
-    pub casting_time: ElapsedTime,
-    pub cast_delay: ElapsedTime,
-    pub casting_range: f32,
-    // in case of Directional skills
-    pub width: Option<f32>,
 }
 
 pub struct AttackMoveSkill;
@@ -348,8 +350,8 @@ impl Skills {
 
     pub fn get_cast_attributes<'a>(
         &'a self,
-        configs: &'a DevConfig,
-        char_state: &CharacterStateComponent,
+        configs: &'a CommonConfigs,
+        char_state: &StaticCharDataComponent,
     ) -> &'a SkillCastingAttributes {
         match self {
             Skills::WizPyroBlast => &configs.skills.wiz_pyroblast.attributes,
@@ -358,11 +360,12 @@ impl Skills {
             Skills::BrutalTestSkill => &configs.skills.brutal_test_skill.attributes,
             Skills::Lightning => &configs.skills.lightning.attributes,
             Skills::Mounting => {
-                if char_state.statuses.is_mounted() {
-                    &configs.skills.unmounting
-                } else {
-                    &configs.skills.mounting
-                }
+                // TODO2 statuses
+                //                if char_state.statuses.is_mounted() {
+                &configs.skills.unmounting
+                //                } else {
+                //                    &configs.skills.mounting
+                //                }
             }
             Skills::Poison => &configs.skills.poison.attributes,
             Skills::Cure => &configs.skills.cure,

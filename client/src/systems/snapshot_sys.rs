@@ -59,7 +59,7 @@ impl CharSnapshots {
         })
         .collect::<Vec<String>>()
         .join("\n");
-        log::debug!("\n{}", text);
+        log::trace!("\n{}", text);
     }
 }
 
@@ -199,14 +199,14 @@ impl SnapshotStorage {
         self.last_acknowledged_index_for_server_entities
     }
 
-    pub fn init(&mut self, acked: &ServerEntityState) {
+    pub fn init(&mut self, id: ServerEntityId, char_snapshot: &CharSnapshot) {
         self.last_acknowledged_index = 0;
         self.tail = 1;
         // HACK: so initial Ack packets can compare with something...
-        self.add_predicting_entity(acked.id, acked.char_snapshot.state.clone());
-        self.set_state(0, 1, &acked.char_snapshot.state);
-        self.set_state(0, 2, &acked.char_snapshot.state);
-        self.set_state(0, 3, &acked.char_snapshot.state);
+        self.add_predicting_entity(id, char_snapshot.state.clone());
+        self.set_state(0, 1, &char_snapshot.state);
+        self.set_state(0, 2, &char_snapshot.state);
+        self.set_state(0, 3, &char_snapshot.state);
     }
 
     pub fn get_unacked_prediction_count(&self) -> usize {
@@ -225,7 +225,7 @@ impl SnapshotStorage {
         // - entities that are created are at the end of the vec
         // - the server does not send msg for an entity which has not been registered first
 
-        log::debug!(
+        log::trace!(
             "unacked preds: {}, \
              acked_cid: {}, client_tick: {}\n, \
              last_acknowledged_index: {}, tail: {}",
@@ -238,7 +238,7 @@ impl SnapshotStorage {
         );
 
         if self.get_unacked_prediction_count() == 0 {
-            log::debug!("server_is_ahead_of_client",);
+            log::trace!("server_is_ahead_of_client",);
             return ServerAckResult::ServerIsAheadOfClient {
                 server_state_updates: snapshots_from_server,
             };
@@ -263,14 +263,18 @@ impl SnapshotStorage {
                         &snapshots_from_server[1..],
                     );
                     if need_rollback {
-                        log::debug!("before for REMOTE");
+                        log::trace!("before for REMOTE");
                         let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
-                        self.print_snapshots_for(1, -2, to);
+                        if log::log_enabled!(log::Level::Trace) {
+                            self.print_snapshots_for(1, -2, to);
+                        }
                     }
                 } else {
-                    log::debug!("before for LOCAL");
+                    log::trace!("before for LOCAL");
                     let to = dbg!(self.tail) - dbg!(self.last_acknowledged_index);
-                    self.print_snapshots_for(0, -2, to);
+                    if log::log_enabled!(log::Level::Trace) {
+                        self.print_snapshots_for(0, -2, to);
+                    }
                 }
             }
 
@@ -339,10 +343,10 @@ impl SnapshotStorage {
         let predicted_snapshot = predicted_snapshots.get_snapshot(self.last_acknowledged_index + 1);
         let cid_at_prediction = self.intentions[index(self.last_acknowledged_index + 1)].0;
 
-        log::debug!("cid_at_prediction: {}", cid_at_prediction,);
+        log::trace!("cid_at_prediction: {}", cid_at_prediction,);
 
         if acked_cid < cid_at_prediction {
-            log::debug!("acked_cid < predicted_snapshot");
+            log::trace!("acked_cid < predicted_snapshot");
             // The server did not get my command yet.
             // Check if my prediction was correct
             let mut need_rollback =
@@ -363,23 +367,22 @@ impl SnapshotStorage {
                     let pred = predicted_snapshots.get_snapshot(self.last_acknowledged_index + i);
                     let cid = self.intentions[index(self.last_acknowledged_index + i)].0;
                     if acked_cid == cid {
-                        log::debug!("Found after {}", i);
-                        log::debug!(
+                        log::trace!("Found after {}", i);
+                        log::trace!(
                             "found_predicted: v2({}, {}), acked: v2({}, {})",
                             pred.state.pos().x,
                             pred.state.pos().y,
                             snapshot_from_server.state.pos().x,
                             snapshot_from_server.state.pos().y
                         );
-                        if SnapshotStorage::snapshots_match(&snapshot_from_server, &pred) {
-                            return (false, i);
+                        return if SnapshotStorage::snapshots_match(&snapshot_from_server, &pred) {
+                            (false, i)
                         } else {
-                            return (true, 1);
-                        }
-                        break;
+                            (true, 1)
+                        };
                     }
                 }
-                log::debug!("Not found :(");
+                log::trace!("Not found :(");
             }
             return (need_rollback, 1);
         } else {
@@ -463,6 +466,10 @@ impl SnapshotStorage {
             CharState::Walking(..) => {
                 match acked_state {
                     CharState::Idle => false,
+                    CharState::ReceivingDamage => false,
+                    CharState::Dead => false,
+                    CharState::Attacking { .. } => false,
+                    CharState::StandBy => false,
                     CharState::Walking(..) => {
                         // if the pos are the same but the target pos differs, don't repredict
                         // TODO but set the new target pos for remote entities
@@ -470,13 +477,10 @@ impl SnapshotStorage {
                     }
                 }
             }
-            CharState::Idle => match acked_state {
-                CharState::Idle => true,
-                CharState::Walking(..) => false,
-            },
+            _ => std::mem::discriminant(predicted_state) == std::mem::discriminant(acked_state),
         };
         if !matches {
-            log::debug!(
+            log::trace!(
                 "predicted: ({}, {}, {:?}) !!!=== acked: v({}, {}, {:?})",
                 predicted.state.pos().x,
                 predicted.state.pos().y,
@@ -486,7 +490,7 @@ impl SnapshotStorage {
                 acked.state.state(),
             );
         } else {
-            log::debug!(
+            log::trace!(
                 "predicted: ({}, {}, {}) == acked: ({}, {}, {})",
                 predicted.state.pos().x,
                 predicted.state.pos().y,

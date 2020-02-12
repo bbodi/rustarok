@@ -9,7 +9,9 @@ use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{AuthorizedCharStateComponent, CharEntityId, Team};
+use rustarok_common::components::char::{
+    AuthorizedCharStateComponent, CharEntityId, StaticCharDataComponent, Team,
+};
 use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::systems::intention_applier::ControllerIntentionToCharTarget;
 use sdl2::keyboard::Scancode;
@@ -35,7 +37,7 @@ impl<'a> System<'a> for InputToNextActionSystem {
     type SystemData = (
         Entities<'a>,
         ReadExpect<'a, HumanInputComponent>,
-        ReadStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
         WriteExpect<'a, LocalPlayerController>,
         WriteExpect<'a, SystemFrameDurations>,
@@ -49,7 +51,7 @@ impl<'a> System<'a> for InputToNextActionSystem {
         (
             entities,
             input,
-            char_state_storage,
+            static_char_data_storage,
             auth_char_state_storage,
             mut local_player,
             mut system_benchmark,
@@ -65,7 +67,7 @@ impl<'a> System<'a> for InputToNextActionSystem {
         }
         let controlled_entity_id = local_player.controller.controlled_entity.unwrap();
 
-        let self_char_team = char_state_storage
+        let self_char_team = static_char_data_storage
             .get(controlled_entity_id.into())
             .unwrap()
             .team;
@@ -96,8 +98,8 @@ impl<'a> System<'a> for InputToNextActionSystem {
             time.now(),
             &local_player,
             controlled_entity_id,
-            &char_state_storage,
             &auth_char_state_storage,
+            &static_char_data_storage,
             self_char_team,
         );
         local_player.cursor_anim_descr.action_index = cursor_frame.1;
@@ -133,7 +135,6 @@ impl<'a> System<'a> for InputToNextActionSystem {
                         .or(self.prev_prev_intention.as_ref()))
                     .map(|it| it.clone()),
             };
-        //            dbg!(&controller.intention);
         } else {
             controller.intention = None;
         }
@@ -182,17 +183,15 @@ impl InputToNextActionSystem {
         now: ElapsedTime,
         local_player: &LocalPlayerController,
         controlled_entity: CharEntityId,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         self_team: Team,
     ) -> (CursorFrame, [u8; 3]) {
-        return if let Some((_skill_key, skill)) = local_player.select_skill_target {
-            let is_castable = char_state_storage
+        return if let Some((skill_key, skill)) = local_player.select_skill_target {
+            let is_castable = auth_char_state_storage
                 .get(controlled_entity.into())
                 .unwrap()
-                .skill_cast_allowed_at
-                .get(&skill)
-                .unwrap_or(&ElapsedTime(0.0))
+                .skill_cast_allowed_at[skill_key as usize]
                 .has_already_passed(now);
             if !is_castable {
                 (CURSOR_STOP, [255, 255, 255])
@@ -206,7 +205,9 @@ impl InputToNextActionSystem {
         {
             let ent_is_dead_or_friend = {
                 if let Some(auth_state) = auth_char_state_storage.get(entity_below_cursor.into()) {
-                    let char_state = char_state_storage.get(entity_below_cursor.into()).unwrap();
+                    let char_state = static_char_data_storage
+                        .get(entity_below_cursor.into())
+                        .unwrap();
                     !auth_state.state().is_alive() || char_state.team.is_ally_to(self_team)
                 } else {
                     false

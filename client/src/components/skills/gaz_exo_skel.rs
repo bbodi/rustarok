@@ -1,8 +1,5 @@
-use crate::components::char::{ActionPlayMode, Percentage};
-use crate::components::char::{
-    CharAttributeModifier, CharAttributeModifierCollector, CharacterStateComponent,
-};
-use crate::components::skills::basic_attack::{BasicAttackType, WeaponType};
+use crate::components::char::ActionPlayMode;
+use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
@@ -10,10 +7,12 @@ use crate::components::status::status::{
     ApplyStatusComponent, StatusEnum, StatusUpdateParams, StatusUpdateResult,
 };
 use crate::components::StrEffectComponent;
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
-use rustarok_common::common::{ElapsedTime, EngineTime};
+use rustarok_common::attack::BasicAttackType;
+use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
+use rustarok_common::common::{ElapsedTime, EngineTime, Percentage};
+use rustarok_common::config::CommonConfigs;
 use specs::{Entities, LazyUpdate};
 
 pub struct ExoSkeletonSkill;
@@ -32,7 +31,10 @@ impl SkillDef for ExoSkeletonSkill {
     ) -> Option<Box<dyn SkillManifestation>> {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let now = ecs_world.read_resource::<EngineTime>().now();
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.exoskeleton;
+        let configs = &ecs_world
+            .read_resource::<CommonConfigs>()
+            .skills
+            .exoskeleton;
         let duration_seconds = configs.duration_seconds;
         sys_vars
             .apply_statuses

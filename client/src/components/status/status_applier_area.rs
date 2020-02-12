@@ -8,7 +8,7 @@ use crate::{ElapsedTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
 use specs::ReadStorage;
 
 pub struct StatusApplierArea<F>
@@ -86,7 +86,7 @@ where
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         assets: &AssetResources,

@@ -2,13 +2,12 @@ use crate::components::char::{CharacterStateComponent, NpcComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType, Skills,
 };
-use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
-use crate::systems::spawn_entity_system::SpawnEntitySystem;
 
 use nalgebra::Vector2;
 use rustarok_common::common::{v2, Vec2};
 use rustarok_common::components::char::CharEntityId;
+use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 use specs::LazyUpdate;
 
@@ -71,7 +70,7 @@ impl SkillDef for GazBarricadeSkill {
         skill_pos: &Vec2,
         _char_to_skill_dir: &Vec2,
         render_commands: &mut RenderCommandCollector,
-        _configs: &DevConfig,
+        _configs: &CommonConfigs,
     ) {
         let pos2d = { Vec2::new((skill_pos.x as i32) as f32, (skill_pos.y as i32) as f32) };
         Skills::render_casting_box(

@@ -2,7 +2,6 @@ use crate::components::char::{
     CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{HumanInputComponent, LocalPlayerController, SkillKey};
-use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::grf::database::AssetDatabase;
 use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
@@ -10,6 +9,7 @@ use crate::runtime_assets::map::MapRenderData;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::{ElapsedTime, SpriteResource};
 use rustarok_common::common::{EngineTime, Vec2i, Vec3};
+use rustarok_common::components::char::AuthorizedCharStateComponent;
 use specs::prelude::*;
 use specs::ReadStorage;
 
@@ -22,13 +22,13 @@ impl RenderUI {
 
     pub fn run(
         &mut self,
-        self_char_state: &CharacterStateComponent,
+        self_auth_state: &AuthorizedCharStateComponent,
         input: &HumanInputComponent,
         local_player: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
         time: &EngineTime,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &Entities,
         camera_pos: &Vec3,
@@ -70,7 +70,7 @@ impl RenderUI {
         //        }
 
         let main_skill_bar_top = RenderUI::draw_main_skill_bar(
-            self_char_state,
+            self_auth_state,
             input,
             local_player,
             render_commands,
@@ -79,7 +79,7 @@ impl RenderUI {
         );
 
         RenderUI::draw_secondary_skill_bar(
-            self_char_state,
+            self_auth_state,
             input,
             local_player,
             render_commands,
@@ -90,7 +90,7 @@ impl RenderUI {
 
         // render targeting skill name
         RenderUI::draw_targeting_skill_name(
-            self_char_state,
+            self_auth_state,
             input,
             local_player,
             render_commands,
@@ -275,20 +275,17 @@ impl RenderUI {
     //    }
 
     fn draw_targeting_skill_name(
-        char_state: &CharacterStateComponent,
+        char_state: &AuthorizedCharStateComponent,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
     ) {
-        if let Some((_skill_key, skill)) = controller.select_skill_target {
+        if let Some((skill_key, skill)) = controller.select_skill_target {
             let texture = assets.texts.skill_name_texts[&skill];
-            let not_castable = char_state
-                .skill_cast_allowed_at
-                .get(&skill)
-                .unwrap_or(&ElapsedTime(0.0))
-                .has_not_passed_yet(time.now());
+            let not_castable =
+                char_state.skill_cast_allowed_at[skill_key as usize].has_not_passed_yet(time.now());
             render_commands
                 .sprite_2d()
                 .color(
@@ -312,7 +309,7 @@ impl RenderUI {
     const SINGLE_MAIN_ICON_SIZE: i32 = 48;
 
     fn draw_secondary_skill_bar(
-        char_state: &CharacterStateComponent,
+        char_state: &AuthorizedCharStateComponent,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
@@ -338,10 +335,7 @@ impl RenderUI {
         for skill_key in main_keys.iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
-                let not_castable = char_state
-                    .skill_cast_allowed_at
-                    .get(&skill)
-                    .unwrap_or(&ElapsedTime(0.0))
+                let not_castable = char_state.skill_cast_allowed_at[*skill_key as usize]
                     .has_not_passed_yet(time.now());
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey
@@ -424,7 +418,7 @@ impl RenderUI {
     }
 
     fn draw_main_skill_bar(
-        char_state: &CharacterStateComponent,
+        char_state: &AuthorizedCharStateComponent,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
@@ -459,10 +453,7 @@ impl RenderUI {
         for skill_key in main_keys.iter() {
             if let Some(skill) = input.get_skill_for_key(*skill_key) {
                 // inner border
-                let not_castable = char_state
-                    .skill_cast_allowed_at
-                    .get(&skill)
-                    .unwrap_or(&ElapsedTime(0.0))
+                let not_castable = char_state.skill_cast_allowed_at[*skill_key as usize]
                     .has_not_passed_yet(time.now());
                 let border_color = if not_castable {
                     [179, 179, 179, 255] // grey

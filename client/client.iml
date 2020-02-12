@@ -11,6 +11,8 @@
       <sourceFolder url="file://$MODULE_DIR$/../common/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/../common/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/../common/benches" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/assets" />
+      <excludeFolder url="file://$MODULE_DIR$/sprite_upscaling" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/../common/target" />
     </content>

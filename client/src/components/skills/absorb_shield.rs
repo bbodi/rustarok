@@ -5,16 +5,16 @@ use crate::components::skills::skills::{
 use crate::components::status::status::{
     ApplyStatusComponent, StatusEnum, StatusStackingResult, StatusUpdateResult,
 };
-use crate::components::{
-    HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
-};
-use crate::configs::DevConfig;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, SystemVariables};
+use rustarok_common::attack::{
+    HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
+};
 use rustarok_common::common::{ElapsedTime, EngineTime, Vec2};
 use rustarok_common::components::char::CharEntityId;
+use rustarok_common::config::CommonConfigs;
 
 pub struct AbsorbShieldSkill;
 
@@ -33,7 +33,7 @@ impl SkillDef for AbsorbShieldSkill {
         let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
         let now = ecs_world.read_resource::<EngineTime>().now();
         let duration_seconds = ecs_world
-            .read_resource::<DevConfig>()
+            .read_resource::<CommonConfigs>()
             .skills
             .absorb_shield
             .duration_seconds;
@@ -107,20 +107,18 @@ impl AbsorbStatus {
         &mut self,
         outcome: HpModificationResult,
     ) -> HpModificationResult {
-        match outcome.typ {
+        return match outcome.typ {
             HpModificationResultType::Ok(hp_mod_req) => match hp_mod_req {
                 HpModificationType::BasicDamage(value, _, _)
                 | HpModificationType::SpellDamage(value, _)
                 | HpModificationType::Poison(value) => {
                     self.absorbed_damage += value;
-                    return outcome.absorbed();
+                    outcome.absorbed()
                 }
-                HpModificationType::Heal(_) => return outcome,
+                HpModificationType::Heal(_) => outcome,
             },
-            HpModificationResultType::Blocked | HpModificationResultType::Absorbed => {
-                return outcome
-            }
-        }
+            HpModificationResultType::Blocked | HpModificationResultType::Absorbed => outcome,
+        };
     }
 
     pub fn render(

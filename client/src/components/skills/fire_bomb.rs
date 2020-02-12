@@ -8,17 +8,17 @@ use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, StatusEnum, StatusUpdateParams,
     StatusUpdateResult,
 };
-use crate::components::{
-    AreaAttackComponent, DamageDisplayType, HpModificationType, StrEffectComponent,
-};
-use crate::configs::DevConfig;
+use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, SystemVariables};
 use crate::ElapsedTime;
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharEntityId, StatusNature, Team};
+use rustarok_common::components::char::{
+    CharEntityId, StaticCharDataComponent, StatusNature, Team,
+};
+use rustarok_common::config::CommonConfigs;
 
 pub struct FireBombSkill;
 
@@ -35,7 +35,7 @@ impl SkillDef for FireBombSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
-            .read_storage::<CharacterStateComponent>()
+            .read_storage::<StaticCharDataComponent>()
             .get(params.caster_entity_id.into())
         {
             let mut sys_vars = ecs_world.write_resource::<SystemVariables>();
@@ -50,7 +50,7 @@ impl SkillDef for FireBombSkill {
                         started: now,
                         until: now.add_seconds(2.0),
                         damage: ecs_world
-                            .read_resource::<DevConfig>()
+                            .read_resource::<CommonConfigs>()
                             .skills
                             .firebomb
                             .damage,

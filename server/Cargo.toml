@@ -25,6 +25,7 @@ notify = "=5.0.0-pre.1"
 vek = "0.9.9"
 ncollide2d = "0.20.0"
 nphysics2d = "0.12.0"
+bincode = "1.2.1"
 
 [dependencies.specs]
 version = "0.14.3"

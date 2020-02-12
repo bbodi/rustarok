@@ -1,4 +1,3 @@
-use crate::systems::console_commands::humanize_bytes;
 use crate::SIMULATION_FREQ;
 use imgui::*;
 

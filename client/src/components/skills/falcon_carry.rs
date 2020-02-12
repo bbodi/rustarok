@@ -4,7 +4,6 @@ use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillTargetType,
 };
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
-use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
@@ -28,7 +27,7 @@ impl SkillDef for FalconCarrySkill {
         None
         // TODO2
         //        let now = ecs_world.read_resource::<EngineTime>().now();
-        //        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_carry;
+        //        let configs = &ecs_world.read_resource::<CommonConfigs>().skills.falcon_carry;
         //        let target_entity = params.target_entity.unwrap();
         //        let target_pos = {
         //            let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
@@ -98,7 +97,8 @@ pub struct FalconCarryStatus {
 impl FalconCarryStatus {
     pub fn update(&mut self, params: StatusUpdateParams) -> StatusUpdateResult {
         if self.ends_at.has_already_passed(params.time.now()) {
-            params.target_char.set_collidable(params.physics_world);
+            // TODO2 physics
+            //            params.target_char.set_collidable(params.physics_world);
             StatusUpdateResult::RemoveIt
         } else {
             StatusUpdateResult::KeepIt

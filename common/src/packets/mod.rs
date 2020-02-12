@@ -70,6 +70,14 @@ impl SocketBuffer {
         Ok(n)
     }
 
+    pub fn incoming_data_len(&self) -> usize {
+        self.os_pointer - self.user_pointer
+    }
+
+    pub fn outgoing_data_len(&self) -> usize {
+        self.user_pointer - self.os_pointer
+    }
+
     pub fn eof(&self) -> bool {
         self.os_pointer == self.user_pointer
     }
@@ -264,7 +272,7 @@ where
     I: Send + Packet + Debug + 'static,
     O: Send + Packet + Debug + 'static,
 {
-    incoming_channel: std::sync::mpsc::Receiver<(SocketId, Shit<I>)>,
+    incoming_channel: std::sync::mpsc::Receiver<(SocketId, NetworkTrafficEvent<I>)>,
     outgoing_channel: std::sync::mpsc::Sender<NetworkTrafficHandlerMsg<O>>,
     sockets: Vec<Option<()>>,
 }
@@ -276,7 +284,7 @@ where
 {
     pub fn start_thread(socket_capacity: usize) -> PacketHandlerThread<I, O> {
         let (send_to_incoming_ch, read_from_incoming_ch) =
-            std::sync::mpsc::channel::<(SocketId, Shit<I>)>();
+            std::sync::mpsc::channel::<(SocketId, NetworkTrafficEvent<I>)>();
         let (send_to_outgoing_ch, read_from_outgoing_ch) =
             std::sync::mpsc::channel::<NetworkTrafficHandlerMsg<O>>();
         std::thread::spawn(move || {
@@ -307,7 +315,7 @@ where
             .unwrap();
     }
 
-    pub fn receive_into(&self, out: &mut Vec<(SocketId, Shit<I>)>) {
+    pub fn receive_into(&self, out: &mut Vec<(SocketId, NetworkTrafficEvent<I>)>) {
         loop {
             if let Ok(id_and_packet) = self.incoming_channel.try_recv() {
                 out.push(id_and_packet)
@@ -317,7 +325,11 @@ where
         }
     }
 
-    pub fn receive_exact_into(&self, out: &mut Vec<(SocketId, Shit<I>)>, count: usize) {
+    pub fn receive_exact_into(
+        &self,
+        out: &mut Vec<(SocketId, NetworkTrafficEvent<I>)>,
+        count: usize,
+    ) {
         for i in 0..count {
             if let Ok(id_and_packet) = self.incoming_channel.try_recv() {
                 out.push(id_and_packet)
@@ -338,17 +350,18 @@ where
     SendPacket(SocketId, O),
 }
 
-pub enum Shit<P: Send + Packet + Debug + 'static> {
+#[derive(Debug)]
+pub enum NetworkTrafficEvent<P: Send + Packet + Debug + 'static> {
     LocalError(std::io::Error),
     Disconnected,
-    OutgoingTraffic(usize),
-    IncomingTraffic(usize),
+    OutgoingTraffic { sent_data_len: usize },
+    IncomingTraffic { received_data_len: usize },
     Packet(P),
 }
 
 fn network_traffic_handler<I, O>(
     // this is the channel the client app reads for incoming packets
-    send_to_incoming_ch: std::sync::mpsc::Sender<(SocketId, Shit<I>)>,
+    send_to_incoming_ch: std::sync::mpsc::Sender<(SocketId, NetworkTrafficEvent<I>)>,
     // the channel which is filled by the client app with outgoing packets
     read_from_outgoing_ch: std::sync::mpsc::Receiver<NetworkTrafficHandlerMsg<O>>,
 ) where
@@ -374,7 +387,16 @@ fn network_traffic_handler<I, O>(
                 if let Some(socket) = sockets[socket_id.0].as_mut() {
                     let socket_buffer = &mut socket.out_buff;
                     log::trace!("Outgoing Packet: {:?}", packet);
-                    packet.write_into(socket_buffer);
+                    if let Err(e) = packet.write_into(socket_buffer) {
+                        sockets[socket_id.0] = None;
+                        send_to_incoming_ch.send((
+                            SocketId(socket_id.0),
+                            NetworkTrafficEvent::LocalError(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e.to_string(),
+                            )),
+                        ));
+                    }
                 }
             }
             Err(e) => {}
@@ -392,15 +414,20 @@ fn network_traffic_handler<I, O>(
                     match send_result {
                         Err(e) => {
                             sockets[i] = None;
-                            send_to_incoming_ch.send((SocketId(i), Shit::LocalError(e)));
+                            send_to_incoming_ch
+                                .send((SocketId(i), NetworkTrafficEvent::LocalError(e)));
                         }
                         Ok(sent_bytes) => {
                             if socket.out_buff.eof() {
                                 // all the data has been sent, the buffer is empty
                                 socket.out_buff.reset();
                             }
-                            send_to_incoming_ch
-                                .send((SocketId(i), Shit::OutgoingTraffic(sent_bytes)));
+                            send_to_incoming_ch.send((
+                                SocketId(i),
+                                NetworkTrafficEvent::OutgoingTraffic {
+                                    sent_data_len: sent_bytes,
+                                },
+                            ));
                         }
                     }
                 }
@@ -414,13 +441,13 @@ fn network_traffic_handler<I, O>(
                     }
                     Err(e) => {
                         log::error!("Error during socket reading: {}", e);
-                        send_to_incoming_ch.send((SocketId(i), Shit::LocalError(e)));
+                        send_to_incoming_ch.send((SocketId(i), NetworkTrafficEvent::LocalError(e)));
                         sockets[i] = None;
                         continue;
                     }
                     Ok(0) => {
                         let socket_id = SocketId(i);
-                        send_to_incoming_ch.send((socket_id, Shit::Disconnected));
+                        send_to_incoming_ch.send((socket_id, NetworkTrafficEvent::Disconnected));
                         sockets[i] = None;
                         continue;
                     }
@@ -430,14 +457,20 @@ fn network_traffic_handler<I, O>(
                     "INCOMING\n{}",
                     socket.in_buff.get_debug_string_for_incoming_data()
                 );
-                send_to_incoming_ch.send((SocketId(i), Shit::IncomingTraffic(len)));
+                send_to_incoming_ch.send((
+                    SocketId(i),
+                    NetworkTrafficEvent::IncomingTraffic {
+                        received_data_len: len,
+                    },
+                ));
 
                 let socket_id = SocketId(i);
                 while !socket.in_buff.eof() {
                     match I::read_from(&mut socket.in_buff) {
                         Ok(packet) => {
                             log::trace!("Incoming Packet: {:?}", packet);
-                            send_to_incoming_ch.send((socket_id, Shit::Packet(packet)));
+                            send_to_incoming_ch
+                                .send((socket_id, NetworkTrafficEvent::Packet(packet)));
                         }
                         Err(err) => {
                             match err {
@@ -458,7 +491,7 @@ fn network_traffic_handler<I, O>(
                     socket.in_buff.reset();
                 }
             }
-        }
+        } // 'sockets_loop
         std::thread::sleep(Duration::from_millis(10));
     }
 }

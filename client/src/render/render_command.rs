@@ -6,7 +6,6 @@ use crate::render::opengl_render_sys::{Trimesh3dType, VERTEX_ARRAY_COUNT};
 use crate::render::render_sys::ONE_SPRITE_PIXEL_SIZE_IN_3D;
 use nalgebra::{Rotation3, Vector2, Vector3, Vector4};
 use rustarok_common::common::{v3, Mat3, Mat4, Vec2};
-use specs::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
 pub fn create_2d_pos_rot_matrix(pos: &[i16; 2], rotation_rad: f32) -> Mat4 {

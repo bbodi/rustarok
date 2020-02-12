@@ -16,8 +16,13 @@ extern crate hexplay;
 
 use specs;
 
+pub mod attack;
+pub mod char_attr;
 pub mod common;
 pub mod components;
+pub mod config;
+pub mod console;
 pub mod grf;
+pub mod map;
 pub mod packets;
 pub mod systems;

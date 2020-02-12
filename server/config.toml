@@ -1,0 +1,18 @@
+map_name = "prontera"
+
+# right gate: 250.0, -200.0
+start_pos_x = 238
+start_pos_y = -65
+# possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+log_level = "DEBUG"
+
+grf_paths = [
+  "/media/sharp/ext4_hdd/Games/TalonRO/rdata.grf",
+  "/media/sharp/ext4_hdd/Games/TalonRO/sdata.grf",
+  "/media/sharp/ext4_hdd/Games/TalonRO/tdata.grf",
+]
+
+server_port = 6969
+
+# aka quick cast, Normal, OnKeyRelease, OnKeyPress
+cast_mode = "Normal"

@@ -1,5 +1,5 @@
 use crate::common::Vec2;
-use crate::components::char::CharEntityId;
+use crate::components::char::{CharEntityId, ServerEntityId};
 use serde::Deserialize;
 use serde::Serialize;
 use specs::prelude::*;

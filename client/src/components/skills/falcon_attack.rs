@@ -1,7 +1,6 @@
 use nalgebra::{Isometry2, Vector2};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
-use crate::components::char::Percentage;
 use crate::components::char::{CharacterStateComponent, SpriteRenderDescriptorComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
@@ -9,15 +8,15 @@ use crate::components::skills::skills::{
 };
 use crate::components::status::attrib_mod::WalkingSpeedModifierStatus;
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
-use crate::components::{DamageDisplayType, HpModificationRequest, HpModificationType};
-use crate::configs::DevConfig;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::{CharEntityId, Team};
+use rustarok_common::attack::{DamageDisplayType, HpModificationRequest, HpModificationType};
+use rustarok_common::common::{v2, ElapsedTime, EngineTime, Percentage, Vec2};
+use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent, Team};
+use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 use std::collections::HashSet;
 
@@ -36,7 +35,10 @@ impl SkillDef for FalconAttackSkill {
         ecs_world: &mut World,
     ) -> Option<Box<dyn SkillManifestation>> {
         let sys_vars = ecs_world.read_resource::<SystemVariables>();
-        let configs = &ecs_world.read_resource::<DevConfig>().skills.falcon_attack;
+        let configs = &ecs_world
+            .read_resource::<CommonConfigs>()
+            .skills
+            .falcon_attack;
 
         let angle_in_rad = params.char_to_skill_dir.angle(&Vector2::y());
         let angle_in_rad = if params.char_to_skill_dir.x > 0.0 {
@@ -80,7 +82,7 @@ impl SkillDef for FalconAttackSkill {
                     falcon_collider_handle: coll_handle,
                     falcon_owner_id: params.caster_entity_id,
                     team: ecs_world
-                        .read_storage::<CharacterStateComponent>()
+                        .read_storage::<StaticCharDataComponent>()
                         .get(params.caster_entity_id.into())
                         .unwrap()
                         .team,
@@ -139,7 +141,9 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
-                    if let Some(target_char) = params.char_storage.get(target_char_entity_id.into())
+                    if let Some(target_char) = params
+                        .static_char_data_storage
+                        .get(target_char_entity_id.into())
                     {
                         if !self.team.can_attack(target_char.team)
                             || self.damaged_entities.contains(&target_char_entity_id)
@@ -185,7 +189,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
 
     fn render(
         &self,
-        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
+        _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
         now: ElapsedTime,
         _tick: u64,
         _assets: &AssetResources,

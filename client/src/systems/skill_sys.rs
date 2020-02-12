@@ -6,8 +6,9 @@ use crate::components::skills::skills::{
 };
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
+use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::AuthorizedCharStateComponent;
+use rustarok_common::components::char::{AuthorizedCharStateComponent, StaticCharDataComponent};
 
 pub struct SkillSystem;
 
@@ -15,6 +16,7 @@ impl<'a> System<'a> for SkillSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
+        ReadStorage<'a, StaticCharDataComponent>,
         WriteStorage<'a, AuthorizedCharStateComponent>,
         WriteExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
@@ -23,6 +25,9 @@ impl<'a> System<'a> for SkillSystem {
         WriteExpect<'a, PhysicEngine>,
         WriteStorage<'a, SkillManifestationComponent>,
         Write<'a, LazyUpdate>,
+        WriteExpect<'a, Vec<HpModificationRequest>>,
+        WriteExpect<'a, Vec<AreaAttackComponent>>,
+        WriteExpect<'a, Vec<ApplyForceComponent>>,
     );
 
     fn run(
@@ -30,6 +35,7 @@ impl<'a> System<'a> for SkillSystem {
         (
             entities,
             mut char_storage,
+            static_data_storage,
             mut auth_char_storage,
             mut sys_vars,
             time,
@@ -38,6 +44,9 @@ impl<'a> System<'a> for SkillSystem {
             mut physics_world,
             mut skill_storage,
             mut updater,
+            mut hp_mod_requests,
+            mut area_hp_mod_requests,
+            mut pushes,
         ): Self::SystemData,
     ) {
         if !time.can_simulation_run() {
@@ -49,9 +58,12 @@ impl<'a> System<'a> for SkillSystem {
                 entity_id,
                 &collisions_resource.collisions,
                 &mut sys_vars,
+                &mut hp_mod_requests,
+                &mut area_hp_mod_requests,
+                &mut pushes,
                 &time,
                 &entities,
-                &mut char_storage,
+                &static_data_storage,
                 &mut auth_char_storage,
                 &mut physics_world,
                 &mut updater,

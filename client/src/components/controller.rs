@@ -8,7 +8,6 @@ use rustarok_common::components::char::{CharDir, CharEntityId, ControllerEntityI
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
-use specs::prelude::*;
 use std::collections::HashMap;
 use strum_macros::Display;
 use strum_macros::EnumCount;

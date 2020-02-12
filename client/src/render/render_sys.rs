@@ -1,7 +1,7 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
 use crate::components::char::{
-    ActionPlayMode, CharacterStateComponent, NpcComponent, SpriteBoundingRect,
+    ActionPlayMode, CharacterStateComponent, ClientCharState, NpcComponent, SpriteBoundingRect,
     SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
@@ -11,7 +11,7 @@ use crate::components::skills::skills::{SkillManifestationComponent, SkillTarget
 use crate::components::{
     FlyingNumberComponent, FlyingNumberType, SoundEffectComponent, StrEffectComponent,
 };
-use crate::configs::{AppConfig, DevConfig};
+use crate::configs::AppConfig;
 use crate::cursor::CURSOR_TARGET;
 use crate::effect::StrEffectId;
 use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
@@ -26,9 +26,10 @@ use nalgebra::{Isometry2, Vector2, Vector3};
 use rustarok_common::common::{EngineTime, Vec2, Vec3};
 use rustarok_common::components::char::{
     AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
-    EntityTarget, Team, DIRECTION_TABLE,
+    EntityTarget, StaticCharDataComponent, Team, DIRECTION_TABLE,
 };
 use rustarok_common::components::controller::PlayerIntention;
+use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 
 pub const COLOR_WHITE: [u8; 4] = [255, 255, 255, 255];
@@ -53,7 +54,7 @@ impl RenderDesktopClientSystem {
     fn render_for_controller<'a>(
         &self,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&CharacterStateComponent, &AuthorizedCharStateComponent)>,
+        controlled_char: Option<(&StaticCharDataComponent, &AuthorizedCharStateComponent)>,
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollector,
@@ -61,9 +62,10 @@ impl RenderDesktopClientSystem {
         physics_world: &ReadExpect<'a, PhysicEngine>,
         assets: &AssetResources,
         time: &EngineTime,
-        dev_configs: &DevConfig,
+        dev_configs: &CommonConfigs,
         configs: &AppConfig,
-        char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
+        static_char_data_storage: &ReadStorage<'a, StaticCharDataComponent>,
+        client_char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<'a, AuthorizedCharStateComponent>,
         entities: &Entities<'a>,
         sprite_storage: &ReadStorage<'a, SpriteRenderDescriptorComponent>,
@@ -88,7 +90,8 @@ impl RenderDesktopClientSystem {
                 time,
                 dev_configs,
                 configs,
-                char_state_storage,
+                static_char_data_storage,
+                client_char_state_storage,
                 auth_char_state_storage,
                 entities,
                 sprite_storage,
@@ -101,49 +104,50 @@ impl RenderDesktopClientSystem {
         {
             let _stopwatch = system_benchmark.start_measurement("render.draw_physics_coll");
             // Draw physics colliders
-            for physics in (&char_state_storage).join() {
-                if let Some(collider) = physics_world.colliders.get(physics.collider_handle) {
-                    if collider.shape().is_shape::<ncollide2d::shape::Ball<f32>>() {
-                        let radius = collider
-                            .shape()
-                            .bounding_sphere(&Isometry2::new(Vector2::zeros(), 0.0))
-                            .radius();
-                        let pos = physics_world
-                            .bodies
-                            .rigid_body(physics.body_handle)
-                            .unwrap()
-                            .position()
-                            .translation
-                            .vector;
-                        render_commands
-                            .circle_3d()
-                            .radius(radius)
-                            .color(&[255, 0, 255, 255])
-                            .pos_2d(&pos)
-                            .y(0.05)
-                            .add();
-                    } else {
-                        let extents = collider
-                            .shape()
-                            .aabb(&Isometry2::new(Vector2::zeros(), 0.0))
-                            .extents();
-                        let pos = physics_world
-                            .bodies
-                            .rigid_body(physics.body_handle)
-                            .unwrap()
-                            .position()
-                            .translation
-                            .vector;
-                        render_commands
-                            .rectangle_3d()
-                            .pos_2d(&pos)
-                            .color(&[255, 0, 255, 255])
-                            .y(0.05)
-                            .size(extents.x, extents.y)
-                            .add();
-                    }
-                };
-            }
+            // TODO2 physics
+            //            for physics in (&static_char_data_storage).join() {
+            //                if let Some(collider) = physics_world.colliders.get(physics.collider_handle) {
+            //                    if collider.shape().is_shape::<ncollide2d::shape::Ball<f32>>() {
+            //                        let radius = collider
+            //                            .shape()
+            //                            .bounding_sphere(&Isometry2::new(Vector2::zeros(), 0.0))
+            //                            .radius();
+            //                        let pos = physics_world
+            //                            .bodies
+            //                            .rigid_body(physics.body_handle)
+            //                            .unwrap()
+            //                            .position()
+            //                            .translation
+            //                            .vector;
+            //                        render_commands
+            //                            .circle_3d()
+            //                            .radius(radius)
+            //                            .color(&[255, 0, 255, 255])
+            //                            .pos_2d(&pos)
+            //                            .y(0.05)
+            //                            .add();
+            //                    } else {
+            //                        let extents = collider
+            //                            .shape()
+            //                            .aabb(&Isometry2::new(Vector2::zeros(), 0.0))
+            //                            .extents();
+            //                        let pos = physics_world
+            //                            .bodies
+            //                            .rigid_body(physics.body_handle)
+            //                            .unwrap()
+            //                            .position()
+            //                            .translation
+            //                            .vector;
+            //                        render_commands
+            //                            .rectangle_3d()
+            //                            .pos_2d(&pos)
+            //                            .color(&[255, 0, 255, 255])
+            //                            .y(0.05)
+            //                            .size(extents.x, extents.y)
+            //                            .add();
+            //                    }
+            //                };
+            //            }
         }
 
         {
@@ -181,9 +185,9 @@ impl RenderDesktopClientSystem {
                                 .color(&[0, 255, 0, 255])
                                 .add();
                             if skill_def.get_skill_target_type() == SkillTargetType::Area {
-                                let is_castable = controlled_char
+                                let is_castable = controlled_auth_char
                                     .skill_cast_allowed_at
-                                    .get(&skill)
+                                    .get(skill as usize)
                                     .unwrap_or(&ElapsedTime(0.0))
                                     .has_already_passed(time.now());
                                 skill_def.render_target_selection(
@@ -245,7 +249,7 @@ impl RenderDesktopClientSystem {
 
         for skill in (&skill_storage).join() {
             skill.render(
-                char_state_storage,
+                static_char_data_storage,
                 time.now(),
                 time.simulation_frame, // TODO2 biztos simulaton nem render?
                 assets,
@@ -373,13 +377,14 @@ impl RenderDesktopClientSystem {
         &self,
         camera: &CameraComponent,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&CharacterStateComponent, &AuthorizedCharStateComponent)>,
+        controlled_char: Option<(&StaticCharDataComponent, &AuthorizedCharStateComponent)>,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
-        dev_configs: &DevConfig,
+        dev_configs: &CommonConfigs,
         configs: &AppConfig,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
+        client_char_state_storage: &ReadStorage<CharacterStateComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
@@ -390,11 +395,18 @@ impl RenderDesktopClientSystem {
     ) {
         // Draw players
         let mut predictable_entity_index = 0;
-        for (rendering_entity_id, animated_sprite, char_state, auth_state) in (
+        for (
+            rendering_entity_id,
+            animated_sprite,
+            static_char_data,
+            auth_state,
+            client_char_state,
+        ) in (
             entities,
             sprite_storage,
-            char_state_storage,
+            static_char_data_storage,
             auth_char_state_storage,
+            client_char_state_storage,
         )
             .join()
         {
@@ -420,14 +432,14 @@ impl RenderDesktopClientSystem {
             //            dbg!(h);
             //            let pos_3d = Vector3::new(pos_2d.x, h + char_state.get_y(), pos_2d.y);
 
-            let predicted_pos = Vector3::new(pos_2d.x, char_state.get_y(), pos_2d.y);
+            let predicted_pos = Vector3::new(pos_2d.x, client_char_state.get_y(), pos_2d.y);
 
             let acked_pos = {
                 let last_acked_state =
                     snapshot_storage.get_acked_state_for(predictable_entity_index);
                 Vector3::new(
                     last_acked_state.pos().x,
-                    char_state.get_y(),
+                    client_char_state.get_y(),
                     last_acked_state.pos().y,
                 )
             };
@@ -446,14 +458,14 @@ impl RenderDesktopClientSystem {
                 let percentage =
                     (ticks_since_last_rollback as f32 / lerping_ticks as f32).min(1f32);
 
-                let path = (predicted_pos - acked_pos);
+                let path = predicted_pos - acked_pos;
                 acked_pos + (path * percentage)
             } else {
                 predicted_pos
             };
 
-            let color = char_state.statuses.calc_render_color(time.now());
-            match char_state.outlook {
+            let color = client_char_state.statuses.calc_render_color(time.now());
+            match static_char_data.outlook {
                 CharOutlook::Player {
                     job_sprite_id,
                     head_index,
@@ -464,12 +476,12 @@ impl RenderDesktopClientSystem {
                         .as_ref()
                         .map(|it| it.0.team)
                         .unwrap_or(Team::Right);
-                    let body_sprite = char_state
+                    let body_sprite = client_char_state
                         .statuses
-                        .calc_body_sprite(assets, char_state.job_id, sex)
+                        .calc_body_sprite(assets, static_char_data.job_id, sex)
                         .unwrap_or(
                             &assets.sprites.character_sprites[&job_sprite_id]
-                                [viewer_team.get_palette_index(char_state.team)]
+                                [viewer_team.get_palette_index(static_char_data.team)]
                                 [sex as usize],
                         );
 
@@ -493,7 +505,7 @@ impl RenderDesktopClientSystem {
                         let color = if let Some((controlled_char, _controlled_auth_char)) =
                             &controlled_char
                         {
-                            if controlled_char.team.is_ally_to(char_state.team) {
+                            if controlled_char.team.is_ally_to(static_char_data.team) {
                                 &[0, 0, 255, 179]
                             } else {
                                 &[255, 0, 0, 179]
@@ -597,9 +609,10 @@ impl RenderDesktopClientSystem {
                                 .unwrap_or(false),
                             controlled_char
                                 .as_ref()
-                                .map(|it| it.0.team.is_ally_to(char_state.team))
+                                .map(|it| it.0.team.is_ally_to(static_char_data.team))
                                 .unwrap_or(false),
-                            &char_state,
+                            static_char_data,
+                            auth_state,
                             time.now(),
                             &body_bounding_rect,
                             assets,
@@ -607,9 +620,10 @@ impl RenderDesktopClientSystem {
                         );
                     }
 
-                    local_player
-                        .bounding_rect_2d
-                        .insert(rendering_entity_id, (body_bounding_rect, char_state.team));
+                    local_player.bounding_rect_2d.insert(
+                        rendering_entity_id,
+                        (body_bounding_rect, static_char_data.team),
+                    );
                 }
                 CharOutlook::Monster(monster_id) => {
                     let body_res = {
@@ -631,7 +645,7 @@ impl RenderDesktopClientSystem {
                         let color = if let Some((controlled_char, _controlled_auth_char)) =
                             &controlled_char
                         {
-                            if controlled_char.team.is_ally_to(char_state.team) {
+                            if controlled_char.team.is_ally_to(static_char_data.team) {
                                 &[0, 0, 255, 179]
                             } else {
                                 &[255, 0, 0, 179]
@@ -688,9 +702,10 @@ impl RenderDesktopClientSystem {
                                 .unwrap_or(false),
                             controlled_char
                                 .as_ref()
-                                .map(|it| it.0.team.is_ally_to(char_state.team))
+                                .map(|it| it.0.team.is_ally_to(static_char_data.team))
                                 .unwrap_or(false),
-                            &char_state,
+                            static_char_data,
+                            auth_state,
                             time.now(),
                             &bounding_rect,
                             assets,
@@ -700,7 +715,7 @@ impl RenderDesktopClientSystem {
 
                     local_player
                         .bounding_rect_2d
-                        .insert(rendering_entity_id, (bounding_rect, char_state.team));
+                        .insert(rendering_entity_id, (bounding_rect, static_char_data.team));
                 }
             }
 
@@ -718,9 +733,10 @@ impl RenderDesktopClientSystem {
             //                );
             //            }
 
-            char_state
-                .statuses
-                .render(&char_state, assets, time, render_commands);
+            // TODO2 statuses
+            //            static_char_data
+            //                .statuses
+            //                .render(&static_char_data, assets, time, render_commands);
             predictable_entity_index += 1;
         }
     }
@@ -737,11 +753,12 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         Entities<'a>,
         ReadExpect<'a, HumanInputComponent>,
         ReadStorage<'a, SpriteRenderDescriptorComponent>,
+        ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, AuthorizedCharStateComponent>,
         WriteExpect<'a, LocalPlayerController>, // mut: we have to store bounding rects of drawed entities :(
         ReadExpect<'a, SystemVariables>,
-        ReadExpect<'a, DevConfig>,
+        ReadExpect<'a, CommonConfigs>,
         ReadExpect<'a, AppConfig>,
         WriteExpect<'a, SystemFrameDurations>,
         ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -766,7 +783,8 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             entities,
             input,
             sprite_storage,
-            char_state_storage,
+            static_char_data_storage,
+            client_char_state_storage,
             auth_char_state_storage,
             mut local_player,
             sys_vars,
@@ -792,7 +810,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         let local_player: &mut LocalPlayerController = &mut local_player;
         let controlled_char = local_player.controller.controlled_entity.map(|it| {
             (
-                char_state_storage.get(it.into()).unwrap(),
+                static_char_data_storage.get(it.into()).unwrap(),
                 auth_char_state_storage.get(it.into()).unwrap(),
             )
         });
@@ -811,7 +829,8 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 &time,
                 &dev_configs,
                 &configs,
-                &char_state_storage,
+                &static_char_data_storage,
+                &client_char_state_storage,
                 &auth_char_state_storage,
                 &entities,
                 &sprite_storage,
@@ -837,7 +856,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         self.damage_render_sys.run(
             &entities,
             &numbers,
-            &char_state_storage,
+            &static_char_data_storage,
             &auth_char_state_storage,
             local_player.controller.controlled_entity,
             controlled_char.as_ref().map(|it| it.0.team),
@@ -849,13 +868,13 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
 
         if let Some((controlled_char, controlled_auth_char)) = controlled_char.as_ref() {
             self.render_ui_sys.run(
-                &controlled_char,
+                &controlled_auth_char,
                 &input,
                 &local_player,
                 &mut render_commands,
                 &sys_vars,
                 &time,
-                &char_state_storage,
+                &auth_char_state_storage,
                 &npc_storage,
                 &entities,
                 &camera.camera.pos(),
@@ -904,11 +923,7 @@ pub fn render_single_layer_action<'a>(
         } else {
             action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
         };
-        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 {
-            0.1
-        } else {
-            time_needed_for_one_frame
-        };
+        time_needed_for_one_frame = time_needed_for_one_frame.max(0.1);
         let elapsed_time = now.elapsed_since(animation.animation_started);
         let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
         match play_mode {
@@ -1133,7 +1148,7 @@ impl DamageRenderSystem {
         &self,
         entities: &Entities,
         numbers: &ReadStorage<FlyingNumberComponent>,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         followed_char_id: Option<CharEntityId>,
         desktop_entity_team: Option<Team>,
@@ -1145,7 +1160,7 @@ impl DamageRenderSystem {
         for (entity_id, number) in (entities, numbers).join() {
             DamageRenderSystem::add_render_command(
                 number,
-                char_state_storage,
+                static_char_data_storage,
                 auth_char_state_storage,
                 followed_char_id,
                 desktop_entity_team,
@@ -1162,7 +1177,7 @@ impl DamageRenderSystem {
 
     fn add_render_command(
         number: &FlyingNumberComponent,
-        char_state_storage: &ReadStorage<CharacterStateComponent>,
+        static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
         desktop_entity_id: Option<CharEntityId>,
         desktop_entity_team: Option<Team>,
@@ -1229,7 +1244,7 @@ impl DamageRenderSystem {
                 };
                 DamageRenderSystem::add_render_command(
                     &sub_number,
-                    char_state_storage,
+                    static_char_data_storage,
                     auth_char_state_storage,
                     desktop_entity_id,
                     desktop_entity_team,
@@ -1291,7 +1306,7 @@ impl DamageRenderSystem {
             }
             _ => 1.3 - (perc + 0.3 * perc),
         };
-        let is_friend = char_state_storage
+        let is_friend = static_char_data_storage
             .get(number.target_entity_id.into())
             .and_then(|target| {
                 desktop_entity_team.map(|controller_team| controller_team.is_ally_to(target.team))
@@ -1422,13 +1437,14 @@ impl RenderDesktopClientSystem {
         &self,
         is_self: bool,
         is_same_team: bool,
-        char_state: &CharacterStateComponent,
+        static_char_data: &StaticCharDataComponent,
+        char_state: &AuthorizedCharStateComponent,
         now: ElapsedTime,
         bounding_rect_2d: &SpriteBoundingRect,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
-        let bar_w = match char_state.typ {
+        let bar_w = match static_char_data.typ {
             CharType::Player => 80,
             CharType::Minion => 70,
             _ => 100,
@@ -1455,7 +1471,7 @@ impl RenderDesktopClientSystem {
             [201, 0, 54, 255] // for enemies, red
         };
         let mana_color = [59, 201, 224, 255];
-        let bottom_bar_y = match char_state.typ {
+        let bottom_bar_y = match static_char_data.typ {
             CharType::Player => {
                 draw_rect(0, 0, bar_w, 9, &[0, 0, 0, 255]); // black border
                 draw_rect(0, 0, bar_w, 5, &[0, 0, 0, 255]); // center separator
@@ -1473,65 +1489,73 @@ impl RenderDesktopClientSystem {
         };
 
         // draw status remaining time indicator
-        if let Some(perc) = char_state
-            .statuses
-            .calc_largest_remaining_status_time_percent(now)
-        {
-            let orange = [255, 140, 0, 255];
-            let w = bar_w - 4;
-            draw_rect(2, bottom_bar_y + 2, w, 2, &[0, 0, 0, 255]); // black bg
-            let inner_w = (w as f32 * (1.0 - perc)) as i32;
-            draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
-        }
+        // TODO2 statuses
+        //        if let Some(perc) = static_char_data
+        //            .statuses
+        //            .calc_largest_remaining_status_time_percent(now)
+        //        {
+        //            let orange = [255, 140, 0, 255];
+        //            let w = bar_w - 4;
+        //            draw_rect(2, bottom_bar_y + 2, w, 2, &[0, 0, 0, 255]); // black bg
+        //            let inner_w = (w as f32 * (1.0 - perc)) as i32;
+        //            draw_rect(2, bottom_bar_y + 2, inner_w, 2, &orange);
+        //        }
 
         // draw status indicator icons
         const ICON_WIDTH: i32 = 24;
-        if char_state.attrib_bonuses().attrs.armor.is_not_zero() {
-            let armor_bonus = char_state.attrib_bonuses().attrs.armor.as_i16();
-            let shield_icon_texture = assets.status_icons["shield"];
-            let x = bar_x + bar_w + 1;
-            let y = bounding_rect_2d.top_right[1] - 30;
-            // icon size is 24x24
-            render_commands
-                .sprite_2d()
-                .color(&COLOR_WHITE)
-                .screen_pos(x, y)
-                .layer(UiLayer2d::StatusIndicators)
-                .offset(0, -(ICON_WIDTH as i16) / 2)
-                .add(shield_icon_texture);
-
-            // progress bar
-            let color = if armor_bonus > 0 {
-                [0, 255, 0, 255]
-            } else {
-                [255, 0, 0, 255]
-            };
-
-            let perc = (now.percentage_between(
-                char_state.attrib_bonuses().durations.armor_bonus_started_at,
-                char_state.attrib_bonuses().durations.armor_bonus_ends_at,
-            ) * 100.0) as i32;
-            let index = (100 - perc).max(1) as usize;
-            let x = bar_x + bar_w + ICON_WIDTH / 2 + 1;
-            let y = bounding_rect_2d.top_right[1] - 30;
-
-            render_commands
-                .partial_circle_2d()
-                .color(&color)
-                .screen_pos(x, y)
-                .layer(UiLayer2d::StatusIndicators)
-                .circumference_percentage(index)
-                .add();
-
-            let text_texture = assets.texts.custom_texts[&armor_bonus.to_string()];
-
-            render_commands
-                .sprite_2d()
-                .color(&color)
-                .screen_pos(x, y)
-                .layer(UiLayer2d::StatusIndicators)
-                .add(text_texture);
-        }
+        // TODO2 statuses bonuses?
+        //        if char_state.attrib_bonuses().attrs.armor.is_not_zero() {
+        //            let armor_bonus = char_state.attrib_bonuses().attrs.armor.as_i16();
+        //            let shield_icon_texture = assets.status_icons["shield"];
+        //            let x = bar_x + bar_w + 1;
+        //            let y = bounding_rect_2d.top_right[1] - 30;
+        //            // icon size is 24x24
+        //            render_commands
+        //                .sprite_2d()
+        //                .color(&COLOR_WHITE)
+        //                .screen_pos(x, y)
+        //                .layer(UiLayer2d::StatusIndicators)
+        //                .offset(0, -(ICON_WIDTH as i16) / 2)
+        //                .add(shield_icon_texture);
+        //
+        //            // progress bar
+        //            let color = if armor_bonus > 0 {
+        //                [0, 255, 0, 255]
+        //            } else {
+        //                [255, 0, 0, 255]
+        //            };
+        //
+        //            let perc = (now.percentage_between(
+        //                static_char_data
+        //                    .attrib_bonuses()
+        //                    .durations
+        //                    .armor_bonus_started_at,
+        //                static_char_data
+        //                    .attrib_bonuses()
+        //                    .durations
+        //                    .armor_bonus_ends_at,
+        //            ) * 100.0) as i32;
+        //            let index = (100 - perc).max(1) as usize;
+        //            let x = bar_x + bar_w + ICON_WIDTH / 2 + 1;
+        //            let y = bounding_rect_2d.top_right[1] - 30;
+        //
+        //            render_commands
+        //                .partial_circle_2d()
+        //                .color(&color)
+        //                .screen_pos(x, y)
+        //                .layer(UiLayer2d::StatusIndicators)
+        //                .circumference_percentage(index)
+        //                .add();
+        //
+        //            let text_texture = assets.texts.custom_texts[&armor_bonus.to_string()];
+        //
+        //            render_commands
+        //                .sprite_2d()
+        //                .color(&color)
+        //                .screen_pos(x, y)
+        //                .layer(UiLayer2d::StatusIndicators)
+        //                .add(text_texture);
+        //        }
     }
 
     pub fn render_str<E>(

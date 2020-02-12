@@ -2,16 +2,12 @@ use crate::components::skills::skills::{FinishCast, Skills};
 use crate::components::status::status::{
     ApplyStatusComponent, ApplyStatusInAreaComponent, RemoveStatusComponent,
 };
-use crate::components::{
-    ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
-};
 use crate::consts::PLAYABLE_CHAR_SPRITES;
 use crate::grf::str::StrFile;
 use crate::grf::texture::{TextureId, DUMMY_TEXTURE_ID_FOR_TEST};
 use crate::runtime_assets::audio::Sounds;
 use crate::runtime_assets::graphic::Texts;
 use crate::strum::IntoEnumIterator;
-use crate::systems::snapshot_sys::ServerAckResult;
 use crate::video::ortho;
 use crate::SpriteResource;
 use nphysics2d::object::DefaultColliderHandle;
@@ -37,7 +33,6 @@ pub mod next_action_applier_sys;
 pub mod phys;
 pub mod skill_sys;
 pub mod snapshot_sys;
-pub mod spawn_entity_system;
 pub mod turret_ai_sys;
 pub mod ui;
 
@@ -164,16 +159,14 @@ pub enum SystemEvent {
         timestamp: u64,
         src: CharEntityId,
         dst: CharEntityId,
-        result: HpModificationResult,
+        // TODO2
+        //        result: HpModificationResult,
     },
 }
 
 pub struct SystemVariables {
     pub assets: AssetResources,
     pub matrices: RenderMatrices,
-    pub hp_mod_requests: Vec<HpModificationRequest>,
-    pub area_hp_mod_requests: Vec<AreaAttackComponent>,
-    pub pushes: Vec<ApplyForceComponent>,
     pub apply_statuses: Vec<ApplyStatusComponent>,
     pub just_finished_skill_casts: Vec<FinishCast>,
     pub apply_area_statuses: Vec<ApplyStatusInAreaComponent>,
@@ -203,9 +196,6 @@ impl SystemVariables {
                 str_effects,
             },
             matrices: render_matrices,
-            hp_mod_requests: Vec::with_capacity(128),
-            area_hp_mod_requests: Vec::with_capacity(128),
-            pushes: Vec::with_capacity(128),
             apply_statuses: Vec::with_capacity(128),
             just_finished_skill_casts: Vec::with_capacity(128),
             apply_area_statuses: Vec::with_capacity(128),
