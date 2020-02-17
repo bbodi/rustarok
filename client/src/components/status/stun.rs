@@ -5,20 +5,20 @@ use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_action;
 use crate::systems::AssetResources;
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::common::Vec2;
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::components::char::{CharDir, LocalCharEntityId};
 use specs::{Entities, LazyUpdate};
 
 #[derive(Clone, Debug)]
 pub struct StunStatus {
-    pub caster_entity_id: CharEntityId,
-    pub started: ElapsedTime,
-    pub until: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub started: LocalTime,
+    pub until: LocalTime,
 }
 
 impl StunStatus {
-    pub fn new(caster_entity_id: CharEntityId, now: ElapsedTime, duration: f32) -> StunStatus {
+    pub fn new(caster_entity_id: LocalCharEntityId, now: LocalTime, duration: f32) -> StunStatus {
         StunStatus {
             caster_entity_id,
             started: now,
@@ -30,12 +30,12 @@ impl StunStatus {
 impl StunStatus {
     pub fn on_apply(
         &mut self,
-        self_entity_id: CharEntityId,
+        self_entity_id: LocalCharEntityId,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
         assets: &AssetResources,
-        now: ElapsedTime,
+        now: LocalTime,
     ) {
         // TODO2
         //        target_char.set_state(ClientCharState::StandBy, target_char.dir());
@@ -62,14 +62,14 @@ impl StunStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         let anim = SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: self.started,
-            animation_ends_at: ElapsedTime(0.0),
+            animation_ends_at: LocalTime::from(0.0),
             forced_duration: None,
             direction: CharDir::South,
             fps_multiplier: 1.0,
@@ -88,7 +88,7 @@ impl StunStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

@@ -4,7 +4,7 @@ map_name = "prontera"
 start_pos_x = 238
 start_pos_y = -65
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
-log_level = "DEBUG"
+log_level = "TRACE"
 
 grf_paths = [
   "/media/sharp/ext4_hdd/Games/TalonRO/rdata.grf",

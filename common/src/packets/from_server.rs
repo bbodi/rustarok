@@ -1,7 +1,8 @@
+use crate::common::{LocalTime, ServerTime, SimulationTick};
 use crate::components::char::{
-    CharDir, CharEntityId, CharOutlook, CharType, JobId, ServerEntityId, Team,
+    CharDir, CharOutlook, CharType, JobId, LocalCharEntityId, LocalCharStateComp, ServerCharState,
+    ServerEntityId, Team,
 };
-use crate::components::snapshot::CharSnapshot;
 use crate::config::CommonConfigs;
 use crate::packets::to_server::{Packet, PacketReadErr};
 use crate::packets::SocketBuffer;
@@ -14,13 +15,19 @@ use strum::EnumCount;
 use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerEntityState {
     pub id: ServerEntityId,
-    pub char_snapshot: CharSnapshot,
+    pub char_snapshot: ServerCharState,
 }
 
-#[derive(Debug, EnumDiscriminants, EnumCount, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerEntityStateLocal {
+    pub id: ServerEntityId,
+    pub char_snapshot: LocalCharStateComp,
+}
+
+#[derive(Clone, Debug, EnumDiscriminants, EnumCount, Serialize, Deserialize)]
 pub enum FromServerPacket {
     Init {
         map_name: String,
@@ -29,11 +36,11 @@ pub enum FromServerPacket {
     },
     Configs(CommonConfigs),
     Pong {
-        server_tick: u64,
+        server_time: ServerTime,
+        server_tick: SimulationTick,
     },
     Ack {
         cid: u32,
-        sent_at: u128,
         entries: Vec<ServerEntityState>,
     },
     NewEntity {
@@ -43,7 +50,7 @@ pub enum FromServerPacket {
         typ: CharType,
         outlook: CharOutlook,
         job_id: JobId,
-        state: CharSnapshot,
+        state: ServerCharState,
     },
 }
 

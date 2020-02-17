@@ -1,16 +1,16 @@
-use crate::ElapsedTime;
+use crate::LocalTime;
 use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeathStatus {
-    pub started: ElapsedTime,
-    pub remove_char_at: ElapsedTime,
+    pub started: LocalTime,
+    pub remove_char_at: LocalTime,
     pub is_npc: bool,
 }
 
 impl DeathStatus {
-    pub fn new(now: ElapsedTime, is_npc: bool) -> DeathStatus {
+    pub fn new(now: LocalTime, is_npc: bool) -> DeathStatus {
         DeathStatus {
             is_npc,
             started: now,

@@ -11,14 +11,15 @@ use crate::components::status::status::{
 use crate::components::{FlyingNumberComponent, FlyingNumberType, SoundEffectComponent};
 use crate::runtime_assets::audio::Sounds;
 use crate::systems::{SystemEvent, SystemFrameDurations, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{LocalTime, PhysicEngine};
 use rustarok_common::attack::{
     ApplyForceComponent, AreaAttackComponent, DamageDisplayType, HpModificationRequest,
     HpModificationResult, HpModificationResultType, HpModificationType, WeaponType,
 };
+use rustarok_common::common::SimulationTick;
 use rustarok_common::common::{percentage, EngineTime, Percentage, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, JobId, StaticCharDataComponent,
+    JobId, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use rustarok_common::config::CommonConfigs;
 
@@ -38,12 +39,13 @@ impl<'a> System<'a> for AttackSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
-        WriteStorage<'a, AuthorizedCharStateComponent>,
+        WriteStorage<'a, LocalCharStateComp>,
         WriteStorage<'a, StaticCharDataComponent>,
         WriteExpect<'a, SystemVariables>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
         ReadExpect<'a, EngineTime>,
+        ReadExpect<'a, SimulationTick>,
         WriteExpect<'a, Vec<HpModificationRequest>>,
         WriteExpect<'a, Vec<AreaAttackComponent>>,
         WriteExpect<'a, Vec<ApplyForceComponent>>,
@@ -63,6 +65,7 @@ impl<'a> System<'a> for AttackSystem {
             mut physics_world,
             mut system_benchmark,
             time,
+            tick,
             mut hp_mod_requests,
             mut area_hp_mod_requests,
             mut pushes,
@@ -71,9 +74,6 @@ impl<'a> System<'a> for AttackSystem {
             mut events,
         ): Self::SystemData,
     ) {
-        if !time.can_simulation_run() {
-            return;
-        }
         let _stopwatch = system_benchmark.start_measurement("AttackSystem");
 
         self.hp_mod_requests.clear();
@@ -258,7 +258,7 @@ impl<'a> System<'a> for AttackSystem {
 
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::HpModification {
-                        timestamp: time.simulation_frame,
+                        timestamp: *tick,
                         src: attacker_id,
                         dst: attacked_id,
                         // TODO2
@@ -274,6 +274,7 @@ impl<'a> System<'a> for AttackSystem {
         AttackSystem::add_new_statuses(
             status_changes,
             &mut auth_char_state_storage,
+            &static_char_data_storage,
             &sys_vars,
             &time,
             &entities,
@@ -308,12 +309,12 @@ impl AttackCalculation {
 
     pub fn apply_hp_mod_on_area(
         entities: &Entities,
-        auth_char_storage: &WriteStorage<AuthorizedCharStateComponent>,
+        auth_char_storage: &WriteStorage<LocalCharStateComp>,
         area_hpmod_req: &AreaAttackComponent,
     ) -> Vec<HpModificationRequest> {
         let mut result_attacks = vec![];
         for (target_entity_id, char_state) in (entities, auth_char_storage).join() {
-            let target_entity_id = CharEntityId::new(target_entity_id);
+            let target_entity_id = LocalCharEntityId::new(target_entity_id);
             if area_hpmod_req
                 .except
                 .map(|it| it == target_entity_id)
@@ -345,7 +346,7 @@ impl AttackCalculation {
 
     pub fn apply_statuses_on_area(
         entities: &Entities,
-        auth_char_storage: &WriteStorage<AuthorizedCharStateComponent>,
+        auth_char_storage: &WriteStorage<LocalCharStateComp>,
         static_char_data_storage: &WriteStorage<StaticCharDataComponent>,
         area_status: &ApplyStatusInAreaComponent,
     ) -> Vec<ApplyStatusComponent> {
@@ -353,7 +354,7 @@ impl AttackCalculation {
         for (target_entity_id, target_auth_char, target_static_data) in
             (entities, auth_char_storage, static_char_data_storage).join()
         {
-            let target_entity_id = CharEntityId::new(target_entity_id);
+            let target_entity_id = LocalCharEntityId::new(target_entity_id);
             if area_status
                 .except
                 .map(|it| it == target_entity_id)
@@ -385,8 +386,8 @@ impl AttackCalculation {
     }
 
     pub fn apply_armor_calc(
-        _src: &AuthorizedCharStateComponent,
-        dst: &AuthorizedCharStateComponent,
+        _src: &LocalCharStateComp,
+        dst: &LocalCharStateComp,
         hp_mod_req: HpModificationRequest,
     ) -> HpModificationResult {
         return match hp_mod_req.typ {
@@ -426,9 +427,9 @@ impl AttackCalculation {
     pub fn make_sound(
         entities: &Entities,
         pos: Vec2,
-        target_entity_id: CharEntityId,
+        target_entity_id: LocalCharEntityId,
         outcome: &HpModificationResult,
-        now: ElapsedTime,
+        now: LocalTime,
         updater: &mut LazyUpdate,
         sounds: &Sounds,
     ) {
@@ -460,9 +461,9 @@ impl AttackCalculation {
     }
 
     fn apply_damage(
-        auth_char_comp: &mut AuthorizedCharStateComponent,
+        auth_char_comp: &mut LocalCharStateComp,
         outcome: &HpModificationResult,
-        now: ElapsedTime,
+        now: LocalTime,
     ) {
         match outcome.typ {
             HpModificationResultType::Ok(hp_req_mod_type) => match hp_req_mod_type {
@@ -475,7 +476,7 @@ impl AttackCalculation {
                 HpModificationType::BasicDamage(val, _display_type, _weapon_type) => {
                     auth_char_comp
                         .cannot_control_until
-                        .run_at_least_until_seconds(now, 0.1);
+                        .run_at_least_until(now, 100);
                     auth_char_comp.set_receiving_damage();
                     auth_char_comp.hp -= val as i32;
                 }
@@ -485,7 +486,7 @@ impl AttackCalculation {
                 HpModificationType::SpellDamage(val, _display_type) => {
                     auth_char_comp
                         .cannot_control_until
-                        .run_at_least_until_seconds(now, 0.1);
+                        .run_at_least_until(now, 100);
                     auth_char_comp.set_receiving_damage();
                     auth_char_comp.hp -= val as i32;
                 }
@@ -499,10 +500,10 @@ impl AttackCalculation {
         outcome: &HpModificationResult,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        src_entity_id: CharEntityId,
-        target_entity_id: CharEntityId,
+        src_entity_id: LocalCharEntityId,
+        target_entity_id: LocalCharEntityId,
         char_pos: &Vec2,
-        sys_time: ElapsedTime,
+        sys_time: LocalTime,
     ) {
         let damage_entity = entities.create();
         let (flying_numer_type, value) = match outcome.typ {
@@ -534,7 +535,7 @@ impl AttackCalculation {
                 value,
                 src_entity_id,
                 target_entity_id,
-                3.0,
+                3000,
                 *char_pos,
                 sys_time,
             ),
@@ -545,7 +546,8 @@ impl AttackCalculation {
 impl AttackSystem {
     fn add_new_statuses(
         status_changes: Vec<ApplyStatusComponent>,
-        char_state_storage: &mut WriteStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &mut WriteStorage<LocalCharStateComp>,
+        char_static_state_storage: &WriteStorage<StaticCharDataComponent>,
         sys_vars: &SystemVariables,
         time: &EngineTime,
         entities: &Entities,
@@ -578,7 +580,13 @@ impl AttackSystem {
                 );
                 // TODO2 statuses
                 // target_char.statuses.add(status_change.status);
-                target_char.recalc_attribs_based_on_statuses(dev_configs);
+                target_char.recalc_attribs_based_on_statuses(
+                    char_static_state_storage
+                        .get(status_change.target_entity_id.into())
+                        .unwrap()
+                        .job_id,
+                    dev_configs,
+                );
                 log::trace!(
                     "Status added. Attributes({:?}): current: {:?}",
                     target_entity_id,

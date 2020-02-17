@@ -18,36 +18,44 @@ pub fn float_cmp(a: f32, b: f32) -> bool {
     (a - b).abs() < ALLOWED_F32_DIFF
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, PartialOrd)]
+pub struct SimulationTick(u64);
+
+impl SimulationTick {
+    pub fn new() -> SimulationTick {
+        SimulationTick(0)
+    }
+    pub fn inc(&mut self) {
+        self.0 += 1;
+    }
+
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+
+    pub fn prev(&self) -> SimulationTick {
+        SimulationTick(self.0 - 1)
+    }
+
+    pub fn revert(&mut self, by_tick: usize) {
+        self.0 -= by_tick as u64;
+    }
+}
+
+// TODO: does this struct make any sense?
 #[derive(Clone)]
 pub struct EngineTime {
-    pub render_frame: u64,
-    pub simulation_frame: u64,
-    skip_next_simulation: bool,
-    run_simulation_in_this_frame: bool,
-    pub end_of_last_frame: Instant,
-    pub time: ElapsedTime,
+    pub time: LocalTime,
     /// seconds the previous frame required
-    pub dt: Duration,
     // TODO: #[cfg(test)]
     pub fix_dt_for_test: Duration,
-    last_simulation_at: Instant,
-    time_between_simulations: Duration,
 }
 
 impl EngineTime {
-    pub fn new(simulation_freq: usize) -> EngineTime {
+    pub fn new(time: u32) -> EngineTime {
         EngineTime {
             fix_dt_for_test: Duration::from_millis(1),
-            simulation_frame: 1,
-            render_frame: 1,
-            skip_next_simulation: false,
-            run_simulation_in_this_frame: true,
-            end_of_last_frame: Instant::now(),
-            last_simulation_at: Instant::now(),
-
-            time: ElapsedTime(0.0),
-            dt: Duration::from_millis(1),
-            time_between_simulations: Duration::from_millis((1000 / simulation_freq) as u64),
+            time: LocalTime::from(time),
         }
     }
 
@@ -55,97 +63,28 @@ impl EngineTime {
     pub fn new_for_tests(fix_dt_for_test: Duration) -> EngineTime {
         EngineTime {
             fix_dt_for_test,
-            last_simulation_at: Instant::now(),
-            simulation_frame: 1,
-            render_frame: 1,
-            run_simulation_in_this_frame: true,
-            end_of_last_frame: Instant::now(),
-            time: ElapsedTime(0.0),
-            skip_next_simulation: false,
-            dt: Duration::from_millis(1),
-            time_between_simulations: Duration::from_millis(30 as u64),
+            time: LocalTime::from(0.0),
         }
     }
 
-    pub fn can_simulation_run(&self) -> bool {
-        self.run_simulation_in_this_frame
+    pub fn tick(&mut self, dt: Duration) {
+        let dt = if cfg!(test) { self.fix_dt_for_test } else { dt };
+        self.time.0 += dt.as_millis() as u32;
     }
 
-    pub fn get_time_between_simulations(&self) -> Duration {
-        self.time_between_simulations
-    }
-
-    pub fn adjust_simulation_freq(&mut self, simulation_duration_adjuster: i64) {
-        if simulation_duration_adjuster > 0 {
-            self.time_between_simulations +=
-                Duration::from_millis(simulation_duration_adjuster as u64);
-        } else if simulation_duration_adjuster < 0 {
-            let tmp = simulation_duration_adjuster.abs();
-            if self.time_between_simulations.as_millis() as i64 > tmp {
-                self.time_between_simulations -= Duration::from_millis(tmp as u64);
-            }
-        }
-    }
-
-    pub fn render_frame_end(&mut self, dt: Duration, now: Instant) {
-        let dt = if cfg!(test) {
-            self.fix_dt_for_test
-        } else {
-            self.end_of_last_frame = now;
-            dt
-        };
-        self.render_frame += 1;
-        self.dt = dt;
-        self.time.0 += dt.as_millis() as f32 / 1000.0;
-
-        if self.run_simulation_in_this_frame {
-            log::trace!(
-                "simulation {} -> {}",
-                self.simulation_frame,
-                self.simulation_frame + 1
-            );
-            self.simulation_frame += 1;
-        }
-
-        self.run_simulation_in_this_frame =
-            self.last_simulation_at.elapsed() >= self.time_between_simulations;
-        if self.run_simulation_in_this_frame {
-            if self.skip_next_simulation {
-                self.run_simulation_in_this_frame = false;
-                self.skip_next_simulation = false;
-            } else {
-                self.last_simulation_at = now;
-            }
-        }
-    }
-
-    pub fn update_timers_for_prediction(&mut self) {
-        self.simulation_frame += 1;
-    }
-
-    pub fn force_simulation(&mut self) {
-        self.run_simulation_in_this_frame = true;
-    }
-
-    pub fn skip_next_simulation(&mut self) {
-        self.skip_next_simulation = true;
+    pub fn reverted(
+        &self,
+        repredict_this_many_frames: usize,
+        one_frame_dt: Duration,
+    ) -> EngineTime {
+        EngineTime::new(
+            self.time.0 - (one_frame_dt.as_millis() as u32 * repredict_this_many_frames as u32),
+        )
     }
 
     #[inline]
-    pub fn now(&self) -> ElapsedTime {
+    pub fn now(&self) -> LocalTime {
         self.time
-    }
-
-    pub fn dt(&self) -> f32 {
-        self.dt.as_millis() as f32 / 1000.0
-    }
-
-    pub fn reverted(&self, by_tick: u64) -> EngineTime {
-        EngineTime {
-            simulation_frame: self.simulation_frame - by_tick,
-            run_simulation_in_this_frame: true,
-            ..*self
-        }
     }
 }
 
@@ -216,70 +155,100 @@ pub fn rotate_vec2(rad: f32, vec: &Vec2) -> Vec2 {
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+pub struct ServerTime(pub u32);
+
+impl ServerTime {
+    pub fn to_local_time(&self, now: LocalTime, server_to_local_time_diff: i64) -> LocalTime {
+        let local_time =
+            (now.as_millis() as i64 + (self.0 as i64 + server_to_local_time_diff)).max(0);
+        #[cfg(debug_assertions)]
+        {
+            if local_time > std::u32::MAX as i64 {
+                panic!(format!(
+                    "time from server: {:?}, server_to_local_time_diff: {:?}, local_now: {:?}",
+                    self, server_to_local_time_diff, now
+                ));
+            }
+        }
+        return LocalTime::from(local_time as u32);
+    }
+}
+
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(from = "f32")]
-pub struct ElapsedTime(pub f32);
+pub struct LocalTime(u32);
 
-impl From<f32> for ElapsedTime {
+impl From<f32> for LocalTime {
     fn from(value: f32) -> Self {
-        ElapsedTime(value)
+        LocalTime((value * 1000f32) as u32)
     }
 }
 
-impl PartialEq for ElapsedTime {
-    fn eq(&self, other: &Self) -> bool {
-        (self.0 * 1000.0) as u32 == (other.0 * 1000.0) as u32
+impl From<u32> for LocalTime {
+    fn from(value: u32) -> Self {
+        LocalTime(value)
     }
 }
 
-impl Eq for ElapsedTime {}
-
-impl ElapsedTime {
-    pub fn add_seconds(&self, seconds: f32) -> ElapsedTime {
-        ElapsedTime(self.0 + seconds)
+impl LocalTime {
+    pub fn add_millis(&self, millis: u32) -> LocalTime {
+        LocalTime(self.0 + millis)
     }
 
-    pub fn minus(&self, other: ElapsedTime) -> ElapsedTime {
-        ElapsedTime(self.0 - other.0)
+    pub fn add_seconds(&self, seconds: f32) -> LocalTime {
+        LocalTime(self.0 + (seconds * 1000f32) as u32)
     }
 
-    pub fn percentage_between(&self, from: ElapsedTime, to: ElapsedTime) -> f32 {
+    pub fn minus(&self, other: LocalTime) -> LocalTime {
+        LocalTime(self.0 - other.0)
+    }
+
+    pub fn percentage_between(&self, from: LocalTime, to: LocalTime) -> f32 {
         let current = self.0 - from.0;
         let range = to.0 - from.0;
-        return current / range;
+        return current as f32 / range as f32;
     }
 
-    pub fn add(&self, other: ElapsedTime) -> ElapsedTime {
-        ElapsedTime(self.0 + other.0)
+    pub fn add(&self, other: LocalTime) -> LocalTime {
+        LocalTime(self.0 + other.0)
     }
 
-    pub fn elapsed_since(&self, other: ElapsedTime) -> ElapsedTime {
-        ElapsedTime(self.0 - other.0)
+    pub fn sub(&self, other: LocalTime) -> LocalTime {
+        LocalTime(self.0 - other.0)
     }
 
-    pub fn div(&self, other: f32) -> f32 {
+    pub fn elapsed_since(&self, other: LocalTime) -> LocalTime {
+        LocalTime(self.0 - other.0)
+    }
+
+    pub fn div(&self, other: u32) -> u32 {
         self.0 / other
     }
 
-    pub fn run_at_least_until_seconds(&mut self, system_time: ElapsedTime, seconds: f32) {
-        self.0 = self.0.max(system_time.0 + seconds);
+    pub fn run_at_least_until(&mut self, system_time: LocalTime, millis: u32) {
+        self.0 = self.0.max(system_time.0 + millis);
     }
 
-    pub fn has_already_passed(&self, system_time: ElapsedTime) -> bool {
+    pub fn has_already_passed(&self, system_time: LocalTime) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn has_not_passed_yet(&self, other: ElapsedTime) -> bool {
+    pub fn has_not_passed_yet(&self, other: LocalTime) -> bool {
         self.0 > other.0
     }
 
-    pub fn as_f32(&self) -> f32 {
+    pub fn as_seconds_f32(&self) -> f32 {
+        self.0 as f32 / 1000f32
+    }
+
+    pub fn as_millis(&self) -> u32 {
         self.0
     }
 }
 
 // able to represent numbers in 0.1% discrete steps
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(from = "i32")]
+#[serde(from = "i32", into = "i32")]
 pub struct Percentage {
     value: i32,
 }
@@ -287,6 +256,12 @@ pub struct Percentage {
 impl From<i32> for Percentage {
     fn from(value: i32) -> Self {
         percentage(value)
+    }
+}
+
+impl Into<i32> for Percentage {
+    fn into(self) -> i32 {
+        self.value / Percentage::PERCENTAGE_FACTOR
     }
 }
 

@@ -38,10 +38,10 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{LocalTime, PhysicEngine};
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, StaticCharDataComponent, Team,
+    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent, Team,
 };
 use rustarok_common::config::{CommonConfigs, SkillCastingAttributes};
 
@@ -57,7 +57,7 @@ pub struct SkillManifestationUpdateParam<'a, 'longer> {
     engine_time: &'longer EngineTime,
     entities: &'a Entities<'a>,
     pub static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
-    pub auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
+    pub auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp>,
     pub physics_world: &'longer mut PhysicEngine,
     updater: &'longer mut LazyUpdate,
 }
@@ -73,7 +73,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         engine_time: &'longer EngineTime,
         entities: &'a Entities,
         static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
-        auth_state_storage: &'longer mut WriteStorage<'a, AuthorizedCharStateComponent>,
+        auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp>,
         physics_world: &'longer mut PhysicEngine,
         updater: &'longer mut LazyUpdate,
     ) -> SkillManifestationUpdateParam<'a, 'longer> {
@@ -149,8 +149,7 @@ pub trait SkillManifestation {
     fn render(
         &self,
         char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        tick: u64,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
@@ -183,8 +182,7 @@ impl SkillManifestationComponent {
     pub fn render(
         &self,
         char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        tick: u64,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
@@ -193,7 +191,6 @@ impl SkillManifestationComponent {
         skill.render(
             char_entity_storage,
             now,
-            tick,
             assets,
             render_commands,
             audio_commands,
@@ -207,12 +204,12 @@ unsafe impl Send for SkillManifestationComponent {}
 
 pub struct FinishCast {
     pub skill: Skills,
-    pub caster_entity_id: CharEntityId,
+    pub caster_entity_id: LocalCharEntityId,
     pub caster_pos: Vec2,
     pub caster_team: Team,
     pub skill_pos: Option<Vec2>,
     pub char_to_skill_dir: Vec2,
-    pub target_entity: Option<CharEntityId>,
+    pub target_entity: Option<LocalCharEntityId>,
 }
 
 pub trait SkillDef {
@@ -232,7 +229,7 @@ pub trait SkillDef {
         time: &EngineTime,
         dev_configs: &CommonConfigs,
         render_commands: &mut RenderCommandCollector,
-        char_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        char_storage: &ReadStorage<LocalCharStateComp>,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Moonstar,
@@ -255,7 +252,7 @@ pub trait SkillDef {
             if let Some(target_char) = char_storage.get(target_entity.into()) {
                 render_commands
                     .horizontal_texture_3d()
-                    .rotation_rad(time.now().0 % 6.28)
+                    .rotation_rad(time.now().as_millis() as f32 % 6.28)
                     .pos(&target_char.pos())
                     .add(assets.sprites.magic_target)
             }
@@ -376,22 +373,26 @@ impl Skills {
             Skills::GazXplodiumCharge => &configs.skills.gaz_xplodium_charge.attributes,
             Skills::GazTurret => &configs.skills.gaz_turret.attributes,
             Skills::GazDestroyTurret => &configs.skills.gaz_destroy_turret,
-            Skills::GazTurretTarget => &SkillCastingAttributes {
-                casting_time: ElapsedTime(0.0),
-                cast_delay: ElapsedTime(0.0),
-                casting_range: 999_999_999.0,
-                width: None,
-            },
+            Skills::GazTurretTarget => &configs.skills.gaz_destroy_turret,
+            // TODO
+            //            Skills::GazTurretTarget => &SkillCastingAttributes {
+            //                casting_time: LocalTime::from(0.0),
+            //                cast_delay: LocalTime::from(0.0),
+            //                casting_range: 999_999_999.0,
+            //                width: None,
+            //            },
             Skills::FalconCarry => &configs.skills.falcon_carry.attributes,
             Skills::FalconAttack => &configs.skills.falcon_attack.attributes,
             Skills::Sanctuary => &configs.skills.sanctuary.attributes,
             Skills::ExoSkeleton => &configs.skills.exoskeleton.attributes,
-            Skills::AttackMove => &SkillCastingAttributes {
-                casting_time: ElapsedTime(0.0),
-                cast_delay: ElapsedTime(0.0),
-                casting_range: 200_000_000.0,
-                width: None,
-            },
+            Skills::AttackMove => &configs.skills.gaz_destroy_turret,
+            // TODO
+            //            Skills::AttackMove => &SkillCastingAttributes {
+            //                casting_time: LocalTime::from(0.0),
+            //                cast_delay: LocalTime::from(0.0),
+            //                casting_range: 200_000_000.0,
+            //                width: None,
+            //            },
             Skills::GazBarricade => &configs.skills.gaz_barricade.attributes,
         }
     }
@@ -436,8 +437,8 @@ impl Skills {
     pub fn is_casting_allowed_based_on_target(
         skill_target_type: SkillTargetType,
         skill_casting_range: f32,
-        caster_id: CharEntityId,
-        target_entity: Option<CharEntityId>,
+        caster_id: LocalCharEntityId,
+        target_entity: Option<LocalCharEntityId>,
         target_distance: f32,
     ) -> bool {
         match skill_target_type {

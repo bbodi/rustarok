@@ -12,9 +12,10 @@ use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::attack::{
     HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
 };
-use rustarok_common::common::{ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::common::{EngineTime, LocalTime, Vec2};
+use rustarok_common::components::char::LocalCharEntityId;
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct AbsorbShieldSkill;
 
@@ -58,15 +59,15 @@ impl SkillDef for AbsorbShieldSkill {
 
 #[derive(Clone, Debug)]
 pub struct AbsorbStatus {
-    pub caster_entity_id: CharEntityId,
-    pub started: ElapsedTime,
-    pub animation_started: ElapsedTime,
-    pub until: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub started: LocalTime,
+    pub animation_started: LocalTime,
+    pub until: LocalTime,
     pub absorbed_damage: u32,
 }
 
 impl AbsorbStatus {
-    pub fn new(caster_entity_id: CharEntityId, now: ElapsedTime, duration: f32) -> AbsorbStatus {
+    pub fn new(caster_entity_id: LocalCharEntityId, now: LocalTime, duration: f32) -> AbsorbStatus {
         AbsorbStatus {
             caster_entity_id,
             started: now,
@@ -78,8 +79,8 @@ impl AbsorbStatus {
 
     pub fn update(
         &mut self,
-        now: ElapsedTime,
-        self_char_id: CharEntityId,
+        now: LocalTime,
+        self_char_id: LocalCharEntityId,
         hp_mod_requests: &mut Vec<HpModificationRequest>,
     ) -> StatusUpdateResult {
         if self.until.has_already_passed(now) {
@@ -123,7 +124,7 @@ impl AbsorbStatus {
 
     pub fn render(
         &self,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         char_pos: Vec2,
         render_commands: &mut RenderCommandCollector,

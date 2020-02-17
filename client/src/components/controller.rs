@@ -2,9 +2,9 @@ use crate::cam::Camera;
 use crate::components::char::{SpriteBoundingRect, SpriteRenderDescriptorComponent};
 use crate::components::skills::skills::Skills;
 
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::common::{v2, v3, Mat3, Mat4, Vec2, Vec2u};
-use rustarok_common::components::char::{CharDir, CharEntityId, ControllerEntityId, Team};
+use rustarok_common::components::char::{CharDir, ControllerEntityId, LocalCharEntityId, Team};
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use sdl2::keyboard::Scancode;
 use serde::Deserialize;
@@ -89,7 +89,7 @@ pub struct LocalPlayerController {
     pub last_intention: Option<PlayerIntention>,
     pub repeat_next_action: bool,
     pub entities_below_cursor: EntitiesBelowCursor,
-    pub bounding_rect_2d: HashMap<CharEntityId, (SpriteBoundingRect, Team)>,
+    pub bounding_rect_2d: HashMap<LocalCharEntityId, (SpriteBoundingRect, Team)>,
     pub cell_below_cursor_walkable: bool,
     pub cursor_anim_descr: SpriteRenderDescriptorComponent,
     pub cursor_color: [u8; 3],
@@ -114,8 +114,8 @@ impl LocalPlayerController {
             },
             cursor_anim_descr: SpriteRenderDescriptorComponent {
                 action_index: 0,
-                animation_started: ElapsedTime(0.0),
-                animation_ends_at: ElapsedTime(0.0),
+                animation_started: LocalTime::from(0.0),
+                animation_ends_at: LocalTime::from(0.0),
                 forced_duration: None,
                 direction: CharDir::South,
                 fps_multiplier: 1.0,
@@ -186,8 +186,8 @@ pub enum CameraMode {
 
 #[derive(Debug)]
 pub struct EntitiesBelowCursor {
-    friendly: Vec<CharEntityId>,
-    enemy: Vec<CharEntityId>,
+    friendly: Vec<LocalCharEntityId>,
+    enemy: Vec<LocalCharEntityId>,
 }
 
 impl EntitiesBelowCursor {
@@ -203,19 +203,19 @@ impl EntitiesBelowCursor {
         self.enemy.clear();
     }
 
-    pub fn add_friend(&mut self, entity_id: CharEntityId) {
+    pub fn add_friend(&mut self, entity_id: LocalCharEntityId) {
         self.friendly.push(entity_id);
     }
 
-    pub fn add_enemy(&mut self, entity_id: CharEntityId) {
+    pub fn add_enemy(&mut self, entity_id: LocalCharEntityId) {
         self.enemy.push(entity_id);
     }
 
-    pub fn get_enemy_or_friend(&self) -> Option<CharEntityId> {
+    pub fn get_enemy_or_friend(&self) -> Option<LocalCharEntityId> {
         self.enemy.get(0).or(self.friendly.get(0)).map(|it| *it)
     }
 
-    pub fn get_friend_except(&self, except_id: CharEntityId) -> Option<CharEntityId> {
+    pub fn get_friend_except(&self, except_id: LocalCharEntityId) -> Option<LocalCharEntityId> {
         self.friendly
             .iter()
             .filter(|it| **it != except_id)
@@ -223,11 +223,11 @@ impl EntitiesBelowCursor {
             .map(|it| *it)
     }
 
-    pub fn get_friend(&self) -> Option<CharEntityId> {
+    pub fn get_friend(&self) -> Option<LocalCharEntityId> {
         self.friendly.get(0).map(|it| *it)
     }
 
-    pub fn get_enemy(&self) -> Option<CharEntityId> {
+    pub fn get_enemy(&self) -> Option<LocalCharEntityId> {
         self.enemy.get(0).map(|it| *it)
     }
 }

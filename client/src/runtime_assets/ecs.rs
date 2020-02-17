@@ -11,8 +11,11 @@ use crate::components::{
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::console_system::ConsoleComponent;
 use crate::systems::falcon_ai_sys::FalconComponent;
-use rustarok_common::components::char::{AuthorizedCharStateComponent, StaticCharDataComponent};
+use rustarok_common::components::char::{
+    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
+};
 use rustarok_common::components::controller::ControllerComponent;
+use specs::world::WorldExt;
 use specs::World;
 
 pub fn create_ecs_world() -> World {
@@ -30,7 +33,7 @@ pub fn create_ecs_world() -> World {
     ecs_world.register::<MinionComponent>();
     ecs_world.register::<HasServerIdComponent>();
 
-    ecs_world.register::<AuthorizedCharStateComponent>();
+    ecs_world.register::<LocalCharStateComp>();
     ecs_world.register::<StaticCharDataComponent>();
     // TODO2 remove it as soon as Falcon logic goes to the server code
     ecs_world.register::<ControllerComponent>();

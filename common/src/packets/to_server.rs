@@ -1,4 +1,5 @@
-use crate::components::controller::PlayerIntention;
+use crate::common::SimulationTick;
+use crate::components::controller::{PlayerIntention, ToServerPlayerIntention};
 use crate::console::CommandArguments;
 use crate::packets::SocketBuffer;
 use serde::Deserialize;
@@ -22,8 +23,8 @@ pub enum ToServerPacket {
     ReadyForGame,
     Intention {
         cid: u32,
-        client_tick: u64,
-        intention: PlayerIntention,
+        client_tick: SimulationTick,
+        intention: ToServerPlayerIntention,
     },
     ConsoleCommand(CommandArguments),
 }

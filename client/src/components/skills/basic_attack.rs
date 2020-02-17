@@ -10,8 +10,8 @@ use crate::components::SoundEffectComponent;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_single_layer_action;
 use crate::systems::{AssetResources, SystemVariables};
-use rustarok_common::common::{v2, v3, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::{CharDir, CharEntityId};
+use rustarok_common::common::{v2, v3, EngineTime, LocalTime, Vec2};
+use rustarok_common::components::char::{CharDir, LocalCharEntityId};
 use serde::Deserialize;
 use serde::Serialize;
 use specs::ReadStorage;
@@ -75,7 +75,7 @@ use specs::ReadStorage;
 //    fn render(
 //        &self,
 //        _char_entity_storage: &ReadStorage<CharacterStateComponent>,
-//        now: ElapsedTime,
+//        now: LocalTime,
 //        _tick: u64,
 //        assets: &AssetResources,
 //        render_commands: &mut RenderCommandCollector,
@@ -84,8 +84,8 @@ use specs::ReadStorage;
 //        let dir = CharDir::determine_dir(&self.target_pos, &self.start_pos);
 //        let anim = SpriteRenderDescriptorComponent {
 //            action_index: CharActionIndex::Idle as usize,
-//            animation_started: ElapsedTime(0.0),
-//            animation_ends_at: ElapsedTime(0.0),
+//            animation_started: LocalTime::from(0.0),
+//            animation_ends_at: LocalTime::from(0.0),
 //            forced_duration: None,
 //            direction: dir,
 //            fps_multiplier: 1.0,

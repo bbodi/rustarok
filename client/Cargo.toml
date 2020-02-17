@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["<bodidev@gmail.com>"]
 edition = "2018"
 
+[profile.dev.package."*"]
+opt-level = 2
+
 [dependencies]
 rustarok-common = { path = "../common" }
 singleton_gl_dont_use_it = { package = "gl", version = "0.13.0" }
@@ -30,7 +33,7 @@ imgui-opengl-renderer = "0.6.1"
 
 
 [dependencies.specs]
-version = "0.14.3"
+version = "0.16.0"
 default-features = false
 features = []
 

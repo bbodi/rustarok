@@ -15,11 +15,12 @@ use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::attack::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, WeaponType,
 };
-use rustarok_common::common::{v2, v2_to_v3, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::common::{v2, v2_to_v3, EngineTime, LocalTime, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, StaticCharDataComponent,
+    CharDir, CharOutlook, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use rustarok_common::config::{AssaBladeDashSkillConfig, CommonConfigs};
+use specs::world::WorldExt;
 
 pub struct AssaBladeDashSkill;
 
@@ -36,7 +37,7 @@ impl SkillDef for AssaBladeDashSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
-            .write_storage::<AuthorizedCharStateComponent>()
+            .write_storage::<LocalCharStateComp>()
             .get_mut(params.caster_entity_id.into())
         {
             let angle = params.char_to_skill_dir.angle(&Vector2::y());
@@ -71,7 +72,7 @@ impl SkillDef for AssaBladeDashSkill {
                         shadow2_pos: Vector2::zeros(),
                         forward_damage_done: false,
                         backward_damage_done: false,
-                        half_duration: configs.duration_seconds / 2.0,
+                        half_duration: (configs.duration_seconds * 1000f32) as u32 / 2,
                         configs,
                     }),
                 ));
@@ -86,13 +87,13 @@ impl SkillDef for AssaBladeDashSkill {
 
 #[derive(Clone, Debug)]
 pub struct AssaBladeDashStatus {
-    pub caster_entity_id: CharEntityId,
-    pub started_at: ElapsedTime,
-    pub ends_at: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub started_at: LocalTime,
+    pub ends_at: LocalTime,
     pub start_pos: Vec2,
     pub center: Vec2,
     pub rot_radian: f32,
-    pub half_duration: f32,
+    pub half_duration: u32,
     pub vector: Vec2,
     pub shadow1_pos: Vec2,
     pub shadow2_pos: Vec2,
@@ -182,8 +183,8 @@ impl AssaBladeDashStatus {
     pub fn render(
         &self,
         static_data: &StaticCharDataComponent,
-        auth_state: &AuthorizedCharStateComponent,
-        now: ElapsedTime,
+        auth_state: &LocalCharStateComp,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -203,16 +204,16 @@ impl AssaBladeDashStatus {
                     &sprites[sex as usize][head_index]
                 };
                 for (pos, alpha, time_offset) in &[
-                    (auth_state.pos(), 255, 0.0),
-                    (self.shadow1_pos, 175, 0.05),
-                    (self.shadow2_pos, 100, 0.1),
+                    (auth_state.pos(), 255, 0),
+                    (self.shadow1_pos, 175, 50),
+                    (self.shadow2_pos, 100, 100),
                 ] {
                     let anim_descr = if duration_percentage < 0.5 {
                         SpriteRenderDescriptorComponent {
                             action_index: CharActionIndex::Attacking1 as usize,
-                            animation_started: self.started_at.add_seconds(*time_offset),
-                            animation_ends_at: ElapsedTime(0.0),
-                            forced_duration: Some(ElapsedTime(self.half_duration)),
+                            animation_started: self.started_at.add_millis(*time_offset),
+                            animation_ends_at: LocalTime::from(0.0),
+                            forced_duration: Some(LocalTime::from(self.half_duration)),
                             direction: auth_state.dir(),
                             fps_multiplier: 1.0,
                         }
@@ -221,9 +222,9 @@ impl AssaBladeDashStatus {
                             action_index: CharActionIndex::Attacking1 as usize,
                             animation_started: self
                                 .started_at
-                                .add_seconds(self.half_duration + *time_offset),
-                            animation_ends_at: ElapsedTime(0.0),
-                            forced_duration: Some(ElapsedTime(self.half_duration)),
+                                .add_millis(self.half_duration + *time_offset),
+                            animation_ends_at: LocalTime::from(0.0),
+                            forced_duration: Some(LocalTime::from(self.half_duration)),
                             direction: CharDir::from((auth_state.dir().as_usize() + 4) % 8),
                             fps_multiplier: 1.0,
                         }

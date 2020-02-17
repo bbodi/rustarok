@@ -11,12 +11,13 @@ use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
 use rustarok_common::common::{rotate_vec2, v2};
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct BrutalTestSkill;
 
@@ -81,25 +82,25 @@ impl SkillDef for BrutalTestSkill {
 }
 
 pub struct BrutalSkillManifest {
-    pub caster_entity_id: CharEntityId,
+    pub caster_entity_id: LocalCharEntityId,
     pub effect_ids: Vec<Entity>,
     pub extents: Vec2,
     pub half_extents: Vec2,
     pub pos: Vec2,
     pub rot_angle_in_rad: f32,
-    pub created_at: ElapsedTime,
-    pub die_at: ElapsedTime,
-    pub next_damage_at: ElapsedTime,
+    pub created_at: LocalTime,
+    pub die_at: LocalTime,
+    pub next_damage_at: LocalTime,
     pub damage: u32,
 }
 
 impl BrutalSkillManifest {
     pub fn new(
-        caster_entity_id: CharEntityId,
+        caster_entity_id: LocalCharEntityId,
         skill_center: &Vec2,
         rot_angle_in_rad: f32,
         damage: u32,
-        system_time: ElapsedTime,
+        system_time: LocalTime,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> BrutalSkillManifest {
@@ -163,8 +164,7 @@ impl SkillManifestation for BrutalSkillManifest {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: ElapsedTime,
-        _tick: u64,
+        _now: LocalTime,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

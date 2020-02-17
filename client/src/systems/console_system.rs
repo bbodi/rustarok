@@ -5,16 +5,16 @@ use crate::render::render_command::{Font, RenderCommandCollector, UiLayer2d};
 use crate::systems::console_commands::{
     cmd_add_falcon, cmd_add_status, cmd_bind_key, cmd_clear, cmd_clone_char, cmd_control_char,
     cmd_disable_collision, cmd_enable_collision, cmd_follow_char, cmd_get_pos, cmd_goto, cmd_heal,
-    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_list_statuses, cmd_remove_falcon,
-    cmd_resurrect, cmd_set_config, cmd_set_damping, cmd_set_fullscreen, cmd_set_job, cmd_set_mass,
-    cmd_set_outlook, cmd_set_pos, cmd_set_resolution, cmd_set_team, cmd_spawn_area,
-    cmd_spawn_entity, cmd_toggle_console,
+    cmd_kill_all, cmd_list_entities, cmd_list_players, cmd_list_statuses, cmd_reload_configs,
+    cmd_remove_falcon, cmd_resurrect, cmd_set_config, cmd_set_damping, cmd_set_fullscreen,
+    cmd_set_job, cmd_set_mass, cmd_set_outlook, cmd_set_pos, cmd_set_resolution, cmd_set_team,
+    cmd_spawn_area, cmd_spawn_entity, cmd_toggle_console,
 };
 use crate::systems::SystemVariables;
 use crate::video::Video;
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::LocalCharEntityId;
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::{CommandArguments, CommandElement};
 use sdl2::keyboard::Scancode;
@@ -46,8 +46,8 @@ pub struct ConsoleComponent {
     args: CommandArguments,
     y_pos: i32,
     cursor_shown: bool,
-    cursor_change: ElapsedTime,
-    key_repeat_allowed_at: ElapsedTime,
+    cursor_change: LocalTime,
+    key_repeat_allowed_at: LocalTime,
     pub command_to_execute: Option<CommandArguments>,
 }
 
@@ -68,8 +68,8 @@ impl ConsoleComponent {
             input: "".to_string(),
             y_pos: 0,
             cursor_shown: false,
-            cursor_change: ElapsedTime(0.0),
-            key_repeat_allowed_at: ElapsedTime(0.0),
+            cursor_change: LocalTime::from(0.0),
+            key_repeat_allowed_at: LocalTime::from(0.0),
             command_to_execute: None,
         }
     }
@@ -201,7 +201,7 @@ impl<'a> ConsoleSystem<'a> {
     fn handle_backspace(
         input: &HumanInputComponent,
         console: &mut ConsoleComponent,
-        now: ElapsedTime,
+        now: LocalTime,
         repeat_time: f32,
     ) {
         let (new_input, new_x) = if input.ctrl_down || input.ctrl_down {
@@ -257,7 +257,7 @@ impl<'a> ConsoleSystem<'a> {
     fn handle_delete_key(
         input: &HumanInputComponent,
         console: &mut ConsoleComponent,
-        now: ElapsedTime,
+        now: LocalTime,
         repeat_time: f32,
     ) {
         let new_input = if input.ctrl_down || input.ctrl_down {
@@ -630,7 +630,7 @@ impl<'a> ConsoleSystem<'a> {
             .0
     }
 
-    pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<CharEntityId> {
+    pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<LocalCharEntityId> {
         for (entity_id, char_state) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<CharacterStateComponent>(),
@@ -638,7 +638,7 @@ impl<'a> ConsoleSystem<'a> {
             .join()
         {
             if char_state.name == username {
-                return Some(CharEntityId::from(entity_id));
+                return Some(LocalCharEntityId::from(entity_id));
             }
         }
         return None;
@@ -661,6 +661,7 @@ impl<'a> ConsoleSystem<'a> {
         //        ConsoleSystem::add_command(&mut command_defs, cmd_spawn_effect(effect_names));
         ConsoleSystem::add_command(&mut command_defs, cmd_spawn_area());
         ConsoleSystem::add_command(&mut command_defs, cmd_spawn_entity());
+        ConsoleSystem::add_command(&mut command_defs, cmd_reload_configs());
         ConsoleSystem::add_command(&mut command_defs, cmd_heal());
         ConsoleSystem::add_command(&mut command_defs, cmd_kill_all());
         ConsoleSystem::add_command(&mut command_defs, cmd_goto());
@@ -794,7 +795,12 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback = Box<
-    dyn Fn(Option<CharEntityId>, CommandArguments, &mut World, &mut Video) -> Result<(), String>,
+    dyn Fn(
+        Option<LocalCharEntityId>,
+        CommandArguments,
+        &mut World,
+        &mut Video,
+    ) -> Result<(), String>,
 >;
 
 pub enum ConsoleWordType {

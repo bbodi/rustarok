@@ -1,6 +1,7 @@
 use crate::common::{v2, Vec2};
 use crate::grf::binary_reader::BinaryReader;
-use crate::packets::to_server::{Packet, PacketReadErr};
+use crate::packets::from_server::FromServerPacket;
+use crate::packets::to_server::{Packet, PacketReadErr, ToServerPacket};
 use hexplay::{HexView, HexViewBuilder};
 use serde::export::fmt::Debug;
 use std::io::prelude::*;
@@ -386,7 +387,7 @@ fn network_traffic_handler<I, O>(
             Ok(NetworkTrafficHandlerMsg::SendPacket(socket_id, packet)) => {
                 if let Some(socket) = sockets[socket_id.0].as_mut() {
                     let socket_buffer = &mut socket.out_buff;
-                    log::trace!("Outgoing Packet: {:?}", packet);
+                    //                    log::trace!("Outgoing Packet: {:?}", packet);
                     if let Err(e) = packet.write_into(socket_buffer) {
                         sockets[socket_id.0] = None;
                         send_to_incoming_ch.send((
@@ -404,10 +405,10 @@ fn network_traffic_handler<I, O>(
         for i in 0..sockets.len() {
             if let Some(ref mut socket) = &mut sockets[i] {
                 if !socket.out_buff.eof() {
-                    log::trace!(
-                        "OUTGOING\n{}",
-                        socket.out_buff.get_debug_string_for_outgoing_data()
-                    );
+                    //                    log::trace!(
+                    //                        "OUTGOING\n{}",
+                    //                        socket.out_buff.get_debug_string_for_outgoing_data()
+                    //                    );
                     let send_result = socket
                         .out_buff
                         .send_outgoing_data(&mut socket.socket_stream);
@@ -453,10 +454,10 @@ fn network_traffic_handler<I, O>(
                     }
                     Ok(len) => len,
                 };
-                log::trace!(
-                    "INCOMING\n{}",
-                    socket.in_buff.get_debug_string_for_incoming_data()
-                );
+                //                log::trace!(
+                //                    "INCOMING\n{}",
+                //                    socket.in_buff.get_debug_string_for_incoming_data()
+                //                );
                 send_to_incoming_ch.send((
                     SocketId(i),
                     NetworkTrafficEvent::IncomingTraffic {
@@ -468,7 +469,7 @@ fn network_traffic_handler<I, O>(
                 while !socket.in_buff.eof() {
                     match I::read_from(&mut socket.in_buff) {
                         Ok(packet) => {
-                            log::trace!("Incoming Packet: {:?}", packet);
+                            //                            log::trace!("Incoming Packet: {:?}", packet);
                             send_to_incoming_ch
                                 .send((socket_id, NetworkTrafficEvent::Packet(packet)));
                         }

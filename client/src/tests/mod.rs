@@ -27,7 +27,7 @@ use assert_approx_eq::assert_approx_eq;
 use log::LevelFilter;
 use nalgebra::Vector2;
 use rustarok_common::common::Vec2;
-use rustarok_common::components::char::{CharEntityId, EntityTarget};
+use rustarok_common::components::char::{EntityTarget, LocalCharEntityId};
 use specs::prelude::*;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -99,7 +99,7 @@ fn setup_ecs_world<'a, 'b>() -> TestUtil<'a, 'b> {
 }
 struct CharAsserter<'a> {
     ecs_world: &'a World,
-    char_id: CharEntityId,
+    char_id: LocalCharEntityId,
 }
 
 macro_rules! get_char {
@@ -195,7 +195,7 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn status_change(
         mut self,
-        expected_char_id: CharEntityId,
+        expected_char_id: LocalCharEntityId,
         expected_prev_status: CharState,
         expected_next_status: CharState,
     ) -> OrderedEventAsserter<'a> {
@@ -205,7 +205,7 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn status_change_ref(
         &mut self,
-        expected_char_id: CharEntityId,
+        expected_char_id: LocalCharEntityId,
         expected_prev_status: CharState,
         expected_next_status: CharState,
     ) {
@@ -228,8 +228,8 @@ impl<'a> OrderedEventAsserter<'a> {
     #[allow(dead_code)]
     pub fn state_went_into_attacking(
         mut self,
-        attacker_id: CharEntityId,
-        attacked_id: CharEntityId,
+        attacker_id: LocalCharEntityId,
+        attacked_id: LocalCharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::CharStatusChange(_tick, char_id, _from_status, to_status) => {
@@ -252,7 +252,7 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn state_went_into_casting(
         mut self,
-        expected_char_id: CharEntityId,
+        expected_char_id: LocalCharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::CharStatusChange(_tick, char_id, _from_status, to_status) => {
@@ -276,8 +276,8 @@ impl<'a> OrderedEventAsserter<'a> {
     #[allow(dead_code)]
     pub fn basic_damage(
         mut self,
-        expected_attacker: CharEntityId,
-        expected_attacked: CharEntityId,
+        expected_attacker: LocalCharEntityId,
+        expected_attacked: LocalCharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
@@ -312,8 +312,8 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn heal_eq(
         mut self,
-        expected_attacker: CharEntityId,
-        expected_attacked: CharEntityId,
+        expected_attacker: LocalCharEntityId,
+        expected_attacked: LocalCharEntityId,
         expected_heal: u32,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
@@ -349,8 +349,8 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn basic_damage_eq(
         mut self,
-        expected_attacker: CharEntityId,
-        expected_attacked: CharEntityId,
+        expected_attacker: LocalCharEntityId,
+        expected_attacked: LocalCharEntityId,
         expected_dmg: u32,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
@@ -386,8 +386,8 @@ impl<'a> OrderedEventAsserter<'a> {
 
     pub fn spell_damage(
         mut self,
-        expected_attacker: CharEntityId,
-        expected_attacked: CharEntityId,
+        expected_attacker: LocalCharEntityId,
+        expected_attacked: LocalCharEntityId,
     ) -> OrderedEventAsserter<'a> {
         if !self.search_event(|event| match event {
             SystemEvent::HpModification {
@@ -454,8 +454,8 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         self.run_frames_n_times(TestUtil::frames_needed_for(duration, self.timestep));
     }
 
-    pub fn create_char(&mut self, pos: Vec2, team: Team) -> CharEntityId {
-        let char_id = CharEntityId::from(self.ecs_world.create_entity().build());
+    pub fn create_char(&mut self, pos: Vec2, team: Team) -> LocalCharEntityId {
+        let char_id = LocalCharEntityId::from(self.ecs_world.create_entity().build());
         {
             let updater = &self.ecs_world.read_resource::<LazyUpdate>();
             let physics_world = &mut self.ecs_world.write_resource::<PhysicEngine>();
@@ -496,7 +496,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
             .push(apply_status);
     }
 
-    pub fn cast_skill_on_pos(&mut self, char_id: CharEntityId, skill: Skills, pos: Vec2) {
+    pub fn cast_skill_on_pos(&mut self, char_id: LocalCharEntityId, skill: Skills, pos: Vec2) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
         let char_state = char_storage.get_mut(char_id.into()).unwrap();
         dbg!(char_state.pos());
@@ -513,7 +513,7 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         );
     }
 
-    pub fn cast_skill_on_self(&mut self, char_id: CharEntityId, skill: Skills) {
+    pub fn cast_skill_on_self(&mut self, char_id: LocalCharEntityId, skill: Skills) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
         let char_state = char_storage.get_mut(char_id.into()).unwrap();
         NextActionApplierSystem::try_cast_skill(
@@ -528,13 +528,13 @@ impl<'a, 'b> TestUtil<'a, 'b> {
         );
     }
 
-    pub fn set_char_target(&mut self, char_id: CharEntityId, target: EntityTarget) {
+    pub fn set_char_target(&mut self, char_id: LocalCharEntityId, target: EntityTarget) {
         let mut char_storage = self.ecs_world.write_storage::<CharacterStateComponent>();
         let char_state = char_storage.get_mut(char_id.into()).unwrap();
         char_state.target = Some(target);
     }
 
-    pub fn assert_on_character(&self, char_id: CharEntityId) -> CharAsserter {
+    pub fn assert_on_character(&self, char_id: LocalCharEntityId) -> CharAsserter {
         CharAsserter {
             ecs_world: &self.ecs_world,
             char_id,

@@ -1,9 +1,9 @@
 use specs::prelude::*;
 
 use crate::attack::HpModificationRequest;
-use crate::common::{v2_to_p2, ElapsedTime, EngineTime, Vec2};
+use crate::common::{v2_to_p2, EngineTime, LocalTime, Vec2};
 use crate::components::char::{
-    AuthorizedCharStateComponent, CharDir, CharEntityId, CharState, EntityTarget, ServerEntityId,
+    CharDir, CharState, EntityTarget, LocalCharEntityId, LocalCharStateComp, ServerEntityId,
     StaticCharDataComponent, Team,
 };
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
     type SystemData = (
         Entities<'a>,
         //        ReadStorage<'a, NpcComponent>,
-        WriteStorage<'a, AuthorizedCharStateComponent>,
+        WriteStorage<'a, LocalCharStateComp>,
         ReadStorage<'a, StaticCharDataComponent>,
         ReadExpect<'a, EngineTime>,
         WriteExpect<'a, Vec<HpModificationRequest>>,
@@ -32,17 +32,13 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
             mut updater,
         ): Self::SystemData,
     ) {
-        if !time.can_simulation_run() {
-            return;
-        }
-
         let now = time.now();
 
         // TODO: HACK
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
         let all_char_data = {
-            let mut char_positions = HashMap::<CharEntityId, (Vec2, Team)>::new();
+            let mut char_positions = HashMap::<LocalCharEntityId, (Vec2, Team)>::new();
             for (char_entity_id, auth_state, static_state) in
                 (&entities, &char_state_storage, &static_state_storage).join()
             {
@@ -50,7 +46,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 //                if char_comp.state().is_dead() {
                 //                    continue;
                 //                }
-                let char_entity_id = CharEntityId::new(char_entity_id);
+                let char_entity_id = LocalCharEntityId::new(char_entity_id);
                 // the third arg is char_comp.team, move team field from charstate first
                 char_positions.insert(char_entity_id, (auth_state.pos(), static_state.team));
             }
@@ -60,7 +56,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         for (char_entity_id, auth_state, static_state) in
             (&entities, &mut char_state_storage, &static_state_storage).join()
         {
-            let char_entity_id = CharEntityId::new(char_entity_id);
+            let char_entity_id = LocalCharEntityId::new(char_entity_id);
             // pakold külön componensbe ugy a dolgokat, hogy innen be tudjam álltiani a
             // target et None-ra ha az halott, meg a fenti position hack se kelllejn
             // TODO2
@@ -170,10 +166,13 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
             }
 
             // TODO2
+            dbg!("shit1");
             if true {
                 // char_comp.can_move(now)
                 if let Some(target) = &auth_state.target.clone() {
+                    dbg!("shit2");
                     if let EntityTarget::PosWhileAttacking(pos, current_target) = target {
+                        dbg!("shit3");
                         // hack end
                         let current_target_entity = match current_target {
                             Some(target_id) => all_char_data.get(target_id),
@@ -207,6 +206,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                                 &EntityTarget::Pos(*pos),
                             )
                         } else {
+                            dbg!("shit4");
                             // there is an active target, move closer or attack it
                             CharacterStateUpdateSystem::act_based_on_target(
                                 now,
@@ -217,6 +217,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                             )
                         }
                     } else {
+                        dbg!("shit5");
                         CharacterStateUpdateSystem::act_based_on_target(
                             now,
                             &all_char_data,
@@ -236,14 +237,16 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         // apply moving physics here, so that the prev loop does not have to borrow physics_storage
         for char_comp in (&mut char_state_storage).join() {
             if let CharState::Walking(target_pos) = char_comp.state() {
+                dbg!("shit000");
                 if char_comp.can_move(now) {
+                    dbg!("shit9");
                     // it is possible that the character is pushed away but stayed in WALKING state (e.g. because of she blocked the attack)
                     let dir = (target_pos - char_comp.pos()).normalize();
+                    // TODO
                     // 100% movement speed = 5 units/second
-                    // TODO2
-                    //                    let force =
-                    //                        dir * char_comp.calculated_attribs().movement_speed.as_f32() * (5.0);
-                    char_comp.add_pos(dir * 0.1);
+                    let force =
+                        dir * char_comp.calculated_attribs().movement_speed.as_f32() * (0.1);
+                    char_comp.add_pos(force);
                 }
             }
         }
@@ -252,12 +255,12 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
 
 impl CharacterStateUpdateSystem {
     pub fn get_closest_enemy_in_area(
-        char_positions: &HashMap<CharEntityId, (Vec2, Team)>,
+        char_positions: &HashMap<LocalCharEntityId, (Vec2, Team)>,
         center: &Vec2,
         radius: f32,
         self_team: Team,
-        except: CharEntityId,
-    ) -> Option<CharEntityId> {
+        except: LocalCharEntityId,
+    ) -> Option<LocalCharEntityId> {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
@@ -278,15 +281,16 @@ impl CharacterStateUpdateSystem {
     }
 
     fn act_based_on_target(
-        now: ElapsedTime,
-        char_positions: &HashMap<CharEntityId, (Vec2, Team)>,
-        auth_state: &mut AuthorizedCharStateComponent,
+        now: LocalTime,
+        char_positions: &HashMap<LocalCharEntityId, (Vec2, Team)>,
+        auth_state: &mut LocalCharStateComp,
         static_state: &StaticCharDataComponent,
-        target: &EntityTarget,
+        target: &EntityTarget<LocalCharEntityId>,
     ) {
         let char_pos = auth_state.pos();
         match target {
             EntityTarget::OtherEntity(target_entity) => {
+                dbg!("shit6");
                 let target_pos = char_positions.get(target_entity);
                 if let Some((target_pos, _team)) = target_pos {
                     let distance = nalgebra::distance(
@@ -308,11 +312,15 @@ impl CharacterStateUpdateSystem {
                                 new_state,
                                 CharDir::determine_dir(target_pos, &char_pos),
                             );
-                            let attack_anim_duration = ElapsedTime(
-                                1.0 / auth_state.calculated_attribs().attack_speed.as_f32(),
-                            );
+                            let attack_anim_duration = LocalTime::from(attack_anim_duration);
                             auth_state.attack_delay_ends_at = now.add(attack_anim_duration);
+                            dbg!("to attack");
+                            dbg!(now);
+                            dbg!(auth_state.attack_delay_ends_at);
                         } else {
+                            dbg!("to idle");
+                            dbg!(now);
+                            dbg!(auth_state.attack_delay_ends_at);
                             auth_state.set_state(CharState::Idle, auth_state.dir());
                         }
                     } else {
@@ -328,6 +336,7 @@ impl CharacterStateUpdateSystem {
                 }
             }
             EntityTarget::Pos(target_pos) => {
+                dbg!("shit7");
                 let distance =
                     nalgebra::distance(&nalgebra::Point::from(char_pos), &v2_to_p2(target_pos));
                 if distance <= 0.2 {
@@ -352,7 +361,9 @@ impl CharacterStateUpdateSystem {
                     );
                 }
             }
-            EntityTarget::PosWhileAttacking(_pos, _current_target) => {}
+            EntityTarget::PosWhileAttacking(_pos, _current_target) => {
+                dbg!("shit8");
+            }
         }
     }
 }

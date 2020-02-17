@@ -4,19 +4,19 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::AssetResources;
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::attack::{
     DamageDisplayType, HpModificationRequest, HpModificationResult, HpModificationResultType,
     HpModificationType,
 };
 use rustarok_common::common::{Percentage, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::LocalCharEntityId;
 
 #[derive(Clone, Debug)]
 pub struct ReflectDamageStatus {
-    pub started: ElapsedTime,
-    pub until: ElapsedTime,
-    pub animation_started: ElapsedTime,
+    pub started: LocalTime,
+    pub until: LocalTime,
+    pub animation_started: LocalTime,
     pub reflected_damage: u32,
     pub reflected_amount: Percentage,
 }
@@ -25,9 +25,9 @@ pub struct ReflectDamageStatus {
 #[allow(dead_code)]
 impl ReflectDamageStatus {
     pub fn new(
-        _self_entity_id: CharEntityId,
+        _self_entity_id: LocalCharEntityId,
         reflected_amount: Percentage,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
     ) -> ReflectDamageStatus {
         ReflectDamageStatus {
@@ -58,7 +58,7 @@ impl ReflectDamageStatus {
 
     pub fn hp_mod_has_been_applied_on_me(
         &mut self,
-        self_id: CharEntityId,
+        self_id: LocalCharEntityId,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -87,7 +87,7 @@ impl ReflectDamageStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -102,7 +102,7 @@ impl ReflectDamageStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

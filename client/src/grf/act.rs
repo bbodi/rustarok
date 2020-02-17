@@ -2,6 +2,7 @@ use crate::grf::asset_async_loader::SPRITE_UPSCALE_FACTOR;
 use crate::render::render_sys::COLOR_WHITE;
 use rustarok_common::grf::binary_reader::BinaryReader;
 use std::ops::RangeBounds;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct ActionFile {
@@ -13,7 +14,7 @@ pub struct ActionFile {
 pub struct Action {
     pub frames: Vec<ActionFrame>,
     pub delay: u32,
-    pub duration: f32,
+    pub duration_in_millis: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +63,7 @@ impl ActionFile {
             .map(|_i| Action {
                 frames: ActionFile::read_animations(&mut buf, version),
                 delay: 150,
-                duration: 0.0,
+                duration_in_millis: 0,
             })
             .collect();
         let sounds = if version >= 2.1 {
@@ -74,7 +75,7 @@ impl ActionFile {
             if version >= 2.2 {
                 a.delay = (buf.next_f32() * 25f32) as u32;
             }
-            a.duration = a.delay as f32 / 1000.0 * a.frames.len() as f32;
+            a.duration_in_millis = a.delay * a.frames.len() as u32;
         });
         return ActionFile { actions, sounds };
     }

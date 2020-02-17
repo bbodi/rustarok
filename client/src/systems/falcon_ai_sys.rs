@@ -7,9 +7,9 @@ use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use nalgebra::{Isometry2, Vector2, Vector3};
-use rustarok_common::common::{v2, v2_to_v3, v3, v3_to_v2, ElapsedTime, EngineTime, Vec2};
+use rustarok_common::common::{v2, v2_to_v3, v3, v3_to_v2, EngineTime, LocalTime, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharDir, CharEntityId, ControllerEntityId,
+    CharDir, ControllerEntityId, LocalCharEntityId, LocalCharStateComp,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
@@ -20,23 +20,23 @@ pub struct FalconAiSystem;
 pub enum FalconState {
     Follow,
     Attack {
-        started_at: ElapsedTime,
-        ends_at: ElapsedTime,
+        started_at: LocalTime,
+        ends_at: LocalTime,
         start_pos: Vector3<f32>,
         end_pos: Vector3<f32>,
     },
     CarryOwner {
         owner_controller_id: ControllerEntityId,
-        started_at: ElapsedTime,
-        ends_at: ElapsedTime,
+        started_at: LocalTime,
+        ends_at: LocalTime,
         target_is_caught: bool,
         start_pos: Vector3<f32>,
     },
     CarryAlly {
-        target_id: CharEntityId,
+        target_id: LocalCharEntityId,
         start_pos: Vector3<f32>,
-        started_at: ElapsedTime,
-        ends_at: ElapsedTime,
+        started_at: LocalTime,
+        ends_at: LocalTime,
         target_is_caught: bool,
         end_pos: Vec2,
     },
@@ -44,7 +44,7 @@ pub enum FalconState {
 
 #[derive(Component)]
 pub struct FalconComponent {
-    pub owner_entity_id: CharEntityId,
+    pub owner_entity_id: LocalCharEntityId,
     state: FalconState,
     pub pos: Vector3<f32>,
     acceleration: f32,
@@ -52,7 +52,7 @@ pub struct FalconComponent {
 }
 
 impl FalconComponent {
-    pub fn new(owner_entity_id: CharEntityId, start_x: f32, start_y: f32) -> FalconComponent {
+    pub fn new(owner_entity_id: LocalCharEntityId, start_x: f32, start_y: f32) -> FalconComponent {
         FalconComponent {
             owner_entity_id,
             state: FalconState::Follow,
@@ -70,7 +70,7 @@ impl FalconComponent {
         &mut self,
         owner_controller_id: ControllerEntityId,
         target_pos: &Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
@@ -91,9 +91,9 @@ impl FalconComponent {
 
     pub fn carry_ally(
         &mut self,
-        target_entity: CharEntityId,
+        target_entity: LocalCharEntityId,
         target_pos: &Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
@@ -115,7 +115,7 @@ impl FalconComponent {
 
     pub fn set_state_to_attack(
         &mut self,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
         start_pos: Vec2,
         end_pos: Vec2,
@@ -147,7 +147,7 @@ impl<'a> System<'a> for FalconAiSystem {
         Entities<'a>,
         WriteStorage<'a, FalconComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, LocalCharStateComp>,
         ReadStorage<'a, ControllerComponent>,
         ReadExpect<'a, LocalPlayerController>,
         WriteExpect<'a, SystemFrameDurations>,
@@ -187,17 +187,19 @@ impl<'a> System<'a> for FalconAiSystem {
                                 FALCON_FLY_HEIGHT,
                                 auth_owner.pos().y,
                             ) - falcon.pos;
-                            falcon.acceleration = (falcon.acceleration + time.dt() * 0.05).min(
-                                0.03 * auth_owner.calculated_attribs().movement_speed.as_f32(),
-                            );
-                            falcon.pos += dir_3d * falcon.acceleration;
-                            sprite.direction =
-                                CharDir::determine_dir(&auth_owner.pos(), &falcon_pos_2d);
+                        // TODO falcon solve it without dt(), or get dt from elsewhere not enginetime
+                        //                            falcon.acceleration = (falcon.acceleration + time.dt() * 0.05).min(
+                        //                                0.03 * auth_owner.calculated_attribs().movement_speed.as_f32(),
+                        //                            );
+                        //                            falcon.pos += dir_3d * falcon.acceleration;
+                        //                            sprite.direction =
+                        //                                CharDir::determine_dir(&auth_owner.pos(), &falcon_pos_2d);
                         } else {
                             if falcon.acceleration < 0.00001 || distance == 0.0 {
                                 falcon.acceleration = 0.0;
                             } else {
-                                falcon.acceleration -= time.dt() * 0.1;
+                                // TODO falcon solve it without dt(), or get dt from elsewhere not enginetime
+                                //                                falcon.acceleration -= time.dt() * 0.1;
                                 let dir = diff_v.normalize();
                                 falcon.pos += v2_to_v3(&dir) * falcon.acceleration;
                             }
@@ -215,7 +217,8 @@ impl<'a> System<'a> for FalconAiSystem {
                 } => {
                     let duration_percentage = time.now().percentage_between(started_at, ends_at);
 
-                    let pick_duration = (time.now().as_f32() - started_at.as_f32()) / 0.3;
+                    let pick_duration =
+                        (time.now().as_seconds_f32() - started_at.as_seconds_f32()) / 0.3;
                     if pick_duration <= 1.0 {
                         if let Some(target) = auth_char_storage.get(falcon.owner_entity_id.into()) {
                             let target_pos = target.pos();
@@ -285,7 +288,8 @@ impl<'a> System<'a> for FalconAiSystem {
                         if distance > 2.0 {
                             let falcon_pos_2d = v3_to_v2(&falcon.pos);
                             let dir_3d = (diff_v).normalize();
-                            falcon.acceleration = 8.57 * time.dt();
+                            // TODO falcon solve it without dt(), or get dt from elsewhere not enginetime
+                            //                            falcon.acceleration = 8.57 * time.dt();
                             falcon.pos += dir_3d * falcon.acceleration;
                             sprite.direction =
                                 CharDir::determine_dir(&v3_to_v2(&target_pos), &falcon_pos_2d);
@@ -293,7 +297,8 @@ impl<'a> System<'a> for FalconAiSystem {
                             if falcon.acceleration < 0.00001 || distance == 0.0 {
                                 falcon.acceleration = 0.0;
                             } else {
-                                falcon.acceleration -= time.dt() * 0.1;
+                                // TODO falcon solve it without dt(), or get dt from elsewhere not enginetime
+                                //                                falcon.acceleration -= time.dt() * 0.1;
                                 let dir = diff_v.normalize();
                                 falcon.pos += dir * falcon.acceleration;
                             }

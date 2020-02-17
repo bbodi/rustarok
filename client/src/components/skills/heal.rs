@@ -12,9 +12,10 @@ use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::attack::{HpModificationRequest, HpModificationType};
-use rustarok_common::common::{ElapsedTime, EngineTime};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::common::{EngineTime, LocalTime};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct HealSkill;
 
@@ -64,14 +65,14 @@ impl SkillDef for HealSkill {
 }
 
 pub struct HealSkillManifest {
-    pub target_entity_id: CharEntityId,
-    pub created_at: ElapsedTime,
-    pub middle: ElapsedTime,
-    pub die_at: ElapsedTime,
+    pub target_entity_id: LocalCharEntityId,
+    pub created_at: LocalTime,
+    pub middle: LocalTime,
+    pub die_at: LocalTime,
 }
 
 impl HealSkillManifest {
-    pub fn new(target_entity_id: CharEntityId, system_time: ElapsedTime) -> HealSkillManifest {
+    pub fn new(target_entity_id: LocalCharEntityId, system_time: LocalTime) -> HealSkillManifest {
         HealSkillManifest {
             target_entity_id,
             created_at: system_time,
@@ -91,8 +92,7 @@ impl SkillManifestation for HealSkillManifest {
     fn render(
         &self,
         char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        _tick: u64,
+        now: LocalTime,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

@@ -3,7 +3,6 @@ use crate::systems::{Collision, CollisionsFromPrevFrame, SystemFrameDurations};
 use crate::PhysicEngine;
 use ncollide2d::narrow_phase::ContactEvent;
 use ncollide2d::query::Proximity;
-use rustarok_common::common::EngineTime;
 use specs::prelude::*;
 
 pub struct FrictionSystem;
@@ -12,14 +11,10 @@ impl<'a> System<'a> for FrictionSystem {
     type SystemData = (
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
-        ReadExpect<'a, EngineTime>,
         WriteStorage<'a, CharacterStateComponent>,
     );
 
-    fn run(
-        &mut self,
-        (mut physics_world, mut system_benchmark, time, char_storage): Self::SystemData,
-    ) {
+    fn run(&mut self, (mut physics_world, mut system_benchmark, char_storage): Self::SystemData) {
         // TODO2 ??
         //        let _stopwatch = system_benchmark.start_measurement("FrictionSystem");
         //        for char_state in (&mut char_storage).join() {
@@ -58,7 +53,6 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
         Entities<'a>,
         WriteExpect<'a, PhysicEngine>,
         WriteExpect<'a, SystemFrameDurations>,
-        ReadExpect<'a, EngineTime>,
         WriteExpect<'a, CollisionsFromPrevFrame>,
     );
 
@@ -68,16 +62,13 @@ impl<'a> System<'a> for PhysCollisionCollectorSystem {
             _entities,
             mut physics_world,
             mut system_benchmark,
-            time,
             mut collisions_resource,
         ): Self::SystemData,
     ) {
-        if !time.can_simulation_run() {
-            return;
-        }
         let _stopwatch = system_benchmark.start_measurement("PhysicsSystem");
 
-        physics_world.step(time.dt());
+        // TODO
+        physics_world.step(1.0 /*max_allowed_render_frame_duration*/);
 
         for event in physics_world.geometrical_world.proximity_events() {
             let collider1 = physics_world.colliders.get(event.collider1).unwrap();

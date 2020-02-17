@@ -8,7 +8,9 @@ use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariab
 use crate::PhysicEngine;
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{AuthorizedCharStateComponent, StaticCharDataComponent};
+use rustarok_common::components::char::{
+    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
+};
 
 pub struct SkillSystem;
 
@@ -17,7 +19,7 @@ impl<'a> System<'a> for SkillSystem {
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
-        WriteStorage<'a, AuthorizedCharStateComponent>,
+        WriteStorage<'a, LocalCharStateComp>,
         WriteExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
         WriteExpect<'a, CollisionsFromPrevFrame>,
@@ -49,9 +51,6 @@ impl<'a> System<'a> for SkillSystem {
             mut pushes,
         ): Self::SystemData,
     ) {
-        if !time.can_simulation_run() {
-            return;
-        }
         let _stopwatch = system_benchmark.start_measurement("SkillSystem");
         for (entity_id, skill) in (&entities, &mut skill_storage).join() {
             skill.update(SkillManifestationUpdateParam::new(

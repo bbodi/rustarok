@@ -1,5 +1,6 @@
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::cam::Camera;
+use crate::client::SimulationTime;
 use crate::components::char::{
     ActionPlayMode, CharacterStateComponent, ClientCharState, NpcComponent, SpriteBoundingRect,
     SpriteRenderDescriptorComponent,
@@ -21,12 +22,13 @@ use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::snapshot_sys::SnapshotStorage;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, RenderMatrices, SystemFrameDurations, SystemVariables};
-use crate::{ElapsedTime, SpriteResource};
+use crate::{LocalTime, SpriteResource};
 use nalgebra::{Isometry2, Vector2, Vector3};
+use rustarok_common::common::SimulationTick;
 use rustarok_common::common::{EngineTime, Vec2, Vec3};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook, CharState, CharType,
-    EntityTarget, StaticCharDataComponent, Team, DIRECTION_TABLE,
+    CharDir, CharOutlook, CharState, CharType, EntityTarget, LocalCharEntityId, LocalCharStateComp,
+    StaticCharDataComponent, Team, DIRECTION_TABLE,
 };
 use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::config::CommonConfigs;
@@ -54,7 +56,7 @@ impl RenderDesktopClientSystem {
     fn render_for_controller<'a>(
         &self,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&StaticCharDataComponent, &AuthorizedCharStateComponent)>,
+        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp)>,
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollector,
@@ -62,11 +64,12 @@ impl RenderDesktopClientSystem {
         physics_world: &ReadExpect<'a, PhysicEngine>,
         assets: &AssetResources,
         time: &EngineTime,
+        tick: SimulationTick,
         dev_configs: &CommonConfigs,
         configs: &AppConfig,
         static_char_data_storage: &ReadStorage<'a, StaticCharDataComponent>,
         client_char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
-        auth_char_state_storage: &ReadStorage<'a, AuthorizedCharStateComponent>,
+        auth_char_state_storage: &ReadStorage<'a, LocalCharStateComp>,
         entities: &Entities<'a>,
         sprite_storage: &ReadStorage<'a, SpriteRenderDescriptorComponent>,
         skill_storage: &ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -88,6 +91,7 @@ impl RenderDesktopClientSystem {
                 render_commands,
                 assets,
                 time,
+                tick,
                 dev_configs,
                 configs,
                 static_char_data_storage,
@@ -188,7 +192,7 @@ impl RenderDesktopClientSystem {
                                 let is_castable = controlled_auth_char
                                     .skill_cast_allowed_at
                                     .get(skill as usize)
-                                    .unwrap_or(&ElapsedTime(0.0))
+                                    .unwrap_or(&LocalTime::from(0.0))
                                     .has_already_passed(time.now());
                                 skill_def.render_target_selection(
                                     is_castable,
@@ -223,8 +227,8 @@ impl RenderDesktopClientSystem {
                         if CharState::Idle != *controlled_auth_char.state() {
                             let cursor_anim_descr = SpriteRenderDescriptorComponent {
                                 action_index: CURSOR_TARGET.1,
-                                animation_started: ElapsedTime(0.0),
-                                animation_ends_at: ElapsedTime(0.0),
+                                animation_started: LocalTime::from(0.0),
+                                animation_ends_at: LocalTime::from(0.0),
                                 forced_duration: None,
                                 direction: CharDir::South,
                                 fps_multiplier: 2.0,
@@ -251,7 +255,6 @@ impl RenderDesktopClientSystem {
             skill.render(
                 static_char_data_storage,
                 time.now(),
-                time.simulation_frame, // TODO2 biztos simulaton nem render?
                 assets,
                 render_commands,
                 audio_commands,
@@ -325,11 +328,11 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        followed_char_id: Option<CharEntityId>,
+        followed_char_id: Option<LocalCharEntityId>,
         select_skill_target: Option<(SkillKey, Skills)>,
-        rendering_entity_id: CharEntityId,
+        rendering_entity_id: LocalCharEntityId,
         entities_below_cursor: &EntitiesBelowCursor,
-        desktop_target: &Option<&EntityTarget>,
+        desktop_target: &Option<&EntityTarget<LocalCharEntityId>>,
     ) -> bool {
         return if let Some((_skill_key, skill)) = select_skill_target {
             match skill.get_definition().get_skill_target_type() {
@@ -377,15 +380,16 @@ impl RenderDesktopClientSystem {
         &self,
         camera: &CameraComponent,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&StaticCharDataComponent, &AuthorizedCharStateComponent)>,
+        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp)>,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
+        tick: SimulationTick,
         dev_configs: &CommonConfigs,
         configs: &AppConfig,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         client_char_state_storage: &ReadStorage<CharacterStateComponent>,
-        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
@@ -410,7 +414,7 @@ impl RenderDesktopClientSystem {
         )
             .join()
         {
-            let rendering_entity_id = CharEntityId::from(rendering_entity_id);
+            let rendering_entity_id = LocalCharEntityId::from(rendering_entity_id);
 
             let pos_2d = auth_state.pos();
             if !camera.camera.is_visible(pos_2d) {
@@ -454,7 +458,7 @@ impl RenderDesktopClientSystem {
                 // it takes x ticks for acked_pos to reach the predicted pos
                 let lerping_ticks = dbg!(configs.lerping_ticks);
                 let ticks_since_last_rollback =
-                    time.simulation_frame - snapshot_storage.get_last_rollback_at();
+                    tick.as_u64() - snapshot_storage.get_last_rollback_at().as_u64();
                 let percentage =
                     (ticks_since_last_rollback as f32 / lerping_ticks as f32).min(1f32);
 
@@ -745,7 +749,7 @@ impl RenderDesktopClientSystem {
 struct ControllerAndControlled<'a> {
     desktop: &'a mut LocalPlayerController,
     controlled_char: &'a CharacterStateComponent,
-    controlled_auth_char: &'a AuthorizedCharStateComponent,
+    controlled_auth_char: &'a LocalCharStateComp,
 }
 
 impl<'a> System<'a> for RenderDesktopClientSystem {
@@ -755,7 +759,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, SpriteRenderDescriptorComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, LocalCharStateComp>,
         WriteExpect<'a, LocalPlayerController>, // mut: we have to store bounding rects of drawed entities :(
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, CommonConfigs>,
@@ -774,6 +778,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, NpcComponent>,
         ReadExpect<'a, MapRenderData>,
         ReadExpect<'a, EngineTime>,
+        ReadExpect<'a, SimulationTick>,
         ReadExpect<'a, SnapshotStorage>,
     );
 
@@ -804,6 +809,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
             npc_storage,
             map_render_data,
             time,
+            sim_time,
             snapshot_storage,
         ): Self::SystemData,
     ) {
@@ -827,6 +833,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
                 &physics_world,
                 &sys_vars.assets,
                 &time,
+                *sim_time,
                 &dev_configs,
                 &configs,
                 &static_char_data_storage,
@@ -886,7 +893,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
 }
 
 pub fn render_single_layer_action<'a>(
-    now: ElapsedTime,
+    now: LocalTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector3<f32>,
@@ -919,11 +926,11 @@ pub fn render_single_layer_action<'a>(
     let frame_index = {
         let frame_count = action.frames.len();
         let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
-            duration.div(frame_count as f32)
+            duration.div(frame_count as u32)
         } else {
-            action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
+            (action.delay as f32 * (1.0 / animation.fps_multiplier)) as u32
         };
-        time_needed_for_one_frame = time_needed_for_one_frame.max(0.1);
+        time_needed_for_one_frame = time_needed_for_one_frame.max(100);
         let elapsed_time = now.elapsed_since(animation.animation_started);
         let real_index = (elapsed_time.div(time_needed_for_one_frame)) as usize;
         match play_mode {
@@ -980,7 +987,7 @@ pub fn render_single_layer_action<'a>(
 }
 
 pub fn render_action(
-    now: ElapsedTime,
+    now: LocalTime,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vec2,
@@ -1013,12 +1020,12 @@ pub fn render_action(
     let frame_index = {
         let frame_count = action.frames.len();
         let mut time_needed_for_one_frame = if let Some(duration) = animation.forced_duration {
-            duration.div(frame_count as f32)
+            duration.div(frame_count as u32)
         } else {
-            action.delay as f32 * (1.0 / animation.fps_multiplier) / 1000.0
+            (action.delay as f32 * (1.0 / animation.fps_multiplier)) as u32
         };
-        time_needed_for_one_frame = if time_needed_for_one_frame == 0.0 {
-            0.1
+        time_needed_for_one_frame = if time_needed_for_one_frame == 0 {
+            100
         } else {
             time_needed_for_one_frame
         };
@@ -1142,17 +1149,17 @@ impl DamageRenderSystem {
 }
 
 impl DamageRenderSystem {
-    const COMBO_DELAY_BETWEEN_SUBS: f32 = 0.1;
+    const COMBO_DELAY_BETWEEN_SUBS: u32 = 100;
 
     pub fn run(
         &self,
         entities: &Entities,
         numbers: &ReadStorage<FlyingNumberComponent>,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
-        followed_char_id: Option<CharEntityId>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        followed_char_id: Option<LocalCharEntityId>,
         desktop_entity_team: Option<Team>,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         updater: &Write<LazyUpdate>,
         render_commands: &mut RenderCommandCollector,
@@ -1178,10 +1185,10 @@ impl DamageRenderSystem {
     fn add_render_command(
         number: &FlyingNumberComponent,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
-        desktop_entity_id: Option<CharEntityId>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        desktop_entity_id: Option<LocalCharEntityId>,
         desktop_entity_team: Option<Team>,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -1215,7 +1222,8 @@ impl DamageRenderSystem {
             FlyingNumberType::Absorb => 120.0,
         };
 
-        let perc = now.elapsed_since(number.start_time).div(number.duration);
+        let perc =
+            now.percentage_between(number.start_time, now.add_millis(number.duration_millis));
 
         // render sub damages for combo
         if let FlyingNumberType::Combo {
@@ -1238,9 +1246,9 @@ impl DamageRenderSystem {
                     start_pos: number.start_pos,
                     start_time: number
                         .start_time
-                        .add_seconds(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS * i as f32),
-                    die_at: ElapsedTime(0.0), // it is ignored
-                    duration: 3.0,
+                        .add_millis(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS * i as u32),
+                    die_at: LocalTime::from(0.0), // it is ignored
+                    duration_millis: 3000,
                 };
                 DamageRenderSystem::add_render_command(
                     &sub_number,
@@ -1365,7 +1373,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_damage_size_pos(
-        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &ReadStorage<LocalCharStateComp>,
         number: &FlyingNumberComponent,
         perc: f32,
         speed: f32,
@@ -1386,7 +1394,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_poison_size_pos(
-        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &ReadStorage<LocalCharStateComp>,
         number: &FlyingNumberComponent,
         width: f32,
         perc: f32,
@@ -1405,7 +1413,7 @@ impl DamageRenderSystem {
     }
 
     fn calc_heal_size_pos(
-        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &ReadStorage<LocalCharStateComp>,
         number: &FlyingNumberComponent,
         width: f32,
         perc: f32,
@@ -1438,8 +1446,8 @@ impl RenderDesktopClientSystem {
         is_self: bool,
         is_same_team: bool,
         static_char_data: &StaticCharDataComponent,
-        char_state: &AuthorizedCharStateComponent,
-        now: ElapsedTime,
+        char_state: &LocalCharStateComp,
+        now: LocalTime,
         bounding_rect_2d: &SpriteBoundingRect,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
@@ -1560,10 +1568,10 @@ impl RenderDesktopClientSystem {
 
     pub fn render_str<E>(
         effect: E,
-        start_time: ElapsedTime,
+        start_time: LocalTime,
         world_pos: &Vec2,
         assets: &AssetResources,
-        now: ElapsedTime,
+        now: LocalTime,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,
     ) -> bool
@@ -1572,11 +1580,11 @@ impl RenderDesktopClientSystem {
     {
         let effect_id = effect.into();
         let str_file = &assets.str_effects[effect_id.0];
-        let seconds_needed_for_one_frame = 1.0 / str_file.fps as f32;
+        let millis_needed_for_one_frame = ((1.0 / str_file.fps as f32) * 1000f32) as u32;
         let max_key = str_file.max_key as i32;
         let real_index = now
             .elapsed_since(start_time)
-            .div(seconds_needed_for_one_frame) as i32;
+            .div(millis_needed_for_one_frame) as i32;
         let key_index = match play_mode {
             ActionPlayMode::Repeat | ActionPlayMode::Once => real_index % max_key,
             ActionPlayMode::PlayThenHold => real_index.min(max_key - 1),

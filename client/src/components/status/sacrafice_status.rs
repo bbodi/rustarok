@@ -4,19 +4,19 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::AssetResources;
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::attack::{
     HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
 };
 use rustarok_common::common::{Percentage, Vec2};
-use rustarok_common::components::char::CharEntityId;
+use rustarok_common::components::char::LocalCharEntityId;
 
 #[derive(Clone, Debug)]
 pub struct SacrificeStatus {
-    pub sacrifice_caster_id: CharEntityId,
-    pub started: ElapsedTime,
-    pub until: ElapsedTime,
-    pub animation_started: ElapsedTime,
+    pub sacrifice_caster_id: LocalCharEntityId,
+    pub started: LocalTime,
+    pub until: LocalTime,
+    pub animation_started: LocalTime,
     pub damaged_amount: u32,
     pub sacrifice: Percentage,
 }
@@ -25,9 +25,9 @@ pub struct SacrificeStatus {
 #[allow(dead_code)]
 impl SacrificeStatus {
     pub fn new(
-        sacrifice_caster_id: CharEntityId,
+        sacrifice_caster_id: LocalCharEntityId,
         sacrifice: Percentage,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
     ) -> SacrificeStatus {
         SacrificeStatus {
@@ -110,7 +110,7 @@ impl SacrificeStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -125,7 +125,7 @@ impl SacrificeStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

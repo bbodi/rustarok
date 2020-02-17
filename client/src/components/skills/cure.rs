@@ -4,7 +4,7 @@ use crate::components::skills::skills::{
 use crate::components::status::status::RemoveStatusComponent;
 use crate::systems::SystemVariables;
 use rustarok_common::components::char::StatusNature;
-
+use specs::world::WorldExt;
 pub struct CureSkill;
 
 pub const CURE_SKILL: &'static CureSkill = &CureSkill;

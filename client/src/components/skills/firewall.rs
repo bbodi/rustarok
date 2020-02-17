@@ -1,3 +1,4 @@
+use rustarok_common::common::SimulationTick;
 use std::collections::HashMap;
 
 use nalgebra::Vector2;
@@ -5,6 +6,7 @@ use nphysics2d::object::{DefaultBodyHandle, DefaultColliderHandle};
 use specs::{Entity, LazyUpdate, ReadStorage};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
+use crate::client::SimulationTime;
 use crate::components::char::{ActionPlayMode, CharacterStateComponent};
 use crate::components::skills::skills::{
     FinishCast, SkillDef, SkillManifestation, SkillManifestationComponent,
@@ -15,10 +17,11 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::common::{rotate_vec2, v2, EngineTime, Vec2, Vec2i};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent, Team};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent, Team};
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct FireWallSkill;
 
@@ -58,7 +61,7 @@ impl SkillDef for FireWallSkill {
                 &params.skill_pos.unwrap(),
                 angle_in_rad,
                 time.now(),
-                time.simulation_frame,
+                *ecs_world.read_resource::<SimulationTick>(),
                 entities,
                 &mut updater,
                 configs.duration_seconds,
@@ -92,15 +95,14 @@ impl SkillDef for FireWallSkill {
 }
 
 pub struct PushBackWallSkill {
-    caster_entity_id: CharEntityId,
+    caster_entity_id: LocalCharEntityId,
     collider_handle: DefaultColliderHandle,
     effect_ids: Vec<Entity>,
     extents: Vec2i,
     pos: Vec2,
     rot_angle_in_rad: f32,
-    die_at: ElapsedTime,
-    cannot_damage_until: HashMap<CharEntityId, ElapsedTime>,
-    born_tick: u64,
+    die_at: LocalTime,
+    cannot_damage_until: HashMap<LocalCharEntityId, LocalTime>,
     team: Team,
     damage: u32,
     pushback_force: f32,
@@ -109,7 +111,7 @@ pub struct PushBackWallSkill {
 
 impl PushBackWallSkill {
     pub fn new(
-        caster_entity_id: CharEntityId,
+        caster_entity_id: LocalCharEntityId,
         team: Team,
         damage: u32,
         pushback_force: f32,
@@ -117,8 +119,8 @@ impl PushBackWallSkill {
         physics_world: &mut PhysicEngine,
         skill_center: &Vec2,
         rot_angle_in_rad: f32,
-        system_time: ElapsedTime,
-        tick: u64,
+        system_time: LocalTime,
+        tick: SimulationTick,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
         duration_seconds: f32,
@@ -157,7 +159,6 @@ impl PushBackWallSkill {
             extents,
             die_at: system_time.add_seconds(duration_seconds),
             cannot_damage_until: HashMap::new(),
-            born_tick: tick,
             team,
             damage,
             pushback_force,
@@ -184,7 +185,7 @@ impl SkillManifestation for PushBackWallSkill {
         //                .iter()
         //                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
         //            for (_key, coll) in my_collisions {
-        //                let collider: Option<(CharEntityId, DefaultBodyHandle)> = params
+        //                let collider: Option<( LocalCharEntityId, DefaultBodyHandle)> = params
         //                    .physics_world
         //                    .colliders
         //                    .get(coll.character_coll_handle)
@@ -246,15 +247,15 @@ impl SkillManifestation for PushBackWallSkill {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: ElapsedTime,
-        tick: u64,
+        _now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
     ) {
-        if self.born_tick + 1 == tick {
-            audio_command_collector.add_sound_command(assets.sounds.firewall);
-        }
+        // TODO: old meg máshogy h a hang csak 1x jöjjön létre, a ticket használd erre
+        //        if self.born_tick + 1 == tick {
+        //            audio_command_collector.add_sound_command(assets.sounds.firewall);
+        //        }
         render_commands
             .rectangle_3d()
             .pos_2d(&self.pos)

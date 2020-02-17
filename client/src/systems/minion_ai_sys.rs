@@ -3,7 +3,7 @@ use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::{v2, v2_to_p2, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, ControllerEntityId, EntityTarget,
+    ControllerEntityId, EntityTarget, LocalCharEntityId, LocalCharStateComp,
     StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
@@ -25,19 +25,19 @@ impl MinionAiSystem {
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
         center: &Vec2,
         radius: f32,
         self_team: Team,
-        except: CharEntityId,
-    ) -> Option<CharEntityId> {
+        except: LocalCharEntityId,
+    ) -> Option<LocalCharEntityId> {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
         for (entity_id, char_state, auth_char_state) in
             (entities, char_state_storage, auth_char_state_storage).join()
         {
-            let entity_id = CharEntityId::from(entity_id);
+            let entity_id = LocalCharEntityId::from(entity_id);
             let pos = auth_char_state.pos();
             if entity_id == except
                 || !char_state.team.is_enemy_to(self_team)
@@ -61,7 +61,7 @@ impl<'a> System<'a> for MinionAiSystem {
         Entities<'a>,
         WriteStorage<'a, ControllerComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, LocalCharStateComp>,
         ReadStorage<'a, MinionComponent>,
         WriteExpect<'a, SystemFrameDurations>,
     );

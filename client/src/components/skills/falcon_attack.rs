@@ -14,8 +14,8 @@ use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::attack::{DamageDisplayType, HpModificationRequest, HpModificationType};
-use rustarok_common::common::{v2, ElapsedTime, EngineTime, Percentage, Vec2};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent, Team};
+use rustarok_common::common::{v2, EngineTime, LocalTime, Percentage, Vec2};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent, Team};
 use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 use std::collections::HashSet;
@@ -102,15 +102,15 @@ impl SkillDef for FalconAttackSkill {
 }
 
 struct FalconAttackSkillManifestation {
-    damaged_entities: HashSet<CharEntityId>,
+    damaged_entities: HashSet<LocalCharEntityId>,
     extents: Vec2,
     start_pos: Vec2,
     path: Vec2,
     rot_angle_in_rad: f32,
-    created_at: ElapsedTime,
-    die_at: ElapsedTime,
+    created_at: LocalTime,
+    die_at: LocalTime,
     falcon_collider_handle: DefaultColliderHandle,
-    falcon_owner_id: CharEntityId,
+    falcon_owner_id: LocalCharEntityId,
     team: Team,
     damage: u32,
     slow: Percentage,
@@ -137,7 +137,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
                     .colliders
                     .get(coll.character_coll_handle)
                 {
-                    let target_char_entity_id: CharEntityId = *char_collider
+                    let target_char_entity_id: LocalCharEntityId = *char_collider
                         .user_data()
                         .map(|v| v.downcast_ref().unwrap())
                         .unwrap();
@@ -190,8 +190,7 @@ impl SkillManifestation for FalconAttackSkillManifestation {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        _tick: u64,
+        now: LocalTime,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_command_collector: &mut AudioCommandCollectorComponent,

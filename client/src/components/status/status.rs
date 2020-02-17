@@ -18,7 +18,7 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::ElapsedTime;
+use crate::LocalTime;
 use nalgebra::Isometry2;
 use rustarok_common::attack::{
     ApplyForceComponent, AreaAttackComponent, HpModificationRequest, HpModificationResult,
@@ -27,8 +27,7 @@ use rustarok_common::attack::{
 use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
 use rustarok_common::common::{percentage, EngineTime, Percentage, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, JobId, Sex, StaticCharDataComponent, StatusNature,
-    Team,
+    JobId, LocalCharEntityId, LocalCharStateComp, Sex, StaticCharDataComponent, StatusNature, Team,
 };
 use specs::{Entities, LazyUpdate};
 use strum_macros::EnumCount;
@@ -42,7 +41,7 @@ pub enum StatusStackingResult {
 }
 
 pub struct StatusUpdateParams<'a> {
-    pub self_char_id: CharEntityId,
+    pub self_char_id: LocalCharEntityId,
     pub target_char: &'a mut StaticCharDataComponent,
     pub physics_world: &'a mut PhysicEngine,
     pub sys_vars: &'a mut SystemVariables,
@@ -205,8 +204,8 @@ impl StatusEnum {
 
     pub fn on_apply(
         &mut self,
-        self_entity_id: CharEntityId,
-        target_char: &mut AuthorizedCharStateComponent,
+        self_entity_id: LocalCharEntityId,
+        target_char: &mut LocalCharStateComp,
         entities: &Entities,
         updater: &mut LazyUpdate,
         assets: &AssetResources,
@@ -249,7 +248,7 @@ impl StatusEnum {
         //        }
     }
 
-    pub fn get_render_color(&self, now: ElapsedTime) -> [u8; 4] {
+    pub fn get_render_color(&self, now: LocalTime) -> [u8; 4] {
         match self {
             StatusEnum::AbsorbStatus(_)
             | StatusEnum::MountedStatus { .. }
@@ -287,8 +286,8 @@ impl StatusEnum {
                 // it is applied directly on the base moving speed, since it is called first
                 modifiers.change_walking_speed(
                     CharAttributeModifier::IncreaseByPercentage(*speedup),
-                    ElapsedTime(0.0),
-                    ElapsedTime(0.0),
+                    LocalTime::from(0.0),
+                    LocalTime::from(0.0),
                 );
             }
             StatusEnum::ArmorModifierStatus(status) => {
@@ -368,7 +367,7 @@ impl StatusEnum {
 
     pub fn hp_mod_has_been_applied_on_me(
         &mut self,
-        self_id: CharEntityId,
+        self_id: LocalCharEntityId,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -396,7 +395,7 @@ impl StatusEnum {
 
     pub fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        self_id: CharEntityId,
+        self_id: LocalCharEntityId,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -511,7 +510,7 @@ impl StatusEnum {
         //        }
     }
 
-    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
         match self {
             StatusEnum::AbsorbStatus(status) => Some((
                 status.until,
@@ -614,7 +613,7 @@ impl Statuses {
 
     pub fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        self_id: CharEntityId,
+        self_id: LocalCharEntityId,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -653,7 +652,7 @@ impl Statuses {
 
     pub fn hp_mod_has_been_applied_on_me(
         &mut self,
-        self_id: CharEntityId,
+        self_id: LocalCharEntityId,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -672,7 +671,7 @@ impl Statuses {
 
     pub fn update(
         &mut self,
-        self_char_id: CharEntityId,
+        self_char_id: LocalCharEntityId,
         char_state: &mut StaticCharDataComponent,
         physics_world: &mut PhysicEngine,
         sys_vars: &mut SystemVariables,
@@ -779,7 +778,7 @@ impl Statuses {
         return ret;
     }
 
-    pub fn calc_render_color(&self, now: ElapsedTime) -> [u8; 4] {
+    pub fn calc_render_color(&self, now: LocalTime) -> [u8; 4] {
         let mut ret = [255, 255, 255, 255];
         for status in &mut self
             .statuses
@@ -795,15 +794,15 @@ impl Statuses {
         return ret;
     }
 
-    pub fn calc_largest_remaining_status_time_percent(&self, now: ElapsedTime) -> Option<f32> {
-        let mut ret: Option<(ElapsedTime, f32)> = None;
+    pub fn calc_largest_remaining_status_time_percent(&self, now: LocalTime) -> Option<f32> {
+        let mut ret: Option<(LocalTime, f32)> = None;
         for status in &mut self
             .statuses
             .iter()
             .take(self.first_free_index)
             .filter(|it| it.is_some())
         {
-            let rem: Option<(ElapsedTime, f32)> =
+            let rem: Option<(LocalTime, f32)> =
                 status.as_ref().unwrap().get_status_completion_percent(now);
             ret = if let Some((status_ends_at, _status_remaining_time)) = rem {
                 if let Some((current_ends_at, _current_rem_time)) = ret {
@@ -1004,8 +1003,8 @@ mod tests {
         assert!(statuses.statuses[NONSTACKABLE_STATUS_COUNT].is_none());
 
         let status = StatusEnum::WalkingSpeedModifierStatus(WalkingSpeedModifierStatus {
-            started: ElapsedTime(0.0),
-            until: ElapsedTime(0.0),
+            started: LocalTime::from(0.0),
+            until: LocalTime::from(0.0),
             modifier: percentage(0),
         });
 
@@ -1032,10 +1031,10 @@ pub enum StatusUpdateResult {
 
 #[derive(Clone, Debug)]
 pub struct PoisonStatus {
-    pub poison_caster_entity_id: CharEntityId,
-    pub started: ElapsedTime,
-    pub until: ElapsedTime,
-    pub next_damage_at: ElapsedTime,
+    pub poison_caster_entity_id: LocalCharEntityId,
+    pub started: LocalTime,
+    pub until: LocalTime,
+    pub next_damage_at: LocalTime,
     pub damage: u32,
 }
 
@@ -1059,7 +1058,7 @@ impl PoisonStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -1074,24 +1073,24 @@ impl PoisonStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: ElapsedTime) -> Option<(ElapsedTime, f32)> {
+    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }
 
 pub struct ApplyStatusComponent {
-    pub source_entity_id: CharEntityId,
-    pub target_entity_id: CharEntityId,
+    pub source_entity_id: LocalCharEntityId,
+    pub target_entity_id: LocalCharEntityId,
     pub status: StatusEnum,
 }
 
 pub struct ApplyStatusInAreaComponent {
-    pub source_entity_id: CharEntityId,
+    pub source_entity_id: LocalCharEntityId,
     pub status: StatusEnum,
     // TODO: it should not be a box. Predefine shapes
     pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     pub area_isom: Isometry2<f32>,
-    pub except: Option<CharEntityId>,
+    pub except: Option<LocalCharEntityId>,
     pub nature: StatusNature,
     pub caster_team: Team,
 }
@@ -1102,8 +1101,8 @@ pub enum RemoveStatusComponentPayload {
 }
 
 pub struct RemoveStatusComponent {
-    pub source_entity_id: CharEntityId,
-    pub target_entity_id: CharEntityId,
+    pub source_entity_id: LocalCharEntityId,
+    pub target_entity_id: LocalCharEntityId,
     pub status: RemoveStatusComponentPayload,
 }
 
@@ -1117,8 +1116,8 @@ unsafe impl Send for ApplyStatusInAreaComponent {}
 
 impl ApplyStatusComponent {
     pub fn from_status(
-        source_entity_id: CharEntityId,
-        target_entity_id: CharEntityId,
+        source_entity_id: LocalCharEntityId,
+        target_entity_id: LocalCharEntityId,
         m: StatusEnum,
     ) -> ApplyStatusComponent {
         ApplyStatusComponent {
@@ -1131,8 +1130,8 @@ impl ApplyStatusComponent {
 
 impl RemoveStatusComponent {
     pub fn by_status_nature(
-        source_entity_id: CharEntityId,
-        target_entity_id: CharEntityId,
+        source_entity_id: LocalCharEntityId,
+        target_entity_id: LocalCharEntityId,
         status_type: StatusNature,
     ) -> RemoveStatusComponent {
         RemoveStatusComponent {

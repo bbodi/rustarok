@@ -7,7 +7,8 @@ use crate::systems::minion_ai_sys::MinionAiSystem;
 use crate::systems::SystemFrameDurations;
 use rustarok_common::common::v2_to_p2;
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, ControllerEntityId, EntityTarget, StaticCharDataComponent,
+    ControllerEntityId, EntityTarget, LocalCharEntityId, LocalCharStateComp,
+    StaticCharDataComponent,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use rustarok_common::config::CommonConfigs;
@@ -22,7 +23,7 @@ impl<'a> System<'a> for TurretAiSystem {
         WriteStorage<'a, ControllerComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, LocalCharStateComp>,
         ReadStorage<'a, TurretControllerComponent>,
         ReadStorage<'a, TurretComponent>,
         WriteExpect<'a, SystemFrameDurations>,

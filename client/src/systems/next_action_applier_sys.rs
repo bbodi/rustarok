@@ -1,11 +1,13 @@
+use crate::client::SimulationTime;
 use crate::components::char::{
     get_sprite_and_action_index, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::systems::{SystemEvent, SystemVariables};
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rustarok_common::common::EngineTime;
+use rustarok_common::common::SimulationTick;
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, CharState, StaticCharDataComponent,
+    CharState, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use specs::prelude::*;
 
@@ -88,7 +90,7 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
         ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
+        ReadStorage<'a, LocalCharStateComp>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
     );
@@ -150,8 +152,8 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 );
                 sprite.action_index = action_index;
                 sprite.animation_ends_at = now.add(forced_duration.unwrap_or_else(|| {
-                    let duration = sprite_res.action.actions[action_index].duration;
-                    ElapsedTime(duration)
+                    let duration = sprite_res.action.actions[action_index].duration_in_millis;
+                    LocalTime::from(duration)
                 }));
             } else if client_char_state.went_from_casting_to_idle(auth_state.state()) {
                 // During casting, only the first frame is rendered
@@ -163,8 +165,8 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
                     &sys_vars.assets.sprites,
                     &prev_state,
                 );
-                let duration = sprite_res.action.actions[action_index].duration;
-                sprite.animation_ends_at = sprite.animation_started.add_seconds(duration);
+                let duration = sprite_res.action.actions[action_index].duration_in_millis;
+                sprite.animation_ends_at = sprite.animation_started.add_millis(duration);
             }
             sprite.direction = auth_state.dir();
         }
@@ -177,21 +179,18 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
-        ReadStorage<'a, AuthorizedCharStateComponent>,
-        ReadExpect<'a, EngineTime>,
+        ReadStorage<'a, LocalCharStateComp>,
+        ReadExpect<'a, SimulationTick>,
         Option<Write<'a, Vec<SystemEvent>>>,
     );
 
     fn run(
         &mut self,
-        (entities, mut char_state_storage, auth_char_state_storage, time, mut events): Self::SystemData,
+        (entities, mut char_state_storage, auth_char_state_storage, tick, mut events): Self::SystemData,
     ) {
         for (char_id, char_comp, auth_state) in
             (&entities, &mut char_state_storage, &auth_char_state_storage).join()
         {
-            if !time.can_simulation_run() {
-                return;
-            }
             // TODO: if debug
             let state_has_changed = char_comp.state_type_has_changed(auth_state.state());
             if state_has_changed {
@@ -199,15 +198,15 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
                 let prev_state: CharState = char_comp.prev_state().clone();
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::CharStatusChange(
-                        time.simulation_frame - 1, // we detected the change here, but it happened in the prev state
-                        CharEntityId::new(char_id),
+                        tick.prev(), // we detected the change here, but it happened in the prev state
+                        LocalCharEntityId::new(char_id),
                         prev_state.clone(),
                         state.clone(),
                     ));
                 }
                 log::debug!(
-                    "[{}] {:?} state has changed {:?} ==> {:?}",
-                    time.simulation_frame - 1,
+                    "[{:?}] {:?} state has changed {:?} ==> {:?}",
+                    tick.prev(),
                     char_id,
                     prev_state,
                     state

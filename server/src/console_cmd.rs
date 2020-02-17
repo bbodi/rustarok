@@ -1,16 +1,22 @@
+use crate::server_config::load_common_configs;
+use crate::OutPacketCollector;
+use crate::PacketTarget;
 use rand::Rng;
 use rustarok_common::char_attr::CharAttributes;
 use rustarok_common::common::{v2, v3_to_v2, Vec2};
 use rustarok_common::components::char::{
-    AuthorizedCharStateComponent, CharEntityId, CharOutlook, ControllerEntityId, JobId, MonsterId,
-    Sex, StaticCharDataComponent, Team,
+    CharOutlook, ControllerEntityId, JobId, LocalCharEntityId, LocalCharStateComp, MonsterId, Sex,
+    StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::CommandArguments;
 use rustarok_common::map::{CellType, MapWalkingInfo};
+use rustarok_common::packets::from_server::FromServerPacket;
+use rustarok_common::packets::SocketId;
 use specs::world::Builder;
+use specs::world::WorldExt;
 use specs::Join;
 use std::str::FromStr;
 
@@ -22,6 +28,9 @@ pub fn execute_console_cmd(
     match args.get_command_name() {
         Some("kill_all") => {
             cmd_kill_all(controller_id, args, ecs_world);
+        }
+        Some("reload_configs") => {
+            cmd_reload_configs(controller_id, args, ecs_world);
         }
         Some("spawn_entity") => {
             cmd_spawn_entity(controller_id, args, ecs_world);
@@ -35,7 +44,7 @@ pub fn execute_console_cmd(
 fn get_client_char_id(
     controller_id: Option<ControllerEntityId>,
     ecs_world: &mut specs::World,
-) -> Option<CharEntityId> {
+) -> Option<LocalCharEntityId> {
     controller_id.and_then(|controller_id| {
         let controller_storage = ecs_world.read_storage::<ControllerComponent>();
         let controller: &ControllerComponent =
@@ -59,9 +68,7 @@ fn cmd_spawn_entity(
         (Some(x), Some(y)) => v2(x as f32, y as f32),
         _ => {
             let gat = &ecs_world.read_resource::<MapWalkingInfo>();
-            let hero_pos = ecs_world
-                .read_resource::<AuthorizedCharStateComponent>()
-                .pos();
+            let hero_pos = ecs_world.read_resource::<LocalCharStateComp>().pos();
             //            let mut rng = rand::thread_rng();
             //            let (x, y) = loop {
             //                let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
@@ -148,7 +155,7 @@ fn create_dummy(ecs_world: &mut specs::World, pos2d: Vec2, job_id: JobId) {
     };
     let char_id = ecs_world
         .create_entity()
-        .with(AuthorizedCharStateComponent::new(pos2d, base_attributes))
+        .with(LocalCharStateComp::new(pos2d, base_attributes))
         .with(StaticCharDataComponent::new(
             if job_id == JobId::HealingDummy {
                 Team::AllyForAll
@@ -188,7 +195,7 @@ fn create_random_char_minion(
 
     let char_id = ecs_world
         .create_entity()
-        .with(AuthorizedCharStateComponent::new(pos2d, base_attributes))
+        .with(LocalCharStateComp::new(pos2d, base_attributes))
         .with(StaticCharDataComponent::new(
             team,
             CharOutlook::Player {
@@ -219,7 +226,7 @@ fn cmd_kill_all(
     )
         .join()
     {
-        let entity_id = CharEntityId::from(entity_id);
+        let entity_id = LocalCharEntityId::from(entity_id);
         let need_delete = match type_name {
             "all" => true,
             "left_team" => char_state.team == Team::Left,
@@ -247,11 +254,37 @@ fn cmd_kill_all(
     }
     for entity_id in entity_ids {
         ecs_world
-            .write_storage::<AuthorizedCharStateComponent>()
+            .write_storage::<LocalCharStateComp>()
             .get_mut(entity_id.into())
             .unwrap()
             .hp = 0;
     }
+
+    Ok(())
+}
+
+fn cmd_reload_configs(
+    controller_id: Option<ControllerEntityId>,
+    args: CommandArguments,
+    ecs_world: &mut specs::World,
+) -> Result<(), String> {
+    log::info!("Reloading configs");
+    let configs = load_common_configs("config-runtime").unwrap();
+
+    *ecs_world.write_resource::<CommonConfigs>() = configs.clone();
+
+    for (state, static_info) in (
+        &mut ecs_world.write_storage::<LocalCharStateComp>(),
+        &ecs_world.read_storage::<StaticCharDataComponent>(),
+    )
+        .join()
+    {
+        state.recalc_attribs_based_on_statuses(static_info.job_id, &configs);
+    }
+
+    ecs_world
+        .write_resource::<OutPacketCollector>()
+        .push((PacketTarget::All, FromServerPacket::Configs(configs)));
 
     Ok(())
 }

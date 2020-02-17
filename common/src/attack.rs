@@ -1,6 +1,6 @@
 use crate::char_attr::CharAttributes;
-use crate::common::{v2, ElapsedTime, EngineTime, Percentage, Vec2};
-use crate::components::char::CharEntityId;
+use crate::common::{v2, EngineTime, LocalTime, Percentage, Vec2};
+use crate::components::char::LocalCharEntityId;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -35,10 +35,10 @@ impl BasicAttackType {
     pub fn finish_attack(
         &self,
         calculated_attribs: &CharAttributes,
-        caster_entity_id: CharEntityId,
+        caster_entity_id: LocalCharEntityId,
         caster_pos: Vec2,
         target_pos: Vec2,
-        target_entity_id: CharEntityId,
+        target_entity_id: LocalCharEntityId,
         hp_mod_requests: &mut Vec<HpModificationRequest>,
         time: &EngineTime,
     ) -> Option<Box<u32>> {
@@ -100,8 +100,8 @@ pub enum HpModificationType {
 
 #[derive(Debug)]
 pub struct HpModificationRequest {
-    pub src_entity: CharEntityId,
-    pub dst_entity: CharEntityId,
+    pub src_entity: LocalCharEntityId,
+    pub dst_entity: LocalCharEntityId,
     pub typ: HpModificationType,
 }
 
@@ -134,8 +134,8 @@ impl HpModificationRequest {
 
 #[derive(Debug)]
 pub struct HpModificationResult {
-    pub src_entity: CharEntityId,
-    pub dst_entity: CharEntityId,
+    pub src_entity: LocalCharEntityId,
+    pub dst_entity: LocalCharEntityId,
     pub typ: HpModificationResultType,
 }
 
@@ -161,15 +161,15 @@ pub struct AreaAttackComponent {
     // TODO2
     //    pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     //    pub area_isom: Isometry2<f32>,
-    pub source_entity_id: CharEntityId,
+    pub source_entity_id: LocalCharEntityId,
     pub typ: HpModificationType,
-    pub except: Option<CharEntityId>,
+    pub except: Option<LocalCharEntityId>,
 }
 
 #[derive(Debug)]
 pub struct ApplyForceComponent {
-    pub src_entity: CharEntityId,
-    pub dst_entity: CharEntityId,
+    pub src_entity: LocalCharEntityId,
+    pub dst_entity: LocalCharEntityId,
     pub force: Vec2,
     pub duration: f32,
 }
@@ -178,10 +178,10 @@ struct BasicRangeAttackBullet {
     start_pos: Vec2,
     target_pos: Vec2,
     current_pos: Vec2,
-    caster_id: CharEntityId,
-    target_id: CharEntityId,
-    started_at: ElapsedTime,
-    ends_at: ElapsedTime,
+    caster_id: LocalCharEntityId,
+    target_id: LocalCharEntityId,
+    started_at: LocalTime,
+    ends_at: LocalTime,
     weapon_type: WeaponType,
     started_tick: u64,
 }
@@ -189,10 +189,10 @@ struct BasicRangeAttackBullet {
 impl BasicRangeAttackBullet {
     fn new(
         start_pos: Vec2,
-        caster_id: CharEntityId,
-        target_id: CharEntityId,
+        caster_id: LocalCharEntityId,
+        target_id: LocalCharEntityId,
         target_pos: Vec2,
-        now: ElapsedTime,
+        now: LocalTime,
         bullet_type: WeaponType,
         now_tick: u64,
     ) -> BasicRangeAttackBullet {

@@ -1,14 +1,14 @@
 
 username = "Sharp"
 
-load_models = true
+load_models = false
 load_sprites = true
 
 resolution_w = 1024
 resolution_h = 768
 
 # possible values: ["OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
-log_level = "DEBUG"
+log_level = "TRACE"
 
 
 grf_paths = [
@@ -27,4 +27,4 @@ show_last_acknowledged_pos = true
 lerping_ticks = 3
 lerping_enabled = false
 
-max_fps = 30
+max_fps = 60

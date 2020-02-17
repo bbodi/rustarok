@@ -12,7 +12,8 @@ use crate::video::ortho;
 use crate::SpriteResource;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::Mat4;
-use rustarok_common::components::char::{CharEntityId, CharState, JobId, MonsterId};
+use rustarok_common::common::SimulationTick;
+use rustarok_common::components::char::{CharState, JobId, LocalCharEntityId, MonsterId};
 use rustarok_common::components::job_ids::JobSpriteId;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -154,11 +155,11 @@ impl RenderMatrices {
 
 #[derive(Debug)]
 pub enum SystemEvent {
-    CharStatusChange(u64, CharEntityId, CharState, CharState),
+    CharStatusChange(SimulationTick, LocalCharEntityId, CharState, CharState),
     HpModification {
-        timestamp: u64,
-        src: CharEntityId,
-        dst: CharEntityId,
+        timestamp: SimulationTick,
+        src: LocalCharEntityId,
+        dst: LocalCharEntityId,
         // TODO2
         //        result: HpModificationResult,
     },

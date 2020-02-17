@@ -22,17 +22,16 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{Sprites, SystemVariables};
-use crate::ElapsedTime;
+use crate::LocalTime;
 use rand::Rng;
 use rustarok_common::attack::{BasicAttackType, WeaponType};
 use rustarok_common::char_attr::{BonusDurations, CharAttributes, CharAttributesBonuses};
 use rustarok_common::components::char::{
-    create_common_player_entity, AuthorizedCharStateComponent, CharDir, CharEntityId, CharOutlook,
-    CharState, CharType, CollisionGroup, ControllerEntityId, EntityTarget, JobId, MonsterId,
+    create_common_player_entity, CharDir, CharOutlook, CharState, CharType, CollisionGroup,
+    ControllerEntityId, EntityTarget, JobId, LocalCharEntityId, LocalCharStateComp, MonsterId,
     ServerEntityId, Sex, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::job_ids::JobSpriteId;
-use rustarok_common::components::snapshot::CharSnapshot;
 use rustarok_common::config::CommonConfigs;
 
 #[derive(Component, Debug)]
@@ -187,12 +186,12 @@ pub fn create_client_player_entity(
     team: Team,
     outlook: CharOutlook,
     server_id: ServerEntityId,
-) -> CharEntityId {
+) -> LocalCharEntityId {
     let base_attrs =
         CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
             .clone();
     let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
-    return CharEntityId::from(
+    return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(HasServerIdComponent { server_id })
@@ -213,7 +212,7 @@ pub fn create_client_barricade_entity(
     world: &mut specs::World,
     pos: Vec2,
     team: Team,
-) -> CharEntityId {
+) -> LocalCharEntityId {
     let base_attrs = CharAttributes::get_base_attributes(
         JobId::Barricade,
         &world.read_resource::<CommonConfigs>(),
@@ -228,7 +227,7 @@ pub fn create_client_barricade_entity(
         CharOutlook::Monster(MonsterId::Barricade),
     );
 
-    return CharEntityId::from(
+    return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -248,7 +247,7 @@ pub fn create_client_dummy_entity(
     world: &mut specs::World,
     job_id: JobId,
     pos: Vec2,
-) -> CharEntityId {
+) -> LocalCharEntityId {
     let outlook = if job_id == JobId::HealingDummy {
         CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
     } else {
@@ -265,7 +264,7 @@ pub fn create_client_dummy_entity(
             .clone();
     let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
 
-    return CharEntityId::from(
+    return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -291,7 +290,7 @@ pub fn create_client_guard_entity(
     pos: Vec2,
     team: Team,
     y: f32,
-) -> CharEntityId {
+) -> LocalCharEntityId {
     let outlook = if team == Team::Left {
         CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
     } else {
@@ -302,7 +301,7 @@ pub fn create_client_guard_entity(
             .clone();
     let builder = create_common_player_entity(world, JobId::Guard, pos, team, outlook.clone());
 
-    return CharEntityId::from(
+    return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -323,7 +322,7 @@ pub fn create_client_minion_entity(
     world: &mut specs::World,
     pos: Vec2,
     team: Team,
-) -> CharEntityId {
+) -> LocalCharEntityId {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male
@@ -356,7 +355,7 @@ pub fn create_client_minion_entity(
             .clone();
     let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
 
-    return CharEntityId::from(
+    return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(NpcComponent)
@@ -374,13 +373,13 @@ pub fn create_client_minion_entity(
 }
 
 pub struct CharacterEntityBuilder {
-    char_id: CharEntityId,
+    char_id: LocalCharEntityId,
     name: String,
     pub physics_handles: Option<(DefaultColliderHandle, DefaultBodyHandle)>,
 }
 
 impl CharacterEntityBuilder {
-    pub fn new(char_id: CharEntityId, name: &str) -> CharacterEntityBuilder {
+    pub fn new(char_id: LocalCharEntityId, name: &str) -> CharacterEntityBuilder {
         CharacterEntityBuilder {
             char_id,
             name: name.to_owned(),
@@ -402,9 +401,9 @@ pub struct ComponentRadius(pub i32);
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vec2>,
     pub char_to_skill_dir_when_casted: Vec2,
-    pub target_entity: Option<CharEntityId>,
-    pub cast_started: ElapsedTime,
-    pub cast_ends: ElapsedTime,
+    pub target_entity: Option<LocalCharEntityId>,
+    pub cast_started: LocalTime,
+    pub cast_ends: LocalTime,
     pub can_move: bool,
     pub skill: Skills,
 }
@@ -491,8 +490,8 @@ impl Component for TurretControllerComponent {
 
 #[derive(Component)]
 pub struct TurretComponent {
-    pub owner_entity_id: CharEntityId,
-    pub preferred_target: Option<CharEntityId>,
+    pub owner_entity_id: LocalCharEntityId,
+    pub preferred_target: Option<LocalCharEntityId>,
 }
 
 pub struct NpcComponent;
@@ -583,7 +582,7 @@ impl CharacterStateComponent {
 
     pub fn update_statuses(
         &mut self,
-        self_char_id: CharEntityId,
+        self_char_id: LocalCharEntityId,
         sys_vars: &mut SystemVariables,
         time: &EngineTime,
         entities: &Entities,
@@ -664,19 +663,19 @@ pub enum ActionPlayMode {
 pub struct SpriteRenderDescriptorComponent {
     pub action_index: usize,
     pub fps_multiplier: f32,
-    pub animation_started: ElapsedTime,
-    pub forced_duration: Option<ElapsedTime>,
+    pub animation_started: LocalTime,
+    pub forced_duration: Option<LocalTime>,
     pub direction: CharDir,
     /// duration of the current animation
-    pub animation_ends_at: ElapsedTime,
+    pub animation_ends_at: LocalTime,
 }
 
 impl SpriteRenderDescriptorComponent {
     pub fn new() -> SpriteRenderDescriptorComponent {
         SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
-            animation_started: ElapsedTime(0.0),
-            animation_ends_at: ElapsedTime(0.0),
+            animation_started: LocalTime::from(0.0),
+            animation_ends_at: LocalTime::from(0.0),
             forced_duration: None,
             direction: CharDir::South,
             fps_multiplier: 1.0,

@@ -1,5 +1,6 @@
 use crate::components::controller::{CameraComponent, CameraMode, HumanInputComponent, SkillKey};
 use crate::components::skills::skills::{SkillTargetType, Skills};
+use crate::systems::RenderMatrices;
 use crate::systems::SystemVariables;
 use crate::ConsoleCommandBuffer;
 use nalgebra::Vector4;
@@ -11,17 +12,13 @@ use specs::prelude::*;
 
 pub struct InputConsumerSystem;
 
-impl<'a> System<'a> for InputConsumerSystem {
-    type SystemData = (
-        WriteExpect<'a, HumanInputComponent>,
-        WriteExpect<'a, CameraComponent>,
-        WriteExpect<'a, ConsoleCommandBuffer>,
-        ReadExpect<'a, SystemVariables>,
-    );
-
-    fn run(
+impl InputConsumerSystem {
+    pub fn run(
         &mut self,
-        (mut input, mut camera, mut console_command_buffer, sys_vars): Self::SystemData,
+        input: &mut HumanInputComponent,
+        camera: &mut CameraComponent,
+        console_command_buffer: &mut ConsoleCommandBuffer,
+        matrices: &RenderMatrices,
     ) {
         let events: Vec<_> = input.inputs.drain(..).collect();
         input.left_mouse_released = false;
@@ -181,9 +178,9 @@ impl<'a> System<'a> for InputConsumerSystem {
                 CameraMode::Free => {
                     input.camera_movement_mode = CameraMode::FollowChar;
                     camera.reset_y_and_angle(
-                        &sys_vars.matrices.projection,
-                        sys_vars.matrices.resolution_w,
-                        sys_vars.matrices.resolution_h,
+                        &matrices.projection,
+                        matrices.resolution_w,
+                        matrices.resolution_h,
                     );
                 }
                 CameraMode::FollowChar => {
@@ -197,10 +194,10 @@ impl<'a> System<'a> for InputConsumerSystem {
             input.last_mouse_x,
             input.last_mouse_y,
             &camera.camera.pos(),
-            &sys_vars.matrices.projection,
+            &matrices.projection,
             &camera.view_matrix,
-            sys_vars.matrices.resolution_w,
-            sys_vars.matrices.resolution_h,
+            matrices.resolution_w,
+            matrices.resolution_h,
         );
         input.mouse_world_pos = mouse_world_pos;
 

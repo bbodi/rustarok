@@ -22,7 +22,6 @@ use std::str::FromStr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use log::LevelFilter;
-use notify::Watcher;
 use serde::Deserialize;
 use specs;
 use specs::prelude::*;
@@ -30,14 +29,18 @@ use strum;
 
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::char_attr::CharAttributes;
-use rustarok_common::common::{measure_time, v2, EngineTime};
-use rustarok_common::components::char::{
-    create_common_player_entity, AuthorizedCharStateComponent, CharEntityId, CharOutlook, CharType,
-    ControllerEntityId, JobId, ServerEntityId, Sex, StaticCharDataComponent, Team,
+use rustarok_common::common::{
+    measure_time, v2, EngineTime, LocalTime, ServerTime, SimulationTick,
 };
-use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
+use rustarok_common::components::char::{
+    create_common_player_entity, CharOutlook, CharType, ControllerEntityId, EntityTarget, JobId,
+    LocalCharEntityId, LocalCharStateComp, ServerCharState, ServerEntityId, Sex,
+    StaticCharDataComponent, Team,
+};
+use rustarok_common::components::controller::{
+    ControllerComponent, PlayerIntention, ToServerPlayerIntention,
+};
 use rustarok_common::components::job_ids::JobSpriteId;
-use rustarok_common::components::snapshot::CharSnapshot;
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::CommandArguments;
 use rustarok_common::grf::asset_loader::CommonAssetLoader;
@@ -75,9 +78,9 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn new() -> Result<Self, config::ConfigError> {
+    pub fn new(name: &str) -> Result<Self, config::ConfigError> {
         let mut s = config::Config::new();
-        s.merge(config::File::with_name("config"))?;
+        s.merge(config::File::with_name(name))?;
         return s.try_into();
     }
 }
@@ -112,12 +115,22 @@ struct RemoteClient {
 }
 
 // only the server must implement it
-fn server_id_to_client(id: CharEntityId) -> ServerEntityId {
+fn prepare_charsnapshot_for_sending(snapshot: LocalCharStateComp) -> ServerCharState {
+    unsafe { std::mem::transmute(snapshot) }
+}
+
+// only the server must implement it
+fn prepare_entity_id_for_sending(id: LocalCharEntityId) -> ServerEntityId {
     unsafe { std::mem::transmute(id) }
 }
 
 // only the server must implement it
-fn client_id_to_server(id: ServerEntityId) -> CharEntityId {
+fn prepare_time_for_sending(time: LocalTime) -> ServerTime {
+    unsafe { std::mem::transmute(time) }
+}
+
+// only the server must implement it
+fn client_id_to_server(id: ServerEntityId) -> LocalCharEntityId {
     unsafe { std::mem::transmute(id) }
 }
 
@@ -139,17 +152,18 @@ fn init_connection(
     }
 }
 
+type OutPacketCollector = Vec<(PacketTarget, FromServerPacket)>;
+
+pub enum PacketTarget {
+    All,
+    Client(SocketId),
+    Team(Team),
+    Area,
+}
+
 fn main() {
     log::info!("Loading config file config.toml");
-    let config = AppConfig::new().expect("Could not load config file ('config.toml')");
-    let (mut runtime_conf_watcher_rx, watcher) = {
-        let (tx, runtime_conf_watcher_rx) = crossbeam_channel::unbounded();
-        let mut watcher = notify::watcher(tx.clone(), Duration::from_secs(2)).unwrap();
-        watcher
-            .watch("config-runtime.toml", notify::RecursiveMode::NonRecursive)
-            .unwrap();
-        (runtime_conf_watcher_rx, watcher)
-    };
+    let config = AppConfig::new("config").expect("Could not load config file ('config.toml')");
 
     simple_logging::log_to_stderr(
         LevelFilter::from_str(&config.log_level)
@@ -163,14 +177,16 @@ fn main() {
     log::info!("<<< GRF loading: {}ms", elapsed.as_millis());
 
     let mut ecs_world = create_ecs_world();
-    ecs_world.add_resource(Vec::<HpModificationRequest>::with_capacity(128));
-    ecs_world.add_resource(Vec::<AreaAttackComponent>::with_capacity(128));
-    ecs_world.add_resource(Vec::<ApplyForceComponent>::with_capacity(128));
-    ecs_world.add_resource(EngineTime::new(SIMULATION_FREQ as usize));
+    ecs_world.insert(Vec::<HpModificationRequest>::with_capacity(128));
+    ecs_world.insert(Vec::<AreaAttackComponent>::with_capacity(128));
+    ecs_world.insert(Vec::<ApplyForceComponent>::with_capacity(128));
+    ecs_world.insert(EngineTime::new(0));
+    ecs_world.insert(OutPacketCollector::with_capacity(128));
 
-    ecs_world.add_resource(ServerConfig::new("server-conf.toml").unwrap());
-    ecs_world.add_resource(load_common_configs("config-runtime").unwrap());
-    ecs_world.add_resource(MapWalkingInfo::new());
+    ecs_world.insert(ServerConfig::new("server-conf.toml").unwrap());
+    ecs_world.insert(load_common_configs("config-runtime").unwrap());
+    ecs_world.insert(MapWalkingInfo::new());
+    ecs_world.insert(SimulationTick::new());
 
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(ControllerIntentionToCharTargetSystem, "char_control", &[])
@@ -204,6 +220,7 @@ fn main() {
     let mut remote_clients = Vec::<Option<RemoteClient>>::with_capacity(64);
 
     let mut next_player_team = Team::Left;
+    let server_started = Instant::now();
 
     ////////////////////////////////////////////////////
     ////////////////////////////////////////////////////
@@ -215,7 +232,6 @@ fn main() {
 
     loop {
         let start = Instant::now();
-        let simulation_frame = ecs_world.read_resource::<EngineTime>().simulation_frame;
 
         accept_new_connections(
             &mut socket_listener,
@@ -231,13 +247,14 @@ fn main() {
             &mut remote_clients,
             &mut ecs_world,
             &config,
-            simulation_frame,
             &mut next_player_team,
         );
 
         run_frame(&mut ecs_world, &mut ecs_dispatcher);
 
         send_snapshots(&packet_handler_thread, &mut remote_clients, &ecs_world);
+
+        send_packets(&mut packet_handler_thread, &mut ecs_world, &remote_clients);
 
         let frame_duration = start.elapsed();
         if frame_duration < MAX_DURATION_ALLOWED_FOR_SINGLE_SIMULATION_FRAME {
@@ -247,12 +264,45 @@ fn main() {
 
         ecs_world
             .write_resource::<EngineTime>()
-            .update_timers_for_prediction();
+            .tick(MAX_DURATION_ALLOWED_FOR_SINGLE_SIMULATION_FRAME);
+
+        ecs_world.write_resource::<SimulationTick>().inc();
     }
 }
 
+fn send_packets(
+    packet_handler_thread: &mut PacketHandlerThread<ToServerPacket, FromServerPacket>,
+    ecs_world: &mut specs::World,
+    remote_clients: &Vec<Option<RemoteClient>>,
+) -> usize {
+    let mut to_client = ecs_world.write_resource::<OutPacketCollector>();
+    let sent = to_client.len();
+
+    for (target, packet) in to_client.drain(..) {
+        match target {
+            PacketTarget::All => {
+                for remote_client in remote_clients.iter() {
+                    if let Some(remote_client) = remote_client {
+                        packet_handler_thread.send(remote_client.socket_id, packet.clone());
+                    }
+                }
+            }
+            PacketTarget::Client(client_socket) => {
+                packet_handler_thread.send(client_socket, packet);
+            }
+            PacketTarget::Team(team) => {
+                // TODO
+            }
+            PacketTarget::Area => {
+                // TODO
+            }
+        }
+    }
+    return sent;
+}
+
 fn run_frame(ecs_world: &mut specs::World, ecs_dispatcher: &mut specs::Dispatcher) {
-    ecs_dispatcher.dispatch(&mut ecs_world.res);
+    ecs_dispatcher.dispatch(ecs_world);
     ecs_world.maintain();
 }
 
@@ -285,6 +335,7 @@ fn send_snapshots(
     remote_clients: &mut Vec<Option<RemoteClient>>,
     ecs_world: &specs::World,
 ) {
+    let now = ecs_world.read_resource::<EngineTime>().now();
     for remote_client in remote_clients.iter_mut() {
         let remote_client = if let Some(remote_client) = remote_client {
             remote_client
@@ -295,32 +346,28 @@ fn send_snapshots(
             let controller_storage = ecs_world.read_storage::<ControllerComponent>();
             let controller = controller_storage.get(controller_id.into()).unwrap();
             if let Some(controlled_entity) = controller.controlled_entity {
-                let auth_char_storage = ecs_world.read_storage::<AuthorizedCharStateComponent>();
+                let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp>();
                 let char_state = auth_char_storage.get(controlled_entity.into()).unwrap();
 
                 let mut entries = vec![ServerEntityState {
-                    id: server_id_to_client(controlled_entity),
-                    char_snapshot: CharSnapshot::from(char_state),
+                    id: prepare_entity_id_for_sending(controlled_entity),
+                    char_snapshot: prepare_charsnapshot_for_sending(char_state.clone()),
                 }];
                 for (other_char_id, other_char_state) in
                     (&ecs_world.entities(), &auth_char_storage).join()
                 {
-                    let other_char_id = CharEntityId::from(other_char_id);
+                    let other_char_id = LocalCharEntityId::from(other_char_id);
                     if other_char_id == controlled_entity.into() {
                         continue;
                     }
                     entries.push(ServerEntityState {
-                        id: server_id_to_client(other_char_id),
-                        char_snapshot: CharSnapshot::from(other_char_state),
+                        id: prepare_entity_id_for_sending(other_char_id),
+                        char_snapshot: prepare_charsnapshot_for_sending(other_char_state.clone()),
                     })
                 }
                 packet_handler_thread.send(
                     remote_client.socket_id,
                     FromServerPacket::Ack {
-                        sent_at: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis(),
                         cid: remote_client.last_command_id,
                         entries,
                     },
@@ -337,33 +384,33 @@ fn process_incoming_packets(
     remote_clients: &mut Vec<Option<RemoteClient>>,
     ecs_world: &mut specs::World,
     config: &AppConfig,
-    simulation_frame: u64,
     next_player_team: &mut Team,
 ) {
     tmp_vec.clear();
     packet_handler_thread.receive_into(tmp_vec);
-    for (socket_id, packet) in tmp_vec.drain(..) {
+    for (client_socket, packet) in tmp_vec.drain(..) {
         match packet {
             NetworkTrafficEvent::IncomingTraffic { received_data_len } => {
                 //
             }
             NetworkTrafficEvent::OutgoingTraffic { sent_data_len } => {}
             NetworkTrafficEvent::Disconnected => {
-                log::debug!("Client({:?}) has been disconnected", socket_id);
-                disconnect_client(remote_clients, socket_id, ecs_world);
+                log::debug!("Client({:?}) has been disconnected", client_socket);
+                disconnect_client(remote_clients, client_socket, ecs_world);
             }
             NetworkTrafficEvent::LocalError(e) => {
-                log::error!("Client({:?}) has been disconnected: {:?}", socket_id, e);
-                disconnect_client(remote_clients, socket_id, ecs_world);
+                log::error!("Client({:?}) has been disconnected: {:?}", client_socket, e);
+                disconnect_client(remote_clients, client_socket, ecs_world);
             }
             NetworkTrafficEvent::Packet(p) => {
                 match p {
                     ToServerPacket::Welcome { name } => {
                         log::info!("{} welcomed ^^", name);
-                        let remote_client = remote_clients[socket_id.as_usize()].as_mut().unwrap();
+                        let remote_client =
+                            remote_clients[client_socket.as_usize()].as_mut().unwrap();
                         remote_client.name = name;
                         packet_handler_thread.send(
-                            socket_id,
+                            client_socket,
                             FromServerPacket::Init {
                                 //    let map_name = "bat_a01"; // battle ground
                                 map_name: "prontera".to_string(),
@@ -371,24 +418,28 @@ fn process_incoming_packets(
                                 start_y: config.start_pos_y,
                             },
                         );
-                        let configs = ecs_world.read_resource::<CommonConfigs>().clone();
-                        packet_handler_thread.send(socket_id, FromServerPacket::Configs(configs));
+                        let configs = (*ecs_world.read_resource::<CommonConfigs>()).clone();
+                        packet_handler_thread
+                            .send(client_socket, FromServerPacket::Configs(configs));
                     }
                     ToServerPacket::Ping => {
                         packet_handler_thread.send(
-                            socket_id,
+                            client_socket,
                             FromServerPacket::Pong {
-                                server_tick: simulation_frame,
+                                server_time: ServerTime(
+                                    ecs_world.read_resource::<EngineTime>().now().as_millis(),
+                                ),
+                                server_tick: *ecs_world.read_resource::<SimulationTick>(),
                             },
                         );
                     }
                     ToServerPacket::ReadyForGame => {
                         let (connecting_char_id, connecting_char_snapshot) = {
                             let remote_client =
-                                remote_clients[socket_id.as_usize()].as_mut().unwrap();
+                                remote_clients[client_socket.as_usize()].as_mut().unwrap();
                             log::info!("{} is ready to play", remote_client.name);
 
-                            let char_id = CharEntityId::from(
+                            let char_id = LocalCharEntityId::from(
                                 create_common_player_entity(
                                     ecs_world,
                                     JobId::CRUSADER,
@@ -410,24 +461,22 @@ fn process_incoming_packets(
                             remote_client.controller_id =
                                 Some(ControllerEntityId::new(network_player_id));
 
-                            let auth_char_storage =
-                                ecs_world.read_storage::<AuthorizedCharStateComponent>();
+                            let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp>();
                             let char_state = auth_char_storage.get(char_id.into()).unwrap();
                             let static_data_storage =
                                 ecs_world.read_storage::<StaticCharDataComponent>();
                             let static_char_state =
                                 static_data_storage.get(char_id.into()).unwrap();
-                            let char_snapshot = CharSnapshot::from(char_state);
                             packet_handler_thread.send(
                                 remote_client.socket_id,
                                 FromServerPacket::NewEntity {
-                                    id: server_id_to_client(char_id),
+                                    id: prepare_entity_id_for_sending(char_id),
                                     name: "???".to_owned(),
                                     team: static_char_state.team,
                                     typ: static_char_state.typ.clone(),
                                     outlook: static_char_state.outlook.clone(),
                                     job_id: static_char_state.job_id,
-                                    state: char_snapshot.clone(),
+                                    state: prepare_charsnapshot_for_sending(char_state.clone()),
                                 },
                             );
 
@@ -440,33 +489,34 @@ fn process_incoming_packets(
                                 )
                                     .join()
                                 {
-                                    let other_char_id = CharEntityId::new(other_char_id);
+                                    let other_char_id = LocalCharEntityId::new(other_char_id);
                                     if other_char_id == char_id {
                                         continue;
                                     }
-                                    let other_char_snapshot = CharSnapshot::from(other_char_state);
                                     packet_handler_thread.send(
                                         remote_client.socket_id,
                                         FromServerPacket::NewEntity {
-                                            id: server_id_to_client(other_char_id),
+                                            id: prepare_entity_id_for_sending(other_char_id),
                                             name: "???".to_owned(),
                                             team: other_static_data.team,
                                             typ: other_static_data.typ.clone(),
                                             outlook: other_static_data.outlook.clone(),
                                             job_id: other_static_data.job_id,
-                                            state: other_char_snapshot.clone(),
+                                            state: prepare_charsnapshot_for_sending(
+                                                other_char_state.clone(),
+                                            ),
                                         },
                                     );
                                 }
                             }
 
-                            (char_id, char_snapshot)
+                            (char_id, char_state.clone())
                         };
 
                         // inform others about this player
                         {
                             let remote_client =
-                                remote_clients[socket_id.as_usize()].as_ref().unwrap();
+                                remote_clients[client_socket.as_usize()].as_ref().unwrap();
                             let static_data_storage =
                                 ecs_world.read_storage::<StaticCharDataComponent>();
                             let static_data =
@@ -479,13 +529,17 @@ fn process_incoming_packets(
                                             packet_handler_thread.send(
                                                 other_client.socket_id,
                                                 FromServerPacket::NewEntity {
-                                                    id: server_id_to_client(connecting_char_id),
+                                                    id: prepare_entity_id_for_sending(
+                                                        connecting_char_id,
+                                                    ),
                                                     name: remote_client.name.clone(),
                                                     team: static_data.team,
                                                     typ: static_data.typ.clone(),
                                                     outlook: static_data.outlook.clone(),
                                                     job_id: static_data.job_id,
-                                                    state: connecting_char_snapshot.clone(),
+                                                    state: prepare_charsnapshot_for_sending(
+                                                        connecting_char_snapshot.clone(),
+                                                    ),
                                                 },
                                             );
                                         }
@@ -499,16 +553,28 @@ fn process_incoming_packets(
                         client_tick,
                         intention,
                     } => {
-                        let remote_client = remote_clients[socket_id.as_usize()].as_mut().unwrap();
+                        let remote_client =
+                            remote_clients[client_socket.as_usize()].as_mut().unwrap();
                         if let Some(controller_id) = remote_client.controller_id {
                             let mut controller_storage =
                                 ecs_world.write_storage::<ControllerComponent>();
                             let controller: &mut ControllerComponent =
                                 controller_storage.get_mut(controller_id.into()).unwrap();
-                            controller.intention = Some(intention);
+                            controller.intention = Some(match intention {
+                                ToServerPlayerIntention::MoveTo(v) => PlayerIntention::MoveTo(v),
+                                ToServerPlayerIntention::MoveTowardsMouse(v) => {
+                                    PlayerIntention::MoveTowardsMouse(v)
+                                }
+                                ToServerPlayerIntention::AttackTowards(v) => {
+                                    PlayerIntention::AttackTowards(v)
+                                }
+                                ToServerPlayerIntention::Attack(id) => {
+                                    PlayerIntention::Attack(client_id_to_server(id))
+                                }
+                            });
                             remote_client.last_command_id = cid;
                             log::debug!(
-                                "client tick: {}, cid: {}, intention: {:?}",
+                                "client tick: {:?}, cid: {}, intention: {:?}",
                                 client_tick,
                                 cid,
                                 &controller.intention
@@ -518,7 +584,8 @@ fn process_incoming_packets(
                         }
                     }
                     ToServerPacket::ConsoleCommand(cmd) => {
-                        let remote_client = remote_clients[socket_id.as_usize()].as_mut().unwrap();
+                        let remote_client =
+                            remote_clients[client_socket.as_usize()].as_mut().unwrap();
                         execute_console_cmd(remote_client.controller_id, cmd, ecs_world);
                     }
                 }
@@ -551,7 +618,7 @@ fn disconnect_client(
 
 pub fn create_ecs_world() -> specs::World {
     let mut ecs_world = specs::World::new();
-    ecs_world.register::<AuthorizedCharStateComponent>();
+    ecs_world.register::<LocalCharStateComp>();
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<StaticCharDataComponent>();
     ecs_world

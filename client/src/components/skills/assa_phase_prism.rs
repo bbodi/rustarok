@@ -14,9 +14,10 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use nphysics2d::object::DefaultColliderHandle;
-use rustarok_common::common::{v2, ElapsedTime, EngineTime, Vec2};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::common::{v2, EngineTime, LocalTime, Vec2};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 use specs::ReadStorage;
 
 pub struct AssaPhasePrismSkill;
@@ -59,22 +60,22 @@ impl SkillDef for AssaPhasePrismSkill {
 struct AssaPhasePrismSkillManifestation {
     start_pos: Vec2,
     pos: Vec2,
-    caster_id: CharEntityId,
+    caster_id: LocalCharEntityId,
     dir: Vec2,
     collider_handle: DefaultColliderHandle,
-    started_at: ElapsedTime,
-    ends_at: ElapsedTime,
+    started_at: LocalTime,
+    ends_at: LocalTime,
     casting_range: f32,
     swap_duration_unit_per_second: f32,
 }
 
 impl AssaPhasePrismSkillManifestation {
     fn new(
-        caster_id: CharEntityId,
+        caster_id: LocalCharEntityId,
         pos: Vec2,
         dir: Vec2,
         physics_world: &mut PhysicEngine,
-        now: ElapsedTime,
+        now: LocalTime,
         duration: f32,
         casting_range: f32,
         swap_duration_unit_per_second: f32,
@@ -121,7 +122,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
         //                    .colliders
         //                    .get(coll.character_coll_handle)
         //                {
-        //                    let target_char_entity_id: CharEntityId = *char_collider
+        //                    let target_char_entity_id: LocalCharEntityId = *char_collider
         //                        .user_data()
         //                        .map(|v| v.downcast_ref().unwrap())
         //                        .unwrap();
@@ -184,8 +185,7 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: ElapsedTime,
-        _tick: u64,
+        _now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_command_collector: &mut AudioCommandCollectorComponent,
@@ -200,9 +200,9 @@ impl SkillManifestation for AssaPhasePrismSkillManifestation {
 
 #[derive(Clone, Debug)]
 pub struct AssaPhasePrismStatus {
-    pub caster_entity_id: CharEntityId,
-    pub started_at: ElapsedTime,
-    pub ends_at: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub started_at: LocalTime,
+    pub ends_at: LocalTime,
     pub start_pos: Vec2,
     pub vector: Vec2,
 }

@@ -4,36 +4,36 @@ use crate::components::skills::skills::{SkillManifestation, SkillManifestationUp
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::AssetResources;
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{LocalTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::common::{v2, Vec2};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
 use specs::ReadStorage;
 
 pub struct StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> StatusEnum,
+    F: FnMut(LocalTime) -> StatusEnum,
 {
     pub collider_handle: DefaultColliderHandle,
     pub extents: Vector2<u16>,
     pub pos: Vec2,
     pub name: String,
     pub status_creator: F,
-    pub caster_entity_id: CharEntityId,
-    pub next_action_at: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub next_action_at: LocalTime,
 }
 
 impl<F> StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> StatusEnum,
+    F: FnMut(LocalTime) -> StatusEnum,
 {
     pub fn new(
         name: String,
         status_creator: F,
         skill_center: &Vec2,
         size: Vector2<u16>,
-        caster_entity_id: CharEntityId,
+        caster_entity_id: LocalCharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> StatusApplierArea<F> {
         let (collider_handle, _body_handle) = physics_world.add_cuboid_skill_area(
@@ -48,14 +48,14 @@ where
             pos: *skill_center,
             extents: size,
             caster_entity_id,
-            next_action_at: ElapsedTime(0.0),
+            next_action_at: LocalTime::from(0.0),
         }
     }
 }
 
 impl<F> SkillManifestation for StatusApplierArea<F>
 where
-    F: FnMut(ElapsedTime) -> StatusEnum,
+    F: FnMut(LocalTime) -> StatusEnum,
 {
     fn update(&mut self, mut params: SkillManifestationUpdateParam) {
         if self.next_action_at.has_already_passed(params.time().now()) {
@@ -87,8 +87,7 @@ where
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        _tick: u64,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

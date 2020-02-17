@@ -3,12 +3,12 @@ use crate::components::char::CharacterStateComponent;
 use crate::components::skills::skills::{SkillManifestation, SkillManifestationUpdateParam};
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::AssetResources;
-use crate::{ElapsedTime, PhysicEngine};
+use crate::{LocalTime, PhysicEngine};
 use nalgebra::Vector2;
 use nphysics2d::object::DefaultColliderHandle;
 use rustarok_common::attack::{HpModificationRequest, HpModificationType};
 use rustarok_common::common::{v2, Vec2, Vec2u};
-use rustarok_common::components::char::{CharEntityId, StaticCharDataComponent};
+use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
 use specs::ReadStorage;
 
 pub struct HealApplierArea {
@@ -18,8 +18,8 @@ pub struct HealApplierArea {
     pub name: &'static str,
     pub attack_type: HpModificationType,
     pub interval: f32,
-    pub caster_entity_id: CharEntityId,
-    pub next_action_at: ElapsedTime,
+    pub caster_entity_id: LocalCharEntityId,
+    pub next_action_at: LocalTime,
 }
 
 impl HealApplierArea {
@@ -29,7 +29,7 @@ impl HealApplierArea {
         skill_center: &Vec2,
         size: Vec2u,
         interval: f32,
-        caster_entity_id: CharEntityId,
+        caster_entity_id: LocalCharEntityId,
         physics_world: &mut PhysicEngine,
     ) -> HealApplierArea {
         let (collider_handle, _body_handle) = physics_world.add_cuboid_skill_area(
@@ -46,7 +46,7 @@ impl HealApplierArea {
             pos: *skill_center,
             extents: size,
             caster_entity_id,
-            next_action_at: ElapsedTime(0.0),
+            next_action_at: LocalTime::from(0.0),
         }
     }
 }
@@ -82,8 +82,7 @@ impl SkillManifestation for HealApplierArea {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: ElapsedTime,
-        _tick: u64,
+        now: LocalTime,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

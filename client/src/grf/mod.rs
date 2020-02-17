@@ -30,7 +30,7 @@ impl SpriteResource {
                             positions: vec![],
                         }],
                         delay: 0,
-                        duration: 0.0,
+                        duration_in_millis: 0,
                     })
                     .collect(),
                 sounds: vec![],

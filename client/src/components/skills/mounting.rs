@@ -15,6 +15,7 @@ use crate::systems::SystemVariables;
 use rustarok_common::common::EngineTime;
 use rustarok_common::components::char::StaticCharDataComponent;
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct MountingSkill;
 

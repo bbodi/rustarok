@@ -7,9 +7,9 @@ use crate::render::render_command::{RenderCommandCollector, UiLayer2d};
 use crate::runtime_assets::graphic::FONT_SIZE_SKILL_KEY;
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::{ElapsedTime, SpriteResource};
+use crate::{LocalTime, SpriteResource};
 use rustarok_common::common::{EngineTime, Vec2i, Vec3};
-use rustarok_common::components::char::AuthorizedCharStateComponent;
+use rustarok_common::components::char::{LocalCharEntityId, LocalCharStateComp};
 use specs::prelude::*;
 use specs::ReadStorage;
 
@@ -22,13 +22,13 @@ impl RenderUI {
 
     pub fn run(
         &mut self,
-        self_auth_state: &AuthorizedCharStateComponent,
+        self_auth_state: &LocalCharStateComp,
         input: &HumanInputComponent,
         local_player: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
         sys_vars: &SystemVariables,
         time: &EngineTime,
-        char_state_storage: &ReadStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &ReadStorage<LocalCharStateComp>,
         npc_storage: &ReadStorage<NpcComponent>,
         entities: &Entities,
         camera_pos: &Vec3,
@@ -159,7 +159,7 @@ impl RenderUI {
     //        let real_to_map_scale_w = minimap_w as f32 / (map_render_data.ground_width * 2) as f32;
     //        let real_to_map_scale_h = minimap_h as f32 / (map_render_data.ground_height * 2) as f32;
     //        for (entity_id, char_state) in (entities, char_state_storage).join() {
-    //            let entity_id = CharEntityId::from(entity_id);
+    //            let entity_id =  LocalCharEntityId::from(entity_id);
     //            let head_index = if npc_storage.get(entity_id.into()).is_none() {
     //                if let CharOutlook::Player {
     //                    head_index, sex, ..
@@ -275,7 +275,7 @@ impl RenderUI {
     //    }
 
     fn draw_targeting_skill_name(
-        char_state: &AuthorizedCharStateComponent,
+        char_state: &LocalCharStateComp,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
@@ -309,7 +309,7 @@ impl RenderUI {
     const SINGLE_MAIN_ICON_SIZE: i32 = 48;
 
     fn draw_secondary_skill_bar(
-        char_state: &AuthorizedCharStateComponent,
+        char_state: &LocalCharStateComp,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
@@ -418,7 +418,7 @@ impl RenderUI {
     }
 
     fn draw_main_skill_bar(
-        char_state: &AuthorizedCharStateComponent,
+        char_state: &LocalCharStateComp,
         input: &HumanInputComponent,
         controller: &LocalPlayerController,
         render_commands: &mut RenderCommandCollector,
@@ -552,7 +552,7 @@ fn render_action_2d(
 
     let frame_index = {
         let frame_count = action.frames.len();
-        let time_needed_for_one_frame = action.delay as f32 / 1000.0 * 4.0;
+        let time_needed_for_one_frame = action.delay * 4;
         let elapsed_time = time.now().elapsed_since(animated_sprite.animation_started);
         (elapsed_time.div(time_needed_for_one_frame)) as usize % frame_count
     };

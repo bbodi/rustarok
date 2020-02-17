@@ -1,5 +1,5 @@
 use crate::common::{v2, EngineTime};
-use crate::components::char::{AuthorizedCharStateComponent, EntityTarget};
+use crate::components::char::{EntityTarget, LocalCharEntityId, LocalCharStateComp};
 use crate::components::controller::{ControllerComponent, PlayerIntention};
 
 pub struct ControllerIntentionToCharTarget;
@@ -7,7 +7,7 @@ pub struct ControllerIntentionToCharTarget;
 impl ControllerIntentionToCharTarget {
     pub fn controller_intention_to_char_target(
         controller: &ControllerComponent,
-        char_state_storage: &mut specs::WriteStorage<AuthorizedCharStateComponent>,
+        char_state_storage: &mut specs::WriteStorage<LocalCharStateComp>,
     ) {
         if let Some(controlled_entity) = controller.controlled_entity {
             let auth_char = char_state_storage.get_mut(controlled_entity.into());
@@ -51,18 +51,18 @@ impl ControllerIntentionToCharTarget {
 
     //    pub fn try_cast_skill(
     //        skill: Skills,
-    //        now: ElapsedTime,
+    //        now: LocalTime,
     //        configs: &CommonConfigs,
     //        char_state: &mut CharacterStateComponent,
     //        mouse_world_pos: &Vec2,
     //        entities_below_cursor: &EntitiesBelowCursor,
-    //        self_char_id: CharEntityId,
+    //        self_char_id: LocalCharEntityId,
     //        is_self_cast: bool,
     //    ) -> bool {
     //        if char_state
     //            .skill_cast_allowed_at
     //            .entry(skill)
-    //            .or_insert(ElapsedTime(0.0))
+    //            .or_insert(LocalTime::from(0.0))
     //            .has_not_passed_yet(now)
     //        {
     //            return true;

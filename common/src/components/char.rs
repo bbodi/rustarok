@@ -1,25 +1,27 @@
 use crate::attack::{BasicAttackType, WeaponType};
 use crate::char_attr::CharAttributes;
-use crate::common::{float_cmp, v2, ElapsedTime, Vec2};
+use crate::common::{float_cmp, v2, LocalTime, ServerTime, Vec2};
 use crate::components::controller::PlayerIntention;
 use crate::components::job_ids::JobSpriteId;
-use crate::components::snapshot::CharSnapshot;
 use crate::config::CommonConfigs;
 use crate::packets::SocketBuffer;
+use serde::export::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use specs::prelude::*;
+use std::collections::HashMap;
+use std::hash::Hash;
 use strum_macros::Display;
 use strum_macros::EnumCount;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
 
-// TODO: now that I don1T have controller entity, this might be unnecessary
+// TODO: now that I don'T have controller entity, this might be unnecessary
 // any entity that moves and visible on the map
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct CharEntityId(u64);
+pub struct LocalCharEntityId(u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ServerEntityId(CharEntityId);
+pub struct ServerEntityId(LocalCharEntityId);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ControllerEntityId(Entity);
@@ -42,21 +44,21 @@ impl ControllerEntityId {
     }
 }
 
-impl CharEntityId {
-    pub fn new(id: specs::Entity) -> CharEntityId {
-        CharEntityId(unsafe { std::mem::transmute(id) })
+impl LocalCharEntityId {
+    pub fn new(id: specs::Entity) -> LocalCharEntityId {
+        LocalCharEntityId(unsafe { std::mem::transmute(id) })
     }
 }
 
-impl Into<specs::Entity> for CharEntityId {
+impl Into<specs::Entity> for LocalCharEntityId {
     fn into(self) -> specs::Entity {
         unsafe { std::mem::transmute(self.0) }
     }
 }
 
-impl From<specs::Entity> for CharEntityId {
+impl From<specs::Entity> for LocalCharEntityId {
     fn from(entity: specs::Entity) -> Self {
-        CharEntityId::new(entity)
+        LocalCharEntityId::new(entity)
     }
 }
 
@@ -72,8 +74,8 @@ pub enum CharState {
     Walking(Vec2),
     StandBy,
     Attacking {
-        target: CharEntityId,
-        damage_occurs_at: ElapsedTime,
+        target: LocalCharEntityId,
+        damage_occurs_at: LocalTime,
         basic_attack: BasicAttackType,
     },
     ReceivingDamage,
@@ -235,10 +237,10 @@ pub enum CharOutlook {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityTarget {
-    OtherEntity(CharEntityId),
+pub enum EntityTarget<TargetId: Clone + Copy + Debug + PartialEq + Eq + Hash + Serialize> {
+    OtherEntity(TargetId),
     Pos(Vec2),
-    PosWhileAttacking(Vec2, Option<CharEntityId>),
+    PosWhileAttacking(Vec2, Option<TargetId>),
 }
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
@@ -262,21 +264,35 @@ impl StaticCharDataComponent {
     }
 }
 
-#[derive(Component, Clone, Debug, Serialize, Deserialize)]
-pub struct AuthorizedCharStateComponent {
-    pos: Vec2,
-    dir: CharDir,
-    state: CharState,
-    pub target: Option<EntityTarget>,
-    calculated_attribs: CharAttributes,
-    pub attack_delay_ends_at: ElapsedTime,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerCharState {
+    pub pos: Vec2,
+    pub dir: CharDir,
+    pub state: CharState,
+    pub target: Option<EntityTarget<ServerEntityId>>,
+    pub calculated_attribs: CharAttributes,
+    pub attack_delay_ends_at: ServerTime,
     // TODO [SkillKey::Count]
-    pub skill_cast_allowed_at: [ElapsedTime; 6],
-    pub cannot_control_until: ElapsedTime,
+    pub skill_cast_allowed_at: [ServerTime; 6],
+    pub cannot_control_until: ServerTime,
     pub hp: i32,
 }
 
-impl PartialEq for AuthorizedCharStateComponent {
+#[derive(Component, Clone, Debug, Serialize, Deserialize)]
+pub struct LocalCharStateComp {
+    pos: Vec2,
+    dir: CharDir,
+    state: CharState,
+    pub target: Option<EntityTarget<LocalCharEntityId>>,
+    calculated_attribs: CharAttributes,
+    pub attack_delay_ends_at: LocalTime,
+    // TODO [SkillKey::Count]
+    pub skill_cast_allowed_at: [LocalTime; 6],
+    pub cannot_control_until: LocalTime,
+    pub hp: i32,
+}
+
+impl PartialEq for LocalCharStateComp {
     fn eq(&self, other: &Self) -> bool {
         let mut result =
             float_cmp(self.pos().x, other.pos().x) && float_cmp(self.pos().y, other.pos().y);
@@ -295,38 +311,83 @@ impl PartialEq for AuthorizedCharStateComponent {
     }
 }
 
-impl Default for AuthorizedCharStateComponent {
+impl Default for LocalCharStateComp {
     fn default() -> Self {
-        AuthorizedCharStateComponent {
+        LocalCharStateComp {
             pos: v2(0.0, 0.0),
             dir: CharDir::South,
             state: CharState::Idle,
             target: None,
             calculated_attribs: Default::default(),
-            attack_delay_ends_at: ElapsedTime(0.0),
-            skill_cast_allowed_at: [ElapsedTime(0.0); 6],
-            cannot_control_until: ElapsedTime(0.0),
+            attack_delay_ends_at: LocalTime::from(0.0),
+            skill_cast_allowed_at: [LocalTime::from(0.0); 6],
+            cannot_control_until: LocalTime::from(0.0),
             hp: 0,
         }
     }
 }
 
-impl AuthorizedCharStateComponent {
-    pub fn new(start_pos: Vec2, base_attributes: CharAttributes) -> AuthorizedCharStateComponent {
-        AuthorizedCharStateComponent {
+impl LocalCharStateComp {
+    pub fn new(start_pos: Vec2, base_attributes: CharAttributes) -> LocalCharStateComp {
+        LocalCharStateComp {
             pos: start_pos,
             state: CharState::Idle,
             target: None,
             dir: CharDir::South,
             hp: base_attributes.max_hp,
             calculated_attribs: base_attributes,
-            attack_delay_ends_at: ElapsedTime(0.0),
-            skill_cast_allowed_at: [ElapsedTime(0.0); 6],
-            cannot_control_until: ElapsedTime(0.0),
+            attack_delay_ends_at: LocalTime::from(0.0),
+            skill_cast_allowed_at: [LocalTime::from(0.0); 6],
+            cannot_control_until: LocalTime::from(0.0),
         }
     }
 
-    pub fn can_cast(&self, sys_time: ElapsedTime) -> bool {
+    // it is here so that the client does not have to have access to all the fields
+    pub fn server_to_local(
+        server_char_state: ServerCharState,
+        now: LocalTime,
+        server_to_local_time_diff: i64,
+        map: &HashMap<ServerEntityId, LocalCharEntityId>,
+    ) -> LocalCharStateComp {
+        LocalCharStateComp {
+            pos: server_char_state.pos,
+            dir: server_char_state.dir,
+            state: server_char_state.state,
+            target: match server_char_state.target {
+                None => None,
+                Some(EntityTarget::Pos(v)) => Some(EntityTarget::Pos(v)),
+                Some(EntityTarget::PosWhileAttacking(v, maybe_target_id)) => Some(
+                    EntityTarget::PosWhileAttacking(v, maybe_target_id.map(|it| map[&it])),
+                ),
+                Some(EntityTarget::OtherEntity(target_id)) => {
+                    Some(EntityTarget::OtherEntity(map[&target_id]))
+                }
+            },
+            calculated_attribs: server_char_state.calculated_attribs,
+            attack_delay_ends_at: server_char_state
+                .attack_delay_ends_at
+                .to_local_time(now, server_to_local_time_diff),
+            skill_cast_allowed_at: [
+                server_char_state.skill_cast_allowed_at[0]
+                    .to_local_time(now, server_to_local_time_diff),
+                server_char_state.skill_cast_allowed_at[1]
+                    .to_local_time(now, server_to_local_time_diff),
+                server_char_state.skill_cast_allowed_at[2]
+                    .to_local_time(now, server_to_local_time_diff),
+                server_char_state.skill_cast_allowed_at[3]
+                    .to_local_time(now, server_to_local_time_diff),
+                server_char_state.skill_cast_allowed_at[4]
+                    .to_local_time(now, server_to_local_time_diff),
+                server_char_state.skill_cast_allowed_at[5]
+                    .to_local_time(now, server_to_local_time_diff),
+            ],
+            cannot_control_until: dbg!(server_char_state.cannot_control_until)
+                .to_local_time(dbg!(now), dbg!(server_to_local_time_diff)),
+            hp: server_char_state.hp,
+        }
+    }
+
+    pub fn can_cast(&self, sys_time: LocalTime) -> bool {
         let can_cast_by_state = match &self.state {
             // TODO2
             //        CharState::CastingSkill(_) => false,
@@ -342,7 +403,7 @@ impl AuthorizedCharStateComponent {
         //        && char_state.statuses.can_cast()
     }
 
-    pub fn can_move(&self, sys_time: ElapsedTime) -> bool {
+    pub fn can_move(&self, sys_time: LocalTime) -> bool {
         let can_move_by_state = match &self.state {
             // TODO2
             //        CharState::CastingSkill(casting_info) => casting_info.can_move,
@@ -353,16 +414,17 @@ impl AuthorizedCharStateComponent {
             CharState::ReceivingDamage => true,
             CharState::Dead => false,
         };
-        can_move_by_state && self.cannot_control_until.has_already_passed(sys_time)
+        can_move_by_state && dbg!(self.cannot_control_until).has_already_passed(dbg!(sys_time))
         // TODO2
         //        && char_state.statuses.can_move()
     }
 
-    pub fn recalc_attribs_based_on_statuses(&mut self, dev_configs: &CommonConfigs) {
+    pub fn recalc_attribs_based_on_statuses(&mut self, job_id: JobId, dev_configs: &CommonConfigs) {
         // TODO2
-        //        let base_attributes = CharAttributes::get_base_attributes(self.job_id, dev_configs);
+        let base_attributes = CharAttributes::get_base_attributes(job_id, dev_configs);
         //        let modifier_collector = self.statuses.calc_attributes();
         //        self.calculated_attribs = base_attributes.apply(modifier_collector);
+        self.calculated_attribs = base_attributes.clone();
         //
         //        self.attrib_bonuses = self
         //            .calculated_attribs
@@ -371,10 +433,6 @@ impl AuthorizedCharStateComponent {
 
     pub fn calculated_attribs(&self) -> &CharAttributes {
         &self.calculated_attribs
-    }
-
-    pub fn overwrite_by(&mut self, other: &AuthorizedCharStateComponent) {
-        *self = other.clone();
     }
 
     pub fn pos(&self) -> Vec2 {
@@ -621,6 +679,6 @@ pub fn create_common_player_entity(
             .clone();
     return world
         .create_entity()
-        .with(AuthorizedCharStateComponent::new(pos, base_attributes))
+        .with(LocalCharStateComp::new(pos, base_attributes))
         .with(StaticCharDataComponent::new(team, outlook, job_id));
 }

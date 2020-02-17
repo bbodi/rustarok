@@ -4,7 +4,7 @@ use crate::components::status::reflect_damage_status::ReflectDamageStatus;
 use crate::components::status::sacrafice_status::SacrificeStatus;
 use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::tests::setup_ecs_world;
-use rustarok_common::common::{v2, ElapsedTime};
+use rustarok_common::common::{v2, LocalTime};
 use rustarok_common::components::char::EntityTarget;
 use std::time::Duration;
 
@@ -46,7 +46,7 @@ fn reflection() {
         StatusEnum::ReflectDamageStatus(ReflectDamageStatus::new(
             attacked_id,
             percentage(10),
-            ElapsedTime(0.0),
+            LocalTime::from(0.0),
             10.0,
         )),
     ));
@@ -86,7 +86,7 @@ fn vampiric_attack() {
         attacker_id,
         StatusEnum::AttackHealStatus(AttackHealStatus::new(
             percentage(10),
-            ElapsedTime(0.0),
+            LocalTime::from(0.0),
             10.0,
         )),
     ));
@@ -129,7 +129,7 @@ fn sacrifice() {
         StatusEnum::SacrificeStatus(SacrificeStatus::new(
             sacrifice_id,
             percentage(10),
-            ElapsedTime(0.0),
+            LocalTime::from(0.0),
             10.0,
         )),
     ));
@@ -176,7 +176,7 @@ fn sacrifice_100_percent() {
         StatusEnum::SacrificeStatus(SacrificeStatus::new(
             sacrifice_id,
             percentage(100),
-            ElapsedTime(0.0),
+            LocalTime::from(0.0),
             10.0,
         )),
     ));

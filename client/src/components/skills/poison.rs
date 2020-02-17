@@ -10,6 +10,7 @@ use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
 use rustarok_common::common::EngineTime;
 use rustarok_common::config::CommonConfigs;
+use specs::world::WorldExt;
 
 pub struct PosionSkill;
 

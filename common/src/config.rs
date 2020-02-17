@@ -1,5 +1,5 @@
 use crate::char_attr::CharAttributes;
-use crate::common::{ElapsedTime, Percentage};
+use crate::common::{LocalTime, Percentage};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -36,8 +36,8 @@ pub struct DevConfigStatsPlayer {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SkillCastingAttributes {
-    pub casting_time: ElapsedTime,
-    pub cast_delay: ElapsedTime,
+    pub casting_time: LocalTime,
+    pub cast_delay: LocalTime,
     pub casting_range: f32,
     // in case of Directional skills
     pub width: Option<f32>,
