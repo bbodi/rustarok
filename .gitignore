@@ -11,4 +11,7 @@ out
 projectFilesBackup
 *.cel
 *.iml
-
+client/sprite_upscaling
+*.gz
+xbrzscale
+xbrz.so

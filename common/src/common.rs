@@ -159,8 +159,7 @@ pub struct ServerTime(pub u32);
 
 impl ServerTime {
     pub fn to_local_time(&self, now: LocalTime, server_to_local_time_diff: i64) -> LocalTime {
-        let local_time =
-            (now.as_millis() as i64 + (self.0 as i64 + server_to_local_time_diff)).max(0);
+        let local_time = (self.0 as i64 + server_to_local_time_diff).max(0);
         #[cfg(debug_assertions)]
         {
             if local_time > std::u32::MAX as i64 {

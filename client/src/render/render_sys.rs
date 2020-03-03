@@ -470,7 +470,7 @@ impl RenderDesktopClientSystem {
 
             let color = client_char_state.statuses.calc_render_color(time.now());
             match static_char_data.outlook {
-                CharOutlook::Player {
+                CharOutlook::Human {
                     job_sprite_id,
                     head_index,
                     sex,

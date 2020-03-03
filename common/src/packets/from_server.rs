@@ -52,6 +52,14 @@ pub enum FromServerPacket {
         job_id: JobId,
         state: ServerCharState,
     },
+    PlayerDisconnected(ServerEntityId),
+    // EntityDisappeared {
+    //     id: ServerEntityId,
+    // },
+    // EntityAppeared {
+    //     id: ServerEntityId,
+    // },
+    // died?
 }
 
 impl Packet for FromServerPacket {

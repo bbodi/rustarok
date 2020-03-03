@@ -161,7 +161,7 @@ impl RenderUI {
     //        for (entity_id, char_state) in (entities, char_state_storage).join() {
     //            let entity_id =  LocalCharEntityId::from(entity_id);
     //            let head_index = if npc_storage.get(entity_id.into()).is_none() {
-    //                if let CharOutlook::Player {
+    //                if let CharOutlook::Human {
     //                    head_index, sex, ..
     //                } = char_state.outlook
     //                {

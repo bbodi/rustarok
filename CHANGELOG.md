@@ -1,3 +1,8 @@
+#### 2020.03.03
+- Context menu and Inspect window for entities
+  ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/e9666a346977af94e537b6bb87ea7615/rustarok_inspect.jpg)
+  ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/9cfc3e00935bfd14fae65ec857d3a4f7/rustarok_inspect2.jpg)
+
 #### 2020.01.04
 - Improving netcode
   ![img](https://trello-attachments.s3.amazonaws.com/558a94779b3b3c5d89efeaa6/5d3dad963f865934aa69f051/99cc03628e1f556539c380e4e7e3dba3/netcode_works.gif) 

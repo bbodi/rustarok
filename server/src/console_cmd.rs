@@ -5,8 +5,8 @@ use rand::Rng;
 use rustarok_common::char_attr::CharAttributes;
 use rustarok_common::common::{v2, v3_to_v2, Vec2};
 use rustarok_common::components::char::{
-    CharOutlook, ControllerEntityId, JobId, LocalCharEntityId, LocalCharStateComp, MonsterId, Sex,
-    StaticCharDataComponent, Team,
+    CharOutlook, CharType, ControllerEntityId, JobId, LocalCharEntityId, LocalCharStateComp,
+    MonsterId, Sex, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
@@ -54,7 +54,7 @@ fn get_client_char_id(
 }
 
 fn cmd_spawn_entity(
-    controller_id: Option<ControllerEntityId>,
+    _controller_id: Option<ControllerEntityId>,
     args: CommandArguments,
     ecs_world: &mut specs::World,
 ) -> Result<(), String> {
@@ -126,16 +126,16 @@ fn cmd_spawn_entity(
 fn get_outlook(name: &str, current_outlook: Option<&CharOutlook>) -> Option<CharOutlook> {
     if let Ok(job_sprite_id) = JobSpriteId::from_str(name) {
         Some(match current_outlook {
-            Some(CharOutlook::Player {
+            Some(CharOutlook::Human {
                 job_sprite_id: _old_job_sprite_id,
                 head_index,
                 sex,
-            }) => CharOutlook::Player {
+            }) => CharOutlook::Human {
                 job_sprite_id,
                 head_index: *head_index,
                 sex: *sex,
             },
-            _ => CharOutlook::Player {
+            _ => CharOutlook::Human {
                 job_sprite_id,
                 head_index: 0,
                 sex: Sex::Male,
@@ -153,21 +153,23 @@ fn create_dummy(ecs_world: &mut specs::World, pos2d: Vec2, job_id: JobId) {
         let dev_configs = &ecs_world.read_resource::<CommonConfigs>();
         CharAttributes::get_base_attributes(job_id, &dev_configs).clone()
     };
-    let char_id = ecs_world
+    ecs_world
         .create_entity()
         .with(LocalCharStateComp::new(pos2d, base_attributes))
         .with(StaticCharDataComponent::new(
+            "Dummy".to_owned(),
             if job_id == JobId::HealingDummy {
                 Team::AllyForAll
             } else {
                 Team::EnemyForAll
             },
+            CharType::Minion,
+            job_id,
             if job_id == JobId::HealingDummy {
                 CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
             } else {
                 CharOutlook::Monster(MonsterId::Barricade)
             },
-            job_id,
         ))
         .build();
 }
@@ -197,8 +199,11 @@ fn create_random_char_minion(
         .create_entity()
         .with(LocalCharStateComp::new(pos2d, base_attributes))
         .with(StaticCharDataComponent::new(
+            "Minion".to_owned(),
             team,
-            CharOutlook::Player {
+            CharType::Minion,
+            job_id,
+            CharOutlook::Human {
                 job_sprite_id: if job_id == JobId::MeleeMinion {
                     JobSpriteId::SWORDMAN
                 } else {
@@ -207,7 +212,6 @@ fn create_random_char_minion(
                 head_index,
                 sex,
             },
-            job_id,
         ))
         .build();
 }

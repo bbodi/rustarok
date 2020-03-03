@@ -190,7 +190,7 @@ impl AssaBladeDashStatus {
     ) {
         let duration_percentage = now.percentage_between(self.started_at, self.ends_at);
         match static_data.outlook {
-            CharOutlook::Player {
+            CharOutlook::Human {
                 job_sprite_id,
                 head_index,
                 sex,

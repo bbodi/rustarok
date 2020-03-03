@@ -5,7 +5,8 @@ use crate::components::controller::PlayerIntention;
 use crate::components::job_ids::JobSpriteId;
 use crate::config::CommonConfigs;
 use crate::packets::SocketBuffer;
-use serde::export::fmt::Debug;
+use serde::export::fmt::{Debug, Display, Error};
+use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -20,8 +21,25 @@ use strum_macros::EnumString;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LocalCharEntityId(u64);
 
+impl TargetId for LocalCharEntityId {
+    fn as_u64(&self) -> u64 {
+        self.0
+    }
+}
+impl TargetId for ServerEntityId {
+    fn as_u64(&self) -> u64 {
+        (self.0).0
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ServerEntityId(LocalCharEntityId);
+
+impl Display for LocalCharEntityId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ControllerEntityId(Entity);
@@ -69,12 +87,12 @@ pub enum Sex {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum CharState {
+pub enum CharState<T: TargetId> {
     Idle,
     Walking(Vec2),
     StandBy,
     Attacking {
-        target: LocalCharEntityId,
+        target: T,
         damage_occurs_at: LocalTime,
         basic_attack: BasicAttackType,
     },
@@ -83,7 +101,24 @@ pub enum CharState {
     //    CastingSkill(CastingSkillData),
 }
 
-impl CharState {
+impl<T: TargetId> Display for CharState<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CharState::Idle => write!(f, "Idle"),
+            CharState::Walking(pos) => write!(f, "Walking({:.2}, {:.2})", pos.x, pos.y),
+            CharState::Dead => write!(f, "Dead"),
+            CharState::ReceivingDamage => write!(f, "ReceivingDamage"),
+            CharState::StandBy => write!(f, "StandBy"),
+            CharState::Attacking {
+                target,
+                damage_occurs_at,
+                basic_attack,
+            } => write!(f, "Attacking({})", target.as_u64()),
+        }
+    }
+}
+
+impl<T: TargetId> CharState<T> {
     pub fn discriminant_eq(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
@@ -121,9 +156,9 @@ impl CharState {
     }
 }
 
-unsafe impl Sync for CharState {}
+unsafe impl<T: TargetId> Sync for CharState<T> {}
 
-unsafe impl Send for CharState {}
+unsafe impl<T: TargetId> Send for CharState<T> {}
 
 // Sprites are loaded based on the enum names, so non-camelcase names must be allowed
 #[allow(non_camel_case_types)]
@@ -140,6 +175,7 @@ pub enum MonsterId {
     Dimik,
 }
 
+/// It determines the skills/roles of an entity
 #[derive(
     EnumIter, EnumString, Display, Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize,
 )]
@@ -186,35 +222,10 @@ impl JobId {
             _ => BasicAttackType::MeleeSimple,
         }
     }
-
-    pub fn get_char_type(&self) -> CharType {
-        match self {
-            JobId::Guard => CharType::Guard,
-            JobId::TargetDummy => CharType::Player,
-            JobId::HealingDummy => CharType::Player,
-            JobId::MeleeMinion => CharType::Minion,
-            JobId::RangedMinion => CharType::Minion,
-            JobId::Turret => CharType::Minion,
-            JobId::CRUSADER
-            | JobId::SWORDMAN
-            | JobId::ARCHER
-            | JobId::RANGER
-            | JobId::ASSASSIN
-            | JobId::ROGUE
-            | JobId::KNIGHT
-            | JobId::WIZARD
-            | JobId::SAGE
-            | JobId::ALCHEMIST
-            | JobId::BLACKSMITH
-            | JobId::PRIEST
-            | JobId::MONK
-            | JobId::GUNSLINGER => CharType::Player,
-            JobId::Barricade => CharType::Minion,
-        }
-    }
 }
 
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
+/// It determines the behaviour of some skill etc, e.g. if skills cannot be casted on Guards
+#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone, Copy)]
 #[allow(dead_code)]
 pub enum CharType {
     Player,
@@ -229,22 +240,44 @@ pub enum CharType {
 pub enum CharOutlook {
     Monster(MonsterId),
     // TODO: this variant can be smaller, e.g sex 1 bit, head_index ~8 bit etc
-    Player {
+    Human {
         job_sprite_id: JobSpriteId,
         head_index: usize,
         sex: Sex,
     },
 }
 
+pub trait TargetId: Clone + Copy + Debug + PartialEq + Eq + Hash + Serialize {
+    fn as_u64(&self) -> u64;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityTarget<TargetId: Clone + Copy + Debug + PartialEq + Eq + Hash + Serialize> {
-    OtherEntity(TargetId),
+pub enum EntityTarget<T: TargetId> {
+    OtherEntity(T),
     Pos(Vec2),
-    PosWhileAttacking(Vec2, Option<TargetId>),
+    // TODO: is not it pos OR target?
+    PosWhileAttacking(Vec2, Option<T>),
+}
+
+impl Display for EntityTarget<LocalCharEntityId> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntityTarget::Pos(pos) => write!(f, "Walking({:.2}, {:.2})", pos.x, pos.y),
+            EntityTarget::OtherEntity(id) => write!(f, "OtherEntity({})", id),
+            EntityTarget::PosWhileAttacking(pos, target) => write!(
+                f,
+                "PosWhileAttacking(({:.2}, {:.2})|{})",
+                pos.x,
+                pos.y,
+                target.map(|it| it.to_string()).unwrap_or("None".to_owned())
+            ),
+        }
+    }
 }
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct StaticCharDataComponent {
+    pub name: String,
     pub team: Team,
     pub basic_attack_type: BasicAttackType,
     pub typ: CharType,
@@ -253,11 +286,18 @@ pub struct StaticCharDataComponent {
 }
 
 impl StaticCharDataComponent {
-    pub fn new(team: Team, outlook: CharOutlook, job_id: JobId) -> StaticCharDataComponent {
+    pub fn new(
+        name: String,
+        team: Team,
+        typ: CharType,
+        job_id: JobId,
+        outlook: CharOutlook,
+    ) -> StaticCharDataComponent {
         StaticCharDataComponent {
+            name,
             team,
             basic_attack_type: job_id.get_basic_attack_type(),
-            typ: job_id.get_char_type(),
+            typ,
             outlook,
             job_id,
         }
@@ -268,7 +308,7 @@ impl StaticCharDataComponent {
 pub struct ServerCharState {
     pub pos: Vec2,
     pub dir: CharDir,
-    pub state: CharState,
+    pub state: CharState<ServerEntityId>,
     pub target: Option<EntityTarget<ServerEntityId>>,
     pub calculated_attribs: CharAttributes,
     pub attack_delay_ends_at: ServerTime,
@@ -282,7 +322,7 @@ pub struct ServerCharState {
 pub struct LocalCharStateComp {
     pos: Vec2,
     dir: CharDir,
-    state: CharState,
+    state: CharState<LocalCharEntityId>,
     pub target: Option<EntityTarget<LocalCharEntityId>>,
     calculated_attribs: CharAttributes,
     pub attack_delay_ends_at: LocalTime,
@@ -342,7 +382,7 @@ impl LocalCharStateComp {
         }
     }
 
-    // it is here so that the client does not have to have access to all the fields
+    // it is here so that the client module does not have to have access to all the fields
     pub fn server_to_local(
         server_char_state: ServerCharState,
         now: LocalTime,
@@ -352,7 +392,22 @@ impl LocalCharStateComp {
         LocalCharStateComp {
             pos: server_char_state.pos,
             dir: server_char_state.dir,
-            state: server_char_state.state,
+            state: match server_char_state.state {
+                CharState::Idle => CharState::Idle,
+                CharState::Walking(pos) => CharState::Walking(pos),
+                CharState::StandBy => CharState::StandBy,
+                CharState::Attacking {
+                    target,
+                    damage_occurs_at,
+                    basic_attack,
+                } => CharState::Attacking {
+                    target: map[&target],
+                    damage_occurs_at,
+                    basic_attack,
+                },
+                CharState::ReceivingDamage => CharState::ReceivingDamage,
+                CharState::Dead => CharState::Dead,
+            },
             target: match server_char_state.target {
                 None => None,
                 Some(EntityTarget::Pos(v)) => Some(EntityTarget::Pos(v)),
@@ -381,8 +436,9 @@ impl LocalCharStateComp {
                 server_char_state.skill_cast_allowed_at[5]
                     .to_local_time(now, server_to_local_time_diff),
             ],
-            cannot_control_until: dbg!(server_char_state.cannot_control_until)
-                .to_local_time(dbg!(now), dbg!(server_to_local_time_diff)),
+            cannot_control_until: server_char_state
+                .cannot_control_until
+                .to_local_time(now, server_to_local_time_diff),
             hp: server_char_state.hp,
         }
     }
@@ -414,7 +470,7 @@ impl LocalCharStateComp {
             CharState::ReceivingDamage => true,
             CharState::Dead => false,
         };
-        can_move_by_state && dbg!(self.cannot_control_until).has_already_passed(dbg!(sys_time))
+        can_move_by_state && self.cannot_control_until.has_already_passed(sys_time)
         // TODO2
         //        && char_state.statuses.can_move()
     }
@@ -455,7 +511,7 @@ impl LocalCharStateComp {
         self.dir
     }
 
-    pub fn set_state(&mut self, state: CharState, dir: CharDir) {
+    pub fn set_state(&mut self, state: CharState<LocalCharEntityId>, dir: CharDir) {
         //        match self.state {
         //            CharState::Walking(..) => match state {
         //                CharState::Idle => panic!("kurva anyád"),
@@ -467,7 +523,7 @@ impl LocalCharStateComp {
         self.dir = dir;
     }
 
-    pub fn state(&self) -> &CharState {
+    pub fn state(&self) -> &CharState<LocalCharEntityId> {
         &self.state
     }
 
@@ -492,7 +548,7 @@ impl LocalCharStateComp {
 /// direction (the index is the camera direction, which is floor(angle/45)
 pub const DIRECTION_TABLE: [usize; 8] = [6, 5, 4, 3, 2, 1, 0, 7];
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CharDir {
     South,
     SouthWest,
@@ -665,10 +721,22 @@ impl Team {
     pub fn can_support(&self, other: Team) -> bool {
         !self.is_enemy_to(other)
     }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Team::Right => "Right",
+            Team::Left => "Left",
+            Team::Neutral => "Neutral",
+            Team::EnemyForAll => "EnemyForAll",
+            Team::AllyForAll => "AllyForAll",
+        }
+    }
 }
 
 pub fn create_common_player_entity(
+    name: String,
     world: &mut specs::World,
+    typ: CharType,
     job_id: JobId,
     pos: Vec2,
     team: Team,
@@ -680,5 +748,7 @@ pub fn create_common_player_entity(
     return world
         .create_entity()
         .with(LocalCharStateComp::new(pos, base_attributes))
-        .with(StaticCharDataComponent::new(team, outlook, job_id));
+        .with(StaticCharDataComponent::new(
+            name, team, typ, job_id, outlook,
+        ));
 }

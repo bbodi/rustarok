@@ -155,7 +155,12 @@ impl RenderMatrices {
 
 #[derive(Debug)]
 pub enum SystemEvent {
-    CharStatusChange(SimulationTick, LocalCharEntityId, CharState, CharState),
+    CharStatusChange(
+        SimulationTick,
+        LocalCharEntityId,
+        CharState<LocalCharEntityId>,
+        CharState<LocalCharEntityId>,
+    ),
     HpModification {
         timestamp: SimulationTick,
         src: LocalCharEntityId,

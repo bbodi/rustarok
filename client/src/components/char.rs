@@ -178,9 +178,10 @@ impl<'a> CharPhysicsEntityBuilder<'a> {
     }
 }
 
-pub fn create_client_player_entity(
+pub fn create_client_entity(
     world: &mut specs::World,
     name: String,
+    typ: CharType,
     job_id: JobId,
     pos: Vec2,
     team: Team,
@@ -190,19 +191,13 @@ pub fn create_client_player_entity(
     let base_attrs =
         CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
             .clone();
-    let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
+    let builder = create_common_player_entity(name, world, typ, job_id, pos, team, outlook.clone());
     return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(HasServerIdComponent { server_id })
             .with(CharacterStateComponent::new(
-                name,
-                0.0,
-                CharType::Player,
-                outlook,
-                job_id,
-                team,
-                base_attrs,
+                0.0, typ, outlook, job_id, team, base_attrs,
             ))
             .build(),
     );
@@ -220,7 +215,9 @@ pub fn create_client_barricade_entity(
     .clone();
 
     let builder = create_common_player_entity(
+        "Barricade".to_owned(),
         world,
+        CharType::Minion,
         JobId::Barricade,
         pos,
         team,
@@ -231,7 +228,6 @@ pub fn create_client_barricade_entity(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
-                "barricade".to_owned(),
                 0.0,
                 CharType::Minion,
                 CharOutlook::Monster(MonsterId::Barricade),
@@ -262,17 +258,25 @@ pub fn create_client_dummy_entity(
     let base_attrs =
         CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
             .clone();
-    let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
+
+    let builder = create_common_player_entity(
+        if job_id == JobId::HealingDummy {
+            "Healing Dummy".to_owned()
+        } else {
+            "Target Dummy".to_owned()
+        },
+        world,
+        CharType::Minion,
+        job_id,
+        pos,
+        team,
+        outlook.clone(),
+    );
 
     return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
-                if job_id == JobId::HealingDummy {
-                    "Healing Dummy".to_owned()
-                } else {
-                    "Target Dummy".to_owned()
-                },
                 0.0,
                 CharType::Guard,
                 outlook,
@@ -299,13 +303,20 @@ pub fn create_client_guard_entity(
     let base_attrs =
         CharAttributes::get_base_attributes(JobId::Guard, &world.read_resource::<CommonConfigs>())
             .clone();
-    let builder = create_common_player_entity(world, JobId::Guard, pos, team, outlook.clone());
+    let builder = create_common_player_entity(
+        "Guard".to_owned(),
+        world,
+        CharType::Guard,
+        JobId::Guard,
+        pos,
+        team,
+        outlook.clone(),
+    );
 
     return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
-                "Guard".to_string(),
                 y,
                 CharType::Guard,
                 outlook.clone(),
@@ -344,7 +355,7 @@ pub fn create_client_minion_entity(
             .len();
         rng.gen::<usize>() % head_count
     };
-    let outlook = CharOutlook::Player {
+    let outlook = CharOutlook::Human {
         job_sprite_id,
         head_index,
         sex,
@@ -353,14 +364,21 @@ pub fn create_client_minion_entity(
     let base_attrs =
         CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
             .clone();
-    let builder = create_common_player_entity(world, job_id, pos, team, outlook.clone());
+    let builder = create_common_player_entity(
+        "Minion".to_owned(),
+        world,
+        CharType::Minion,
+        job_id,
+        pos,
+        team,
+        outlook.clone(),
+    );
 
     return LocalCharEntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(NpcComponent)
             .with(CharacterStateComponent::new(
-                "minion".to_owned(),
                 0.0,
                 CharType::Minion,
                 outlook.clone(),
@@ -417,7 +435,7 @@ unsafe impl Sync for ClientCharState {}
 
 unsafe impl Send for ClientCharState {}
 
-pub fn get_sprite_index(state: &CharState, is_monster: bool) -> usize {
+pub fn get_sprite_index(state: &CharState<LocalCharEntityId>, is_monster: bool) -> usize {
     // TODO2
     match (state, is_monster) {
         (CharState::Idle, false) => CharActionIndex::Idle as usize,
@@ -458,10 +476,10 @@ impl SpriteBoundingRect {
 pub fn get_sprite_and_action_index<'a>(
     outlook: &CharOutlook,
     sprites: &'a Sprites,
-    char_state: &CharState,
+    char_state: &CharState<LocalCharEntityId>,
 ) -> (&'a SpriteResource, usize) {
     return match outlook {
-        CharOutlook::Player {
+        CharOutlook::Human {
             job_sprite_id,
             head_index: _,
             sex,
@@ -504,10 +522,8 @@ impl Component for NpcComponent {
 // TODO: extract everything which is not serializable
 #[derive(Component)]
 pub struct CharacterStateComponent {
-    // characters also has names so it is possible to follow them with a camera
-    pub name: String,
     y: f32,
-    prev_state: CharState,
+    prev_state: CharState<LocalCharEntityId>,
     // TODO: the whole Statuses struct needs for simulation but not for state representation. Extract the array from it for serialization
     pub statuses: Statuses,
     pub body_handle: DefaultBodyHandle,
@@ -542,7 +558,6 @@ impl CharacterStateComponent {
     }
 
     pub fn new(
-        name: String,
         y: f32,
         char_type: CharType,
         outlook: CharOutlook,
@@ -551,9 +566,7 @@ impl CharacterStateComponent {
         base_attrs: CharAttributes,
     ) -> CharacterStateComponent {
         let statuses = Statuses::new();
-        let calculated_attribs = base_attrs;
         CharacterStateComponent {
-            name,
             y,
             prev_state: CharState::Idle,
             statuses,
@@ -626,19 +639,19 @@ impl CharacterStateComponent {
         self.y
     }
 
-    pub fn state_type_has_changed(&self, state: &CharState) -> bool {
+    pub fn state_type_has_changed(&self, state: &CharState<LocalCharEntityId>) -> bool {
         return !self.prev_state.discriminant_eq(state);
     }
 
-    pub fn save_prev_state(&mut self, state: &CharState) {
+    pub fn save_prev_state(&mut self, state: &CharState<LocalCharEntityId>) {
         self.prev_state = state.clone();
     }
 
-    pub fn prev_state(&self) -> &CharState {
+    pub fn prev_state(&self) -> &CharState<LocalCharEntityId> {
         &self.prev_state
     }
 
-    pub fn went_from_casting_to_idle(&self, current_state: &CharState) -> bool {
+    pub fn went_from_casting_to_idle(&self, current_state: &CharState<LocalCharEntityId>) -> bool {
         match current_state {
             CharState::Idle => match self.prev_state {
                 // TODO2

@@ -53,9 +53,8 @@ use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
 use crate::audio::sound_sys::{AudioCommandCollectorComponent, SoundSystem};
 use crate::client::SimulationTime;
 use crate::components::char::{
-    create_client_minion_entity, create_client_player_entity, CharActionIndex,
-    CharacterEntityBuilder, CharacterStateComponent, HasServerIdComponent,
-    SpriteRenderDescriptorComponent,
+    create_client_entity, create_client_minion_entity, CharActionIndex, CharacterEntityBuilder,
+    CharacterStateComponent, HasServerIdComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{
     CameraComponent, HumanInputComponent, LocalPlayerController, SkillKey,
@@ -78,7 +77,9 @@ use crate::runtime_assets::graphic::{load_skill_icons, load_status_icons, load_t
 use crate::runtime_assets::map::{load_map, MapRenderData, PhysicEngine};
 use crate::systems::atk_calc::AttackSystem;
 use crate::systems::camera_system::CameraSystem;
-use crate::systems::console_system::{CommandDefinition, ConsoleComponent, ConsoleSystem};
+use crate::systems::console_system::{
+    CommandDefinition, ConsoleComponent, ConsoleRenderSystem, ConsoleSystem,
+};
 use crate::systems::falcon_ai_sys::{FalconAiSystem, FalconComponent};
 use crate::systems::frame_cleanup_system::FrameCleanupSystem;
 use crate::systems::imgui_sys::{draw_imgui, ImguiData, ImguiSys};
@@ -304,15 +305,9 @@ fn main() {
     log::info!("<<< Populate SystemVariables");
 
     log::info!(">>> register systems");
-    let mut ecs_client_dispatcher = {
-        let console_sys = ConsoleSystem::new(&command_defs);
-        ClientEcs::new(
-            Some(opengl_render_sys),
-            maybe_sound_system,
-            Some(console_sys),
-            false,
-        )
-    };
+
+    let mut ecs_client_dispatcher =
+        { ClientEcs::new(Some(opengl_render_sys), maybe_sound_system, false) };
     log::info!("<<< register systems");
     log::info!(">>> add resources");
     // TODO: remove these
@@ -323,7 +318,7 @@ fn main() {
     ecs_world.insert(sys_vars);
     ecs_world.insert(common_configs);
     ecs_world.insert(ClientCommandId::new());
-    ecs_world.insert(ImguiData::new());
+    ecs_world.insert(ImguiData::new(config.max_fps));
     if config.load_sprites {
         asset_loader.load_sprites(&gl, &mut asset_db);
     }
@@ -349,7 +344,7 @@ fn main() {
 
     ////////////////// SINGLETON Components
     {
-        let mut human_player = HumanInputComponent::new("sharp");
+        let mut human_player = HumanInputComponent::new();
         human_player.cast_mode = config.cast_mode;
         human_player.assign_skill(SkillKey::A, Skills::AttackMove);
 
@@ -454,7 +449,7 @@ fn main() {
         console_print(&mut ecs_world, &format!("avg ping: {}", avg_ping));
 
         packet_handler_thread.send(server_socket, ToServerPacket::ReadyForGame);
-        // first ACK packet is for initializing out world state
+        // first ACK packet is for initializing our world state
         'outer3: loop {
             packet_handler_thread.receive_exact_into(&mut tmp_vec, 1);
             for (_socket_id, packet) in tmp_vec.drain(..) {
@@ -471,15 +466,18 @@ fn main() {
                         log::info!(">>> create player");
                         {
                             let username = ecs_world.read_resource::<AppConfig>().username.clone();
-                            let desktop_client_char = create_client_player_entity(
+                            let desktop_client_char = create_client_entity(
                                 &mut ecs_world,
                                 username,
+                                typ,
                                 job_id,
                                 state.pos,
                                 team,
                                 outlook,
                                 id,
                             );
+
+                            server_to_local_ids.insert(id, desktop_client_char);
 
                             ecs_world
                                 .write_resource::<LocalPlayerController>()
@@ -650,9 +648,10 @@ fn main() {
                             } => {
                                 log::info!(">>> create player");
                                 {
-                                    let char_entity_id = create_client_player_entity(
+                                    let char_entity_id = create_client_entity(
                                         &mut ecs_world,
                                         name,
+                                        typ,
                                         job_id,
                                         state.pos,
                                         team,
@@ -675,6 +674,15 @@ fn main() {
                                             &server_to_local_ids,
                                         ),
                                     );
+                            }
+                            FromServerPacket::PlayerDisconnected(disconnecting_entity_id) => {
+                                let disconnecting_entity_local_id =
+                                    server_to_local_ids[&disconnecting_entity_id];
+                                log::info!(
+                                    "{} has been disconnected",
+                                    disconnecting_entity_local_id
+                                );
+                                ecs_world.delete_entity(disconnecting_entity_local_id.into());
                             }
                         },
                     }
@@ -731,7 +739,6 @@ fn main() {
                         .write_resource::<SimulationTime>()
                         .force_simulation();
 
-                    dbg!(&reverted_timer.now());
                     *ecs_world.write_resource::<EngineTime>() = reverted_timer;
 
                     ecs_world
@@ -791,13 +798,13 @@ fn main() {
             break 'running;
         }
 
-        execute_console_commands(&command_defs, &mut ecs_world, &mut video);
+        execute_console_commands(&mut ecs_world, &mut video, &command_defs);
 
         /////////////////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////////////////
 
-        ecs_client_dispatcher.run_main_frame(&mut ecs_world, last_frame_duration);
+        ecs_client_dispatcher.run_main_frame(&mut ecs_world, last_frame_duration, &command_defs);
 
         /////////////////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////////////////
@@ -817,7 +824,7 @@ fn main() {
             video.imgui_context.io_mut().delta_time = delta_s;
 
             let mut ui = video.imgui_context.frame();
-            draw_imgui(&mut ecs_world.write_resource::<ImguiData>(), &mut ui);
+            draw_imgui(&mut ecs_world, &mut ui);
 
             video.imgui_sdl2.prepare_render(&ui, &video.window);
             video.imgui_renderer.render(ui);
@@ -966,14 +973,10 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
     pub fn new(
         opengl_render_sys: Option<OpenGlRenderSystem<'b, 'b>>,
         maybe_sound_system: Option<SoundSystem>,
-        console_system: Option<ConsoleSystem<'b>>,
         for_test: bool,
     ) -> ClientEcs<'a, 'b> {
         ClientEcs {
-            simulation_dispatcher: ClientEcs::create_with_simulation_systems(
-                for_test,
-                console_system,
-            ),
+            simulation_dispatcher: ClientEcs::create_with_simulation_systems(for_test),
             render_dispatcher: ClientEcs::create_without_simulation_systems(
                 opengl_render_sys,
                 maybe_sound_system,
@@ -984,7 +987,12 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
         }
     }
 
-    pub fn run_main_frame(&mut self, ecs_world: &mut specs::World, dt: Duration) {
+    pub fn run_main_frame(
+        &mut self,
+        ecs_world: &mut specs::World,
+        dt: Duration,
+        command_defs: &HashMap<String, CommandDefinition>,
+    ) {
         if ecs_world
             .read_resource::<SimulationTime>()
             .can_simulation_run()
@@ -995,6 +1003,16 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
                 &mut ecs_world.write_resource(),
                 &ecs_world.read_resource::<SystemVariables>().matrices,
             );
+
+            ConsoleSystem::run(
+                command_defs,
+                &ecs_world.read_resource::<HumanInputComponent>(),
+                &ecs_world.read_storage::<StaticCharDataComponent>(),
+                &mut ecs_world.write_resource::<ConsoleComponent>(),
+                &ecs_world.read_resource::<SystemVariables>(),
+                &ecs_world.read_resource::<EngineTime>(),
+            );
+
             self.input_to_next_action_sys.run(
                 &ecs_world.read_resource(),
                 ecs_world.read_storage(),
@@ -1013,10 +1031,17 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
             ecs_world.write_resource::<SimulationTick>().inc();
         }
 
+        ConsoleRenderSystem::run(
+            &ecs_world.read_resource::<ConsoleComponent>(),
+            &mut ecs_world.write_resource(),
+            &ecs_world.read_resource(),
+            command_defs,
+        );
         self.render_dispatcher.dispatch(ecs_world);
+
         ecs_world.maintain();
 
-        let mut timer = ecs_world
+        ecs_world
             .write_resource::<SimulationTime>()
             .render_frame_end(Instant::now());
         ecs_world.write_resource::<EngineTime>().tick(dt);
@@ -1050,10 +1075,7 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
         ecs_dispatcher
     }
 
-    fn create_with_simulation_systems(
-        for_test: bool,
-        console_system: Option<ConsoleSystem<'b>>,
-    ) -> Dispatcher<'a, 'b> {
+    fn create_with_simulation_systems(for_test: bool) -> Dispatcher<'a, 'b> {
         let ecs_dispatcher = {
             let mut ecs_dispatcher_builder = specs::DispatcherBuilder::new();
             if !for_test {
@@ -1105,12 +1127,6 @@ impl<'a, 'b> ClientEcs<'a, 'b> {
                 .with(SkillSystem, "skill_sys", &["collision_collector"])
                 .with(AttackSystem::new(), "attack_sys", &["collision_collector"])
                 .with(SnapshotSystem::new(), "snapshot_sys", &["attack_sys"]);
-
-            // must run only when input system has been executed
-            if let Some(console_system) = console_system {
-                // thread_local to avoid Send fields
-                ecs_dispatcher_builder = ecs_dispatcher_builder.with_thread_local(console_system);
-            }
 
             ecs_dispatcher_builder.build()
         };
@@ -1198,9 +1214,9 @@ pub struct ConsoleCommandBuffer {
 }
 
 fn execute_console_commands(
-    command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
     video: &mut Video,
+    command_defs: &HashMap<String, CommandDefinition>,
 ) {
     {
         let console_args = {
@@ -1208,7 +1224,7 @@ fn execute_console_commands(
             std::mem::replace(&mut console.command_to_execute, None)
         };
         if let Some(cmd) = console_args {
-            execute_console_command(cmd, command_defs, ecs_world, video);
+            execute_console_command(cmd, ecs_world, video, command_defs);
         }
     }
 
@@ -1220,7 +1236,7 @@ fn execute_console_commands(
         };
         for command in commands.into_iter() {
             let cmd = CommandArguments::new(&command);
-            execute_console_command(cmd, command_defs, ecs_world, video);
+            execute_console_command(cmd, ecs_world, video, command_defs);
         }
     }
 
@@ -1229,9 +1245,9 @@ fn execute_console_commands(
 
 fn execute_console_command(
     cmd: CommandArguments,
-    command_defs: &HashMap<String, CommandDefinition>,
     ecs_world: &mut World,
     video: &mut Video,
+    command_defs: &HashMap<String, CommandDefinition>,
 ) {
     let char_entity_id = ecs_world
         .read_resource::<LocalPlayerController>()

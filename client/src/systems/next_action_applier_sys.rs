@@ -118,8 +118,8 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
         {
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
-            let state: CharState = auth_state.state().clone();
-            let prev_state: CharState = client_char_state.prev_state().clone();
+            let state: CharState<LocalCharEntityId> = auth_state.state().clone();
+            let prev_state: CharState<LocalCharEntityId> = client_char_state.prev_state().clone();
             let prev_animation_has_ended = sprite.animation_ends_at.has_already_passed(now);
             let prev_animation_must_stop_at_end = match client_char_state.prev_state() {
                 CharState::Walking(_) => true,
@@ -194,8 +194,8 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
             // TODO: if debug
             let state_has_changed = char_comp.state_type_has_changed(auth_state.state());
             if state_has_changed {
-                let state: CharState = auth_state.state().clone();
-                let prev_state: CharState = char_comp.prev_state().clone();
+                let state = auth_state.state().clone();
+                let prev_state = char_comp.prev_state().clone();
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::CharStatusChange(
                         tick.prev(), // we detected the change here, but it happened in the prev state

@@ -230,12 +230,15 @@ impl EntitiesBelowCursor {
     pub fn get_enemy(&self) -> Option<LocalCharEntityId> {
         self.enemy.get(0).map(|it| *it)
     }
+
+    pub fn get_all(&self) -> (&[LocalCharEntityId], &[LocalCharEntityId]) {
+        (self.friendly.as_slice(), self.enemy.as_slice())
+    }
 }
 
 // Singleton Component
 pub struct HumanInputComponent {
     pub is_console_open: bool,
-    pub username: String,
     pub inputs: Vec<sdl2::event::Event>,
     skills_for_keys: [Option<Skills>; SKILLKEY_COUNT],
     pub key_bindings: Vec<([Option<Scancode>; 4], String)>,
@@ -263,10 +266,9 @@ pub struct HumanInputComponent {
 }
 
 impl HumanInputComponent {
-    pub fn new(username: &str) -> HumanInputComponent {
+    pub fn new() -> HumanInputComponent {
         HumanInputComponent {
             is_console_open: false,
-            username: username.to_owned(),
             cast_mode: CastMode::Normal,
             inputs: vec![],
             skills_for_keys: Default::default(),

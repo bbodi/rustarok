@@ -1,7 +1,6 @@
 use crate::components::char::{
-    create_client_dummy_entity, create_client_guard_entity, create_client_player_entity,
-    CharActionIndex, CharacterEntityBuilder, CharacterStateComponent, NpcComponent,
-    SpriteRenderDescriptorComponent,
+    create_client_dummy_entity, create_client_entity, create_client_guard_entity, CharActionIndex,
+    CharacterEntityBuilder, CharacterStateComponent, NpcComponent, SpriteRenderDescriptorComponent,
 };
 use crate::components::controller::{CameraComponent, HumanInputComponent};
 use crate::components::skills::absorb_shield::AbsorbStatus;
@@ -20,6 +19,7 @@ use crate::systems::console_system::{
     OwnedAutocompletionProvider,
 };
 use crate::systems::falcon_ai_sys::FalconComponent;
+use crate::systems::imgui_sys::ImguiData;
 use crate::systems::input_sys_scancodes::ScancodeNames;
 use crate::systems::{RenderMatrices, SystemVariables};
 use crate::{CollisionGroup, LocalTime, PhysicEngine};
@@ -245,16 +245,16 @@ pub(super) fn cmd_set_outlook() -> CommandDefinition {
 fn get_outlook(name: &str, current_outlook: Option<&CharOutlook>) -> Option<CharOutlook> {
     if let Ok(job_sprite_id) = JobSpriteId::from_str(name) {
         Some(match current_outlook {
-            Some(CharOutlook::Player {
+            Some(CharOutlook::Human {
                 job_sprite_id: _old_job_sprite_id,
                 head_index,
                 sex,
-            }) => CharOutlook::Player {
+            }) => CharOutlook::Human {
                 job_sprite_id,
                 head_index: *head_index,
                 sex: *sex,
             },
-            _ => CharOutlook::Player {
+            _ => CharOutlook::Human {
                 job_sprite_id,
                 head_index: 0,
                 sex: Sex::Male,
@@ -424,18 +424,19 @@ pub(super) fn cmd_list_players() -> CommandDefinition {
             );
             let (prev_bytes_per_second, sum_sent_bytes, ping, sending_fps) =
                 None.unwrap_or((0, 0, 0, 1.0f32));
-            let string = format!(
-                "{:<15}{:>15}{:>17}{:>15}{:>15}",
-                &ecs_world.read_resource::<HumanInputComponent>().username,
-                humanize_bytes(sum_sent_bytes),
-                format!("{:>8.2}", prev_bytes_per_second as f32 / KIB as f32),
-                ping,
-                (1.0 / sending_fps).round() as u32
-            );
-            print_console(
-                ecs_world,
-                ConsoleEntry::new().add(&string, ConsoleWordType::Normal),
-            );
+            // TODO cmd
+            // let string = format!(
+            //     "{:<15}{:>15}{:>17}{:>15}{:>15}",
+            //     &ecs_world.read_resource::<HumanInputComponent>().username,
+            //     humanize_bytes(sum_sent_bytes),
+            //     format!("{:>8.2}", prev_bytes_per_second as f32 / KIB as f32),
+            //     ping,
+            //     (1.0 / sending_fps).round() as u32
+            // );
+            // print_console(
+            //     ecs_world,
+            //     ConsoleEntry::new().add(&string, ConsoleWordType::Normal),
+            // );
 
             Ok(())
         }),
@@ -1202,6 +1203,29 @@ pub(super) fn cmd_set_damping() -> CommandDefinition {
                 } else {
                     Err("No rigid body was found for this user".to_owned())
                 }
+            } else {
+                Err("The user was not found".to_owned())
+            }
+        }),
+    }
+}
+
+pub(super) fn cmd_inspect() -> CommandDefinition {
+    CommandDefinition {
+        name: "inspect".to_string(),
+        arguments: vec![("username", CommandParamType::String, true)],
+        autocompletion: AutocompletionProviderWithUsernameCompletion::new(
+            |_index, username_completor, input| Some(username_completor(input)),
+        ),
+        action: Box::new(|self_char_id, args, ecs_world, _video| {
+            let username = args.as_str(0).unwrap();
+
+            let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
+            if let Some(target_char_id) = target_char_id {
+                ecs_world
+                    .write_resource::<ImguiData>()
+                    .inspect_entity(target_char_id);
+                Ok(())
             } else {
                 Err("The user was not found".to_owned())
             }
