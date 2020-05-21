@@ -5,20 +5,24 @@ use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::render_action;
 use crate::systems::AssetResources;
-use crate::LocalTime;
-use rustarok_common::common::Vec2;
-use rustarok_common::components::char::{CharDir, LocalCharEntityId};
+use crate::GameTime;
+use rustarok_common::common::{Local, Vec2};
+use rustarok_common::components::char::{CharDir, EntityId};
 use specs::{Entities, LazyUpdate};
 
 #[derive(Clone, Debug)]
 pub struct StunStatus {
-    pub caster_entity_id: LocalCharEntityId,
-    pub started: LocalTime,
-    pub until: LocalTime,
+    pub caster_entity_id: EntityId<Local>,
+    pub started: GameTime<Local>,
+    pub until: GameTime<Local>,
 }
 
 impl StunStatus {
-    pub fn new(caster_entity_id: LocalCharEntityId, now: LocalTime, duration: f32) -> StunStatus {
+    pub fn new(
+        caster_entity_id: EntityId<Local>,
+        now: GameTime<Local>,
+        duration: f32,
+    ) -> StunStatus {
         StunStatus {
             caster_entity_id,
             started: now,
@@ -30,12 +34,12 @@ impl StunStatus {
 impl StunStatus {
     pub fn on_apply(
         &mut self,
-        self_entity_id: LocalCharEntityId,
+        self_entity_id: EntityId<Local>,
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
         assets: &AssetResources,
-        now: LocalTime,
+        now: GameTime<Local>,
     ) {
         // TODO2
         //        target_char.set_state(ClientCharState::StandBy, target_char.dir());
@@ -62,14 +66,14 @@ impl StunStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
         let anim = SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
             animation_started: self.started,
-            animation_ends_at: LocalTime::from(0.0),
+            animation_ends_at: GameTime::from(0.0),
             forced_duration: None,
             direction: CharDir::South,
             fps_multiplier: 1.0,
@@ -88,7 +92,10 @@ impl StunStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
+    pub fn get_status_completion_percent(
+        &self,
+        now: GameTime<Local>,
+    ) -> Option<(GameTime<Local>, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

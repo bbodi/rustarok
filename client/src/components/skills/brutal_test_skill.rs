@@ -11,11 +11,11 @@ use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
-use rustarok_common::common::{rotate_vec2, v2};
+use rustarok_common::common::{rotate_vec2, v2, Local};
 use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
+use rustarok_common::components::char::{EntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 
@@ -82,25 +82,25 @@ impl SkillDef for BrutalTestSkill {
 }
 
 pub struct BrutalSkillManifest {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub effect_ids: Vec<Entity>,
     pub extents: Vec2,
     pub half_extents: Vec2,
     pub pos: Vec2,
     pub rot_angle_in_rad: f32,
-    pub created_at: LocalTime,
-    pub die_at: LocalTime,
-    pub next_damage_at: LocalTime,
+    pub created_at: GameTime<Local>,
+    pub die_at: GameTime<Local>,
+    pub next_damage_at: GameTime<Local>,
     pub damage: u32,
 }
 
 impl BrutalSkillManifest {
     pub fn new(
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         skill_center: &Vec2,
         rot_angle_in_rad: f32,
         damage: u32,
-        system_time: LocalTime,
+        system_time: GameTime<Local>,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
     ) -> BrutalSkillManifest {
@@ -164,7 +164,7 @@ impl SkillManifestation for BrutalSkillManifest {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: LocalTime,
+        _now: GameTime<Local>,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

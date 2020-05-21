@@ -22,12 +22,12 @@ use crate::runtime_assets::map::{MapRenderData, PhysicEngine};
 use crate::systems::snapshot_sys::SnapshotStorage;
 use crate::systems::ui::RenderUI;
 use crate::systems::{AssetResources, RenderMatrices, SystemFrameDurations, SystemVariables};
-use crate::{LocalTime, SpriteResource};
+use crate::{GameTime, Local, SpriteResource};
 use nalgebra::{Isometry2, Vector2, Vector3};
 use rustarok_common::common::SimulationTick;
 use rustarok_common::common::{EngineTime, Vec2, Vec3};
 use rustarok_common::components::char::{
-    CharDir, CharOutlook, CharState, CharType, EntityTarget, LocalCharEntityId, LocalCharStateComp,
+    CharDir, CharOutlook, CharState, CharType, EntityId, EntityTarget, LocalCharStateComp,
     StaticCharDataComponent, Team, DIRECTION_TABLE,
 };
 use rustarok_common::components::controller::PlayerIntention;
@@ -56,7 +56,7 @@ impl RenderDesktopClientSystem {
     fn render_for_controller<'a>(
         &self,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp)>,
+        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp<Local>)>,
         camera: &CameraComponent,
         input: &HumanInputComponent,
         render_commands: &mut RenderCommandCollector,
@@ -69,7 +69,7 @@ impl RenderDesktopClientSystem {
         configs: &AppConfig,
         static_char_data_storage: &ReadStorage<'a, StaticCharDataComponent>,
         client_char_state_storage: &ReadStorage<'a, CharacterStateComponent>,
-        auth_char_state_storage: &ReadStorage<'a, LocalCharStateComp>,
+        auth_char_state_storage: &ReadStorage<'a, LocalCharStateComp<Local>>,
         entities: &Entities<'a>,
         sprite_storage: &ReadStorage<'a, SpriteRenderDescriptorComponent>,
         skill_storage: &ReadStorage<'a, SkillManifestationComponent>, // TODO remove me
@@ -192,7 +192,7 @@ impl RenderDesktopClientSystem {
                                 let is_castable = controlled_auth_char
                                     .skill_cast_allowed_at
                                     .get(skill as usize)
-                                    .unwrap_or(&LocalTime::from(0.0))
+                                    .unwrap_or(&GameTime::from(0.0))
                                     .has_already_passed(time.now());
                                 skill_def.render_target_selection(
                                     is_castable,
@@ -227,8 +227,8 @@ impl RenderDesktopClientSystem {
                         if CharState::Idle != *controlled_auth_char.state() {
                             let cursor_anim_descr = SpriteRenderDescriptorComponent {
                                 action_index: CURSOR_TARGET.1,
-                                animation_started: LocalTime::from(0.0),
-                                animation_ends_at: LocalTime::from(0.0),
+                                animation_started: GameTime::from(0.0),
+                                animation_ends_at: GameTime::from(0.0),
                                 forced_duration: None,
                                 direction: CharDir::South,
                                 fps_multiplier: 2.0,
@@ -328,11 +328,11 @@ impl RenderDesktopClientSystem {
     }
 
     fn need_entity_highlighting(
-        followed_char_id: Option<LocalCharEntityId>,
+        followed_char_id: Option<EntityId<Local>>,
         select_skill_target: Option<(SkillKey, Skills)>,
-        rendering_entity_id: LocalCharEntityId,
+        rendering_entity_id: EntityId<Local>,
         entities_below_cursor: &EntitiesBelowCursor,
-        desktop_target: &Option<&EntityTarget<LocalCharEntityId>>,
+        desktop_target: &Option<&EntityTarget<Local>>,
     ) -> bool {
         return if let Some((_skill_key, skill)) = select_skill_target {
             match skill.get_definition().get_skill_target_type() {
@@ -380,7 +380,7 @@ impl RenderDesktopClientSystem {
         &self,
         camera: &CameraComponent,
         local_player: &mut LocalPlayerController,
-        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp)>,
+        controlled_char: Option<(&StaticCharDataComponent, &LocalCharStateComp<Local>)>,
         render_commands: &mut RenderCommandCollector,
         assets: &AssetResources,
         time: &EngineTime,
@@ -389,7 +389,7 @@ impl RenderDesktopClientSystem {
         configs: &AppConfig,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         client_char_state_storage: &ReadStorage<CharacterStateComponent>,
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
         entities: &Entities,
         sprite_storage: &ReadStorage<SpriteRenderDescriptorComponent>,
         asset_db: &AssetDatabase,
@@ -414,7 +414,7 @@ impl RenderDesktopClientSystem {
         )
             .join()
         {
-            let rendering_entity_id = LocalCharEntityId::from(rendering_entity_id);
+            let rendering_entity_id = EntityId::from(rendering_entity_id);
 
             let pos_2d = auth_state.pos();
             if !camera.camera.is_visible(pos_2d) {
@@ -749,7 +749,7 @@ impl RenderDesktopClientSystem {
 struct ControllerAndControlled<'a> {
     desktop: &'a mut LocalPlayerController,
     controlled_char: &'a CharacterStateComponent,
-    controlled_auth_char: &'a LocalCharStateComp,
+    controlled_auth_char: &'a LocalCharStateComp<Local>,
 }
 
 impl<'a> System<'a> for RenderDesktopClientSystem {
@@ -759,7 +759,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
         ReadStorage<'a, SpriteRenderDescriptorComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         WriteExpect<'a, LocalPlayerController>, // mut: we have to store bounding rects of drawed entities :(
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, CommonConfigs>,
@@ -893,7 +893,7 @@ impl<'a> System<'a> for RenderDesktopClientSystem {
 }
 
 pub fn render_single_layer_action<'a>(
-    now: LocalTime,
+    now: GameTime<Local>,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vector3<f32>,
@@ -987,7 +987,7 @@ pub fn render_single_layer_action<'a>(
 }
 
 pub fn render_action(
-    now: LocalTime,
+    now: GameTime<Local>,
     animation: &SpriteRenderDescriptorComponent,
     sprite_res: &SpriteResource,
     pos: &Vec2,
@@ -1156,10 +1156,10 @@ impl DamageRenderSystem {
         entities: &Entities,
         numbers: &ReadStorage<FlyingNumberComponent>,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
-        followed_char_id: Option<LocalCharEntityId>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
+        followed_char_id: Option<EntityId<Local>>,
         desktop_entity_team: Option<Team>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         updater: &Write<LazyUpdate>,
         render_commands: &mut RenderCommandCollector,
@@ -1185,13 +1185,18 @@ impl DamageRenderSystem {
     fn add_render_command(
         number: &FlyingNumberComponent,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
-        desktop_entity_id: Option<LocalCharEntityId>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
+        desktop_entity_id: Option<EntityId<Local>>,
         desktop_entity_team: Option<Team>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
+        let target_char_state = auth_char_state_storage.get(number.target_entity_id.into());
+        if target_char_state.is_none() {
+            return;
+        }
+        let target_char_state = target_char_state.unwrap();
         let (number_value, digit_count) = match number.typ {
             FlyingNumberType::Combo {
                 single_attack_damage,
@@ -1243,11 +1248,10 @@ impl DamageRenderSystem {
                     src_entity_id: number.src_entity_id,
                     target_entity_id: number.target_entity_id,
                     typ: FlyingNumberType::SubCombo,
-                    start_pos: number.start_pos,
                     start_time: number
                         .start_time
                         .add_millis(DamageRenderSystem::COMBO_DELAY_BETWEEN_SUBS * i as u32),
-                    die_at: LocalTime::from(0.0), // it is ignored
+                    die_at: GameTime::from(0.0), // it is ignored
                     duration_millis: 3000,
                 };
                 DamageRenderSystem::add_render_command(
@@ -1265,14 +1269,14 @@ impl DamageRenderSystem {
 
         // TODO: don't render more than 1 damage in a single frame for the same target
         let (size, pos) = match number.typ {
-            FlyingNumberType::Heal => {
-                DamageRenderSystem::calc_heal_size_pos(auth_char_state_storage, number, width, perc)
-            }
+            FlyingNumberType::Heal => DamageRenderSystem::calc_heal_size_pos(
+                &target_char_state,
+                number.value,
+                width,
+                perc,
+            ),
             FlyingNumberType::Combo { .. } => {
-                let real_pos = auth_char_state_storage
-                    .get(number.target_entity_id.into())
-                    .map(|it| it.pos())
-                    .unwrap_or(number.start_pos);
+                let real_pos = target_char_state.pos();
                 let size = 1.0;
                 let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
                 pos.x -= width * size / 2.0;
@@ -1284,22 +1288,16 @@ impl DamageRenderSystem {
                 (size, pos)
             }
             FlyingNumberType::Damage => {
-                DamageRenderSystem::calc_damage_size_pos(auth_char_state_storage, number, perc, 1.0)
+                DamageRenderSystem::calc_damage_size_pos(&target_char_state, perc, 1.0)
             }
             FlyingNumberType::SubCombo => {
-                DamageRenderSystem::calc_damage_size_pos(auth_char_state_storage, number, perc, 2.0)
+                DamageRenderSystem::calc_damage_size_pos(&target_char_state, perc, 2.0)
             }
-            FlyingNumberType::Poison => DamageRenderSystem::calc_poison_size_pos(
-                auth_char_state_storage,
-                number,
-                width,
-                perc,
-            ),
+            FlyingNumberType::Poison => {
+                DamageRenderSystem::calc_poison_size_pos(&target_char_state, width, perc)
+            }
             FlyingNumberType::Block | FlyingNumberType::Absorb => {
-                let real_pos = auth_char_state_storage
-                    .get(number.target_entity_id.into())
-                    .map(|it| it.pos())
-                    .unwrap_or(number.start_pos);
+                let real_pos = target_char_state.pos();
                 let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
                 let y_offset = (perc - 0.3) * 3.0;
                 pos.y += 2.0 + y_offset;
@@ -1373,15 +1371,11 @@ impl DamageRenderSystem {
     }
 
     fn calc_damage_size_pos(
-        char_state_storage: &ReadStorage<LocalCharStateComp>,
-        number: &FlyingNumberComponent,
+        target_char_state: &LocalCharStateComp<Local>,
         perc: f32,
         speed: f32,
     ) -> (f32, Vector3<f32>) {
-        let real_pos = char_state_storage
-            .get(number.target_entity_id.into())
-            .map(|it| it.pos())
-            .unwrap_or(number.start_pos);
+        let real_pos = target_char_state.pos();
         let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
         pos.x += perc * 1.0;
         pos.z -= perc * 1.0;
@@ -1394,15 +1388,11 @@ impl DamageRenderSystem {
     }
 
     fn calc_poison_size_pos(
-        char_state_storage: &ReadStorage<LocalCharStateComp>,
-        number: &FlyingNumberComponent,
+        target_char_state: &LocalCharStateComp<Local>,
         width: f32,
         perc: f32,
     ) -> (f32, Vector3<f32>) {
-        let real_pos = char_state_storage
-            .get(number.target_entity_id.into())
-            .map(|it| it.pos())
-            .unwrap_or(number.start_pos);
+        let real_pos = target_char_state.pos();
         let mut pos = Vector3::new(real_pos.x, 1.0, real_pos.y);
         let size = 0.4;
         pos.x -= width * size / 2.0;
@@ -1413,18 +1403,15 @@ impl DamageRenderSystem {
     }
 
     fn calc_heal_size_pos(
-        char_state_storage: &ReadStorage<LocalCharStateComp>,
-        number: &FlyingNumberComponent,
+        target_char_state: &LocalCharStateComp<Local>,
+        value: u32,
         width: f32,
         perc: f32,
     ) -> (f32, Vector3<f32>) {
         // follow the target
-        let real_pos = char_state_storage
-            .get(number.target_entity_id.into())
-            .map(|it| it.pos())
-            .unwrap_or(number.start_pos);
+        let real_pos = target_char_state.pos();
         // the bigger the heal, the bigger the number and stays big longer
-        let heal_value_factor = number.value as f32 / 10_000.0;
+        let heal_value_factor = value as f32 / 10_000.0;
         let size_decrease_speed = (4.0 - heal_value_factor * 2.0).max(2.0);
         let initial_size = 1.0 + heal_value_factor * 1.0;
         let size_mult = 0.2 + heal_value_factor * 0.2;
@@ -1446,8 +1433,8 @@ impl RenderDesktopClientSystem {
         is_self: bool,
         is_same_team: bool,
         static_char_data: &StaticCharDataComponent,
-        char_state: &LocalCharStateComp,
-        now: LocalTime,
+        char_state: &LocalCharStateComp<Local>,
+        now: GameTime<Local>,
         bounding_rect_2d: &SpriteBoundingRect,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
@@ -1568,10 +1555,10 @@ impl RenderDesktopClientSystem {
 
     pub fn render_str<E>(
         effect: E,
-        start_time: LocalTime,
+        start_time: GameTime<Local>,
         world_pos: &Vec2,
         assets: &AssetResources,
-        now: LocalTime,
+        now: GameTime<Local>,
         render_commands: &mut RenderCommandCollector,
         play_mode: ActionPlayMode,
     ) -> bool

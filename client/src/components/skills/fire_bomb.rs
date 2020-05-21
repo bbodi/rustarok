@@ -13,11 +13,9 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
-use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{
-    LocalCharEntityId, StaticCharDataComponent, StatusNature, Team,
-};
+use crate::GameTime;
+use rustarok_common::common::{EngineTime, Local, Vec2};
+use rustarok_common::components::char::{EntityId, StaticCharDataComponent, StatusNature, Team};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 
@@ -70,11 +68,11 @@ impl SkillDef for FireBombSkill {
 
 #[derive(Clone, Debug)]
 pub struct FireBombStatus {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub caster_team: Team,
     pub damage: u32,
-    pub started: LocalTime,
-    pub until: LocalTime,
+    pub started: GameTime<Local>,
+    pub until: GameTime<Local>,
     pub spread_count: u8,
 }
 
@@ -135,7 +133,7 @@ impl FireBombStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -150,7 +148,10 @@ impl FireBombStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
+    pub fn get_status_completion_percent(
+        &self,
+        now: GameTime<Local>,
+    ) -> Option<(GameTime<Local>, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

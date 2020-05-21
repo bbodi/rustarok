@@ -15,10 +15,10 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::{render_action, RenderDesktopClientSystem, COLOR_WHITE};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
-use rustarok_common::common::{v2, EngineTime, Vec2};
+use crate::GameTime;
+use rustarok_common::common::{v2, EngineTime, Local, Vec2};
 use rustarok_common::components::char::{
-    CharDir, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
+    CharDir, EntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use rustarok_common::config::{CommonConfigs, SkillConfigPyroBlastInner};
 use specs::world::WorldExt;
@@ -77,7 +77,7 @@ impl SkillDef for WizPyroBlastSkill {
         time: &EngineTime,
         dev_configs: &CommonConfigs,
         render_commands: &mut RenderCommandCollector,
-        char_storage: &ReadStorage<LocalCharStateComp>,
+        char_storage: &ReadStorage<LocalCharStateComp<Local>>,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Moonstar,
@@ -108,7 +108,7 @@ impl SkillDef for WizPyroBlastSkill {
         let anim_descr = SpriteRenderDescriptorComponent {
             action_index: 16,
             animation_started: casting_state.cast_started,
-            animation_ends_at: LocalTime::from(0.0),
+            animation_ends_at: GameTime::from(0.0),
             forced_duration: Some(dev_configs.skills.wiz_pyroblast.attributes.casting_time),
             direction: CharDir::South,
             fps_multiplier: 1.0,
@@ -129,20 +129,20 @@ impl SkillDef for WizPyroBlastSkill {
 }
 
 pub struct PyroBlastManifest {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub pos: Vec2,
     pub target_last_pos: Vec2,
-    pub target_entity_id: LocalCharEntityId,
-    pub created_at: LocalTime,
+    pub target_entity_id: EntityId<Local>,
+    pub created_at: GameTime<Local>,
     pub configs: SkillConfigPyroBlastInner,
 }
 
 impl PyroBlastManifest {
     pub fn new(
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         pos: Vec2,
-        target_entity_id: LocalCharEntityId,
-        created_at: LocalTime,
+        target_entity_id: EntityId<Local>,
+        created_at: GameTime<Local>,
         _physics_world: &mut PhysicEngine,
         configs: SkillConfigPyroBlastInner,
     ) -> PyroBlastManifest {
@@ -219,15 +219,15 @@ impl SkillManifestation for PyroBlastManifest {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,
     ) {
         let anim_descr = SpriteRenderDescriptorComponent {
             action_index: 0,
-            animation_started: LocalTime::from(0.0),
-            animation_ends_at: LocalTime::from(0.0),
+            animation_started: GameTime::from(0.0),
+            animation_ends_at: GameTime::from(0.0),
             forced_duration: None,
             direction: CharDir::South,
             fps_multiplier: 1.0,
@@ -249,7 +249,7 @@ impl SkillManifestation for PyroBlastManifest {
 
 #[derive(Clone, Debug)]
 pub struct PyroBlastTargetStatus {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub splash_radius: f32,
 }
 
@@ -257,7 +257,7 @@ impl PyroBlastTargetStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {

@@ -9,10 +9,10 @@ use crate::components::skills::skills::{
 use crate::render::opengl_render_sys::Trimesh3dType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::attack::{AreaAttackComponent, HpModificationType};
-use rustarok_common::common::{v2, EngineTime, Vec2};
-use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
+use rustarok_common::common::{v2, EngineTime, Local, Vec2};
+use rustarok_common::components::char::{EntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 use specs::ReadStorage;
@@ -65,22 +65,22 @@ impl SkillDef for SanctuarySkill {
 }
 
 pub struct SanctuarySkillManifest {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub pos: Vec2,
-    pub created_at: LocalTime,
-    pub die_at: LocalTime,
-    pub next_heal_at: LocalTime,
+    pub created_at: GameTime<Local>,
+    pub die_at: GameTime<Local>,
+    pub next_heal_at: GameTime<Local>,
     pub heal_freq: f32,
     pub heal: u32,
 }
 
 impl SanctuarySkillManifest {
     pub fn new(
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         skill_center: &Vec2,
         heal: u32,
         heal_freq: f32,
-        system_time: LocalTime,
+        system_time: GameTime<Local>,
         duration: f32,
     ) -> SanctuarySkillManifest {
         SanctuarySkillManifest {
@@ -118,7 +118,7 @@ impl SkillManifestation for SanctuarySkillManifest {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: LocalTime,
+        _now: GameTime<Local>,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

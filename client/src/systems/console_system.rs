@@ -12,9 +12,9 @@ use crate::systems::console_commands::{
 };
 use crate::systems::SystemVariables;
 use crate::video::Video;
-use crate::LocalTime;
-use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{CharType, LocalCharEntityId, StaticCharDataComponent};
+use crate::GameTime;
+use rustarok_common::common::{EngineTime, Local};
+use rustarok_common::components::char::{CharType, EntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::{CommandArguments, CommandElement};
 use rustarok_common::packets::to_server::ToServerPacket::ConsoleCommand;
@@ -46,8 +46,8 @@ pub struct ConsoleComponent {
     args: CommandArguments,
     y_pos: i32,
     cursor_shown: bool,
-    cursor_change: LocalTime,
-    key_repeat_allowed_at: LocalTime,
+    cursor_change: GameTime<Local>,
+    key_repeat_allowed_at: GameTime<Local>,
     pub command_to_execute: Option<CommandArguments>,
 }
 
@@ -68,8 +68,8 @@ impl ConsoleComponent {
             input: "".to_string(),
             y_pos: 0,
             cursor_shown: false,
-            cursor_change: LocalTime::from(0.0),
-            key_repeat_allowed_at: LocalTime::from(0.0),
+            cursor_change: GameTime::from(0.0),
+            key_repeat_allowed_at: GameTime::from(0.0),
             command_to_execute: None,
         }
     }
@@ -188,7 +188,12 @@ impl ConsoleComponent {
             .push(ConsoleEntry::new().add(text, ConsoleWordType::Error));
     }
 
-    fn handle_backspace(&mut self, input: &HumanInputComponent, now: LocalTime, repeat_time: f32) {
+    fn handle_backspace(
+        &mut self,
+        input: &HumanInputComponent,
+        now: GameTime<Local>,
+        repeat_time: f32,
+    ) {
         let (new_input, new_x) = if input.ctrl_down || input.ctrl_down {
             // find first non-alpha character
             let prev_char_is_space = self
@@ -235,7 +240,12 @@ impl ConsoleComponent {
         self.key_repeat_allowed_at = now.add_seconds(repeat_time);
     }
 
-    fn handle_delete_key(&mut self, input: &HumanInputComponent, now: LocalTime, repeat_time: f32) {
+    fn handle_delete_key(
+        &mut self,
+        input: &HumanInputComponent,
+        now: GameTime<Local>,
+        repeat_time: f32,
+    ) {
         let new_input = if input.ctrl_down || input.ctrl_down {
             // find first non-alpha character
             let next_char_is_space = self
@@ -600,7 +610,7 @@ impl ConsoleSystem {
         }
     }
 
-    pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<LocalCharEntityId> {
+    pub fn get_char_id_by_name(ecs_world: &World, username: &str) -> Option<EntityId<Local>> {
         for (entity_id, char_state) in (
             &ecs_world.entities(),
             &ecs_world.read_storage::<StaticCharDataComponent>(),
@@ -608,7 +618,7 @@ impl ConsoleSystem {
             .join()
         {
             if char_state.name == username {
-                return Some(LocalCharEntityId::from(entity_id));
+                return Some(EntityId::from(entity_id));
             }
         }
         return None;
@@ -767,12 +777,7 @@ pub struct CommandDefinition {
 }
 
 pub type CommandCallback = Box<
-    dyn Fn(
-        Option<LocalCharEntityId>,
-        CommandArguments,
-        &mut World,
-        &mut Video,
-    ) -> Result<(), String>,
+    dyn Fn(Option<EntityId<Local>>, CommandArguments, &mut World, &mut Video) -> Result<(), String>,
 >;
 
 pub enum ConsoleWordType {

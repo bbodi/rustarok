@@ -1,17 +1,17 @@
 use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
-use rustarok_common::common::Percentage;
+use rustarok_common::common::{Local, Percentage};
 
 #[derive(Clone, Debug)]
 pub struct ArmorModifierStatus {
-    pub started: LocalTime,
-    pub until: LocalTime,
+    pub started: GameTime<Local>,
+    pub until: GameTime<Local>,
     pub modifier: Percentage,
 }
 
 impl ArmorModifierStatus {
-    pub fn new(now: LocalTime, modifier: Percentage) -> ArmorModifierStatus {
+    pub fn new(now: GameTime<Local>, modifier: Percentage) -> ArmorModifierStatus {
         ArmorModifierStatus {
             started: now,
             until: now.add_seconds(10.0),
@@ -40,13 +40,17 @@ impl ArmorModifierStatus {
 
 #[derive(Clone, Debug)]
 pub struct WalkingSpeedModifierStatus {
-    pub started: LocalTime,
-    pub until: LocalTime,
+    pub started: GameTime<Local>,
+    pub until: GameTime<Local>,
     pub modifier: Percentage,
 }
 
 impl WalkingSpeedModifierStatus {
-    pub fn new(now: LocalTime, modifier: Percentage, duration: f32) -> WalkingSpeedModifierStatus {
+    pub fn new(
+        now: GameTime<Local>,
+        modifier: Percentage,
+        duration: f32,
+    ) -> WalkingSpeedModifierStatus {
         WalkingSpeedModifierStatus {
             started: now,
             until: now.add_seconds(duration),

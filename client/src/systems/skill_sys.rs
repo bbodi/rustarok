@@ -7,10 +7,8 @@ use crate::components::skills::skills::{
 use crate::systems::{CollisionsFromPrevFrame, SystemFrameDurations, SystemVariables};
 use crate::PhysicEngine;
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
-use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{
-    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
-};
+use rustarok_common::common::{EngineTime, Local};
+use rustarok_common::components::char::{EntityId, LocalCharStateComp, StaticCharDataComponent};
 
 pub struct SkillSystem;
 
@@ -19,7 +17,7 @@ impl<'a> System<'a> for SkillSystem {
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
-        WriteStorage<'a, LocalCharStateComp>,
+        WriteStorage<'a, LocalCharStateComp<Local>>,
         WriteExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
         WriteExpect<'a, CollisionsFromPrevFrame>,

@@ -3,11 +3,11 @@ use crate::components::char::{
     get_sprite_and_action_index, CharacterStateComponent, SpriteRenderDescriptorComponent,
 };
 use crate::systems::{SystemEvent, SystemVariables};
-use crate::LocalTime;
-use rustarok_common::common::EngineTime;
+use crate::GameTime;
 use rustarok_common::common::SimulationTick;
+use rustarok_common::common::{EngineTime, Local};
 use rustarok_common::components::char::{
-    CharState, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
+    CharState, EntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use specs::prelude::*;
 
@@ -90,7 +90,7 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
         ReadStorage<'a, StaticCharDataComponent>,
         ReadStorage<'a, CharacterStateComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadExpect<'a, SystemVariables>,
         ReadExpect<'a, EngineTime>,
     );
@@ -118,8 +118,8 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
         {
             // e.g. don't switch to IDLE immediately when prev state is ReceivingDamage.
             // let ReceivingDamage animation play till to the end
-            let state: CharState<LocalCharEntityId> = auth_state.state().clone();
-            let prev_state: CharState<LocalCharEntityId> = client_char_state.prev_state().clone();
+            let state: CharState<Local> = auth_state.state().clone();
+            let prev_state: CharState<Local> = client_char_state.prev_state().clone();
             let prev_animation_has_ended = sprite.animation_ends_at.has_already_passed(now);
             let prev_animation_must_stop_at_end = match client_char_state.prev_state() {
                 CharState::Walking(_) => true,
@@ -132,7 +132,13 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
             {
                 sprite.animation_started = now;
                 let forced_duration = match &state {
-                    CharState::Attacking { .. } => Some(auth_state.attack_delay_ends_at.minus(now)),
+                    CharState::Attacking { .. } => {
+                        if auth_state.attack_delay_ends_at > now {
+                            Some(auth_state.attack_delay_ends_at.minus(now))
+                        } else {
+                            None
+                        }
+                    }
                     // HACK: '100.0', so the first frame is rendered during casting :)
                     //                    CharState::CastingSkill(casting_info) => {
                     //                        Some(casting_info.cast_ends.add_seconds(100.0))
@@ -153,7 +159,7 @@ impl<'a> System<'a> for UpdateCharSpriteBasedOnStateSystem {
                 sprite.action_index = action_index;
                 sprite.animation_ends_at = now.add(forced_duration.unwrap_or_else(|| {
                     let duration = sprite_res.action.actions[action_index].duration_in_millis;
-                    LocalTime::from(duration)
+                    GameTime::from(duration)
                 }));
             } else if client_char_state.went_from_casting_to_idle(auth_state.state()) {
                 // During casting, only the first frame is rendered
@@ -179,7 +185,7 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, CharacterStateComponent>,
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadExpect<'a, SimulationTick>,
         Option<Write<'a, Vec<SystemEvent>>>,
     );
@@ -199,7 +205,7 @@ impl<'a> System<'a> for SavePreviousCharStateSystem {
                 if let Some(events) = &mut events {
                     events.push(SystemEvent::CharStatusChange(
                         tick.prev(), // we detected the change here, but it happened in the prev state
-                        LocalCharEntityId::new(char_id),
+                        EntityId::new(char_id),
                         prev_state.clone(),
                         state.clone(),
                     ));

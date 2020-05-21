@@ -4,7 +4,7 @@ use crate::systems::RenderMatrices;
 use crate::systems::SystemVariables;
 use crate::ConsoleCommandBuffer;
 use nalgebra::Vector4;
-use rustarok_common::common::{v2, v3, Mat4, Vec2, Vec3};
+use rustarok_common::common::{v2, v3, Local, Mat4, Vec2, Vec3};
 use rustarok_common::components::controller::PlayerIntention;
 use sdl2::keyboard::Scancode;
 use sdl2::mouse::MouseButton;
@@ -238,7 +238,10 @@ impl InputConsumerSystem {
 }
 
 impl InputConsumerSystem {
-    pub fn target_selection_or_casting(skill: Skills, mouse_pos: Vec2) -> Option<PlayerIntention> {
+    pub fn target_selection_or_casting(
+        skill: Skills,
+        mouse_pos: Vec2,
+    ) -> Option<PlayerIntention<Local>> {
         // NoTarget skills have to be casted immediately without selecting target
         if skill.get_definition().get_skill_target_type() == SkillTargetType::NoTarget {
             log::debug!("Skill '{:?}' is no target, so cast it", skill);

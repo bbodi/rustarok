@@ -3,10 +3,10 @@ use crate::OutPacketCollector;
 use crate::PacketTarget;
 use rand::Rng;
 use rustarok_common::char_attr::CharAttributes;
-use rustarok_common::common::{v2, v3_to_v2, Vec2};
+use rustarok_common::common::{v2, v3_to_v2, Local, Vec2};
 use rustarok_common::components::char::{
-    CharOutlook, CharType, ControllerEntityId, JobId, LocalCharEntityId, LocalCharStateComp,
-    MonsterId, Sex, StaticCharDataComponent, Team,
+    CharOutlook, CharType, ControllerEntityId, EntityId, JobId, LocalCharStateComp, MonsterId, Sex,
+    StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::components::job_ids::JobSpriteId;
@@ -44,7 +44,7 @@ pub fn execute_console_cmd(
 fn get_client_char_id(
     controller_id: Option<ControllerEntityId>,
     ecs_world: &mut specs::World,
-) -> Option<LocalCharEntityId> {
+) -> Option<EntityId<Local>> {
     controller_id.and_then(|controller_id| {
         let controller_storage = ecs_world.read_storage::<ControllerComponent>();
         let controller: &ControllerComponent =
@@ -68,7 +68,7 @@ fn cmd_spawn_entity(
         (Some(x), Some(y)) => v2(x as f32, y as f32),
         _ => {
             let gat = &ecs_world.read_resource::<MapWalkingInfo>();
-            let hero_pos = ecs_world.read_resource::<LocalCharStateComp>().pos();
+            let hero_pos = ecs_world.read_resource::<LocalCharStateComp<Local>>().pos();
             //            let mut rng = rand::thread_rng();
             //            let (x, y) = loop {
             //                let x: f32 = rng.gen_range(hero_pos.x - 10.0, hero_pos.x + 10.0);
@@ -230,7 +230,7 @@ fn cmd_kill_all(
     )
         .join()
     {
-        let entity_id = LocalCharEntityId::from(entity_id);
+        let entity_id = EntityId::from(entity_id);
         let need_delete = match type_name {
             "all" => true,
             "left_team" => char_state.team == Team::Left,
@@ -258,7 +258,7 @@ fn cmd_kill_all(
     }
     for entity_id in entity_ids {
         ecs_world
-            .write_storage::<LocalCharStateComp>()
+            .write_storage::<LocalCharStateComp<Local>>()
             .get_mut(entity_id.into())
             .unwrap()
             .hp = 0;
@@ -278,7 +278,7 @@ fn cmd_reload_configs(
     *ecs_world.write_resource::<CommonConfigs>() = configs.clone();
 
     for (state, static_info) in (
-        &mut ecs_world.write_storage::<LocalCharStateComp>(),
+        &mut ecs_world.write_storage::<LocalCharStateComp<Local>>(),
         &ecs_world.read_storage::<StaticCharDataComponent>(),
     )
         .join()

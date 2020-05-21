@@ -22,16 +22,16 @@ use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::imgui_sys::ImguiData;
 use crate::systems::input_sys_scancodes::ScancodeNames;
 use crate::systems::{RenderMatrices, SystemVariables};
-use crate::{CollisionGroup, LocalTime, PhysicEngine};
+use crate::{CollisionGroup, GameTime, PhysicEngine};
 use nalgebra::Isometry2;
 use rand::Rng;
 use rustarok_common::attack::{
     DamageDisplayType, HpModificationRequest, HpModificationType, WeaponType,
 };
 use rustarok_common::char_attr::CharAttributes;
-use rustarok_common::common::{percentage, v2, v2u, EngineTime, Vec2};
+use rustarok_common::common::{percentage, v2, v2u, EngineTime, Local, Vec2};
 use rustarok_common::components::char::{
-    create_common_player_entity, CharDir, CharOutlook, CharState, JobId, LocalCharEntityId,
+    create_common_player_entity, CharDir, CharOutlook, CharState, EntityId, JobId,
     LocalCharStateComp, MonsterId, Sex, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::job_ids::JobSpriteId;
@@ -131,7 +131,8 @@ pub(super) fn cmd_set_job() -> CommandDefinition {
                     .write_storage::<CharacterStateComponent>()
                     .get_mut(target_char_id.into())
                 {
-                    let mut auth_state_storage = ecs_world.write_storage::<LocalCharStateComp>();
+                    let mut auth_state_storage =
+                        ecs_world.write_storage::<LocalCharStateComp<Local>>();
                     let auth_state = auth_state_storage.get_mut(target_char_id.into()).unwrap();
                     if let Ok(job_id) = JobId::from_str(job_name) {
                         // TODO4
@@ -402,7 +403,7 @@ pub(super) fn cmd_spawn_entity() -> CommandDefinition {
     }
 }
 
-fn create_dummy(ecs_world: &mut World, pos2d: Vec2, job_id: JobId) -> LocalCharEntityId {
+fn create_dummy(ecs_world: &mut World, pos2d: Vec2, job_id: JobId) -> EntityId<Local> {
     return create_client_dummy_entity(ecs_world, job_id, pos2d);
 }
 
@@ -635,7 +636,7 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
             if let Some(self_char_id) = self_char_id {
                 let (pos, caster_team) = {
                     let (hero_pos, team) = {
-                        let storage = ecs_world.read_storage::<LocalCharStateComp>();
+                        let storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
                         let storage2 = ecs_world.read_storage::<StaticCharDataComponent>();
                         let char_state = storage.get(self_char_id.into()).unwrap();
                         let char_state2 = storage2.get(self_char_id.into()).unwrap();
@@ -708,8 +709,8 @@ pub(super) fn cmd_spawn_area() -> CommandDefinition {
 
 fn create_status_payload(
     name: &str,
-    self_char_id: LocalCharEntityId,
-    now: LocalTime,
+    self_char_id: EntityId<Local>,
+    now: GameTime<Local>,
     time: i32,
     value: i32,
     caster_team: Team,
@@ -1002,10 +1003,11 @@ pub(super) fn cmd_resurrect() -> CommandDefinition {
                     // remove death status (that is the only status a death character has)
                     let mut char_storage = ecs_world.write_storage::<CharacterStateComponent>();
                     let char_state = char_storage.get_mut(target_char_id.into()).unwrap();
-                    let mut auth_char_storage = ecs_world.write_storage::<LocalCharStateComp>();
+                    let mut auth_char_storage =
+                        ecs_world.write_storage::<LocalCharStateComp<Local>>();
                     let auth_state = auth_char_storage.get_mut(target_char_id.into()).unwrap();
                     char_state.statuses.remove_all();
-                    auth_state.set_state(CharState::Idle, auth_state.dir());
+                    auth_state.set_state_dbg(CharState::Idle, "resurrect command");
 
                     // give him max hp/sp
                     auth_state.hp = CharAttributes::get_base_attributes(
@@ -1077,10 +1079,10 @@ pub(super) fn cmd_clone_char() -> CommandDefinition {
 
             if let Some(target_char_id) = target_char_id {
                 // create a new entity with the same outlook
-                let char_entity_id = LocalCharEntityId::from(ecs_world.create_entity().build());
+                let char_entity_id = EntityId::from(ecs_world.create_entity().build());
 
                 let char_storage = ecs_world.read_storage::<CharacterStateComponent>();
-                let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp>();
+                let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
 
                 let cloning_char = char_storage.get(target_char_id.into()).unwrap();
                 let auth_cloning_char = auth_char_storage.get(target_char_id.into()).unwrap();
@@ -1246,7 +1248,7 @@ pub(super) fn cmd_goto() -> CommandDefinition {
             let target_char_id = ConsoleSystem::get_char_id_by_name(ecs_world, username);
             if let Some(target_char_id) = target_char_id {
                 let target_pos = {
-                    let storage = ecs_world.read_storage::<LocalCharStateComp>();
+                    let storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
                     let char_state = storage.get(target_char_id.into()).unwrap();
                     char_state.pos()
                 };
@@ -1299,7 +1301,7 @@ pub(super) fn cmd_get_pos() -> CommandDefinition {
 
             if let Some(entity_id) = entity_id {
                 let hero_pos = {
-                    let storage = ecs_world.read_storage::<LocalCharStateComp>();
+                    let storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
                     let char_state = storage.get(entity_id.into()).unwrap();
                     char_state.pos()
                 };
@@ -1391,7 +1393,7 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
 
             if let Some(char_id) = char_id {
                 let pos = ecs_world
-                    .read_storage::<LocalCharStateComp>()
+                    .read_storage::<LocalCharStateComp<Local>>()
                     .get(char_id.into())
                     .map(|it| it.pos())
                     .unwrap();
@@ -1402,10 +1404,10 @@ pub(super) fn cmd_add_falcon() -> CommandDefinition {
                     .with(SpriteRenderDescriptorComponent {
                         action_index: CharActionIndex::Idle as usize,
                         fps_multiplier: 1.0,
-                        animation_started: LocalTime::from(0.0),
+                        animation_started: GameTime::from(0.0),
                         forced_duration: None,
                         direction: CharDir::South,
-                        animation_ends_at: LocalTime::from(0.0),
+                        animation_ends_at: GameTime::from(0.0),
                     })
                     .build();
                 Ok(())

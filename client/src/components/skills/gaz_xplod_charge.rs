@@ -17,11 +17,9 @@ use crate::render::render_sys::render_single_layer_action;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
-use rustarok_common::common::{v2_to_v3, v3_to_v2, EngineTime, LocalTime};
+use rustarok_common::common::{v2_to_v3, v3_to_v2, EngineTime, GameTime, Local};
 use rustarok_common::common::{v3, Vec2};
-use rustarok_common::components::char::{
-    CharDir, LocalCharEntityId, StaticCharDataComponent, StatusNature,
-};
+use rustarok_common::components::char::{CharDir, EntityId, StaticCharDataComponent, StatusNature};
 use rustarok_common::config::{CommonConfigs, GazXplodiumChargeSkillConfigInner};
 use specs::world::WorldExt;
 use specs::ReadStorage;
@@ -65,19 +63,19 @@ struct GazXplodiumChargeSkillManifestation {
     end_pos: Vec2,
     current_pos: Vector3<f32>,
     current_target_pos: Vector3<f32>,
-    caster_id: LocalCharEntityId,
-    started_at: LocalTime,
+    caster_id: EntityId<Local>,
+    started_at: GameTime<Local>,
     configs: GazXplodiumChargeSkillConfigInner,
     bezier: QuadraticBezier3<f32>,
 }
 
 impl GazXplodiumChargeSkillManifestation {
     fn new(
-        caster_id: LocalCharEntityId,
+        caster_id: EntityId<Local>,
         start_pos: Vec2,
         end_pos: Vec2,
         _physics_world: &mut PhysicEngine,
-        now: LocalTime,
+        now: GameTime<Local>,
         configs: GazXplodiumChargeSkillConfigInner,
     ) -> GazXplodiumChargeSkillManifestation {
         let ctrl = v2_to_v3(&(start_pos - (end_pos - start_pos))) + v3(0.0, 20.0, 0.0);
@@ -161,7 +159,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_command_collector: &mut AudioCommandCollectorComponent,
@@ -179,7 +177,7 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
             animation_started: self
                 .started_at
                 .add_seconds(self.configs.missile_travel_duration_seconds),
-            animation_ends_at: LocalTime::from(0.0),
+            animation_ends_at: GameTime::from(0.0),
             forced_duration: None,
             direction: dir,
             fps_multiplier: 1.0,
@@ -212,8 +210,8 @@ impl SkillManifestation for GazXplodiumChargeSkillManifestation {
             // render countdown number
             let anim = SpriteRenderDescriptorComponent {
                 action_index: CharActionIndex::Idle as usize,
-                animation_started: LocalTime::from(0.0),
-                animation_ends_at: LocalTime::from(0.0),
+                animation_started: GameTime::from(0.0),
+                animation_ends_at: GameTime::from(0.0),
                 forced_duration: None,
                 direction: CharDir::from(number),
                 fps_multiplier: 1.0,

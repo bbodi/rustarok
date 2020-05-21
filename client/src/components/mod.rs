@@ -5,9 +5,9 @@ use specs::prelude::*;
 use crate::audio::sound_sys::SoundId;
 use crate::components::char::ActionPlayMode;
 use crate::effect::StrEffectId;
-use crate::LocalTime;
-use rustarok_common::common::Vec2;
-use rustarok_common::components::char::LocalCharEntityId;
+use crate::GameTime;
+use rustarok_common::common::{Local, Vec2};
+use rustarok_common::components::char::EntityId;
 
 pub mod char;
 pub mod controller;
@@ -17,29 +17,28 @@ pub mod status;
 #[derive(Component)]
 pub struct FlyingNumberComponent {
     pub value: u32,
-    pub target_entity_id: LocalCharEntityId,
-    pub src_entity_id: LocalCharEntityId,
+    pub target_entity_id: EntityId<Local>,
+    pub src_entity_id: EntityId<Local>,
     pub typ: FlyingNumberType,
-    pub start_pos: Vec2,
-    pub start_time: LocalTime,
-    pub die_at: LocalTime,
+    pub start_time: GameTime<Local>,
+    pub die_at: GameTime<Local>,
     pub duration_millis: u32,
 }
 
 #[derive(Component)]
 pub struct SoundEffectComponent {
-    pub target_entity_id: LocalCharEntityId,
+    pub target_entity_id: EntityId<Local>,
     pub sound_id: SoundId,
     pub pos: Vec2,
-    pub start_time: LocalTime,
+    pub start_time: GameTime<Local>,
 }
 
 #[derive(Component)]
 pub struct StrEffectComponent {
     pub effect_id: StrEffectId,
     pub pos: Vec2,
-    pub start_time: LocalTime,
-    pub die_at: Option<LocalTime>,
+    pub start_time: GameTime<Local>,
+    pub die_at: Option<GameTime<Local>>,
     pub play_mode: ActionPlayMode,
 }
 
@@ -94,18 +93,16 @@ impl FlyingNumberComponent {
     pub fn new(
         typ: FlyingNumberType,
         value: u32,
-        src_entity_id: LocalCharEntityId,
-        target_entity_id: LocalCharEntityId,
+        src_entity_id: EntityId<Local>,
+        target_entity_id: EntityId<Local>,
         duration: u32,
-        start_pos: Vec2,
-        sys_time: LocalTime,
+        sys_time: GameTime<Local>,
     ) -> FlyingNumberComponent {
         FlyingNumberComponent {
             value,
             typ,
             target_entity_id,
             src_entity_id,
-            start_pos,
             start_time: sys_time,
             die_at: sys_time.add_millis(duration),
             duration_millis: duration,

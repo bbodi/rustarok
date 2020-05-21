@@ -34,18 +34,17 @@ use strum;
 
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::common::{
-    measure_time, v2, EngineTime, LocalTime, ServerTime, SimulationTick, Vec2,
+    measure_time, v2, EngineTime, GameTime, Local, Remote, SimulationTick, Vec2,
 };
 use rustarok_common::components::char::EntityTarget;
 use rustarok_common::components::char::{
-    create_common_player_entity, CharDir, CharOutlook, CollisionGroup, ControllerEntityId, JobId,
-    LocalCharEntityId, LocalCharStateComp, ServerCharState, ServerEntityId, Sex,
-    StaticCharDataComponent, Team,
+    create_common_player_entity, CharDir, CharOutlook, CollisionGroup, ControllerEntityId,
+    EntityId, JobId, LocalCharStateComp, Sex, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::CommandArguments;
-use rustarok_common::packets::from_server::{FromServerPacket, ServerEntityStateLocal};
+use rustarok_common::packets::from_server::{FromServerPacket, ServerEntityState};
 use rustarok_common::packets::to_server::ToServerPacket;
 use rustarok_common::packets::{NetworkTrafficEvent, PacketHandlerThread, SocketBuffer, SocketId};
 use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
@@ -75,7 +74,7 @@ use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::effect::load_str_effects;
 use crate::runtime_assets::graphic::{load_skill_icons, load_status_icons, load_texts};
 use crate::runtime_assets::map::{load_map, MapRenderData, PhysicEngine};
-use crate::systems::atk_calc::AttackSystem;
+use crate::systems::atk_calc::{AttackCalculation, AttackSystem};
 use crate::systems::camera_system::CameraSystem;
 use crate::systems::console_system::{
     CommandDefinition, ConsoleComponent, ConsoleRenderSystem, ConsoleSystem,
@@ -381,7 +380,7 @@ fn main() {
     let mut next_second: SystemTime = std::time::SystemTime::now()
         .checked_add(Duration::from_secs(1))
         .unwrap();
-    let mut next_minion_spawn = LocalTime::from(2.0);
+    let mut next_minion_spawn = GameTime::<Local>::from(2.0);
     let mut fps_counter: usize = 0;
     let mut fps: usize;
     let mut incoming_packets_per_second: usize = 0;
@@ -410,7 +409,7 @@ fn main() {
     }
     //////////////////////////////////////////////////
 
-    let mut server_to_local_ids: HashMap<ServerEntityId, LocalCharEntityId> =
+    let mut server_to_local_ids: HashMap<EntityId<Remote>, EntityId<Local>> =
         HashMap::with_capacity(1024);
 
     console_print(&mut ecs_world, "Sync");
@@ -471,7 +470,7 @@ fn main() {
                                 username,
                                 typ,
                                 job_id,
-                                state.pos,
+                                state.pos(),
                                 team,
                                 outlook,
                                 id,
@@ -489,16 +488,16 @@ fn main() {
                                 .create_entity()
                                 .with(FalconComponent::new(
                                     desktop_client_char,
-                                    state.pos.x,
-                                    state.pos.y,
+                                    state.pos().x,
+                                    state.pos().y,
                                 ))
                                 .with(SpriteRenderDescriptorComponent {
                                     action_index: CharActionIndex::Idle as usize,
                                     fps_multiplier: 1.0,
-                                    animation_started: LocalTime::from(0.0),
+                                    animation_started: GameTime::from(0.0),
                                     forced_duration: None,
                                     direction: CharDir::South,
-                                    animation_ends_at: LocalTime::from(0.0),
+                                    animation_ends_at: GameTime::from(0.0),
                                 })
                                 .build();
 
@@ -511,7 +510,7 @@ fn main() {
                             id,
                             &LocalCharStateComp::server_to_local(
                                 state,
-                                LocalTime::from(0),
+                                GameTime::from(0),
                                 0,
                                 &server_to_local_ids,
                             ),
@@ -582,7 +581,7 @@ fn main() {
                                 let ping = ping_sent.elapsed().as_millis() as usize;
                                 avg_ping = (avg_ping + ping) / 2;
                                 let approximated_server_time =
-                                    (server_time.0 + (ping as u32 / 2)) as i64;
+                                    (server_time.as_u32() + (ping as u32 / 2)) as i64;
                                 let local_now =
                                     ecs_world.read_resource::<EngineTime>().now().as_millis()
                                         as i64;
@@ -599,7 +598,7 @@ fn main() {
                                 dbg!(configs.stats.player.crusader.attributes.movement_speed);
                                 *ecs_world.write_resource::<CommonConfigs>() = configs.clone();
                                 for (state, static_info) in (
-                                    &mut ecs_world.write_storage::<LocalCharStateComp>(),
+                                    &mut ecs_world.write_storage::<LocalCharStateComp<Local>>(),
                                     &ecs_world.read_storage::<StaticCharDataComponent>(),
                                 )
                                     .join()
@@ -614,12 +613,11 @@ fn main() {
                                 let snapshots = &mut ecs_world.write_resource::<SnapshotStorage>();
 
                                 // TODO: replace in place
-                                let entries = entries
+                                let entries: Vec<ServerEntityState<Local>> = entries
                                     .into_iter()
-                                    .map(|it| ServerEntityStateLocal {
+                                    .map(|it| ServerEntityState {
                                         id: it.id,
-                                        char_snapshot: LocalCharStateComp::server_to_local(
-                                            it.char_snapshot,
+                                        char_snapshot: it.char_snapshot.server_to_local(
                                             now,
                                             server_to_local_time_diff,
                                             &server_to_local_ids,
@@ -653,7 +651,7 @@ fn main() {
                                         name,
                                         typ,
                                         job_id,
-                                        state.pos,
+                                        state.pos(),
                                         team,
                                         outlook,
                                         id,
@@ -684,6 +682,18 @@ fn main() {
                                 );
                                 ecs_world.delete_entity(disconnecting_entity_local_id.into());
                             }
+                            FromServerPacket::Damage {
+                                src_id,
+                                dst_id,
+                                typ,
+                            } => AttackCalculation::add_flying_damage_entity(
+                                server_to_local_ids[&src_id],
+                                server_to_local_ids[&dst_id],
+                                typ,
+                                &ecs_world.entities(),
+                                &ecs_world.read_resource::<LazyUpdate>(),
+                                now,
+                            ),
                         },
                     }
                 }
@@ -930,7 +940,7 @@ fn send_packets(
 
 fn load_only_remote_last_acked_states_into_world(ecs_world: &mut World) {
     let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
-    let auth_storage = &mut ecs_world.write_storage::<LocalCharStateComp>();
+    let auth_storage = &mut ecs_world.write_storage::<LocalCharStateComp<Local>>();
     let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
     let entities = &ecs_world.entities();
     snapshots.load_last_acked_remote_entities_state_into_world(
@@ -944,7 +954,7 @@ fn load_only_remote_last_acked_states_into_world(ecs_world: &mut World) {
 
 fn load_all_last_acked_states_into_world(ecs_world: &mut World) {
     let snapshots = &ecs_world.read_resource::<SnapshotStorage>();
-    let auth_storage = &mut ecs_world.write_storage::<LocalCharStateComp>();
+    let auth_storage = &mut ecs_world.write_storage::<LocalCharStateComp<Local>>();
     let server_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
     let entities = &ecs_world.entities();
     snapshots.load_last_acked_remote_entities_state_into_world(

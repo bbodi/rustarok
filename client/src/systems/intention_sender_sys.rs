@@ -2,7 +2,7 @@ use crate::components::char::HasServerIdComponent;
 use crate::components::controller::LocalPlayerController;
 use crate::systems::snapshot_sys::SnapshotStorage;
 use rustarok_common::common::SimulationTick;
-use rustarok_common::components::controller::{PlayerIntention, ToServerPlayerIntention};
+use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::packets::to_server::ToServerPacket;
 use specs::prelude::*;
 use std::time::{Duration, Instant};
@@ -61,12 +61,10 @@ impl<'a> System<'a> for IntentionSenderSystem {
                 cid: cid.as_u32(),
                 client_tick: *tick,
                 intention: match intention {
-                    PlayerIntention::MoveTo(v) => ToServerPlayerIntention::MoveTo(*v),
-                    PlayerIntention::MoveTowardsMouse(v) => {
-                        ToServerPlayerIntention::MoveTowardsMouse(*v)
-                    }
-                    PlayerIntention::AttackTowards(v) => ToServerPlayerIntention::AttackTowards(*v),
-                    PlayerIntention::Attack(local_id) => ToServerPlayerIntention::Attack(
+                    PlayerIntention::MoveTo(v) => PlayerIntention::MoveTo(*v),
+                    PlayerIntention::MoveTowardsMouse(v) => PlayerIntention::MoveTowardsMouse(*v),
+                    PlayerIntention::AttackTowards(v) => PlayerIntention::AttackTowards(*v),
+                    PlayerIntention::Attack(local_id) => PlayerIntention::Attack(
                         server_id_storage.get((*local_id).into()).unwrap().server_id,
                     ),
                 },

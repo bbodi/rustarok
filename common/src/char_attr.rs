@@ -1,4 +1,4 @@
-use crate::common::{percentage, LocalTime, Percentage};
+use crate::common::{percentage, GameTime, Local, Percentage};
 use crate::components::char::JobId;
 use crate::config::{CommonConfigs, DevConfigStats};
 use serde::Deserialize;
@@ -189,49 +189,49 @@ pub enum CharAttributeModifier {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BonusDurations {
-    pub max_hp_bonus_ends_at: LocalTime,
-    pub walking_speed_bonus_ends_at: LocalTime,
-    pub attack_range_bonus_ends_at: LocalTime,
-    pub attack_speed_bonus_ends_at: LocalTime,
-    pub attack_damage_bonus_ends_at: LocalTime,
-    pub armor_bonus_ends_at: LocalTime,
-    pub healing_bonus_ends_at: LocalTime,
-    pub hp_regen_bonus_ends_at: LocalTime,
-    pub mana_regen_bonus_ends_at: LocalTime,
+    pub max_hp_bonus_ends_at: GameTime<Local>,
+    pub walking_speed_bonus_ends_at: GameTime<Local>,
+    pub attack_range_bonus_ends_at: GameTime<Local>,
+    pub attack_speed_bonus_ends_at: GameTime<Local>,
+    pub attack_damage_bonus_ends_at: GameTime<Local>,
+    pub armor_bonus_ends_at: GameTime<Local>,
+    pub healing_bonus_ends_at: GameTime<Local>,
+    pub hp_regen_bonus_ends_at: GameTime<Local>,
+    pub mana_regen_bonus_ends_at: GameTime<Local>,
 
-    pub max_hp_bonus_started_at: LocalTime,
-    pub walking_speed_bonus_started_at: LocalTime,
-    pub attack_range_bonus_started_at: LocalTime,
-    pub attack_speed_bonus_started_at: LocalTime,
-    pub attack_damage_bonus_started_at: LocalTime,
-    pub armor_bonus_started_at: LocalTime,
-    pub healing_bonus_started_at: LocalTime,
-    pub hp_regen_bonus_started_at: LocalTime,
-    pub mana_regen_bonus_started_at: LocalTime,
+    pub max_hp_bonus_started_at: GameTime<Local>,
+    pub walking_speed_bonus_started_at: GameTime<Local>,
+    pub attack_range_bonus_started_at: GameTime<Local>,
+    pub attack_speed_bonus_started_at: GameTime<Local>,
+    pub attack_damage_bonus_started_at: GameTime<Local>,
+    pub armor_bonus_started_at: GameTime<Local>,
+    pub healing_bonus_started_at: GameTime<Local>,
+    pub hp_regen_bonus_started_at: GameTime<Local>,
+    pub mana_regen_bonus_started_at: GameTime<Local>,
 }
 
 impl BonusDurations {
     pub fn with_invalid_times() -> BonusDurations {
         BonusDurations {
-            max_hp_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            walking_speed_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            attack_range_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            attack_speed_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            attack_damage_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            armor_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            healing_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            hp_regen_bonus_ends_at: LocalTime::from(std::f32::MAX),
-            mana_regen_bonus_ends_at: LocalTime::from(std::f32::MAX),
+            max_hp_bonus_ends_at: GameTime::from(std::f32::MAX),
+            walking_speed_bonus_ends_at: GameTime::from(std::f32::MAX),
+            attack_range_bonus_ends_at: GameTime::from(std::f32::MAX),
+            attack_speed_bonus_ends_at: GameTime::from(std::f32::MAX),
+            attack_damage_bonus_ends_at: GameTime::from(std::f32::MAX),
+            armor_bonus_ends_at: GameTime::from(std::f32::MAX),
+            healing_bonus_ends_at: GameTime::from(std::f32::MAX),
+            hp_regen_bonus_ends_at: GameTime::from(std::f32::MAX),
+            mana_regen_bonus_ends_at: GameTime::from(std::f32::MAX),
 
-            max_hp_bonus_started_at: LocalTime::from(std::f32::MAX),
-            walking_speed_bonus_started_at: LocalTime::from(std::f32::MAX),
-            attack_range_bonus_started_at: LocalTime::from(std::f32::MAX),
-            attack_speed_bonus_started_at: LocalTime::from(std::f32::MAX),
-            attack_damage_bonus_started_at: LocalTime::from(std::f32::MAX),
-            armor_bonus_started_at: LocalTime::from(std::f32::MAX),
-            healing_bonus_started_at: LocalTime::from(std::f32::MAX),
-            hp_regen_bonus_started_at: LocalTime::from(std::f32::MAX),
-            mana_regen_bonus_started_at: LocalTime::from(std::f32::MAX),
+            max_hp_bonus_started_at: GameTime::from(std::f32::MAX),
+            walking_speed_bonus_started_at: GameTime::from(std::f32::MAX),
+            attack_range_bonus_started_at: GameTime::from(std::f32::MAX),
+            attack_speed_bonus_started_at: GameTime::from(std::f32::MAX),
+            attack_damage_bonus_started_at: GameTime::from(std::f32::MAX),
+            armor_bonus_started_at: GameTime::from(std::f32::MAX),
+            healing_bonus_started_at: GameTime::from(std::f32::MAX),
+            hp_regen_bonus_started_at: GameTime::from(std::f32::MAX),
+            mana_regen_bonus_started_at: GameTime::from(std::f32::MAX),
         }
     }
 }
@@ -269,8 +269,8 @@ impl CharAttributeModifierCollector {
     pub fn change_attack_damage(
         &mut self,
         modifier: CharAttributeModifier,
-        started: LocalTime,
-        until: LocalTime,
+        started: GameTime<Local>,
+        until: GameTime<Local>,
     ) {
         CharAttributeModifierCollector::set_durations(
             started,
@@ -284,8 +284,8 @@ impl CharAttributeModifierCollector {
     pub fn change_attack_speed(
         &mut self,
         modifier: CharAttributeModifier,
-        started: LocalTime,
-        until: LocalTime,
+        started: GameTime<Local>,
+        until: GameTime<Local>,
     ) {
         CharAttributeModifierCollector::set_durations(
             started,
@@ -299,8 +299,8 @@ impl CharAttributeModifierCollector {
     pub fn change_armor(
         &mut self,
         modifier: CharAttributeModifier,
-        started: LocalTime,
-        until: LocalTime,
+        started: GameTime<Local>,
+        until: GameTime<Local>,
     ) {
         CharAttributeModifierCollector::set_durations(
             started,
@@ -312,10 +312,10 @@ impl CharAttributeModifierCollector {
     }
 
     fn set_durations(
-        new_started_at: LocalTime,
-        new_ends_at: LocalTime,
-        current_started_at: &mut LocalTime,
-        current_ends_at: &mut LocalTime,
+        new_started_at: GameTime<Local>,
+        new_ends_at: GameTime<Local>,
+        current_started_at: &mut GameTime<Local>,
+        current_ends_at: &mut GameTime<Local>,
     ) {
         if current_ends_at.has_not_passed_yet(new_ends_at) {
             *current_ends_at = new_ends_at;
@@ -326,8 +326,8 @@ impl CharAttributeModifierCollector {
     pub fn change_attack_range(
         &mut self,
         modifier: CharAttributeModifier,
-        started: LocalTime,
-        until: LocalTime,
+        started: GameTime<Local>,
+        until: GameTime<Local>,
     ) {
         CharAttributeModifierCollector::set_durations(
             started,
@@ -341,8 +341,8 @@ impl CharAttributeModifierCollector {
     pub fn change_walking_speed(
         &mut self,
         modifier: CharAttributeModifier,
-        started: LocalTime,
-        until: LocalTime,
+        started: GameTime<Local>,
+        until: GameTime<Local>,
     ) {
         CharAttributeModifierCollector::set_durations(
             started,

@@ -1,4 +1,4 @@
-use rustarok_common::common::SimulationTick;
+use rustarok_common::common::{Local, SimulationTick};
 use std::collections::HashMap;
 
 use nalgebra::Vector2;
@@ -17,9 +17,9 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::common::{rotate_vec2, v2, EngineTime, Vec2, Vec2i};
-use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent, Team};
+use rustarok_common::components::char::{EntityId, StaticCharDataComponent, Team};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 
@@ -95,14 +95,14 @@ impl SkillDef for FireWallSkill {
 }
 
 pub struct PushBackWallSkill {
-    caster_entity_id: LocalCharEntityId,
+    caster_entity_id: EntityId<Local>,
     collider_handle: DefaultColliderHandle,
     effect_ids: Vec<Entity>,
     extents: Vec2i,
     pos: Vec2,
     rot_angle_in_rad: f32,
-    die_at: LocalTime,
-    cannot_damage_until: HashMap<LocalCharEntityId, LocalTime>,
+    die_at: GameTime<Local>,
+    cannot_damage_until: HashMap<EntityId<Local>, GameTime<Local>>,
     team: Team,
     damage: u32,
     pushback_force: f32,
@@ -111,7 +111,7 @@ pub struct PushBackWallSkill {
 
 impl PushBackWallSkill {
     pub fn new(
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         team: Team,
         damage: u32,
         pushback_force: f32,
@@ -119,7 +119,7 @@ impl PushBackWallSkill {
         physics_world: &mut PhysicEngine,
         skill_center: &Vec2,
         rot_angle_in_rad: f32,
-        system_time: LocalTime,
+        system_time: GameTime<Local>,
         tick: SimulationTick,
         entities: &specs::Entities,
         updater: &mut LazyUpdate,
@@ -185,7 +185,7 @@ impl SkillManifestation for PushBackWallSkill {
         //                .iter()
         //                .filter(|(_key, coll)| coll.other_coll_handle == self_collider_handle);
         //            for (_key, coll) in my_collisions {
-        //                let collider: Option<( LocalCharEntityId, DefaultBodyHandle)> = params
+        //                let collider: Option<( EntityId<Local>, DefaultBodyHandle)> = params
         //                    .physics_world
         //                    .colliders
         //                    .get(coll.character_coll_handle)
@@ -247,7 +247,7 @@ impl SkillManifestation for PushBackWallSkill {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: LocalTime,
+        _now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,

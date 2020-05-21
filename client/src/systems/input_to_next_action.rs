@@ -8,11 +8,11 @@ use crate::cursor::{CursorFrame, CURSOR_CLICK, CURSOR_NORMAL, CURSOR_STOP, CURSO
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::input_sys::InputConsumerSystem;
 use crate::systems::{SystemFrameDurations, SystemVariables};
-use crate::LocalTime;
-use rustarok_common::common::EngineTime;
+use crate::GameTime;
 use rustarok_common::common::SimulationTick;
+use rustarok_common::common::{EngineTime, Local};
 use rustarok_common::components::char::{
-    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent, Team,
+    EntityId, LocalCharStateComp, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::PlayerIntention;
 use rustarok_common::systems::intention_applier::ControllerIntentionToCharTarget;
@@ -23,8 +23,8 @@ use strum::IntoEnumIterator;
 // Singleton
 pub struct InputToNextActionSystem {
     last_input_tick: SimulationTick,
-    prev_intention: Option<PlayerIntention>,
-    prev_prev_intention: Option<PlayerIntention>,
+    prev_intention: Option<PlayerIntention<Local>>,
+    prev_prev_intention: Option<PlayerIntention<Local>>,
 }
 
 impl InputToNextActionSystem {
@@ -42,7 +42,7 @@ impl InputToNextActionSystem {
         &mut self,
         input: &HumanInputComponent,
         static_char_data_storage: ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: ReadStorage<LocalCharStateComp>,
+        auth_char_state_storage: ReadStorage<LocalCharStateComp<Local>>,
         local_player: &mut LocalPlayerController,
         system_benchmark: &mut SystemFrameDurations,
         time: &EngineTime,
@@ -195,7 +195,7 @@ impl InputToNextActionSystem {
 pub struct ClientIntentionToCharTargetSystem;
 impl<'a> System<'a> for ClientIntentionToCharTargetSystem {
     type SystemData = (
-        WriteStorage<'a, LocalCharStateComp>,
+        WriteStorage<'a, LocalCharStateComp<Local>>,
         ReadExpect<'a, LocalPlayerController>,
     );
 
@@ -209,10 +209,10 @@ impl<'a> System<'a> for ClientIntentionToCharTargetSystem {
 
 impl InputToNextActionSystem {
     pub fn determine_cursor(
-        now: LocalTime,
+        now: GameTime<Local>,
         local_player: &LocalPlayerController,
-        controlled_entity: LocalCharEntityId,
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        controlled_entity: EntityId<Local>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
         static_char_data_storage: &ReadStorage<StaticCharDataComponent>,
         self_team: Team,
     ) -> (CursorFrame, [u8; 3]) {
@@ -258,13 +258,13 @@ impl InputToNextActionSystem {
 
 impl InputToNextActionSystem {
     fn determine_intention(
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
         input: &HumanInputComponent,
         local_player: &LocalPlayerController,
         just_pressed_skill_key: Option<SkillKey>,
         just_released_skill_key: Option<SkillKey>,
         alt_down: bool,
-    ) -> (Option<PlayerIntention>, Option<(SkillKey, Skills)>) {
+    ) -> (Option<PlayerIntention<Local>>, Option<(SkillKey, Skills)>) {
         return if let Some((casting_skill_key, skill)) = local_player.select_skill_target {
             if skill == Skills::AttackMove {
                 if input.left_mouse_pressed {

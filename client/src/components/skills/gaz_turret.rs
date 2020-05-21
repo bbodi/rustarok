@@ -8,9 +8,10 @@ use crate::components::skills::skills::{
 };
 use crate::runtime_assets::map::PhysicEngine;
 
+use rustarok_common::common::Local;
 use rustarok_common::components::char::{
-    create_common_player_entity, CharOutlook, CharType, CollisionGroup, ControllerEntityId, JobId,
-    LocalCharEntityId, LocalCharStateComp, MonsterId, StaticCharDataComponent,
+    create_common_player_entity, CharOutlook, CharType, CollisionGroup, ControllerEntityId,
+    EntityId, JobId, LocalCharStateComp, MonsterId, StaticCharDataComponent,
 };
 use rustarok_common::components::controller::ControllerComponent;
 use rustarok_common::config::CommonConfigs;
@@ -39,7 +40,7 @@ impl SkillDef for GazTurretSkill {
         };
         if let Some(caster_team) = caster_team {
             let turret_id = {
-                LocalCharEntityId::from(
+                EntityId::from(
                     create_common_player_entity(
                         "Turret".to_owned(),
                         ecs_world,
@@ -98,7 +99,7 @@ impl SkillDef for GazDestroyTurretSkill {
         {
             let target_entity = params.target_entity.unwrap();
             if let Some(turret) = ecs_world
-                .write_storage::<LocalCharStateComp>()
+                .write_storage::<LocalCharStateComp<Local>>()
                 .get_mut(target_entity.into())
             {
                 turret.hp = 0;

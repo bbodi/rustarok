@@ -7,9 +7,9 @@ use crate::components::status::status::{ApplyStatusComponent, StatusEnum};
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{SystemFrameDurations, SystemVariables};
 use nalgebra::{Isometry2, Vector2, Vector3};
-use rustarok_common::common::{v2, v2_to_v3, v3, v3_to_v2, EngineTime, LocalTime, Vec2};
+use rustarok_common::common::{v2, v2_to_v3, v3, v3_to_v2, EngineTime, GameTime, Local, Vec2};
 use rustarok_common::components::char::{
-    CharDir, ControllerEntityId, LocalCharEntityId, LocalCharStateComp,
+    CharDir, ControllerEntityId, EntityId, LocalCharStateComp,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
@@ -20,23 +20,23 @@ pub struct FalconAiSystem;
 pub enum FalconState {
     Follow,
     Attack {
-        started_at: LocalTime,
-        ends_at: LocalTime,
+        started_at: GameTime<Local>,
+        ends_at: GameTime<Local>,
         start_pos: Vector3<f32>,
         end_pos: Vector3<f32>,
     },
     CarryOwner {
         owner_controller_id: ControllerEntityId,
-        started_at: LocalTime,
-        ends_at: LocalTime,
+        started_at: GameTime<Local>,
+        ends_at: GameTime<Local>,
         target_is_caught: bool,
         start_pos: Vector3<f32>,
     },
     CarryAlly {
-        target_id: LocalCharEntityId,
+        target_id: EntityId<Local>,
         start_pos: Vector3<f32>,
-        started_at: LocalTime,
-        ends_at: LocalTime,
+        started_at: GameTime<Local>,
+        ends_at: GameTime<Local>,
         target_is_caught: bool,
         end_pos: Vec2,
     },
@@ -44,7 +44,7 @@ pub enum FalconState {
 
 #[derive(Component)]
 pub struct FalconComponent {
-    pub owner_entity_id: LocalCharEntityId,
+    pub owner_entity_id: EntityId<Local>,
     state: FalconState,
     pub pos: Vector3<f32>,
     acceleration: f32,
@@ -52,7 +52,7 @@ pub struct FalconComponent {
 }
 
 impl FalconComponent {
-    pub fn new(owner_entity_id: LocalCharEntityId, start_x: f32, start_y: f32) -> FalconComponent {
+    pub fn new(owner_entity_id: EntityId<Local>, start_x: f32, start_y: f32) -> FalconComponent {
         FalconComponent {
             owner_entity_id,
             state: FalconState::Follow,
@@ -70,7 +70,7 @@ impl FalconComponent {
         &mut self,
         owner_controller_id: ControllerEntityId,
         target_pos: &Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
@@ -91,9 +91,9 @@ impl FalconComponent {
 
     pub fn carry_ally(
         &mut self,
-        target_entity: LocalCharEntityId,
+        target_entity: EntityId<Local>,
         target_pos: &Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         duration: f32,
         falcon_sprite: &mut SpriteRenderDescriptorComponent,
     ) {
@@ -115,7 +115,7 @@ impl FalconComponent {
 
     pub fn set_state_to_attack(
         &mut self,
-        now: LocalTime,
+        now: GameTime<Local>,
         duration: f32,
         start_pos: Vec2,
         end_pos: Vec2,
@@ -147,7 +147,7 @@ impl<'a> System<'a> for FalconAiSystem {
         Entities<'a>,
         WriteStorage<'a, FalconComponent>,
         WriteStorage<'a, SpriteRenderDescriptorComponent>,
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadStorage<'a, ControllerComponent>,
         ReadExpect<'a, LocalPlayerController>,
         WriteExpect<'a, SystemFrameDurations>,

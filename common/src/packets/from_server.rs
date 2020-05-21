@@ -1,7 +1,7 @@
-use crate::common::{LocalTime, ServerTime, SimulationTick};
+use crate::attack::HpModificationResultType;
+use crate::common::{GameTime, Local, NetworkedObj, Remote, SimulationTick};
 use crate::components::char::{
-    CharDir, CharOutlook, CharType, JobId, LocalCharEntityId, LocalCharStateComp, ServerCharState,
-    ServerEntityId, Team,
+    CharDir, CharOutlook, CharType, EntityId, JobId, LocalCharStateComp, Team,
 };
 use crate::config::CommonConfigs;
 use crate::packets::to_server::{Packet, PacketReadErr};
@@ -16,15 +16,9 @@ use strum_macros::EnumCount;
 use strum_macros::EnumDiscriminants;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ServerEntityState {
-    pub id: ServerEntityId,
-    pub char_snapshot: ServerCharState,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ServerEntityStateLocal {
-    pub id: ServerEntityId,
-    pub char_snapshot: LocalCharStateComp,
+pub struct ServerEntityState<T: 'static + NetworkedObj> {
+    pub id: EntityId<Remote>,
+    pub char_snapshot: LocalCharStateComp<T>,
 }
 
 #[derive(Clone, Debug, EnumDiscriminants, EnumCount, Serialize, Deserialize)]
@@ -36,30 +30,34 @@ pub enum FromServerPacket {
     },
     Configs(CommonConfigs),
     Pong {
-        server_time: ServerTime,
+        server_time: GameTime<Remote>,
         server_tick: SimulationTick,
     },
     Ack {
         cid: u32,
-        entries: Vec<ServerEntityState>,
+        entries: Vec<ServerEntityState<Remote>>,
     },
     NewEntity {
-        id: ServerEntityId,
+        id: EntityId<Remote>,
         name: String,
         team: Team,
         typ: CharType,
         outlook: CharOutlook,
         job_id: JobId,
-        state: ServerCharState,
+        state: LocalCharStateComp<Remote>,
     },
-    PlayerDisconnected(ServerEntityId),
-    // EntityDisappeared {
-    //     id: ServerEntityId,
-    // },
-    // EntityAppeared {
-    //     id: ServerEntityId,
-    // },
-    // died?
+    PlayerDisconnected(EntityId<Remote>),
+    Damage {
+        src_id: EntityId<Remote>,
+        dst_id: EntityId<Remote>,
+        typ: HpModificationResultType,
+    }, // EntityDisappeared {
+       //     id: EntityId<Remote>,
+       // },
+       // EntityAppeared {
+       //     id: EntityId<Remote>,
+       // },
+       // died?
 }
 
 impl Packet for FromServerPacket {

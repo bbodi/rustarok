@@ -6,7 +6,7 @@ use nphysics2d::object::{
     BodyPartHandle, BodyStatus, ColliderDesc, DefaultBodyHandle, DefaultColliderHandle,
     RigidBodyDesc,
 };
-use rustarok_common::common::{v2, EngineTime, Mat4, Vec2};
+use rustarok_common::common::{v2, EngineTime, Local, Mat4, Remote, Vec2};
 use serde::Deserialize;
 use serde::Serialize;
 use specs::prelude::*;
@@ -22,21 +22,21 @@ use crate::render::render_command::RenderCommandCollector;
 use crate::runtime_assets::ecs::create_ecs_world;
 use crate::runtime_assets::map::PhysicEngine;
 use crate::systems::{Sprites, SystemVariables};
-use crate::LocalTime;
+use crate::GameTime;
 use rand::Rng;
 use rustarok_common::attack::{BasicAttackType, WeaponType};
 use rustarok_common::char_attr::{BonusDurations, CharAttributes, CharAttributesBonuses};
 use rustarok_common::components::char::{
     create_common_player_entity, CharDir, CharOutlook, CharState, CharType, CollisionGroup,
-    ControllerEntityId, EntityTarget, JobId, LocalCharEntityId, LocalCharStateComp, MonsterId,
-    ServerEntityId, Sex, StaticCharDataComponent, Team,
+    ControllerEntityId, EntityId, EntityTarget, JobId, LocalCharStateComp, MonsterId, Sex,
+    StaticCharDataComponent, Team,
 };
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::config::CommonConfigs;
 
 #[derive(Component, Debug)]
 pub struct HasServerIdComponent {
-    pub server_id: ServerEntityId,
+    pub server_id: EntityId<Remote>,
 }
 
 #[derive(Clone, Copy)]
@@ -186,13 +186,13 @@ pub fn create_client_entity(
     pos: Vec2,
     team: Team,
     outlook: CharOutlook,
-    server_id: ServerEntityId,
-) -> LocalCharEntityId {
+    server_id: EntityId<Remote>,
+) -> EntityId<Local> {
     let base_attrs =
         CharAttributes::get_base_attributes(job_id, &world.read_resource::<CommonConfigs>())
             .clone();
     let builder = create_common_player_entity(name, world, typ, job_id, pos, team, outlook.clone());
-    return LocalCharEntityId::from(
+    return EntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(HasServerIdComponent { server_id })
@@ -207,7 +207,7 @@ pub fn create_client_barricade_entity(
     world: &mut specs::World,
     pos: Vec2,
     team: Team,
-) -> LocalCharEntityId {
+) -> EntityId<Local> {
     let base_attrs = CharAttributes::get_base_attributes(
         JobId::Barricade,
         &world.read_resource::<CommonConfigs>(),
@@ -224,7 +224,7 @@ pub fn create_client_barricade_entity(
         CharOutlook::Monster(MonsterId::Barricade),
     );
 
-    return LocalCharEntityId::from(
+    return EntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -243,7 +243,7 @@ pub fn create_client_dummy_entity(
     world: &mut specs::World,
     job_id: JobId,
     pos: Vec2,
-) -> LocalCharEntityId {
+) -> EntityId<Local> {
     let outlook = if job_id == JobId::HealingDummy {
         CharOutlook::Monster(MonsterId::GEFFEN_MAGE_6)
     } else {
@@ -273,7 +273,7 @@ pub fn create_client_dummy_entity(
         outlook.clone(),
     );
 
-    return LocalCharEntityId::from(
+    return EntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -294,7 +294,7 @@ pub fn create_client_guard_entity(
     pos: Vec2,
     team: Team,
     y: f32,
-) -> LocalCharEntityId {
+) -> EntityId<Local> {
     let outlook = if team == Team::Left {
         CharOutlook::Monster(MonsterId::GEFFEN_MAGE_9) // blue
     } else {
@@ -313,7 +313,7 @@ pub fn create_client_guard_entity(
         outlook.clone(),
     );
 
-    return LocalCharEntityId::from(
+    return EntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(CharacterStateComponent::new(
@@ -333,7 +333,7 @@ pub fn create_client_minion_entity(
     world: &mut specs::World,
     pos: Vec2,
     team: Team,
-) -> LocalCharEntityId {
+) -> EntityId<Local> {
     let mut rng = rand::thread_rng();
     let sex = if rng.gen::<usize>() % 2 == 0 {
         Sex::Male
@@ -374,7 +374,7 @@ pub fn create_client_minion_entity(
         outlook.clone(),
     );
 
-    return LocalCharEntityId::from(
+    return EntityId::from(
         builder
             .with(SpriteRenderDescriptorComponent::new())
             .with(NpcComponent)
@@ -391,13 +391,13 @@ pub fn create_client_minion_entity(
 }
 
 pub struct CharacterEntityBuilder {
-    char_id: LocalCharEntityId,
+    char_id: EntityId<Local>,
     name: String,
     pub physics_handles: Option<(DefaultColliderHandle, DefaultBodyHandle)>,
 }
 
 impl CharacterEntityBuilder {
-    pub fn new(char_id: LocalCharEntityId, name: &str) -> CharacterEntityBuilder {
+    pub fn new(char_id: EntityId<Local>, name: &str) -> CharacterEntityBuilder {
         CharacterEntityBuilder {
             char_id,
             name: name.to_owned(),
@@ -419,9 +419,9 @@ pub struct ComponentRadius(pub i32);
 pub struct CastingSkillData {
     pub target_area_pos: Option<Vec2>,
     pub char_to_skill_dir_when_casted: Vec2,
-    pub target_entity: Option<LocalCharEntityId>,
-    pub cast_started: LocalTime,
-    pub cast_ends: LocalTime,
+    pub target_entity: Option<EntityId<Local>>,
+    pub cast_started: GameTime<Local>,
+    pub cast_ends: GameTime<Local>,
     pub can_move: bool,
     pub skill: Skills,
 }
@@ -435,7 +435,7 @@ unsafe impl Sync for ClientCharState {}
 
 unsafe impl Send for ClientCharState {}
 
-pub fn get_sprite_index(state: &CharState<LocalCharEntityId>, is_monster: bool) -> usize {
+pub fn get_sprite_index(state: &CharState<Local>, is_monster: bool) -> usize {
     // TODO2
     match (state, is_monster) {
         (CharState::Idle, false) => CharActionIndex::Idle as usize,
@@ -476,7 +476,7 @@ impl SpriteBoundingRect {
 pub fn get_sprite_and_action_index<'a>(
     outlook: &CharOutlook,
     sprites: &'a Sprites,
-    char_state: &CharState<LocalCharEntityId>,
+    char_state: &CharState<Local>,
 ) -> (&'a SpriteResource, usize) {
     return match outlook {
         CharOutlook::Human {
@@ -508,8 +508,8 @@ impl Component for TurretControllerComponent {
 
 #[derive(Component)]
 pub struct TurretComponent {
-    pub owner_entity_id: LocalCharEntityId,
-    pub preferred_target: Option<LocalCharEntityId>,
+    pub owner_entity_id: EntityId<Local>,
+    pub preferred_target: Option<EntityId<Local>>,
 }
 
 pub struct NpcComponent;
@@ -523,7 +523,7 @@ impl Component for NpcComponent {
 #[derive(Component)]
 pub struct CharacterStateComponent {
     y: f32,
-    prev_state: CharState<LocalCharEntityId>,
+    prev_state: CharState<Local>,
     // TODO: the whole Statuses struct needs for simulation but not for state representation. Extract the array from it for serialization
     pub statuses: Statuses,
     pub body_handle: DefaultBodyHandle,
@@ -595,7 +595,7 @@ impl CharacterStateComponent {
 
     pub fn update_statuses(
         &mut self,
-        self_char_id: LocalCharEntityId,
+        self_char_id: EntityId<Local>,
         sys_vars: &mut SystemVariables,
         time: &EngineTime,
         entities: &Entities,
@@ -639,19 +639,19 @@ impl CharacterStateComponent {
         self.y
     }
 
-    pub fn state_type_has_changed(&self, state: &CharState<LocalCharEntityId>) -> bool {
+    pub fn state_type_has_changed(&self, state: &CharState<Local>) -> bool {
         return !self.prev_state.discriminant_eq(state);
     }
 
-    pub fn save_prev_state(&mut self, state: &CharState<LocalCharEntityId>) {
+    pub fn save_prev_state(&mut self, state: &CharState<Local>) {
         self.prev_state = state.clone();
     }
 
-    pub fn prev_state(&self) -> &CharState<LocalCharEntityId> {
+    pub fn prev_state(&self) -> &CharState<Local> {
         &self.prev_state
     }
 
-    pub fn went_from_casting_to_idle(&self, current_state: &CharState<LocalCharEntityId>) -> bool {
+    pub fn went_from_casting_to_idle(&self, current_state: &CharState<Local>) -> bool {
         match current_state {
             CharState::Idle => match self.prev_state {
                 // TODO2
@@ -676,19 +676,19 @@ pub enum ActionPlayMode {
 pub struct SpriteRenderDescriptorComponent {
     pub action_index: usize,
     pub fps_multiplier: f32,
-    pub animation_started: LocalTime,
-    pub forced_duration: Option<LocalTime>,
+    pub animation_started: GameTime<Local>,
+    pub forced_duration: Option<GameTime<Local>>,
     pub direction: CharDir,
     /// duration of the current animation
-    pub animation_ends_at: LocalTime,
+    pub animation_ends_at: GameTime<Local>,
 }
 
 impl SpriteRenderDescriptorComponent {
     pub fn new() -> SpriteRenderDescriptorComponent {
         SpriteRenderDescriptorComponent {
             action_index: CharActionIndex::Idle as usize,
-            animation_started: LocalTime::from(0.0),
-            animation_ends_at: LocalTime::from(0.0),
+            animation_started: GameTime::from(0.0),
+            animation_ends_at: GameTime::from(0.0),
             forced_duration: None,
             direction: CharDir::South,
             fps_multiplier: 1.0,

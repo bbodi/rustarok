@@ -1,12 +1,12 @@
 use crate::attack::{BasicAttackType, WeaponType};
 use crate::char_attr::CharAttributes;
-use crate::common::{float_cmp, v2, LocalTime, ServerTime, Vec2};
+use crate::common::{float_cmp, v2, GameTime, Local, NetworkedObj, Remote, Vec2};
 use crate::components::controller::PlayerIntention;
 use crate::components::job_ids::JobSpriteId;
 use crate::config::CommonConfigs;
 use crate::packets::SocketBuffer;
 use serde::export::fmt::{Debug, Display, Error};
-use serde::export::Formatter;
+use serde::export::{Formatter, PhantomData};
 use serde::{Deserialize, Serialize};
 use specs::prelude::*;
 use std::collections::HashMap;
@@ -19,23 +19,15 @@ use strum_macros::EnumString;
 // TODO: now that I don'T have controller entity, this might be unnecessary
 // any entity that moves and visible on the map
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct LocalCharEntityId(u64);
+pub struct EntityId<T>(u64, PhantomData<T>);
 
-impl TargetId for LocalCharEntityId {
-    fn as_u64(&self) -> u64 {
+impl<T> EntityId<T> {
+    pub fn as_u64(&self) -> u64 {
         self.0
     }
 }
-impl TargetId for ServerEntityId {
-    fn as_u64(&self) -> u64 {
-        (self.0).0
-    }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ServerEntityId(LocalCharEntityId);
-
-impl Display for LocalCharEntityId {
+impl<T> Display for EntityId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -62,21 +54,21 @@ impl ControllerEntityId {
     }
 }
 
-impl LocalCharEntityId {
-    pub fn new(id: specs::Entity) -> LocalCharEntityId {
-        LocalCharEntityId(unsafe { std::mem::transmute(id) })
+impl EntityId<Local> {
+    pub fn new(id: specs::Entity) -> EntityId<Local> {
+        EntityId(unsafe { std::mem::transmute(id) }, PhantomData)
     }
 }
 
-impl Into<specs::Entity> for LocalCharEntityId {
+impl Into<specs::Entity> for EntityId<Local> {
     fn into(self) -> specs::Entity {
         unsafe { std::mem::transmute(self.0) }
     }
 }
 
-impl From<specs::Entity> for LocalCharEntityId {
+impl From<specs::Entity> for EntityId<Local> {
     fn from(entity: specs::Entity) -> Self {
-        LocalCharEntityId::new(entity)
+        EntityId::new(entity)
     }
 }
 
@@ -87,13 +79,14 @@ pub enum Sex {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum CharState<T: TargetId> {
+pub enum CharState<T: NetworkedObj> {
     Idle,
     Walking(Vec2),
     StandBy,
     Attacking {
-        target: T,
-        damage_occurs_at: LocalTime,
+        target: EntityId<T>,
+        // It should be ServerTime in case of Server Packet, but client ignores this field for snapshot comparison
+        damage_occurs_at: GameTime<T>,
         basic_attack: BasicAttackType,
     },
     ReceivingDamage,
@@ -101,7 +94,7 @@ pub enum CharState<T: TargetId> {
     //    CastingSkill(CastingSkillData),
 }
 
-impl<T: TargetId> Display for CharState<T> {
+impl<T: NetworkedObj> Display for CharState<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             CharState::Idle => write!(f, "Idle"),
@@ -112,20 +105,31 @@ impl<T: TargetId> Display for CharState<T> {
             CharState::Attacking {
                 target,
                 damage_occurs_at,
-                basic_attack,
-            } => write!(f, "Attacking({})", target.as_u64()),
+                basic_attack: _basic_attack,
+            } => write!(
+                f,
+                "Attacking(dst: {}, time: {:?})",
+                target.0, damage_occurs_at
+            ),
         }
     }
 }
 
-impl<T: TargetId> CharState<T> {
+impl<T: NetworkedObj> CharState<T> {
     pub fn discriminant_eq(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 
     pub fn is_walking(&self) -> bool {
         match self {
-            CharState::Walking(_pos) => true,
+            CharState::Walking(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_attacking(&self) -> bool {
+        match self {
+            CharState::Attacking { .. } => true,
             _ => false,
         }
     }
@@ -155,10 +159,6 @@ impl<T: TargetId> CharState<T> {
         }
     }
 }
-
-unsafe impl<T: TargetId> Sync for CharState<T> {}
-
-unsafe impl<T: TargetId> Send for CharState<T> {}
 
 // Sprites are loaded based on the enum names, so non-camelcase names must be allowed
 #[allow(non_camel_case_types)]
@@ -247,19 +247,15 @@ pub enum CharOutlook {
     },
 }
 
-pub trait TargetId: Clone + Copy + Debug + PartialEq + Eq + Hash + Serialize {
-    fn as_u64(&self) -> u64;
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityTarget<T: TargetId> {
-    OtherEntity(T),
+pub enum EntityTarget<T> {
+    OtherEntity(EntityId<T>),
     Pos(Vec2),
     // TODO: is not it pos OR target?
-    PosWhileAttacking(Vec2, Option<T>),
+    PosWhileAttacking(Vec2, Option<EntityId<T>>),
 }
 
-impl Display for EntityTarget<LocalCharEntityId> {
+impl<T> Display for EntityTarget<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             EntityTarget::Pos(pos) => write!(f, "Walking({:.2}, {:.2})", pos.x, pos.y),
@@ -269,7 +265,10 @@ impl Display for EntityTarget<LocalCharEntityId> {
                 "PosWhileAttacking(({:.2}, {:.2})|{})",
                 pos.x,
                 pos.y,
-                target.map(|it| it.to_string()).unwrap_or("None".to_owned())
+                target
+                    .as_ref()
+                    .map(|it| it.to_string())
+                    .unwrap_or("None".to_owned())
             ),
         }
     }
@@ -304,35 +303,21 @@ impl StaticCharDataComponent {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ServerCharState {
-    pub pos: Vec2,
-    pub dir: CharDir,
-    pub state: CharState<ServerEntityId>,
-    pub target: Option<EntityTarget<ServerEntityId>>,
-    pub calculated_attribs: CharAttributes,
-    pub attack_delay_ends_at: ServerTime,
-    // TODO [SkillKey::Count]
-    pub skill_cast_allowed_at: [ServerTime; 6],
-    pub cannot_control_until: ServerTime,
-    pub hp: i32,
-}
-
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
-pub struct LocalCharStateComp {
+pub struct LocalCharStateComp<T: 'static + NetworkedObj> {
     pos: Vec2,
     dir: CharDir,
-    state: CharState<LocalCharEntityId>,
-    pub target: Option<EntityTarget<LocalCharEntityId>>,
+    state: CharState<T>,
+    pub target: Option<EntityTarget<T>>,
     calculated_attribs: CharAttributes,
-    pub attack_delay_ends_at: LocalTime,
+    pub attack_delay_ends_at: GameTime<T>,
     // TODO [SkillKey::Count]
-    pub skill_cast_allowed_at: [LocalTime; 6],
-    pub cannot_control_until: LocalTime,
+    pub skill_cast_allowed_at: [GameTime<T>; 6],
+    pub cannot_control_until: GameTime<T>,
     pub hp: i32,
 }
 
-impl PartialEq for LocalCharStateComp {
+impl PartialEq for LocalCharStateComp<Local> {
     fn eq(&self, other: &Self) -> bool {
         let mut result =
             float_cmp(self.pos().x, other.pos().x) && float_cmp(self.pos().y, other.pos().y);
@@ -351,7 +336,7 @@ impl PartialEq for LocalCharStateComp {
     }
 }
 
-impl Default for LocalCharStateComp {
+impl Default for LocalCharStateComp<Local> {
     fn default() -> Self {
         LocalCharStateComp {
             pos: v2(0.0, 0.0),
@@ -359,40 +344,26 @@ impl Default for LocalCharStateComp {
             state: CharState::Idle,
             target: None,
             calculated_attribs: Default::default(),
-            attack_delay_ends_at: LocalTime::from(0.0),
-            skill_cast_allowed_at: [LocalTime::from(0.0); 6],
-            cannot_control_until: LocalTime::from(0.0),
+            attack_delay_ends_at: GameTime::from(0.0),
+            skill_cast_allowed_at: [GameTime::from(0.0); 6],
+            cannot_control_until: GameTime::from(0.0),
             hp: 0,
         }
     }
 }
 
-impl LocalCharStateComp {
-    pub fn new(start_pos: Vec2, base_attributes: CharAttributes) -> LocalCharStateComp {
-        LocalCharStateComp {
-            pos: start_pos,
-            state: CharState::Idle,
-            target: None,
-            dir: CharDir::South,
-            hp: base_attributes.max_hp,
-            calculated_attribs: base_attributes,
-            attack_delay_ends_at: LocalTime::from(0.0),
-            skill_cast_allowed_at: [LocalTime::from(0.0); 6],
-            cannot_control_until: LocalTime::from(0.0),
-        }
-    }
-
+impl LocalCharStateComp<Remote> {
     // it is here so that the client module does not have to have access to all the fields
     pub fn server_to_local(
-        server_char_state: ServerCharState,
-        now: LocalTime,
+        self,
+        now: GameTime<Local>,
         server_to_local_time_diff: i64,
-        map: &HashMap<ServerEntityId, LocalCharEntityId>,
-    ) -> LocalCharStateComp {
+        map: &HashMap<EntityId<Remote>, EntityId<Local>>,
+    ) -> LocalCharStateComp<Local> {
         LocalCharStateComp {
-            pos: server_char_state.pos,
-            dir: server_char_state.dir,
-            state: match server_char_state.state {
+            pos: self.pos,
+            dir: self.dir,
+            state: match self.state {
                 CharState::Idle => CharState::Idle,
                 CharState::Walking(pos) => CharState::Walking(pos),
                 CharState::StandBy => CharState::StandBy,
@@ -402,13 +373,14 @@ impl LocalCharStateComp {
                     basic_attack,
                 } => CharState::Attacking {
                     target: map[&target],
-                    damage_occurs_at,
+                    damage_occurs_at: damage_occurs_at
+                        .to_local_time(now, server_to_local_time_diff),
                     basic_attack,
                 },
                 CharState::ReceivingDamage => CharState::ReceivingDamage,
                 CharState::Dead => CharState::Dead,
             },
-            target: match server_char_state.target {
+            target: match self.target {
                 None => None,
                 Some(EntityTarget::Pos(v)) => Some(EntityTarget::Pos(v)),
                 Some(EntityTarget::PosWhileAttacking(v, maybe_target_id)) => Some(
@@ -418,32 +390,48 @@ impl LocalCharStateComp {
                     Some(EntityTarget::OtherEntity(map[&target_id]))
                 }
             },
-            calculated_attribs: server_char_state.calculated_attribs,
-            attack_delay_ends_at: server_char_state
+            calculated_attribs: self.calculated_attribs,
+            attack_delay_ends_at: self
                 .attack_delay_ends_at
                 .to_local_time(now, server_to_local_time_diff),
             skill_cast_allowed_at: [
-                server_char_state.skill_cast_allowed_at[0]
-                    .to_local_time(now, server_to_local_time_diff),
-                server_char_state.skill_cast_allowed_at[1]
-                    .to_local_time(now, server_to_local_time_diff),
-                server_char_state.skill_cast_allowed_at[2]
-                    .to_local_time(now, server_to_local_time_diff),
-                server_char_state.skill_cast_allowed_at[3]
-                    .to_local_time(now, server_to_local_time_diff),
-                server_char_state.skill_cast_allowed_at[4]
-                    .to_local_time(now, server_to_local_time_diff),
-                server_char_state.skill_cast_allowed_at[5]
-                    .to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[0].to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[1].to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[2].to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[3].to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[4].to_local_time(now, server_to_local_time_diff),
+                self.skill_cast_allowed_at[5].to_local_time(now, server_to_local_time_diff),
             ],
-            cannot_control_until: server_char_state
+            cannot_control_until: self
                 .cannot_control_until
                 .to_local_time(now, server_to_local_time_diff),
-            hp: server_char_state.hp,
+            hp: self.hp,
+        }
+    }
+}
+
+impl<T: NetworkedObj> LocalCharStateComp<T> {
+    pub fn pos(&self) -> Vec2 {
+        self.pos
+    }
+}
+
+impl LocalCharStateComp<Local> {
+    pub fn new(start_pos: Vec2, base_attributes: CharAttributes) -> LocalCharStateComp<Local> {
+        LocalCharStateComp {
+            pos: start_pos,
+            state: CharState::Idle,
+            target: None,
+            dir: CharDir::South,
+            hp: base_attributes.max_hp,
+            calculated_attribs: base_attributes,
+            attack_delay_ends_at: GameTime::from(0.0),
+            skill_cast_allowed_at: [GameTime::from(0.0); 6],
+            cannot_control_until: GameTime::from(0.0),
         }
     }
 
-    pub fn can_cast(&self, sys_time: LocalTime) -> bool {
+    pub fn can_cast(&self, sys_time: GameTime<Local>) -> bool {
         let can_cast_by_state = match &self.state {
             // TODO2
             //        CharState::CastingSkill(_) => false,
@@ -459,7 +447,7 @@ impl LocalCharStateComp {
         //        && char_state.statuses.can_cast()
     }
 
-    pub fn can_move(&self, sys_time: LocalTime) -> bool {
+    pub fn can_move(&self, sys_time: GameTime<Local>) -> bool {
         let can_move_by_state = match &self.state {
             // TODO2
             //        CharState::CastingSkill(casting_info) => casting_info.can_move,
@@ -491,10 +479,6 @@ impl LocalCharStateComp {
         &self.calculated_attribs
     }
 
-    pub fn pos(&self) -> Vec2 {
-        self.pos
-    }
-
     pub fn set_pos(&mut self, new_pos: Vec2) {
         self.pos = new_pos;
     }
@@ -511,19 +495,27 @@ impl LocalCharStateComp {
         self.dir
     }
 
-    pub fn set_state(&mut self, state: CharState<LocalCharEntityId>, dir: CharDir) {
-        //        match self.state {
-        //            CharState::Walking(..) => match state {
-        //                CharState::Idle => panic!("kurva anyád"),
-        //                _ => {}
-        //            },
-        //            _ => {}
-        //        }
+    pub fn set_state_dbg2(&mut self, state: CharState<Local>, dir: CharDir, reason: &str) {
+        log::trace!("state {} => {}, {}", self.state, state, reason);
         self.state = state;
         self.dir = dir;
     }
 
-    pub fn state(&self) -> &CharState<LocalCharEntityId> {
+    pub fn set_state_dbg(&mut self, state: CharState<Local>, reason: &str) {
+        log::trace!("state {} => {}, {}", self.state, state, reason);
+        self.state = state;
+    }
+
+    pub fn set_state(&mut self, state: CharState<Local>) {
+        self.state = state;
+    }
+
+    pub fn set_state_and_dir(&mut self, state: CharState<Local>, dir: CharDir) {
+        self.state = state;
+        self.dir = dir;
+    }
+
+    pub fn state(&self) -> &CharState<Local> {
         &self.state
     }
 

@@ -259,7 +259,7 @@ impl RemoteSocket {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SocketId(usize);
 
 impl SocketId {

@@ -6,7 +6,7 @@ use crate::render::render_command::RenderCommandCollector;
 
 use nalgebra::Vector2;
 use rustarok_common::common::{v2, Vec2};
-use rustarok_common::components::char::LocalCharEntityId;
+use rustarok_common::components::char::EntityId;
 use rustarok_common::config::CommonConfigs;
 use specs::prelude::*;
 use specs::LazyUpdate;
@@ -30,7 +30,7 @@ impl SkillDef for GazBarricadeSkill {
         // TODO2
         //        let entities = &ecs_world.entities();
         //        let updater = &ecs_world.read_resource::<LazyUpdate>();
-        //        let char_entity_id =  LocalCharEntityId::from(entities.create());
+        //        let char_entity_id =  EntityId::from(entities.create());
         //        updater.insert(char_entity_id.into(), NpcComponent);
         //        let tile_pos = {
         //            let pos = params.skill_pos.unwrap();

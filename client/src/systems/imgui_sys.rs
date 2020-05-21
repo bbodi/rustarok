@@ -3,10 +3,9 @@ use crate::components::controller::LocalPlayerController;
 use crate::strum::IntoEnumIterator;
 use crate::SIMULATION_FREQ;
 use imgui::*;
-use rustarok_common::common::{EngineTime, LocalTime};
-use rustarok_common::components::char::TargetId;
+use rustarok_common::common::{EngineTime, GameTime, Local};
 use rustarok_common::components::char::{
-    CharOutlook, CharState, CharType, JobId, LocalCharEntityId, LocalCharStateComp, MonsterId,
+    CharOutlook, CharState, CharType, EntityId, JobId, LocalCharStateComp, MonsterId,
     StaticCharDataComponent, Team,
 };
 use rustarok_common::components::job_ids::JobSpriteId;
@@ -19,7 +18,7 @@ pub struct ImguiSys;
 
 const PING_COUNT: usize = 16;
 pub struct ImguiData {
-    entity_under_cursor: Option<LocalCharEntityId>,
+    entity_under_cursor: Option<EntityId<Local>>,
     max_fps: usize,
     show_network_window: bool,
     show_entity_window: bool,
@@ -32,7 +31,7 @@ pub struct ImguiData {
     incoming_bytes_per_second: [f32; PING_COUNT],
     outgoing_bytes_per_second: [f32; PING_COUNT],
     simulation_duration: f32,
-    inspected_entities: Vec<LocalCharEntityId>,
+    inspected_entities: Vec<EntityId<Local>>,
 }
 
 impl ImguiData {
@@ -104,18 +103,18 @@ impl ImguiData {
         self.simulation_duration = 1000.0 / (ping as f32);
     }
 
-    pub fn inspect_entity(&mut self, entity: LocalCharEntityId) {
+    pub fn inspect_entity(&mut self, entity: EntityId<Local>) {
         if self.inspected_entities.contains(&entity) {
             return;
         }
         self.inspected_entities.push(entity);
     }
 
-    pub fn is_inspecting(&self, entity: LocalCharEntityId) -> bool {
+    pub fn is_inspecting(&self, entity: EntityId<Local>) -> bool {
         self.inspected_entities.contains(&entity)
     }
 
-    pub fn stop_inspecting_entity(&mut self, entity: LocalCharEntityId) {
+    pub fn stop_inspecting_entity(&mut self, entity: EntityId<Local>) {
         let index = self
             .inspected_entities
             .iter()
@@ -279,7 +278,7 @@ fn player_info(
     ecs_world: &specs::World,
     ui: &imgui::Ui,
 ) {
-    let char_state_storage = ecs_world.read_storage::<LocalCharStateComp>();
+    let char_state_storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
     let char_state = char_state_storage.get(entity_id).unwrap();
     let hp_frac = char_state.hp as f32 / char_state.calculated_attribs().max_hp as f32;
 
@@ -310,13 +309,13 @@ fn player_info(
         &im_str!(
             "{}###{}",
             static_data.name,
-            LocalCharEntityId::new(entity_id).as_u64()
+            EntityId::new(entity_id).as_u64()
         ),
         [0.0, 0.0],
     ) {
         ecs_world
             .write_resource::<ImguiData>()
-            .inspect_entity(LocalCharEntityId::new(entity_id));
+            .inspect_entity(EntityId::new(entity_id));
     }
     ui.same_line(150.0);
     imgui::ProgressBar::new(hp_frac)
@@ -385,7 +384,7 @@ fn draw_inspected_entity_windows(ecs_world: &mut specs::World, ui: &imgui::Ui) {
         let imgui_data = &mut ecs_world.read_resource::<ImguiData>();
         let mut static_char_data_storage =
             &mut ecs_world.write_storage::<StaticCharDataComponent>();
-        let mut char_state_storage = &mut ecs_world.write_storage::<LocalCharStateComp>();
+        let mut char_state_storage = &mut ecs_world.write_storage::<LocalCharStateComp<Local>>();
         let now = ecs_world.read_resource::<EngineTime>().now();
         let serer_id_storage = &ecs_world.read_storage::<HasServerIdComponent>();
         for inspected_entity_id in imgui_data.inspected_entities.iter() {
@@ -433,9 +432,9 @@ fn draw_inspected_entity_windows(ecs_world: &mut specs::World, ui: &imgui::Ui) {
 
 fn entity_state(
     ui: &imgui::Ui,
-    now: LocalTime,
-    inspected_entity_id: &LocalCharEntityId,
-    char_state_storage: &mut WriteStorage<LocalCharStateComp>,
+    now: GameTime<Local>,
+    inspected_entity_id: &EntityId<Local>,
+    char_state_storage: &mut WriteStorage<LocalCharStateComp<Local>>,
     second_column_x: f32,
 ) {
     let char_state = char_state_storage
@@ -528,7 +527,7 @@ fn entity_state(
 
 fn entity_outlook(
     ui: &imgui::Ui,
-    inspected_entity_id: &LocalCharEntityId,
+    inspected_entity_id: &EntityId<Local>,
     static_char_data_storage: &mut WriteStorage<StaticCharDataComponent>,
     second_column_x: f32,
 ) {

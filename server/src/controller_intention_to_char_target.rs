@@ -1,4 +1,5 @@
-use rustarok_common::components::char::{EntityTarget, LocalCharEntityId, LocalCharStateComp};
+use rustarok_common::common::Local;
+use rustarok_common::components::char::{EntityId, EntityTarget, LocalCharStateComp};
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use rustarok_common::systems::intention_applier::ControllerIntentionToCharTarget;
 use specs::Join;
@@ -7,7 +8,7 @@ pub struct ControllerIntentionToCharTargetSystem;
 
 impl<'a> specs::System<'a> for ControllerIntentionToCharTargetSystem {
     type SystemData = (
-        specs::WriteStorage<'a, LocalCharStateComp>,
+        specs::WriteStorage<'a, LocalCharStateComp<Local>>,
         specs::WriteStorage<'a, ControllerComponent>,
     );
 

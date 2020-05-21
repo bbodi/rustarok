@@ -1,4 +1,4 @@
-use rustarok_common::common::LocalTime;
+use rustarok_common::common::GameTime;
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]

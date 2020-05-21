@@ -30,16 +30,13 @@ use strum;
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::char_attr::CharAttributes;
 use rustarok_common::common::{
-    measure_time, v2, EngineTime, LocalTime, ServerTime, SimulationTick,
+    measure_time, v2, EngineTime, GameTime, Local, Remote, SimulationTick,
 };
 use rustarok_common::components::char::{
-    create_common_player_entity, CharOutlook, CharType, ControllerEntityId, EntityTarget, JobId,
-    LocalCharEntityId, LocalCharStateComp, ServerCharState, ServerEntityId, Sex,
-    StaticCharDataComponent, Team,
+    create_common_player_entity, CharOutlook, CharType, ControllerEntityId, EntityId, EntityTarget,
+    JobId, LocalCharStateComp, Sex, StaticCharDataComponent, Team,
 };
-use rustarok_common::components::controller::{
-    ControllerComponent, PlayerIntention, ToServerPlayerIntention,
-};
+use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use rustarok_common::components::job_ids::JobSpriteId;
 use rustarok_common::config::CommonConfigs;
 use rustarok_common::console::CommandArguments;
@@ -50,10 +47,12 @@ use rustarok_common::packets::to_server::ToServerPacket;
 use rustarok_common::packets::{NetworkTrafficEvent, PacketHandlerThread, SocketId};
 use rustarok_common::systems::char_state_sys::CharacterStateUpdateSystem;
 
+use crate::attack::AttackSystem;
 use crate::console_cmd::execute_console_cmd;
 use crate::controller_intention_to_char_target::ControllerIntentionToCharTargetSystem;
 use crate::server_config::{load_common_configs, ServerConfig};
 
+mod attack;
 mod components;
 mod console_cmd;
 mod controller_intention_to_char_target;
@@ -115,22 +114,24 @@ struct RemoteClient {
 }
 
 // only the server must implement it
-fn prepare_charsnapshot_for_sending(snapshot: LocalCharStateComp) -> ServerCharState {
+fn prepare_charsnapshot_for_sending(
+    snapshot: LocalCharStateComp<Local>,
+) -> LocalCharStateComp<Remote> {
     unsafe { std::mem::transmute(snapshot) }
 }
 
 // only the server must implement it
-fn prepare_entity_id_for_sending(id: LocalCharEntityId) -> ServerEntityId {
+fn prepare_entity_id_for_sending(id: EntityId<Local>) -> EntityId<Remote> {
     unsafe { std::mem::transmute(id) }
 }
 
 // only the server must implement it
-fn prepare_time_for_sending(time: LocalTime) -> ServerTime {
+fn prepare_time_for_sending(time: GameTime<Local>) -> GameTime<Remote> {
     unsafe { std::mem::transmute(time) }
 }
 
 // only the server must implement it
-fn client_id_to_server(id: ServerEntityId) -> LocalCharEntityId {
+fn client_id_to_server(id: EntityId<Remote>) -> EntityId<Local> {
     unsafe { std::mem::transmute(id) }
 }
 
@@ -156,9 +157,10 @@ type OutPacketCollector = Vec<(PacketTarget, FromServerPacket)>;
 
 pub enum PacketTarget {
     All,
+    AllExcept(SocketId),
     Client(SocketId),
     Team(Team),
-    Area,
+    Area(EntityId<Local>),
 }
 
 fn main() {
@@ -191,6 +193,7 @@ fn main() {
     let mut ecs_dispatcher = specs::DispatcherBuilder::new()
         .with(ControllerIntentionToCharTargetSystem, "char_control", &[])
         .with(CharacterStateUpdateSystem, "char_state", &["char_control"])
+        .with(AttackSystem, "atk_sys", &["char_state"])
         .build();
 
     let mut packet_handler_thread =
@@ -252,7 +255,7 @@ fn main() {
 
         run_frame(&mut ecs_world, &mut ecs_dispatcher);
 
-        send_snapshots(&packet_handler_thread, &mut remote_clients, &ecs_world);
+        send_snapshots(&mut remote_clients, &mut ecs_world);
 
         send_packets(&mut packet_handler_thread, &mut ecs_world, &remote_clients);
 
@@ -280,10 +283,19 @@ fn send_packets(
 
     for (target, packet) in to_client.drain(..) {
         match target {
-            PacketTarget::All => {
+            PacketTarget::All | PacketTarget::Area(_) => {
                 for remote_client in remote_clients.iter() {
                     if let Some(remote_client) = remote_client {
                         packet_handler_thread.send(remote_client.socket_id, packet.clone());
+                    }
+                }
+            }
+            PacketTarget::AllExcept(except_id) => {
+                for remote_client in remote_clients.iter() {
+                    if let Some(remote_client) = remote_client {
+                        if remote_client.socket_id != except_id {
+                            packet_handler_thread.send(remote_client.socket_id, packet.clone());
+                        }
                     }
                 }
             }
@@ -291,9 +303,6 @@ fn send_packets(
                 packet_handler_thread.send(client_socket, packet);
             }
             PacketTarget::Team(team) => {
-                // TODO
-            }
-            PacketTarget::Area => {
                 // TODO
             }
         }
@@ -330,12 +339,7 @@ fn accept_new_connections(
     }
 }
 
-fn send_snapshots(
-    packet_handler_thread: &PacketHandlerThread<ToServerPacket, FromServerPacket>,
-    remote_clients: &mut Vec<Option<RemoteClient>>,
-    ecs_world: &specs::World,
-) {
-    let now = ecs_world.read_resource::<EngineTime>().now();
+fn send_snapshots(remote_clients: &mut Vec<Option<RemoteClient>>, ecs_world: &mut specs::World) {
     for remote_client in remote_clients.iter_mut() {
         let remote_client = if let Some(remote_client) = remote_client {
             remote_client
@@ -343,30 +347,46 @@ fn send_snapshots(
             continue;
         };
         if let Some(controller_id) = remote_client.controller_id {
-            let controller_storage = ecs_world.read_storage::<ControllerComponent>();
-            let controller = controller_storage.get(controller_id.into()).unwrap();
-            if let Some(controlled_entity) = controller.controlled_entity {
-                let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp>();
-                let char_state = auth_char_storage.get(controlled_entity.into()).unwrap();
+            let controlled_entity = {
+                let controller_storage = ecs_world.read_storage::<ControllerComponent>();
+                controller_storage
+                    .get(controller_id.into())
+                    .unwrap()
+                    .controlled_entity
+            };
+            if let Some(controlled_entity) = controlled_entity {
+                let char_state = {
+                    let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
+                    auth_char_storage
+                        .get(controlled_entity.into())
+                        .unwrap()
+                        .clone()
+                };
 
                 let mut entries = vec![ServerEntityState {
                     id: prepare_entity_id_for_sending(controlled_entity),
-                    char_snapshot: prepare_charsnapshot_for_sending(char_state.clone()),
+                    char_snapshot: prepare_charsnapshot_for_sending(char_state),
                 }];
-                for (other_char_id, other_char_state) in
-                    (&ecs_world.entities(), &auth_char_storage).join()
                 {
-                    let other_char_id = LocalCharEntityId::from(other_char_id);
-                    if other_char_id == controlled_entity.into() {
-                        continue;
+                    let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp<Local>>();
+                    for (other_char_id, other_char_state) in
+                        (&ecs_world.entities(), &auth_char_storage).join()
+                    {
+                        let other_char_id = EntityId::from(other_char_id);
+                        if other_char_id == controlled_entity.into() {
+                            continue;
+                        }
+                        entries.push(ServerEntityState {
+                            id: prepare_entity_id_for_sending(other_char_id),
+                            char_snapshot: prepare_charsnapshot_for_sending(
+                                other_char_state.clone(),
+                            ),
+                        })
                     }
-                    entries.push(ServerEntityState {
-                        id: prepare_entity_id_for_sending(other_char_id),
-                        char_snapshot: prepare_charsnapshot_for_sending(other_char_state.clone()),
-                    })
                 }
-                packet_handler_thread.send(
-                    remote_client.socket_id,
+                send_packet(
+                    &mut ecs_world.write_resource(),
+                    PacketTarget::Client(remote_client.socket_id),
                     FromServerPacket::Ack {
                         cid: remote_client.last_command_id,
                         entries,
@@ -396,21 +416,11 @@ fn process_incoming_packets(
             NetworkTrafficEvent::OutgoingTraffic { sent_data_len } => {}
             NetworkTrafficEvent::Disconnected => {
                 log::debug!("Client({:?}) has been disconnected", client_socket);
-                disconnect_client(
-                    remote_clients,
-                    client_socket,
-                    ecs_world,
-                    packet_handler_thread,
-                );
+                disconnect_client(remote_clients, client_socket, ecs_world);
             }
             NetworkTrafficEvent::LocalError(e) => {
                 log::error!("Client({:?}) has been disconnected: {:?}", client_socket, e);
-                disconnect_client(
-                    remote_clients,
-                    client_socket,
-                    ecs_world,
-                    packet_handler_thread,
-                );
+                disconnect_client(remote_clients, client_socket, ecs_world);
             }
             NetworkTrafficEvent::Packet(p) => {
                 match p {
@@ -419,8 +429,9 @@ fn process_incoming_packets(
                         let remote_client =
                             remote_clients[client_socket.as_usize()].as_mut().unwrap();
                         remote_client.name = name;
-                        packet_handler_thread.send(
-                            client_socket,
+                        send_packet(
+                            &mut ecs_world.write_resource(),
+                            PacketTarget::Client(client_socket),
                             FromServerPacket::Init {
                                 //    let map_name = "bat_a01"; // battle ground
                                 map_name: "prontera".to_string(),
@@ -429,14 +440,17 @@ fn process_incoming_packets(
                             },
                         );
                         let configs = (*ecs_world.read_resource::<CommonConfigs>()).clone();
-                        packet_handler_thread
-                            .send(client_socket, FromServerPacket::Configs(configs));
+                        send_packet(
+                            &mut ecs_world.write_resource(),
+                            PacketTarget::Client(client_socket),
+                            FromServerPacket::Configs(configs),
+                        );
                     }
                     ToServerPacket::Ping => {
                         packet_handler_thread.send(
                             client_socket,
                             FromServerPacket::Pong {
-                                server_time: ServerTime(
+                                server_time: GameTime::from(
                                     ecs_world.read_resource::<EngineTime>().now().as_millis(),
                                 ),
                                 server_tick: *ecs_world.read_resource::<SimulationTick>(),
@@ -451,7 +465,7 @@ fn process_incoming_packets(
                                 format!("{} {}", next_player_team.to_str(), remote_client.name);
                             log::info!("{} is ready to play", remote_client.name);
 
-                            let char_id = LocalCharEntityId::from(
+                            let char_id = EntityId::from(
                                 create_common_player_entity(
                                     remote_client.name.clone(),
                                     ecs_world,
@@ -475,14 +489,19 @@ fn process_incoming_packets(
                             remote_client.controller_id =
                                 Some(ControllerEntityId::new(network_player_id));
 
-                            let auth_char_storage = ecs_world.read_storage::<LocalCharStateComp>();
-                            let char_state = auth_char_storage.get(char_id.into()).unwrap();
+                            let char_state = {
+                                let auth_char_storage =
+                                    ecs_world.read_storage::<LocalCharStateComp<Local>>();
+                                auth_char_storage.get(char_id.into()).unwrap().clone()
+                            };
                             let static_data_storage =
                                 ecs_world.read_storage::<StaticCharDataComponent>();
                             let static_char_state =
                                 static_data_storage.get(char_id.into()).unwrap();
-                            packet_handler_thread.send(
-                                remote_client.socket_id,
+
+                            send_packet(
+                                &mut ecs_world.write_resource(),
+                                PacketTarget::Client(remote_client.socket_id),
                                 FromServerPacket::NewEntity {
                                     id: prepare_entity_id_for_sending(char_id),
                                     name: static_char_state.name.clone(),
@@ -496,6 +515,8 @@ fn process_incoming_packets(
 
                             // send her the player list
                             {
+                                let auth_char_storage =
+                                    ecs_world.read_storage::<LocalCharStateComp<Local>>();
                                 for (other_char_id, other_char_state, other_static_data) in (
                                     &ecs_world.entities(),
                                     &auth_char_storage,
@@ -503,12 +524,13 @@ fn process_incoming_packets(
                                 )
                                     .join()
                                 {
-                                    let other_char_id = LocalCharEntityId::new(other_char_id);
+                                    let other_char_id = EntityId::new(other_char_id);
                                     if other_char_id == char_id {
                                         continue;
                                     }
-                                    packet_handler_thread.send(
-                                        remote_client.socket_id,
+                                    send_packet(
+                                        &mut ecs_world.write_resource(),
+                                        PacketTarget::Client(remote_client.socket_id),
                                         FromServerPacket::NewEntity {
                                             id: prepare_entity_id_for_sending(other_char_id),
                                             name: other_static_data.name.to_owned(),
@@ -528,34 +550,30 @@ fn process_incoming_packets(
                         };
 
                         // inform others about this player
-                        let (packet, connecting_client_controller_id) = {
+                        let packet = {
                             let static_data_storage =
                                 ecs_world.read_storage::<StaticCharDataComponent>();
                             let static_data =
                                 static_data_storage.get(connecting_char_id.into()).unwrap();
                             let remote_client =
                                 remote_clients[client_socket.as_usize()].as_mut().unwrap();
-                            (
-                                FromServerPacket::NewEntity {
-                                    id: prepare_entity_id_for_sending(connecting_char_id),
-                                    name: remote_client.name.clone(),
-                                    team: static_data.team,
-                                    typ: static_data.typ.clone(),
-                                    outlook: static_data.outlook.clone(),
-                                    job_id: static_data.job_id,
-                                    state: prepare_charsnapshot_for_sending(
-                                        connecting_char_snapshot.clone(),
-                                    ),
-                                },
-                                remote_client.controller_id.unwrap(),
-                            )
+                            FromServerPacket::NewEntity {
+                                id: prepare_entity_id_for_sending(connecting_char_id),
+                                name: remote_client.name.clone(),
+                                team: static_data.team,
+                                typ: static_data.typ.clone(),
+                                outlook: static_data.outlook.clone(),
+                                job_id: static_data.job_id,
+                                state: prepare_charsnapshot_for_sending(
+                                    connecting_char_snapshot.clone(),
+                                ),
+                            }
                         };
 
-                        send_to_all_except(
-                            connecting_client_controller_id,
-                            &packet,
-                            remote_clients,
-                            packet_handler_thread,
+                        send_packet(
+                            &mut ecs_world.write_resource(),
+                            PacketTarget::AllExcept(client_socket),
+                            packet,
                         );
                     }
                     ToServerPacket::Intention {
@@ -571,14 +589,14 @@ fn process_incoming_packets(
                             let controller: &mut ControllerComponent =
                                 controller_storage.get_mut(controller_id.into()).unwrap();
                             controller.intention = Some(match intention {
-                                ToServerPlayerIntention::MoveTo(v) => PlayerIntention::MoveTo(v),
-                                ToServerPlayerIntention::MoveTowardsMouse(v) => {
+                                PlayerIntention::MoveTo(v) => PlayerIntention::MoveTo(v),
+                                PlayerIntention::MoveTowardsMouse(v) => {
                                     PlayerIntention::MoveTowardsMouse(v)
                                 }
-                                ToServerPlayerIntention::AttackTowards(v) => {
+                                PlayerIntention::AttackTowards(v) => {
                                     PlayerIntention::AttackTowards(v)
                                 }
-                                ToServerPlayerIntention::Attack(id) => {
+                                PlayerIntention::Attack(id) => {
                                     PlayerIntention::Attack(client_id_to_server(id))
                                 }
                             });
@@ -604,42 +622,18 @@ fn process_incoming_packets(
     }
 }
 
-fn send_to_all(
-    packet: &FromServerPacket,
-    remote_clients: &[Option<RemoteClient>],
-    packet_handler_thread: &PacketHandlerThread<ToServerPacket, FromServerPacket>,
+pub fn send_packet(
+    packet_collector: &mut OutPacketCollector,
+    target: PacketTarget,
+    packet: FromServerPacket,
 ) {
-    for other_remote_client in remote_clients.iter() {
-        if let Some(other_client) = other_remote_client {
-            if let Some(other_id) = other_client.controller_id {
-                packet_handler_thread.send(other_client.socket_id, packet.clone());
-            }
-        }
-    }
-}
-
-fn send_to_all_except(
-    except_id: ControllerEntityId,
-    packet: &FromServerPacket,
-    remote_clients: &[Option<RemoteClient>],
-    packet_handler_thread: &PacketHandlerThread<ToServerPacket, FromServerPacket>,
-) {
-    for other_remote_client in remote_clients.iter() {
-        if let Some(other_client) = other_remote_client {
-            if let Some(other_id) = other_client.controller_id {
-                if other_id != except_id {
-                    packet_handler_thread.send(other_client.socket_id, packet.clone());
-                }
-            }
-        }
-    }
+    packet_collector.push((target, packet));
 }
 
 fn disconnect_client(
     remote_clients: &mut [Option<RemoteClient>],
     socket_id: SocketId,
     ecs_world: &mut specs::World,
-    packet_handler_thread: &PacketHandlerThread<ToServerPacket, FromServerPacket>,
 ) {
     let controller_id = remote_clients[socket_id.as_usize()]
         .as_ref()
@@ -656,13 +650,13 @@ fn disconnect_client(
             .controlled_entity;
         if let Some(controlled_entity) = controlled_entity {
             ecs_world.delete_entity(controlled_entity.into());
-            send_to_all(
-                &FromServerPacket::PlayerDisconnected(prepare_entity_id_for_sending(
+            send_packet(
+                &mut ecs_world.write_resource(),
+                PacketTarget::All,
+                FromServerPacket::PlayerDisconnected(prepare_entity_id_for_sending(
                     controlled_entity,
                 )),
-                remote_clients,
-                packet_handler_thread,
-            )
+            );
         }
         ecs_world.delete_entity(controller_id.into());
     }
@@ -670,7 +664,7 @@ fn disconnect_client(
 
 pub fn create_ecs_world() -> specs::World {
     let mut ecs_world = specs::World::new();
-    ecs_world.register::<LocalCharStateComp>();
+    ecs_world.register::<LocalCharStateComp<Local>>();
     ecs_world.register::<ControllerComponent>();
     ecs_world.register::<StaticCharDataComponent>();
     ecs_world

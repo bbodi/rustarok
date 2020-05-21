@@ -1,6 +1,6 @@
 use crate::char_attr::CharAttributes;
-use crate::common::{v2, EngineTime, LocalTime, Percentage, Vec2};
-use crate::components::char::LocalCharEntityId;
+use crate::common::{v2, EngineTime, GameTime, Local, Percentage, Vec2};
+use crate::components::char::EntityId;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -25,7 +25,7 @@ pub enum BasicAttackType {
     },
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub enum DamageDisplayType {
     SingleNumber,
     Combo(u8),
@@ -35,10 +35,10 @@ impl BasicAttackType {
     pub fn finish_attack(
         &self,
         calculated_attribs: &CharAttributes,
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         caster_pos: Vec2,
         target_pos: Vec2,
-        target_entity_id: LocalCharEntityId,
+        target_entity_id: EntityId<Local>,
         hp_mod_requests: &mut Vec<HpModificationRequest>,
         time: &EngineTime,
     ) -> Option<Box<u32>> {
@@ -90,7 +90,7 @@ impl BasicAttackType {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum HpModificationType {
     BasicDamage(u32, DamageDisplayType, WeaponType),
     SpellDamage(u32, DamageDisplayType),
@@ -100,8 +100,8 @@ pub enum HpModificationType {
 
 #[derive(Debug)]
 pub struct HpModificationRequest {
-    pub src_entity: LocalCharEntityId,
-    pub dst_entity: LocalCharEntityId,
+    pub src_entity: EntityId<Local>,
+    pub dst_entity: EntityId<Local>,
     pub typ: HpModificationType,
 }
 
@@ -134,8 +134,8 @@ impl HpModificationRequest {
 
 #[derive(Debug)]
 pub struct HpModificationResult {
-    pub src_entity: LocalCharEntityId,
-    pub dst_entity: LocalCharEntityId,
+    pub src_entity: EntityId<Local>,
+    pub dst_entity: EntityId<Local>,
     pub typ: HpModificationResultType,
 }
 
@@ -149,7 +149,7 @@ impl HpModificationResult {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum HpModificationResultType {
     Ok(HpModificationType),
     Blocked,
@@ -161,15 +161,15 @@ pub struct AreaAttackComponent {
     // TODO2
     //    pub area_shape: Box<dyn ncollide2d::shape::Shape<f32>>,
     //    pub area_isom: Isometry2<f32>,
-    pub source_entity_id: LocalCharEntityId,
+    pub source_entity_id: EntityId<Local>,
     pub typ: HpModificationType,
-    pub except: Option<LocalCharEntityId>,
+    pub except: Option<EntityId<Local>>,
 }
 
 #[derive(Debug)]
 pub struct ApplyForceComponent {
-    pub src_entity: LocalCharEntityId,
-    pub dst_entity: LocalCharEntityId,
+    pub src_entity: EntityId<Local>,
+    pub dst_entity: EntityId<Local>,
     pub force: Vec2,
     pub duration: f32,
 }
@@ -178,10 +178,10 @@ struct BasicRangeAttackBullet {
     start_pos: Vec2,
     target_pos: Vec2,
     current_pos: Vec2,
-    caster_id: LocalCharEntityId,
-    target_id: LocalCharEntityId,
-    started_at: LocalTime,
-    ends_at: LocalTime,
+    caster_id: EntityId<Local>,
+    target_id: EntityId<Local>,
+    started_at: GameTime<Local>,
+    ends_at: GameTime<Local>,
     weapon_type: WeaponType,
     started_tick: u64,
 }
@@ -189,10 +189,10 @@ struct BasicRangeAttackBullet {
 impl BasicRangeAttackBullet {
     fn new(
         start_pos: Vec2,
-        caster_id: LocalCharEntityId,
-        target_id: LocalCharEntityId,
+        caster_id: EntityId<Local>,
+        target_id: EntityId<Local>,
         target_pos: Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         bullet_type: WeaponType,
         now_tick: u64,
     ) -> BasicRangeAttackBullet {

@@ -3,8 +3,8 @@ use crate::components::controller::{
 };
 use crate::runtime_assets::map::MapRenderData;
 use crate::systems::SystemVariables;
-use rustarok_common::common::EngineTime;
-use rustarok_common::components::char::{LocalCharEntityId, LocalCharStateComp};
+use rustarok_common::common::{EngineTime, Local};
+use rustarok_common::components::char::{EntityId, LocalCharStateComp};
 use sdl2::keyboard::Scancode;
 use specs::prelude::*;
 
@@ -13,7 +13,7 @@ pub struct CameraSystem;
 
 impl<'a> System<'a> for CameraSystem {
     type SystemData = (
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadExpect<'a, LocalPlayerController>,
         ReadExpect<'a, HumanInputComponent>,
         WriteExpect<'a, CameraComponent>,

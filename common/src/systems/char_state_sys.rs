@@ -1,10 +1,9 @@
 use specs::prelude::*;
 
 use crate::attack::HpModificationRequest;
-use crate::common::{v2_to_p2, EngineTime, LocalTime, Vec2};
+use crate::common::{v2_to_p2, EngineTime, GameTime, Local, Vec2};
 use crate::components::char::{
-    CharDir, CharState, EntityTarget, LocalCharEntityId, LocalCharStateComp, ServerEntityId,
-    StaticCharDataComponent, Team,
+    CharDir, CharState, EntityId, EntityTarget, LocalCharStateComp, StaticCharDataComponent, Team,
 };
 use std::collections::HashMap;
 
@@ -14,7 +13,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
     type SystemData = (
         Entities<'a>,
         //        ReadStorage<'a, NpcComponent>,
-        WriteStorage<'a, LocalCharStateComp>,
+        WriteStorage<'a, LocalCharStateComp<Local>>,
         ReadStorage<'a, StaticCharDataComponent>,
         ReadExpect<'a, EngineTime>,
         WriteExpect<'a, Vec<HpModificationRequest>>,
@@ -38,7 +37,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         // I can't get the position of the target entity inside the loop because
         // char_state storage is borrowed as mutable already
         let all_char_data = {
-            let mut char_positions = HashMap::<LocalCharEntityId, (Vec2, Team)>::new();
+            let mut char_positions = HashMap::<EntityId<Local>, (Vec2, Team)>::new();
             for (char_entity_id, auth_state, static_state) in
                 (&entities, &char_state_storage, &static_state_storage).join()
             {
@@ -46,7 +45,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                 //                if char_comp.state().is_dead() {
                 //                    continue;
                 //                }
-                let char_entity_id = LocalCharEntityId::new(char_entity_id);
+                let char_entity_id = EntityId::new(char_entity_id);
                 // the third arg is char_comp.team, move team field from charstate first
                 char_positions.insert(char_entity_id, (auth_state.pos(), static_state.team));
             }
@@ -56,7 +55,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
         for (char_entity_id, auth_state, static_state) in
             (&entities, &mut char_state_storage, &static_state_storage).join()
         {
-            let char_entity_id = LocalCharEntityId::new(char_entity_id);
+            let char_entity_id = EntityId::new(char_entity_id);
             // pakold külön componensbe ugy a dolgokat, hogy innen be tudjam álltiani a
             // target et None-ra ha az halott, meg a fenti position hack se kelllejn
             // TODO2
@@ -136,7 +135,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                     basic_attack,
                 } => {
                     if damage_occurs_at.has_already_passed(now) {
-                        auth_state.set_state(CharState::Idle, auth_state.dir());
+                        auth_state.set_state_dbg(CharState::Idle, "attack finished");
                         if let Some(target_pos) = all_char_data.get(&target) {
                             if let Some(manifestation) = basic_attack.finish_attack(
                                 auth_state.calculated_attribs(),
@@ -159,6 +158,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                             }
                         } else {
                             // target might have died
+                            // TODO: change state to idle?
                         }
                     }
                 }
@@ -223,7 +223,7 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
                     }
                 } else {
                     // no target and no receiving damage, casting or attacking
-                    auth_state.set_state(CharState::Idle, auth_state.dir());
+                    auth_state.set_state(CharState::Idle);
                 }
             }
         }
@@ -248,12 +248,12 @@ impl<'a> System<'a> for CharacterStateUpdateSystem {
 
 impl CharacterStateUpdateSystem {
     pub fn get_closest_enemy_in_area(
-        char_positions: &HashMap<LocalCharEntityId, (Vec2, Team)>,
+        char_positions: &HashMap<EntityId<Local>, (Vec2, Team)>,
         center: &Vec2,
         radius: f32,
         self_team: Team,
-        except: LocalCharEntityId,
-    ) -> Option<LocalCharEntityId> {
+        except: EntityId<Local>,
+    ) -> Option<EntityId<Local>> {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
@@ -274,11 +274,11 @@ impl CharacterStateUpdateSystem {
     }
 
     fn act_based_on_target(
-        now: LocalTime,
-        char_positions: &HashMap<LocalCharEntityId, (Vec2, Team)>,
-        auth_state: &mut LocalCharStateComp,
+        now: GameTime<Local>,
+        char_positions: &HashMap<EntityId<Local>, (Vec2, Team)>,
+        auth_state: &mut LocalCharStateComp<Local>,
         static_state: &StaticCharDataComponent,
-        target: &EntityTarget<LocalCharEntityId>,
+        target: &EntityTarget<Local>,
     ) {
         let char_pos = auth_state.pos();
         match target {
@@ -300,24 +300,24 @@ impl CharacterStateUpdateSystem {
                                 target: *target_entity,
                                 basic_attack: static_state.basic_attack_type,
                             };
-                            auth_state.set_state(
+                            auth_state.set_state_dbg2(
                                 new_state,
                                 CharDir::determine_dir(target_pos, &char_pos),
+                                "has target and close enough",
                             );
-                            let attack_anim_duration = LocalTime::from(attack_anim_duration);
+                            let attack_anim_duration = GameTime::from(attack_anim_duration);
                             auth_state.attack_delay_ends_at = now.add(attack_anim_duration);
-                        } else {
-                            auth_state.set_state(CharState::Idle, auth_state.dir());
                         }
                     } else {
                         //                     move closer
-                        auth_state.set_state(
+                        auth_state.set_state_dbg2(
                             CharState::Walking(*target_pos),
                             CharDir::determine_dir(target_pos, &char_pos),
+                            "move closer",
                         );
                     }
                 } else {
-                    auth_state.set_state(CharState::Idle, auth_state.dir());
+                    auth_state.set_state_dbg(CharState::Idle, "has target but it does not exist");
                     auth_state.target = None;
                 }
             }
@@ -331,7 +331,7 @@ impl CharacterStateUpdateSystem {
                         target
                     );
                     // stop
-                    auth_state.set_state(CharState::Idle, auth_state.dir());
+                    auth_state.set_state_dbg(CharState::Idle, "target pos has reached");
                     auth_state.target = None;
                 } else {
                     log::trace!(
@@ -340,9 +340,10 @@ impl CharacterStateUpdateSystem {
                         target
                     );
                     // move closer
-                    auth_state.set_state(
+                    auth_state.set_state_dbg2(
                         CharState::Walking(*target_pos),
                         CharDir::determine_dir(target_pos, &char_pos),
+                        "move closer to target pos",
                     );
                 }
             }

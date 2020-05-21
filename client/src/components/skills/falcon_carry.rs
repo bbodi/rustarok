@@ -7,7 +7,7 @@ use crate::components::status::status::{StatusUpdateParams, StatusUpdateResult};
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::falcon_ai_sys::FalconComponent;
 use crate::systems::{AssetResources, SystemVariables};
-use rustarok_common::common::{EngineTime, LocalTime, Vec2};
+use rustarok_common::common::{EngineTime, GameTime, Local, Vec2};
 use specs::prelude::*;
 
 pub struct FalconCarrySkill;
@@ -88,8 +88,8 @@ impl SkillDef for FalconCarrySkill {
 
 #[derive(Clone, Debug)]
 pub struct FalconCarryStatus {
-    pub started_at: LocalTime,
-    pub ends_at: LocalTime,
+    pub started_at: GameTime<Local>,
+    pub ends_at: GameTime<Local>,
     pub carry_owner: bool,
     pub end_pos: Vec2,
 }
@@ -125,7 +125,10 @@ impl FalconCarryStatus {
         }
     }
 
-    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
+    pub fn get_status_completion_percent(
+        &self,
+        now: GameTime<Local>,
+    ) -> Option<(GameTime<Local>, f32)> {
         if self.carry_owner {
             Some((
                 self.ends_at,

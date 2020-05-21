@@ -11,7 +11,7 @@ use crate::effect::StrEffectType;
 use crate::systems::SystemVariables;
 use rustarok_common::attack::BasicAttackType;
 use rustarok_common::char_attr::{CharAttributeModifier, CharAttributeModifierCollector};
-use rustarok_common::common::{EngineTime, LocalTime, Percentage};
+use rustarok_common::common::{EngineTime, GameTime, Local, Percentage};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 use specs::{Entities, LazyUpdate};
@@ -62,8 +62,8 @@ impl SkillDef for ExoSkeletonSkill {
 
 #[derive(Clone, Debug)]
 pub struct ExoSkeletonStatus {
-    started: LocalTime,
-    pub until: LocalTime,
+    started: GameTime<Local>,
+    pub until: GameTime<Local>,
     armor: Percentage,
     attack_range: Percentage,
     movement_speed: Percentage,
@@ -73,7 +73,7 @@ pub struct ExoSkeletonStatus {
 
 impl ExoSkeletonStatus {
     fn new(
-        now: LocalTime,
+        now: GameTime<Local>,
         duration: f32,
         armor: Percentage,
         attack_range: Percentage,
@@ -99,7 +99,7 @@ impl ExoSkeletonStatus {
         target_char: &mut CharacterStateComponent,
         entities: &Entities,
         updater: &mut LazyUpdate,
-        now: LocalTime,
+        now: GameTime<Local>,
     ) {
         // TODO2
         //        target_char.basic_attack_type = BasicAttackType::Ranged {
@@ -154,7 +154,10 @@ impl ExoSkeletonStatus {
         }
     }
 
-    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
+    pub fn get_status_completion_percent(
+        &self,
+        now: GameTime<Local>,
+    ) -> Option<(GameTime<Local>, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

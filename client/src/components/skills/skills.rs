@@ -19,7 +19,7 @@ use crate::components::skills::lightning::LIGHTNING_SKILL;
 use crate::components::skills::mounting::MOUNTING_SKILL;
 use crate::components::skills::poison::POISON_SKILL;
 use crate::components::skills::wiz_pyroblast::WIZ_PYRO_BLAST_SKILL;
-use rustarok_common::common::{v2_to_v3, EngineTime, Vec2};
+use rustarok_common::common::{v2_to_v3, EngineTime, Local, Vec2};
 
 use crate::audio::sound_sys::AudioCommandCollectorComponent;
 use crate::components::skills::assa_blade_dash::ASSA_BLADE_DASH_SKILL;
@@ -38,10 +38,10 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::{AssetResources, Collision, SystemVariables};
-use crate::{LocalTime, PhysicEngine};
+use crate::{GameTime, PhysicEngine};
 use rustarok_common::attack::{ApplyForceComponent, AreaAttackComponent, HpModificationRequest};
 use rustarok_common::components::char::{
-    LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent, Team,
+    EntityId, LocalCharStateComp, StaticCharDataComponent, Team,
 };
 use rustarok_common::config::{CommonConfigs, SkillCastingAttributes};
 
@@ -57,7 +57,7 @@ pub struct SkillManifestationUpdateParam<'a, 'longer> {
     engine_time: &'longer EngineTime,
     entities: &'a Entities<'a>,
     pub static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
-    pub auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp>,
+    pub auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp<Local>>,
     pub physics_world: &'longer mut PhysicEngine,
     updater: &'longer mut LazyUpdate,
 }
@@ -73,7 +73,7 @@ impl<'a, 'longer> SkillManifestationUpdateParam<'a, 'longer> {
         engine_time: &'longer EngineTime,
         entities: &'a Entities,
         static_char_data_storage: &'longer ReadStorage<'a, StaticCharDataComponent>,
-        auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp>,
+        auth_state_storage: &'longer mut WriteStorage<'a, LocalCharStateComp<Local>>,
         physics_world: &'longer mut PhysicEngine,
         updater: &'longer mut LazyUpdate,
     ) -> SkillManifestationUpdateParam<'a, 'longer> {
@@ -149,7 +149,7 @@ pub trait SkillManifestation {
     fn render(
         &self,
         char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_command_collector: &mut AudioCommandCollectorComponent,
@@ -182,7 +182,7 @@ impl SkillManifestationComponent {
     pub fn render(
         &self,
         char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         audio_commands: &mut AudioCommandCollectorComponent,
@@ -204,12 +204,12 @@ unsafe impl Send for SkillManifestationComponent {}
 
 pub struct FinishCast {
     pub skill: Skills,
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub caster_pos: Vec2,
     pub caster_team: Team,
     pub skill_pos: Option<Vec2>,
     pub char_to_skill_dir: Vec2,
-    pub target_entity: Option<LocalCharEntityId>,
+    pub target_entity: Option<EntityId<Local>>,
 }
 
 pub trait SkillDef {
@@ -229,7 +229,7 @@ pub trait SkillDef {
         time: &EngineTime,
         dev_configs: &CommonConfigs,
         render_commands: &mut RenderCommandCollector,
-        char_storage: &ReadStorage<LocalCharStateComp>,
+        char_storage: &ReadStorage<LocalCharStateComp<Local>>,
     ) {
         RenderDesktopClientSystem::render_str(
             StrEffectType::Moonstar,
@@ -376,8 +376,8 @@ impl Skills {
             Skills::GazTurretTarget => &configs.skills.gaz_destroy_turret,
             // TODO
             //            Skills::GazTurretTarget => &SkillCastingAttributes {
-            //                casting_time: LocalTime::from(0.0),
-            //                cast_delay: LocalTime::from(0.0),
+            //                casting_time: GameTime::from(0.0),
+            //                cast_delay: GameTime::from(0.0),
             //                casting_range: 999_999_999.0,
             //                width: None,
             //            },
@@ -388,8 +388,8 @@ impl Skills {
             Skills::AttackMove => &configs.skills.gaz_destroy_turret,
             // TODO
             //            Skills::AttackMove => &SkillCastingAttributes {
-            //                casting_time: LocalTime::from(0.0),
-            //                cast_delay: LocalTime::from(0.0),
+            //                casting_time: GameTime::from(0.0),
+            //                cast_delay: GameTime::from(0.0),
             //                casting_range: 200_000_000.0,
             //                width: None,
             //            },
@@ -437,8 +437,8 @@ impl Skills {
     pub fn is_casting_allowed_based_on_target(
         skill_target_type: SkillTargetType,
         skill_casting_range: f32,
-        caster_id: LocalCharEntityId,
-        target_entity: Option<LocalCharEntityId>,
+        caster_id: EntityId<Local>,
+        target_entity: Option<EntityId<Local>>,
         target_distance: f32,
     ) -> bool {
         match skill_target_type {

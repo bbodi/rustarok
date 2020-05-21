@@ -3,6 +3,8 @@ use nalgebra::{Matrix3, Matrix4, Point2, Point3, Rotation3, Vector2, Vector3};
 use serde::Deserialize;
 use serde::Serialize;
 
+use serde::export::fmt::Error;
+use serde::export::{Formatter, PhantomData};
 use std::time::{Duration, Instant};
 
 pub type Mat3 = Matrix3<f32>;
@@ -42,10 +44,31 @@ impl SimulationTick {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Local;
+
+impl NetworkedObj for Local {}
+
+impl std::fmt::Display for Local {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Result::Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Remote;
+
+impl NetworkedObj for Remote {}
+impl std::fmt::Display for Remote {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Result::Ok(())
+    }
+}
+
 // TODO: does this struct make any sense?
 #[derive(Clone)]
 pub struct EngineTime {
-    pub time: LocalTime,
+    pub time: GameTime<Local>,
     /// seconds the previous frame required
     // TODO: #[cfg(test)]
     pub fix_dt_for_test: Duration,
@@ -55,7 +78,7 @@ impl EngineTime {
     pub fn new(time: u32) -> EngineTime {
         EngineTime {
             fix_dt_for_test: Duration::from_millis(1),
-            time: LocalTime::from(time),
+            time: GameTime::from(time),
         }
     }
 
@@ -63,7 +86,7 @@ impl EngineTime {
     pub fn new_for_tests(fix_dt_for_test: Duration) -> EngineTime {
         EngineTime {
             fix_dt_for_test,
-            time: LocalTime::from(0.0),
+            time: GameTime::from(0.0),
         }
     }
 
@@ -83,7 +106,7 @@ impl EngineTime {
     }
 
     #[inline]
-    pub fn now(&self) -> LocalTime {
+    pub fn now(&self) -> GameTime<Local> {
         self.time
     }
 }
@@ -154,11 +177,12 @@ pub fn rotate_vec2(rad: f32, vec: &Vec2) -> Vec2 {
     return p3_to_v2(&rotated);
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
-pub struct ServerTime(pub u32);
-
-impl ServerTime {
-    pub fn to_local_time(&self, now: LocalTime, server_to_local_time_diff: i64) -> LocalTime {
+impl GameTime<Remote> {
+    pub fn to_local_time(
+        &self,
+        now: GameTime<Local>,
+        server_to_local_time_diff: i64,
+    ) -> GameTime<Local> {
         let local_time = (self.0 as i64 + server_to_local_time_diff).max(0);
         #[cfg(debug_assertions)]
         {
@@ -169,70 +193,91 @@ impl ServerTime {
                 ));
             }
         }
-        return LocalTime::from(local_time as u32);
+        return GameTime::from(local_time as u32);
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
+pub trait NetworkedObj:
+    Eq + PartialEq + Ord + PartialOrd + std::fmt::Debug + std::fmt::Display + Copy + Clone
+{
+}
+
+#[derive(Copy, Clone, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(from = "f32")]
-pub struct LocalTime(u32);
+pub struct GameTime<T: NetworkedObj>(u32, PhantomData<T>);
 
-impl From<f32> for LocalTime {
+impl<T: NetworkedObj> std::fmt::Debug for GameTime<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Time({})", self.0)
+    }
+}
+
+impl<T: NetworkedObj> From<f32> for GameTime<T> {
     fn from(value: f32) -> Self {
-        LocalTime((value * 1000f32) as u32)
+        GameTime((value * 1000f32) as u32, PhantomData)
     }
 }
 
-impl From<u32> for LocalTime {
+impl<T: NetworkedObj> From<u32> for GameTime<T> {
     fn from(value: u32) -> Self {
-        LocalTime(value)
+        GameTime(value, PhantomData)
     }
 }
 
-impl LocalTime {
-    pub fn add_millis(&self, millis: u32) -> LocalTime {
-        LocalTime(self.0 + millis)
+impl<T: NetworkedObj> GameTime<T> {
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+}
+
+impl GameTime<Local> {
+    pub fn add_millis(&self, millis: u32) -> GameTime<Local> {
+        GameTime::from(self.0 + millis)
     }
 
-    pub fn add_seconds(&self, seconds: f32) -> LocalTime {
-        LocalTime(self.0 + (seconds * 1000f32) as u32)
+    pub fn add_seconds(&self, seconds: f32) -> GameTime<Local> {
+        GameTime::from(self.0 + (seconds * 1000f32) as u32)
     }
 
-    pub fn minus(&self, other: LocalTime) -> LocalTime {
-        LocalTime(self.0 - other.0)
+    pub fn minus(&self, other: GameTime<Local>) -> GameTime<Local> {
+        GameTime::from(self.0 - other.0)
     }
 
-    pub fn percentage_between(&self, from: LocalTime, to: LocalTime) -> f32 {
+    pub fn percentage_between(&self, from: GameTime<Local>, to: GameTime<Local>) -> f32 {
         let current = self.0 - from.0;
         let range = to.0 - from.0;
         return current as f32 / range as f32;
     }
 
-    pub fn add(&self, other: LocalTime) -> LocalTime {
-        LocalTime(self.0 + other.0)
+    pub fn add(&self, other: GameTime<Local>) -> GameTime<Local> {
+        GameTime::from(self.0 + other.0)
     }
 
-    pub fn sub(&self, other: LocalTime) -> LocalTime {
-        LocalTime(self.0 - other.0)
+    pub fn sub(&self, other: GameTime<Local>) -> GameTime<Local> {
+        GameTime::from(self.0 - other.0)
     }
 
-    pub fn elapsed_since(&self, other: LocalTime) -> LocalTime {
-        LocalTime(self.0 - other.0)
+    pub fn elapsed_since(&self, other: GameTime<Local>) -> GameTime<Local> {
+        GameTime::from(self.0 - other.0)
     }
 
     pub fn div(&self, other: u32) -> u32 {
         self.0 / other
     }
 
-    pub fn run_at_least_until(&mut self, system_time: LocalTime, millis: u32) {
+    pub fn run_at_least_until(&mut self, system_time: GameTime<Local>, millis: u32) {
         self.0 = self.0.max(system_time.0 + millis);
     }
 
-    pub fn has_already_passed(&self, system_time: LocalTime) -> bool {
+    pub fn has_already_passed(&self, system_time: GameTime<Local>) -> bool {
         self.0 <= system_time.0
     }
 
-    pub fn has_not_passed_yet(&self, other: LocalTime) -> bool {
+    - csak a local kliensnél van rollback, ha más lát, nála nincs
+    - ha mást látok támadnim, az animáció nem fut le végig
+    - localban viszont lassabb mint kellene sztem
+
+    pub fn has_not_passed_yet(&self, other: GameTime<Local>) -> bool {
         self.0 > other.0
     }
 
@@ -246,10 +291,20 @@ impl LocalTime {
 }
 
 // able to represent numbers in 0.1% discrete steps
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(from = "i32", into = "i32")]
 pub struct Percentage {
     value: i32,
+}
+
+impl std::fmt::Debug for Percentage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:.2}%",
+            self.value as f32 / Percentage::PERCENTAGE_FACTOR as f32
+        )
+    }
 }
 
 impl From<i32> for Percentage {

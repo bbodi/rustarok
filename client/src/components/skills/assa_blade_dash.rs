@@ -15,9 +15,9 @@ use crate::systems::{AssetResources, SystemVariables};
 use rustarok_common::attack::{
     AreaAttackComponent, DamageDisplayType, HpModificationType, WeaponType,
 };
-use rustarok_common::common::{v2, v2_to_v3, EngineTime, LocalTime, Vec2};
+use rustarok_common::common::{v2, v2_to_v3, EngineTime, GameTime, Local, Vec2};
 use rustarok_common::components::char::{
-    CharDir, CharOutlook, LocalCharEntityId, LocalCharStateComp, StaticCharDataComponent,
+    CharDir, CharOutlook, EntityId, LocalCharStateComp, StaticCharDataComponent,
 };
 use rustarok_common::config::{AssaBladeDashSkillConfig, CommonConfigs};
 use specs::world::WorldExt;
@@ -37,7 +37,7 @@ impl SkillDef for AssaBladeDashSkill {
         ecs_world: &mut specs::world::World,
     ) -> Option<Box<dyn SkillManifestation>> {
         if let Some(caster) = ecs_world
-            .write_storage::<LocalCharStateComp>()
+            .write_storage::<LocalCharStateComp<Local>>()
             .get_mut(params.caster_entity_id.into())
         {
             let angle = params.char_to_skill_dir.angle(&Vector2::y());
@@ -87,9 +87,9 @@ impl SkillDef for AssaBladeDashSkill {
 
 #[derive(Clone, Debug)]
 pub struct AssaBladeDashStatus {
-    pub caster_entity_id: LocalCharEntityId,
-    pub started_at: LocalTime,
-    pub ends_at: LocalTime,
+    pub caster_entity_id: EntityId<Local>,
+    pub started_at: GameTime<Local>,
+    pub ends_at: GameTime<Local>,
     pub start_pos: Vec2,
     pub center: Vec2,
     pub rot_radian: f32,
@@ -183,8 +183,8 @@ impl AssaBladeDashStatus {
     pub fn render(
         &self,
         static_data: &StaticCharDataComponent,
-        auth_state: &LocalCharStateComp,
-        now: LocalTime,
+        auth_state: &LocalCharStateComp<Local>,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -212,8 +212,8 @@ impl AssaBladeDashStatus {
                         SpriteRenderDescriptorComponent {
                             action_index: CharActionIndex::Attacking1 as usize,
                             animation_started: self.started_at.add_millis(*time_offset),
-                            animation_ends_at: LocalTime::from(0.0),
-                            forced_duration: Some(LocalTime::from(self.half_duration)),
+                            animation_ends_at: GameTime::from(0.0),
+                            forced_duration: Some(GameTime::from(self.half_duration)),
                             direction: auth_state.dir(),
                             fps_multiplier: 1.0,
                         }
@@ -223,8 +223,8 @@ impl AssaBladeDashStatus {
                             animation_started: self
                                 .started_at
                                 .add_millis(self.half_duration + *time_offset),
-                            animation_ends_at: LocalTime::from(0.0),
-                            forced_duration: Some(LocalTime::from(self.half_duration)),
+                            animation_ends_at: GameTime::from(0.0),
+                            forced_duration: Some(GameTime::from(self.half_duration)),
                             direction: CharDir::from((auth_state.dir().as_usize() + 4) % 8),
                             fps_multiplier: 1.0,
                         }

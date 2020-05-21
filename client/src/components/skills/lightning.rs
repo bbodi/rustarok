@@ -11,10 +11,10 @@ use crate::components::StrEffectComponent;
 use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::systems::{AssetResources, SystemVariables};
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::attack::{AreaAttackComponent, DamageDisplayType, HpModificationType};
-use rustarok_common::common::{EngineTime, Vec2};
-use rustarok_common::components::char::{LocalCharEntityId, StaticCharDataComponent};
+use rustarok_common::common::{EngineTime, Local, Vec2};
+use rustarok_common::components::char::{EntityId, StaticCharDataComponent};
 use rustarok_common::config::CommonConfigs;
 use specs::world::WorldExt;
 
@@ -68,23 +68,23 @@ impl SkillDef for LightningSkill {
 }
 
 pub struct LightningManifest {
-    pub caster_entity_id: LocalCharEntityId,
+    pub caster_entity_id: EntityId<Local>,
     pub effect_id: Entity,
     pub pos: Vec2,
     pub dir_vector: Vec2,
-    pub created_at: LocalTime,
-    pub next_action_at: LocalTime,
-    pub next_damage_at: LocalTime,
+    pub created_at: GameTime<Local>,
+    pub next_action_at: GameTime<Local>,
+    pub next_damage_at: GameTime<Local>,
     pub last_skill_pos: Vec2,
     pub action_count: u8,
 }
 
 impl LightningManifest {
     pub fn new(
-        caster_entity_id: LocalCharEntityId,
+        caster_entity_id: EntityId<Local>,
         skill_center: &Vec2,
         dir_vector: &Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         entities: &specs::Entities,
     ) -> LightningManifest {
         LightningManifest {
@@ -192,7 +192,7 @@ impl SkillManifestation for LightningManifest {
     fn render(
         &self,
         _char_entity_storage: &ReadStorage<StaticCharDataComponent>,
-        _now: LocalTime,
+        _now: GameTime<Local>,
         _assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
         _audio_commands: &mut AudioCommandCollectorComponent,

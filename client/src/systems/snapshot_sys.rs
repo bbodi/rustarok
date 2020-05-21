@@ -1,37 +1,35 @@
 use specs::prelude::*;
 
-use rustarok_common::common::{float_cmp, EngineTime, LocalTime, ServerTime, SimulationTick};
-use rustarok_common::components::char::{
-    CharState, LocalCharEntityId, LocalCharStateComp, ServerEntityId,
-};
+use rustarok_common::common::{float_cmp, EngineTime, GameTime, Local, Remote, SimulationTick};
+use rustarok_common::components::char::{CharState, EntityId, LocalCharStateComp};
 use rustarok_common::components::controller::PlayerIntention;
-use rustarok_common::packets::from_server::ServerEntityStateLocal;
 
 use crate::components::char::HasServerIdComponent;
+use rustarok_common::packets::from_server::ServerEntityState;
 use std::collections::HashMap;
 
 struct CharSnapshots {
-    server_id: ServerEntityId,
-    snapshots: [LocalCharStateComp; SnapshotStorage::SNAPSHOT_COUNT],
+    server_id: EntityId<Remote>,
+    snapshots: [LocalCharStateComp<Local>; SnapshotStorage::SNAPSHOT_COUNT],
 }
 
 impl CharSnapshots {
-    fn get_snapshot(&self, tick: u64) -> &LocalCharStateComp {
+    fn get_snapshot(&self, tick: u64) -> &LocalCharStateComp<Local> {
         return &self.snapshots[index(tick)];
     }
 
-    fn get_mut_snapshot(&mut self, tick: u64) -> &mut LocalCharStateComp {
+    fn get_mut_snapshot(&mut self, tick: u64) -> &mut LocalCharStateComp<Local> {
         return &mut self.snapshots[index(tick)];
     }
 
-    fn add(&mut self, tail: u64, char_snapshot: LocalCharStateComp) {
+    fn add(&mut self, tail: u64, char_snapshot: LocalCharStateComp<Local>) {
         *self.get_mut_snapshot(tail) = char_snapshot;
     }
 
     pub fn print_snapshots(
         &self,
         last_acknowledged_index: u64,
-        intentions: &[(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT],
+        intentions: &[(u32, Option<PlayerIntention<Local>>); SnapshotStorage::SNAPSHOT_COUNT],
         from: i32,
         to: usize,
     ) {
@@ -52,7 +50,7 @@ impl CharSnapshots {
                 cid,
                 snapshot.pos().x,
                 snapshot.pos().y,
-                snapshot.state().name(),
+                snapshot.state(),
             );
             if last_acknowledged_index == it {
                 line.insert_str(0, "X - ");
@@ -74,7 +72,7 @@ pub struct SnapshotStorage {
     last_rollback_at: SimulationTick,
     // last_predicted_index + 1
     snapshots_for_each_char: Vec<CharSnapshots>,
-    intentions: [(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT],
+    intentions: [(u32, Option<PlayerIntention<Local>>); SnapshotStorage::SNAPSHOT_COUNT],
 }
 
 pub enum ServerAckResult {
@@ -83,7 +81,7 @@ pub enum ServerAckResult {
     },
     RemoteEntityCorrection,
     ServerIsAheadOfClient {
-        server_state_updates: Vec<ServerEntityStateLocal>,
+        server_state_updates: Vec<ServerEntityState<Local>>,
     },
     Ok,
 }
@@ -107,7 +105,8 @@ impl SnapshotStorage {
             last_acknowledged_index_for_server_entities: 0,
             tail: 1,
             intentions: unsafe {
-                let mut arr: [(u32, Option<PlayerIntention>); SnapshotStorage::SNAPSHOT_COUNT] =
+                let mut arr: [(u32, Option<PlayerIntention<Local>>);
+                    SnapshotStorage::SNAPSHOT_COUNT] =
                     std::mem::MaybeUninit::zeroed().assume_init();
                 for item in &mut arr[..] {
                     std::ptr::write(item, (0, None));
@@ -120,11 +119,11 @@ impl SnapshotStorage {
 
     pub fn add_predicting_entity(
         &mut self,
-        server_id: ServerEntityId,
-        initial_state: LocalCharStateComp,
+        server_id: EntityId<Remote>,
+        initial_state: LocalCharStateComp<Local>,
     ) {
         let arr = unsafe {
-            let mut arr: [LocalCharStateComp; SnapshotStorage::SNAPSHOT_COUNT] =
+            let mut arr: [LocalCharStateComp<Local>; SnapshotStorage::SNAPSHOT_COUNT] =
                 std::mem::MaybeUninit::zeroed().assume_init();
             for item in &mut arr[..] {
                 std::ptr::write(item, initial_state.clone());
@@ -154,12 +153,12 @@ impl SnapshotStorage {
         );
     }
 
-    pub fn set_predicted_state(&mut self, index: usize, state: &LocalCharStateComp) {
+    pub fn set_predicted_state(&mut self, index: usize, state: &LocalCharStateComp<Local>) {
         let char_snapshots = &mut self.snapshots_for_each_char[index];
         char_snapshots.add(self.tail, state.clone());
     }
 
-    pub fn get_acked_state_for(&self, index: usize) -> &LocalCharStateComp {
+    pub fn get_acked_state_for(&self, index: usize) -> &LocalCharStateComp<Local> {
         let char_snapshots = &self.snapshots_for_each_char[index];
         return &char_snapshots.get_snapshot(self.last_acknowledged_index);
     }
@@ -168,16 +167,16 @@ impl SnapshotStorage {
         self.last_rollback_at
     }
 
-    fn set_state(&mut self, index: usize, tick: u64, state: &LocalCharStateComp) {
+    fn set_state(&mut self, index: usize, tick: u64, state: &LocalCharStateComp<Local>) {
         let char_snapshots = &mut self.snapshots_for_each_char[index];
         char_snapshots.add(tick, state.clone());
     }
 
-    pub fn add_intention(&mut self, intention: (u32, Option<PlayerIntention>)) {
+    pub fn add_intention(&mut self, intention: (u32, Option<PlayerIntention<Local>>)) {
         self.intentions[index(self.tail)] = intention;
     }
 
-    pub fn pop_intention(&mut self) -> (u32, Option<PlayerIntention>) {
+    pub fn pop_intention(&mut self) -> (u32, Option<PlayerIntention<Local>>) {
         // it is called before GameSnapshots::add would be called, so tail
         // points to tick where the intention was originally made
         self.intentions[index(self.tail)].clone()
@@ -199,7 +198,7 @@ impl SnapshotStorage {
         self.last_acknowledged_index_for_server_entities
     }
 
-    pub fn init(&mut self, id: ServerEntityId, char_snapshot: &LocalCharStateComp) {
+    pub fn init(&mut self, id: EntityId<Remote>, char_snapshot: &LocalCharStateComp<Local>) {
         self.last_acknowledged_index = 0;
         self.tail = 1;
         // HACK: so initial Ack packets can compare with something...
@@ -218,7 +217,7 @@ impl SnapshotStorage {
         &mut self,
         client_tick: SimulationTick,
         acked_cid: u32,
-        snapshots_from_server: Vec<ServerEntityStateLocal>,
+        snapshots_from_server: Vec<ServerEntityState<Local>>,
     ) -> ServerAckResult {
         // it assumes that
         // - the server sends the deltas in increasing order
@@ -339,7 +338,7 @@ impl SnapshotStorage {
         client_tick: SimulationTick,
         acked_cid: u32,
         predicted_snapshots: &CharSnapshots,
-        snapshot_from_server: &LocalCharStateComp,
+        snapshot_from_server: &LocalCharStateComp<Local>,
     ) -> (bool, u64) {
         let predicted_snapshot = predicted_snapshots.get_snapshot(self.last_acknowledged_index + 1);
         let cid_at_prediction = self.intentions[index(self.last_acknowledged_index + 1)].0;
@@ -396,7 +395,7 @@ impl SnapshotStorage {
     fn ack_arrived_for_server_entities(
         &self,
         predictions: &[CharSnapshots],
-        snapshots_from_server: &[ServerEntityStateLocal],
+        snapshots_from_server: &[ServerEntityState<Local>],
     ) -> bool {
         for server_state_index in 0..snapshots_from_server.len() {
             let snapshot_from_server = &snapshots_from_server[server_state_index];
@@ -425,7 +424,7 @@ impl SnapshotStorage {
         return false;
     }
 
-    pub fn overwrite_states(&mut self, states: &[ServerEntityStateLocal]) {
+    pub fn overwrite_states(&mut self, states: &[ServerEntityState<Local>]) {
         SnapshotStorage::overwrite_all(
             self.last_acknowledged_index_for_server_entities,
             &states,
@@ -435,7 +434,7 @@ impl SnapshotStorage {
 
     fn overwrite_all(
         tick: u64,
-        server_state_updates: &[ServerEntityStateLocal],
+        server_state_updates: &[ServerEntityState<Local>],
         predictions: &mut [CharSnapshots],
     ) {
         for server_state_index in 0..server_state_updates.len() {
@@ -456,14 +455,17 @@ impl SnapshotStorage {
         }
     }
 
-    fn snapshots_match(acked: &LocalCharStateComp, predicted: &LocalCharStateComp) -> bool {
+    fn snapshots_match(
+        acked: &LocalCharStateComp<Local>,
+        predicted: &LocalCharStateComp<Local>,
+    ) -> bool {
         let mut matches = float_cmp(acked.pos().x, predicted.pos().x)
             && float_cmp(acked.pos().y, predicted.pos().y);
 
-        let predicted_state = predicted.state();
+        let locally_predicted_state = predicted.state();
         let acked_state = acked.state();
 
-        matches &= match predicted_state {
+        matches &= match locally_predicted_state {
             CharState::Walking(..) => {
                 match acked_state {
                     CharState::Idle => false,
@@ -478,7 +480,10 @@ impl SnapshotStorage {
                     }
                 }
             }
-            _ => std::mem::discriminant(predicted_state) == std::mem::discriminant(acked_state),
+            _ => {
+                std::mem::discriminant(locally_predicted_state)
+                    == std::mem::discriminant(acked_state)
+            }
         };
         if !matches {
             log::trace!(
@@ -507,7 +512,7 @@ impl SnapshotStorage {
     pub fn load_last_acked_remote_entities_state_into_world(
         &self,
         entities: &specs::Entities,
-        auth_storage: &mut WriteStorage<LocalCharStateComp>,
+        auth_storage: &mut WriteStorage<LocalCharStateComp<Local>>,
         server_id_storage: &ReadStorage<HasServerIdComponent>,
         tick_index: u64,
         skip_index: Option<usize>,
@@ -547,7 +552,7 @@ impl SnapshotSystem {
 
 impl<'a> System<'a> for SnapshotSystem {
     type SystemData = (
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadStorage<'a, HasServerIdComponent>,
         WriteExpect<'a, SnapshotStorage>,
     );

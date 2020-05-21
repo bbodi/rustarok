@@ -4,18 +4,18 @@ use crate::effect::StrEffectType;
 use crate::render::render_command::RenderCommandCollector;
 use crate::render::render_sys::RenderDesktopClientSystem;
 use crate::systems::AssetResources;
-use crate::LocalTime;
+use crate::GameTime;
 use rustarok_common::attack::{
     HpModificationRequest, HpModificationResult, HpModificationResultType, HpModificationType,
 };
-use rustarok_common::common::{Percentage, Vec2};
-use rustarok_common::components::char::LocalCharEntityId;
+use rustarok_common::common::{Local, Percentage, Vec2};
+use rustarok_common::components::char::EntityId;
 
 #[derive(Clone, Debug)]
 pub struct AttackHealStatus {
-    pub started: LocalTime,
-    pub until: LocalTime,
-    pub animation_started: LocalTime,
+    pub started: GameTime<Local>,
+    pub until: GameTime<Local>,
+    pub animation_started: GameTime<Local>,
     pub healed_amount: u32,
     pub heal: Percentage,
 }
@@ -23,7 +23,7 @@ pub struct AttackHealStatus {
 // TODO:
 #[allow(dead_code)]
 impl AttackHealStatus {
-    pub fn new(heal: Percentage, now: LocalTime, duration: f32) -> AttackHealStatus {
+    pub fn new(heal: Percentage, now: GameTime<Local>, duration: f32) -> AttackHealStatus {
         AttackHealStatus {
             started: now,
             animation_started: now.add_seconds(-1.9),
@@ -52,7 +52,7 @@ impl AttackHealStatus {
 
     pub fn hp_mod_has_been_applied_on_enemy(
         &mut self,
-        self_id: LocalCharEntityId,
+        self_id: EntityId<Local>,
         outcome: &HpModificationResult,
         hp_mod_reqs: &mut Vec<HpModificationRequest>,
     ) {
@@ -76,7 +76,7 @@ impl AttackHealStatus {
     pub fn render(
         &self,
         char_pos: Vec2,
-        now: LocalTime,
+        now: GameTime<Local>,
         assets: &AssetResources,
         render_commands: &mut RenderCommandCollector,
     ) {
@@ -91,7 +91,10 @@ impl AttackHealStatus {
         );
     }
 
-    pub fn get_status_completion_percent(&self, now: LocalTime) -> Option<(LocalTime, f32)> {
+    pub fn get_status_completion_percent(
+        &self,
+        now: GameTime<Local>,
+    ) -> Option<(GameTime<Local>, f32)> {
         Some((self.until, now.percentage_between(self.started, self.until)))
     }
 }

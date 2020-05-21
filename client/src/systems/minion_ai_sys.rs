@@ -1,10 +1,9 @@
 use crate::components::char::CharacterStateComponent;
 use crate::components::MinionComponent;
 use crate::systems::SystemFrameDurations;
-use rustarok_common::common::{v2, v2_to_p2, Vec2};
+use rustarok_common::common::{v2, v2_to_p2, Local, Vec2};
 use rustarok_common::components::char::{
-    ControllerEntityId, EntityTarget, LocalCharEntityId, LocalCharStateComp,
-    StaticCharDataComponent, Team,
+    ControllerEntityId, EntityId, EntityTarget, LocalCharStateComp, StaticCharDataComponent, Team,
 };
 use rustarok_common::components::controller::{ControllerComponent, PlayerIntention};
 use specs::prelude::*;
@@ -25,19 +24,19 @@ impl MinionAiSystem {
     pub fn get_closest_enemy_in_area(
         entities: &Entities,
         char_state_storage: &ReadStorage<StaticCharDataComponent>,
-        auth_char_state_storage: &ReadStorage<LocalCharStateComp>,
+        auth_char_state_storage: &ReadStorage<LocalCharStateComp<Local>>,
         center: &Vec2,
         radius: f32,
         self_team: Team,
-        except: LocalCharEntityId,
-    ) -> Option<LocalCharEntityId> {
+        except: EntityId<Local>,
+    ) -> Option<EntityId<Local>> {
         let mut ret = None;
         let mut distance = 2000.0;
         let center = v2_to_p2(center);
         for (entity_id, char_state, auth_char_state) in
             (entities, char_state_storage, auth_char_state_storage).join()
         {
-            let entity_id = LocalCharEntityId::from(entity_id);
+            let entity_id = EntityId::from(entity_id);
             let pos = auth_char_state.pos();
             if entity_id == except
                 || !char_state.team.is_enemy_to(self_team)
@@ -61,7 +60,7 @@ impl<'a> System<'a> for MinionAiSystem {
         Entities<'a>,
         WriteStorage<'a, ControllerComponent>,
         ReadStorage<'a, StaticCharDataComponent>,
-        ReadStorage<'a, LocalCharStateComp>,
+        ReadStorage<'a, LocalCharStateComp<Local>>,
         ReadStorage<'a, MinionComponent>,
         WriteExpect<'a, SystemFrameDurations>,
     );

@@ -5,7 +5,7 @@ use crate::components::status::status::{
     ApplyStatusComponent, StatusEnum, StatusEnumDiscriminants,
 };
 use crate::tests::setup_ecs_world;
-use rustarok_common::common::{v2, LocalTime};
+use rustarok_common::common::{v2, GameTime};
 use rustarok_common::components::char::EntityTarget;
 use std::time::Duration;
 
@@ -129,7 +129,7 @@ fn many_chars_with_different_movement_speed() {
                 char_id,
                 char_id,
                 StatusEnum::WalkingSpeedModifierStatus(WalkingSpeedModifierStatus::new(
-                    LocalTime::from(0.0),
+                    GameTime::from(0.0),
                     percentage(i),
                     1000.0,
                 )),
